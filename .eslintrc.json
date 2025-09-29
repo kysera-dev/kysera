@@ -1,0 +1,139 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module",
+    "project": ["./tsconfig.json", "./packages/*/tsconfig.json"]
+  },
+  "plugins": [
+    "@typescript-eslint",
+    "import",
+    "promise",
+    "unicorn",
+    "sonarjs"
+  ],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:@typescript-eslint/recommended-requiring-type-checking",
+    "plugin:@typescript-eslint/strict",
+    "plugin:import/errors",
+    "plugin:import/warnings",
+    "plugin:import/typescript",
+    "plugin:promise/recommended",
+    "plugin:unicorn/recommended",
+    "plugin:sonarjs/recommended"
+  ],
+  "rules": {
+    // TypeScript Strict Rules
+    "@typescript-eslint/explicit-function-return-type": "error",
+    "@typescript-eslint/explicit-module-boundary-types": "error",
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "@typescript-eslint/no-non-null-assertion": "error",
+    "@typescript-eslint/strict-boolean-expressions": "error",
+    "@typescript-eslint/no-floating-promises": "error",
+    "@typescript-eslint/no-misused-promises": "error",
+    "@typescript-eslint/await-thenable": "error",
+    "@typescript-eslint/no-unnecessary-type-assertion": "error",
+    "@typescript-eslint/prefer-nullish-coalescing": "error",
+    "@typescript-eslint/prefer-optional-chain": "error",
+    "@typescript-eslint/prefer-readonly": "error",
+    "@typescript-eslint/prefer-string-starts-ends-with": "error",
+    "@typescript-eslint/no-unsafe-assignment": "error",
+    "@typescript-eslint/no-unsafe-call": "error",
+    "@typescript-eslint/no-unsafe-member-access": "error",
+    "@typescript-eslint/no-unsafe-return": "error",
+    "@typescript-eslint/require-await": "error",
+    "@typescript-eslint/restrict-template-expressions": "error",
+    "@typescript-eslint/no-inferrable-types": "off",
+
+    // Import Rules
+    "import/order": ["error", {
+      "groups": ["builtin", "external", "internal", "parent", "sibling", "index"],
+      "newlines-between": "always",
+      "alphabetize": { "order": "asc", "caseInsensitive": true }
+    }],
+    "import/no-duplicates": "error",
+    "import/no-unused-modules": "error",
+    "import/no-cycle": "error",
+    "import/no-default-export": "error",
+
+    // Code Quality Rules
+    "no-console": ["error", { "allow": ["warn", "error"] }],
+    "no-debugger": "error",
+    "no-alert": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+    "prefer-template": "error",
+    "prefer-arrow-callback": "error",
+    "no-param-reassign": "error",
+    "no-nested-ternary": "error",
+    "max-depth": ["error", 3],
+    "max-lines": ["error", 500],
+    "max-lines-per-function": ["error", 100],
+    "complexity": ["error", 10],
+    "max-params": ["error", 4],
+
+    // Unicorn Rules (Adjusted for project)
+    "unicorn/prevent-abbreviations": ["error", {
+      "allowList": {
+        "env": true,
+        "args": true,
+        "db": true,
+        "req": true,
+        "res": true,
+        "err": true,
+        "ctx": true,
+        "props": true,
+        "ref": true,
+        "deps": true
+      }
+    }],
+    "unicorn/filename-case": ["error", { "case": "kebabCase" }],
+    "unicorn/no-null": "off",
+    "unicorn/no-array-reduce": "off",
+
+    // Promise Rules
+    "promise/always-return": "error",
+    "promise/no-return-wrap": "error",
+    "promise/param-names": "error",
+    "promise/catch-or-return": "error",
+    "promise/no-nesting": "error",
+    "promise/no-promise-in-callback": "error",
+
+    // SonarJS Rules
+    "sonarjs/cognitive-complexity": ["error", 10],
+    "sonarjs/no-duplicate-string": ["error", 5],
+    "sonarjs/no-identical-functions": "error",
+    "sonarjs/no-redundant-jump": "error"
+  },
+  "overrides": [
+    {
+      "files": ["*.test.ts", "*.spec.ts"],
+      "rules": {
+        "@typescript-eslint/no-explicit-any": "off",
+        "@typescript-eslint/no-unsafe-assignment": "off",
+        "max-lines-per-function": "off",
+        "max-lines": "off",
+        "sonarjs/no-duplicate-string": "off"
+      }
+    },
+    {
+      "files": ["*.config.ts", "*.config.js"],
+      "rules": {
+        "import/no-default-export": "off",
+        "unicorn/prefer-module": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    "*.js",
+    "*.d.ts"
+  ]
+}

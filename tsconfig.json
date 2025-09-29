@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/repository" },
+    { "path": "./packages/soft-delete" },
+    { "path": "./packages/audit" },
+    { "path": "./packages/timestamps" },
+    { "path": "./packages/migrations" }
+  ],
+  "files": []
+}
