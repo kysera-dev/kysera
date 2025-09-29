@@ -1,0 +1,71 @@
+{
+  "name": "@kysera/repository",
+  "version": "0.1.0",
+  "description": "Repository pattern for Kysera ORM with smart validation",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "peerDependencies": {
+    "kysely": ">=0.28.0",
+    "zod": ">=3.22.0"
+  },
+  "dependencies": {
+    "@kysera/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "kysely": "^0.28.7",
+    "pg": "^8.16.3",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "zod": "^4.1.11"
+  },
+  "keywords": [
+    "kysely",
+    "orm",
+    "repository",
+    "pattern",
+    "validation",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnitron/kysera.git",
+    "directory": "packages/repository"
+  },
+  "bugs": {
+    "url": "https://github.com/omnitron/kysera/issues"
+  },
+  "homepage": "https://github.com/omnitron/kysera#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.0.0",
+    "bun": ">=1.0.0"
+  }
+}

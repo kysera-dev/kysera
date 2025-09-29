@@ -1,0 +1,66 @@
+{
+  "name": "@kysera/soft-delete",
+  "version": "0.1.0",
+  "description": "Soft delete plugin for Kysera ORM",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "peerDependencies": {
+    "kysely": ">=0.28.0"
+  },
+  "dependencies": {
+    "@kysera/repository": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.11.0",
+    "@vitest/coverage-v8": "^2.1.5",
+    "kysely": "^0.28.7",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.5"
+  },
+  "keywords": [
+    "kysely",
+    "orm",
+    "soft-delete",
+    "plugin"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnitron/kysera.git",
+    "directory": "packages/soft-delete"
+  },
+  "bugs": {
+    "url": "https://github.com/omnitron/kysera/issues"
+  },
+  "homepage": "https://github.com/omnitron/kysera#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.0.0",
+    "bun": ">=1.0.0"
+  }
+}
