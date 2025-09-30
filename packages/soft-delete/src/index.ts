@@ -11,6 +11,12 @@ export interface SoftDeleteOptions {
    * Include deleted records by default
    */
   includeDeleted?: boolean
+
+  /**
+   * List of tables that support soft delete.
+   * If not provided, all tables are assumed to support it.
+   */
+  tables?: string[]
 }
 
 /**
@@ -20,7 +26,8 @@ export interface SoftDeleteOptions {
 export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
   const {
     deletedAtColumn = 'deleted_at',
-    includeDeleted = false
+    includeDeleted = false,
+    tables
   } = options
 
   return {
@@ -28,8 +35,12 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
     version: '1.0.0',
 
     interceptQuery(qb, context) {
+      // Check if table supports soft delete
+      const supportsSoftDelete = !tables || tables.includes(context.table)
+
       // Only filter SELECT queries when not explicitly including deleted
       if (
+        supportsSoftDelete &&
         context.operation === 'select' &&
         !context.metadata['includeDeleted'] &&
         !includeDeleted
@@ -41,6 +52,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
       // For DELETE operations, convert to soft delete
       if (
+        supportsSoftDelete &&
         context.operation === 'delete' &&
         !context.metadata['hardDelete']
       ) {
@@ -52,11 +64,47 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
     },
 
     extendRepository(repo) {
+      // Check if table supports soft delete
+      const supportsSoftDelete = !tables || tables.includes(repo.tableName)
+
+      // If table doesn't support soft delete, return unmodified repo
+      if (!supportsSoftDelete) {
+        return repo
+      }
+
+      // Wrap original methods to apply soft delete filtering
+      const originalFindAll = repo.findAll.bind(repo)
+      const originalFindById = repo.findById.bind(repo)
+
       return {
         ...repo,
 
+        // Override base methods to filter soft-deleted records
+        async findAll(): Promise<any[]> {
+          if (!includeDeleted) {
+            return repo.executor
+              .selectFrom(repo.tableName)
+              .selectAll()
+              .where(deletedAtColumn, 'is', null)
+              .execute()
+          }
+          return originalFindAll()
+        },
+
+        async findById(id: number): Promise<any> {
+          if (!includeDeleted) {
+            return repo.executor
+              .selectFrom(repo.tableName)
+              .selectAll()
+              .where('id', '=', id)
+              .where(deletedAtColumn, 'is', null)
+              .executeTakeFirst()
+          }
+          return originalFindById(id)
+        },
+
         async softDelete(id: number) {
-          return repo.update(id, { [deletedAtColumn]: new Date() })
+          return repo.update(id, { [deletedAtColumn]: new Date().toISOString() })
         },
 
         async restore(id: number) {
@@ -64,25 +112,28 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         },
 
         async hardDelete(id: number) {
-          // Use metadata to bypass soft delete conversion
-          return repo.delete(id, { hardDelete: true })
+          // Direct hard delete - bypass soft delete
+          await repo.executor
+            .deleteFrom(repo.tableName)
+            .where('id', '=', id)
+            .execute()
         },
 
         async findWithDeleted(id: number) {
-          // Query with metadata to include deleted records
-          return repo.findById(id, { includeDeleted: true })
+          // Use original method without filtering
+          return originalFindById(id)
         },
 
         async findAllWithDeleted() {
-          // Query with metadata to include deleted records
-          return repo.findAll({ includeDeleted: true })
+          // Use original method without filtering
+          return originalFindAll()
         },
 
         async findDeleted() {
           return repo.executor
             .selectFrom(repo.tableName)
             .selectAll()
-            .where(`${deletedAtColumn}`, 'is not', null)
+            .where(deletedAtColumn, 'is not', null)
             .execute()
         }
       }

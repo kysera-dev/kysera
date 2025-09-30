@@ -11,6 +11,15 @@ export class DatabaseError extends Error {
     super(message)
     this.name = 'DatabaseError'
   }
+
+  toJSON() {
+    return {
+      name: this.name,
+      message: this.message,
+      code: this.code,
+      detail: this.detail
+    }
+  }
 }
 
 export class UniqueConstraintError extends DatabaseError {
@@ -20,10 +29,19 @@ export class UniqueConstraintError extends DatabaseError {
     public readonly columns: string[]
   ) {
     super(
-      `Unique constraint violation on ${table}`,
-      '23505'
+      `UNIQUE constraint violation on ${table}`,
+      'UNIQUE_VIOLATION'
     )
     this.name = 'UniqueConstraintError'
+  }
+
+  override toJSON() {
+    return {
+      ...super.toJSON(),
+      constraint: this.constraint,
+      table: this.table,
+      columns: this.columns
+    }
   }
 }
 
@@ -34,16 +52,18 @@ export class ForeignKeyError extends DatabaseError {
     public readonly referencedTable: string
   ) {
     super(
-      `Foreign key constraint violation`,
-      '23503'
+      `FOREIGN KEY constraint violation`,
+      'FOREIGN_KEY_VIOLATION'
     )
     this.name = 'ForeignKeyError'
   }
 }
 
 export class NotFoundError extends DatabaseError {
-  constructor(message: string) {
-    super(message, 'NOT_FOUND')
+  constructor(entity: string, filters?: Record<string, unknown>) {
+    const message = `${entity} not found`
+    const detail = filters ? JSON.stringify(filters) : undefined
+    super(message, 'NOT_FOUND', detail)
     this.name = 'NotFoundError'
   }
 }
@@ -116,11 +136,14 @@ export function parseDatabaseError(
       case 'ER_DUP_KEY':
         // Parse MySQL duplicate entry error
         const dupMatch = dbError.sqlMessage?.match(/Duplicate entry '(.+?)' for key '(.+?)'/)
-        return new UniqueConstraintError(
+        const error = new UniqueConstraintError(
           dupMatch?.[2] || 'unique',
           'unknown', // MySQL doesn't provide table name easily
           []
         )
+        // Override code for MySQL
+        ;(error as any).code = 'ER_DUP_ENTRY'
+        return error
 
       case 'ER_NO_REFERENCED_ROW':
       case 'ER_NO_REFERENCED_ROW_2':
@@ -166,13 +189,13 @@ export function parseDatabaseError(
     if (message.includes('NOT NULL constraint failed')) {
       const match = message.match(/NOT NULL constraint failed: (\w+)\.(\w+)/)
       return new DatabaseError(
-        `Not null constraint violation`,
+        `NOT NULL constraint violation`,
         'SQLITE_CONSTRAINT',
         match?.[2]
       )
     }
 
-    return new DatabaseError(message, 'SQLITE_ERROR')
+    return new DatabaseError(message, 'UNKNOWN')
   }
 
   return new DatabaseError('Unknown database error', 'UNKNOWN')

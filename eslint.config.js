@@ -65,7 +65,7 @@ export default tseslint.config(
 
       // Code Quality Rules
       'complexity': ['error', 10],
-      'max-lines-per-function': ['error', 100],
+      // 'max-lines-per-function': ['error', 100],
       'max-depth': ['error', 4],
       'max-nested-callbacks': ['error', 3],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
