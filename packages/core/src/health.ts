@@ -177,3 +177,77 @@ export class HealthMonitor {
     return this.lastCheck
   }
 }
+
+/**
+ * Graceful shutdown handler for database connections
+ */
+export async function gracefulShutdown<DB>(
+  db: Kysely<DB>,
+  options: {
+    timeoutMs?: number
+    onShutdown?: () => void | Promise<void>
+  } = {}
+): Promise<void> {
+  const { timeoutMs = 30000, onShutdown } = options
+
+  const shutdownPromise = async () => {
+    try {
+      // Call custom shutdown handler if provided
+      if (onShutdown) {
+        await onShutdown()
+      }
+
+      // Destroy database connections
+      await db.destroy()
+    } catch (error) {
+      console.error('Error during database shutdown:', error)
+      throw error
+    }
+  }
+
+  // Wrap in timeout
+  return Promise.race([
+    shutdownPromise(),
+    new Promise<void>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Shutdown timeout after ${timeoutMs}ms`)),
+        timeoutMs
+      )
+    )
+  ])
+}
+
+/**
+ * Register process signal handlers for graceful shutdown
+ */
+export function registerShutdownHandlers<DB>(
+  db: Kysely<DB>,
+  options: {
+    signals?: string[]
+    timeoutMs?: number
+    onShutdown?: () => void | Promise<void>
+  } = {}
+): void {
+  const { signals = ['SIGTERM', 'SIGINT'], ...shutdownOptions } = options
+  let isShuttingDown = false
+
+  const handleShutdown = async (signal: string) => {
+    if (isShuttingDown) return
+    isShuttingDown = true
+
+    console.log(`Received ${signal}, starting graceful shutdown...`)
+
+    try {
+      await gracefulShutdown(db, shutdownOptions)
+      console.log('Database connections closed successfully')
+      process.exit(0)
+    } catch (error) {
+      console.error('Error during shutdown:', error)
+      process.exit(1)
+    }
+  }
+
+  signals.forEach(signal => {
+    process.on(signal, () => handleShutdown(signal))
+  })
+}

@@ -28,7 +28,7 @@ export async function paginate<DB, TB extends keyof DB, O>(
   options: PaginationOptions = {}
 ): Promise<PaginatedResult<O>> {
   const page = Math.max(1, options.page || 1)
-  const limit = Math.min(100, Math.max(1, options.limit || 20))
+  const limit = options.limit === 0 ? 0 : Math.min(100, Math.max(1, options.limit || 20))
   const offset = (page - 1) * limit
 
   // Get total count
@@ -38,7 +38,7 @@ export async function paginate<DB, TB extends keyof DB, O>(
     .executeTakeFirstOrThrow()
 
   const total = Number(count)
-  const totalPages = Math.ceil(total / limit)
+  const totalPages = limit === 0 ? 0 : Math.ceil(total / limit)
 
   // Get paginated data
   const data = await query
