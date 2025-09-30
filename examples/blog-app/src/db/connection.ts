@@ -6,7 +6,7 @@ import 'dotenv/config'
 
 // Create pool with metrics
 export const pool = createMetricsPool(new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://localhost/blog_example',
+  connectionString: process.env['DATABASE_URL'] || 'postgresql://localhost/blog_example',
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
@@ -15,13 +15,13 @@ export const pool = createMetricsPool(new Pool({
 // Create Kysely instance
 const baseDb = new Kysely<Database>({
   dialect: new PostgresDialect({ pool }),
-  log: process.env.NODE_ENV === 'development'
+  log: process.env['NODE_ENV'] === 'development'
     ? ['query', 'error']
     : ['error']
 })
 
 // Add debug wrapper in development
-export const db = process.env.NODE_ENV === 'development'
+export const db = process.env['NODE_ENV'] === 'development'
   ? withDebug(baseDb, {
       logQuery: true,
       logParams: false,
@@ -32,11 +32,13 @@ export const db = process.env.NODE_ENV === 'development'
     })
   : baseDb
 
-// Setup graceful shutdown
-if (process.env.NODE_ENV === 'production') {
-  await createGracefulShutdown(db, {
-    onShutdown: async () => {
-      console.log('Closing database connections...')
-    }
-  })
+// Setup graceful shutdown (for production use)
+export async function setupShutdownHandlers() {
+  if (process.env['NODE_ENV'] === 'production') {
+    await createGracefulShutdown(db, {
+      onShutdown: async () => {
+        console.log('Closing database connections...')
+      }
+    })
+  }
 }
