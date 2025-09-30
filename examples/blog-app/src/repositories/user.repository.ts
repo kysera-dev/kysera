@@ -35,7 +35,7 @@ function mapUserRow(row: Selectable<UsersTable>): User {
 
 // Repository
 export function createUserRepository(executor: Executor<Database>) {
-  const validateDbResults = process.env.NODE_ENV === 'development'
+  const validateDbResults = process.env['NODE_ENV'] === 'development'
 
   return {
     async findById(id: number): Promise<User | null> {

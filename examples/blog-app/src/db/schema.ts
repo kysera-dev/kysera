@@ -32,8 +32,14 @@ export interface CommentsTable {
   deleted_at: Date | null
 }
 
+export interface MigrationsTable {
+  name: string
+  executed_at: Generated<Date>
+}
+
 export interface Database {
   users: UsersTable
   posts: PostsTable
   comments: CommentsTable
+  migrations: MigrationsTable
 }

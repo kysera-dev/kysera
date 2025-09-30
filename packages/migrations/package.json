@@ -1,0 +1,51 @@
+{
+  "name": "@kysera/migrations",
+  "version": "0.1.0",
+  "description": "Database migration management for Kysera ORM",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "kysely",
+    "orm",
+    "migrations",
+    "database",
+    "typescript"
+  ],
+  "author": "Kysera Team",
+  "license": "MIT",
+  "peerDependencies": {
+    "kysely": "^0.28.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "kysely": "^0.28.7",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "better-sqlite3": "^12.4.1",
+    "@types/better-sqlite3": "^7.6.12",
+    "tsup": "^8.5.0"
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.0.0",
+    "bun": ">=1.0.0"
+  }
+}

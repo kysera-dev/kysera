@@ -67,7 +67,6 @@ export const migrations: Migration[] = [
         .createIndex('posts_published_idx')
         .on('posts')
         .column('published')
-        .where('deleted_at', 'is', null)
         .execute()
     },
     async down(db) {
