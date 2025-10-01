@@ -24,7 +24,9 @@ function exec(cmd, silent = false) {
     // execSync returns null when stdio is 'inherit'
     return result ? result.trim() : '';
   } catch (error) {
-    console.error(`❌ Command failed: ${cmd}`);
+    if (!silent) {
+      console.error(`❌ Command failed: ${cmd}`);
+    }
     throw error;
   }
 }
