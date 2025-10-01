@@ -5,7 +5,7 @@ import type { z } from 'zod'
  * Core repository interface
  * Designed to work with any entity type and database schema
  */
-export interface BaseRepository<Entity> {
+export interface BaseRepository<DB, Entity> {
   findById(id: number): Promise<Entity | null>
   findAll(): Promise<Entity[]>
   create(input: unknown): Promise<Entity>
@@ -19,7 +19,7 @@ export interface BaseRepository<Entity> {
   findOne(options?: { where?: Record<string, unknown> }): Promise<Entity | null>
   count(options?: { where?: Record<string, unknown> }): Promise<number>
   exists(options?: { where?: Record<string, unknown> }): Promise<boolean>
-  transaction<R>(fn: (trx: Transaction<unknown>) => Promise<R>): Promise<R>
+  transaction<R>(fn: (trx: Transaction<DB>) => Promise<R>): Promise<R>
   paginate(options: {
     limit: number
     offset?: number
@@ -76,11 +76,11 @@ export interface TableOperations<Table> {
  * Create a base repository implementation
  * This function creates a repository with full CRUD operations
  */
-export function createBaseRepository<Table, Entity>(
+export function createBaseRepository<DB, Table, Entity>(
   operations: TableOperations<Table>,
   config: RepositoryConfig<Table, Entity>,
-  db: Kysely<unknown>
-): BaseRepository<Entity> {
+  db: Kysely<DB>
+): BaseRepository<DB, Entity> {
   const {
     mapRow,
     schemas,
@@ -172,12 +172,11 @@ export function createBaseRepository<Table, Entity>(
       if (updates.length === 0) return []
 
       const updateSchema = getUpdateSchema()
-      const results: Entity[] = []
 
-      // Execute updates sequentially
+      // Execute updates in parallel for better performance
       // Note: If transaction atomicity is required, wrap the bulkUpdate call
       // in a transaction at the application level
-      for (const { id, data } of updates) {
+      const promises = updates.map(async ({ id, data }) => {
         const validatedInput = validateInput(data, updateSchema)
         const row = await operations.updateById(id, validatedInput)
 
@@ -185,10 +184,10 @@ export function createBaseRepository<Table, Entity>(
           throw new Error(`Failed to update record with id ${id}: Record not found`)
         }
 
-        results.push(processRow(row))
-      }
+        return processRow(row)
+      })
 
-      return results
+      return Promise.all(promises)
     },
 
     async bulkDelete(ids: number[]): Promise<number> {
@@ -222,7 +221,7 @@ export function createBaseRepository<Table, Entity>(
       return count > 0
     },
 
-    async transaction<R>(fn: (trx: Transaction<unknown>) => Promise<R>): Promise<R> {
+    async transaction<R>(fn: (trx: Transaction<DB>) => Promise<R>): Promise<R> {
       return db.transaction().execute(fn)
     },
 

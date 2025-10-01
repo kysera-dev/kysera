@@ -7,7 +7,7 @@ import { createTableOperations } from './table-operations'
  * Extended repository interface that includes database and table information
  * for plugin compatibility
  */
-export interface Repository<Entity, DB> extends BaseRepository<Entity> {
+export interface Repository<Entity, DB> extends BaseRepository<DB, Entity> {
   readonly executor: Kysely<DB>
   readonly tableName: string
   withTransaction(trx: Transaction<DB>): Repository<Entity, DB>
@@ -56,10 +56,10 @@ export function createRepositoryFactory<DB>(executor: Kysely<DB>): {
       const operations = createTableOperations(executor, tableName)
 
       // Create base repository
-      const baseRepo = createBaseRepository<DB[TableName], Entity>(
+      const baseRepo = createBaseRepository<DB, DB[TableName], Entity>(
         operations,
         config as RepositoryConfig<DB[TableName], Entity>,
-        executor as Kysely<unknown>
+        executor
       )
 
       // Extend with additional properties and methods
