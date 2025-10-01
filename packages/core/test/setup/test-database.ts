@@ -1,4 +1,4 @@
-import { Kysely, SqliteDialect, Generated, Selectable } from 'kysely'
+import { Kysely, SqliteDialect, type Generated, type Selectable } from 'kysely'
 import Database from 'better-sqlite3'
 import { beforeAll, afterAll, afterEach } from 'vitest'
 

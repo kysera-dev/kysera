@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { Kysely, SqliteDialect, sql } from 'kysely'
+import { Kysely, SqliteDialect, sql, type Generated } from 'kysely'
 import Database from 'better-sqlite3'
 import {
   testInTransaction,
@@ -8,20 +8,19 @@ import {
   createFactory,
   waitFor,
   seedDatabase,
-  testWithIsolation,
   snapshotTable,
   countRows
 } from '../src/testing'
 
 interface TestDatabase {
   users: {
-    id: number
+    id: Generated<number>
     email: string
     name: string
-    created_at: string
+    created_at: Generated<string>
   }
   posts: {
-    id: number
+    id: Generated<number>
     user_id: number
     title: string
     content: string | null

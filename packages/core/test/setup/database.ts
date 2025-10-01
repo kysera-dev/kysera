@@ -1,4 +1,4 @@
-import { Kysely, SqliteDialect, Generated } from 'kysely'
+import { Kysely, SqliteDialect, type Generated } from 'kysely'
 import SQLite from 'better-sqlite3'
 import type { Database as SQLiteDatabase } from 'better-sqlite3'
 

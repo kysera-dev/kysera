@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { Kysely } from 'kysely'
 import {
-  DatabaseType,
-  MultiDbTestDatabase,
+  type DatabaseType,
+  type MultiDbTestDatabase,
   createTestDb,
   initializeSchema,
   seedDatabase,
@@ -19,11 +19,11 @@ import {
 const getDatabaseTypes = (): DatabaseType[] => {
   const types: DatabaseType[] = ['sqlite']
 
-  if (process.env.TEST_POSTGRES === 'true') {
+  if (process.env['TEST_POSTGRES'] === 'true') {
     types.push('postgres')
   }
 
-  if (process.env.TEST_MYSQL === 'true') {
+  if (process.env['TEST_MYSQL'] === 'true') {
     types.push('mysql')
   }
 

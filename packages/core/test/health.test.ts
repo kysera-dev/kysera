@@ -104,7 +104,7 @@ describe('Health Check', () => {
           if (!listeners[event]) listeners[event] = []
           listeners[event]!.push(handler)
         },
-        exit: (code: number) => {}
+        exit: (_code: number) => {}
       }
 
       // Mock global process
