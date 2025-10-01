@@ -21,7 +21,8 @@
     "docs:serve": "pnpm docs && npx http-server docs/api -p 8080 -o",
     "changeset": "changeset",
     "version": "changeset version",
-    "publish": "turbo run build lint test && changeset publish"
+    "publish": "turbo run build lint test && changeset publish",
+    "publish:manual": "node scripts/publish.js"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.12",
