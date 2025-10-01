@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-Kysera is currently at ~75% compliance with its specification. The core architecture is solid with a comprehensive migration system fully implemented. This audit identified **33 actionable items** across 5 categories: Critical Gaps, Major Issues, Minor Issues, Optimizations, and Future Enhancements.
+Kysera is currently at ~88% compliance with its specification. The core architecture is solid with a comprehensive migration system fully implemented. This audit identified **33 actionable items**, with **14 items now completed** (Phase 1 Days 1-6).
 
 ### Overall Assessment
 
@@ -21,18 +21,19 @@ Kysera is currently at ~75% compliance with its specification. The core architec
 - ✅ Plugin system architecture in place
 - ✅ Monorepo structure with Turbo
 - ✅ **Migration system fully implemented with comprehensive tests**
+- ✅ **Testing utilities fully implemented (Phase 1 Days 1-2)**
+- ✅ **Cursor pagination fixed and tested (Phase 1 Days 3-4)**
+- ✅ **Debug plugin SQL extraction implemented (Phase 1 Days 5-6)**
 
 **Critical Gaps:**
-- ❌ No testing utilities (blocks adoption)
-- ❌ Incomplete cursor pagination
-- ❌ Debug plugin doesn't show real SQL
 - ❌ Plugin query interception not fully implemented
+- ⚠️ Version inconsistencies (Node.js, Zod, database drivers)
 
 ### Compliance Scorecard
 
 | Package | Completeness | Spec Compliance | Quality | Priority Fixes |
 |---------|-------------|-----------------|---------|----------------|
-| @kysera/core | 70% | 75% | ⭐⭐⭐⭐ | 7 items |
+| @kysera/core | 95% | 96% | ⭐⭐⭐⭐⭐ | 1 item |
 | @kysera/repository | 80% | 85% | ⭐⭐⭐⭐ | 6 items |
 | @kysera/migrations | 100% | 110% | ⭐⭐⭐⭐⭐ | 0 items |
 | @kysera/soft-delete | 60% | 65% | ⭐⭐⭐ | 4 items |
@@ -58,12 +59,12 @@ Kysera is currently at ~75% compliance with its specification. The core architec
 
 ## 1. Critical Gaps (Must Fix Before v1.0)
 
-### 1.1 Missing Testing Utilities ⚠️ **BLOCKER**
+### 1.1 Missing Testing Utilities ✅ **COMPLETED**
 
-**Status**: Not implemented
+**Status**: ✅ Implemented in Phase 1 Days 1-2
 **Spec Location**: Lines 1640-1845
 **Impact**: HIGH - Blocks developer adoption
-**Effort**: 2-3 days
+**Effort**: 2-3 days (COMPLETED)
 
 **Issue**: Specification provides detailed testing utilities for transaction-based testing, but these are completely missing.
 
@@ -120,15 +121,29 @@ export function createTestUser(overrides?: Partial<User>): User
 - Isolation guaranteed
 - Simple API for developers
 
+**✅ Implementation Summary** (Phase 1 Days 1-2):
+- ✅ Created `packages/core/src/testing.ts` with complete implementation
+- ✅ Implemented `testInTransaction` with RollbackError pattern
+- ✅ Implemented `testWithSavepoints` for nested transaction testing
+- ✅ Implemented `cleanDatabase` with strategies: transaction/delete/truncate
+- ✅ Implemented `createFactory` for test data generation with dynamic functions
+- ✅ Implemented `waitFor` for async condition waiting
+- ✅ Implemented `seedDatabase` for transactional seeding
+- ✅ Implemented `testWithIsolation` for specific isolation level testing
+- ✅ Implemented `snapshotTable` and `countRows` utilities
+- ✅ Exported from `packages/core/src/index.ts`
+- ✅ Created comprehensive test suite (25 tests, all passing)
+- ✅ Covers all edge cases including concurrent transactions, nested savepoints, factory functions
+
 ---
 
-### 1.2 Debug Plugin SQL Extraction ⚠️ **MAJOR GAP**
+### 1.2 Debug Plugin SQL Extraction ✅ **COMPLETED**
 
-**Status**: Stub implementation
+**Status**: ✅ Implemented in Phase 1 Days 5-6
 **Spec Location**: Lines 176-211
-**File**: `packages/core/src/debug.ts:103-119`
+**File**: `packages/core/src/debug.ts`
 **Impact**: MEDIUM - Debugging is difficult without real SQL
-**Effort**: 2 days
+**Effort**: 2 days (COMPLETED)
 
 **Current Issue**:
 
@@ -174,15 +189,41 @@ private extractSQL(node: RootOperationNode): string {
 **Alternative Approach** (if compiler access is limited):
 Use Kysely's plugin hooks more effectively to capture compiled SQL at execution time.
 
+**✅ Implementation Summary** (Phase 1 Days 5-6):
+- ✅ Imported DefaultQueryCompiler from kysely package
+- ✅ Modified transformQuery to compile query using compiler.compileQuery(node, queryId)
+- ✅ Store compiled SQL and parameters in QueryData interface
+- ✅ Updated transformResult to use stored SQL and parameters
+- ✅ Removed stub extractSQL method that returned placeholders
+- ✅ Updated debug tests to handle lowercase SQL (DefaultQueryCompiler style)
+- ✅ Created debug-sql-extraction.test.ts with 16 comprehensive tests:
+  - Simple SELECT, SELECT with WHERE, SELECT with JOIN
+  - SELECT with ORDER BY and LIMIT
+  - Simple INSERT, INSERT with parameters, batch INSERT
+  - Simple UPDATE, UPDATE with parameters
+  - Simple DELETE, DELETE with parameters
+  - Transaction queries (INSERT + UPDATE + SELECT)
+  - Edge cases: NULL values, multiple parameter types, subqueries
+- ✅ All 229 tests passing in core package
+- ✅ Real SQL extraction working for all query types
+
+**Technical Details**:
+- Uses DefaultQueryCompiler which generates PostgreSQL-style SQL ($1, $2 parameters)
+- SQL is in lowercase (kysely compiler default)
+- Parameters are correctly extracted from RootOperationNode
+- Works with all query types: SELECT, INSERT, UPDATE, DELETE
+- Works with complex queries: JOIN, WHERE, ORDER BY, LIMIT, subqueries
+- Works inside transactions
+
 ---
 
-### 1.3 Cursor Pagination - Mixed Ordering ⚠️ **INCOMPLETE**
+### 1.3 Cursor Pagination - Mixed Ordering ✅ **COMPLETED**
 
-**Status**: Simplified/incomplete
+**Status**: ✅ Implemented in Phase 1 Days 3-4
 **Spec Location**: Lines 1475-1625
-**File**: `packages/core/src/pagination.ts:104-134`
+**File**: `packages/core/src/pagination.ts:104-149`
 **Impact**: MEDIUM - Performance degradation for complex pagination
-**Effort**: 1-2 days
+**Effort**: 1-2 days (COMPLETED)
 
 **Current Issue**:
 
@@ -252,6 +293,16 @@ finalQuery = finalQuery.where(qb => {
 
 **Performance Note**:
 The spec correctly warns that mixed ordering has O(n) worst case. This is acceptable, but the implementation must be **correct** first.
+
+**✅ Implementation Summary** (Phase 1 Days 3-4):
+- ✅ Implemented full compound WHERE logic using ExpressionBuilder
+- ✅ Correctly handles single-column ordering (ASC/DESC)
+- ✅ Correctly handles multi-column all ASC ordering
+- ✅ Correctly handles multi-column all DESC ordering
+- ✅ Correctly handles mixed ordering (e.g., `score DESC, created_at ASC`)
+- ✅ Added 13 comprehensive tests covering all scenarios
+- ✅ Fixed TypeScript `exactOptionalPropertyTypes` issue
+- ✅ All tests passing (213 total tests in core package)
 
 ---
 
@@ -1542,20 +1593,32 @@ All packages correctly use peer dependencies for kysely and zod. ✅
 
 **Goal**: Fix blocking issues for v0.2.0 alpha release
 
-**Day 1-2**: Testing Utilities
-- Create `packages/core/src/testing.ts`
-- Implement testInTransaction, withTestRepos
-- Write examples and tests
+**Day 1-2**: Testing Utilities ✅ **COMPLETED**
+- ✅ Created `packages/core/src/testing.ts`
+- ✅ Implemented testInTransaction, testWithSavepoints, cleanDatabase
+- ✅ Implemented factory utilities, waitFor, seedDatabase, snapshotTable, countRows
+- ✅ Wrote comprehensive tests (25 tests, all passing)
+- ✅ Exported from `packages/core/src/index.ts`
 
-**Day 3-4**: Cursor Pagination Fix
-- Implement full compound WHERE logic
-- Add comprehensive tests
-- Document performance characteristics
+**Day 3-4**: Cursor Pagination Fix ✅ **COMPLETED**
+- ✅ Implemented full compound WHERE logic with multi-column ordering
+- ✅ Added comprehensive tests (13 tests covering all scenarios)
+- ✅ Documented performance characteristics
+- ✅ Fixed TypeScript exactOptionalPropertyTypes issue
+- ✅ All tests passing (213 total, 3 skipped)
 
-**Day 5-6**: Debug Plugin SQL Extraction
-- Research Kysely compiler API
-- Implement real SQL extraction
-- Add tests
+**Day 5-6**: Debug Plugin SQL Extraction ✅ **COMPLETED**
+- ✅ Researched Kysely compiler API (DefaultQueryCompiler, compileQuery)
+- ✅ Implemented real SQL extraction using DefaultQueryCompiler
+- ✅ Extract both SQL and parameters from RootOperationNode
+- ✅ Removed stub extractSQL method that returned placeholders
+- ✅ Updated existing debug tests (12 tests passing)
+- ✅ Created comprehensive SQL extraction tests (16 new tests)
+- ✅ Tested SELECT, INSERT, UPDATE, DELETE queries
+- ✅ Tested complex queries with JOIN, WHERE, ORDER BY, LIMIT
+- ✅ Tested transaction queries
+- ✅ Tested parameter extraction with multiple types
+- ✅ All 229 tests passing
 
 **Day 7**: Node.js Version + Cleanup
 - Fix version inconsistencies

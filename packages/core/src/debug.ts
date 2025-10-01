@@ -1,4 +1,5 @@
 import type { Kysely, PluginTransformQueryArgs, PluginTransformResultArgs, QueryResult, UnknownRow, KyselyPlugin, RootOperationNode } from 'kysely'
+import { DefaultQueryCompiler } from 'kysely'
 
 export interface DebugOptions {
   logQuery?: boolean
@@ -17,7 +18,8 @@ export interface QueryMetrics {
 
 interface QueryData {
   startTime: number
-  node: RootOperationNode
+  sql: string
+  params: readonly unknown[]
 }
 
 /**
@@ -43,13 +45,16 @@ class DebugPlugin implements KyselyPlugin {
   transformQuery(args: PluginTransformQueryArgs): RootOperationNode {
     const startTime = performance.now()
 
+    // Compile the query to get SQL and parameters
+    const compiler = new DefaultQueryCompiler()
+    const compiled = compiler.compileQuery(args.node, args.queryId)
+
     // Store query data for later use in transformResult
     this.queryData.set(args.queryId, {
       startTime,
-      node: args.node
+      sql: compiled.sql,
+      params: compiled.parameters
     })
-
-    // Log will happen in transformResult when we have the compiled query
 
     return args.node
   }
@@ -64,15 +69,9 @@ class DebugPlugin implements KyselyPlugin {
       const duration = endTime - data.startTime
       this.queryData.delete(args.queryId)
 
-      // Get compiled query for logging/metrics
-      // This is a simplified version - in reality, the SQL would need to be
-      // extracted from the execution context
-      const sql = this.extractSQL(data.node)
-      const params: unknown[] = []
-
       const metric: QueryMetrics = {
-        sql,
-        params,
+        sql: data.sql,
+        params: [...data.params],
         duration,
         timestamp: Date.now()
       }
@@ -81,8 +80,8 @@ class DebugPlugin implements KyselyPlugin {
 
       if (this.options.logQuery) {
         const message = this.options.logParams
-          ? `[SQL] ${sql}\n[Params] ${JSON.stringify(params)}`
-          : `[SQL] ${sql}`
+          ? `[SQL] ${data.sql}\n[Params] ${JSON.stringify(data.params)}`
+          : `[SQL] ${data.sql}`
         this.options.logger?.(message)
         this.options.logger?.(`[Duration] ${duration.toFixed(2)}ms`)
       }
@@ -90,32 +89,14 @@ class DebugPlugin implements KyselyPlugin {
       // Check for slow query
       if (this.options.slowQueryThreshold && duration > this.options.slowQueryThreshold) {
         if (this.options.onSlowQuery) {
-          this.options.onSlowQuery(sql, duration)
+          this.options.onSlowQuery(data.sql, duration)
         } else {
-          this.options.logger?.(`[SLOW QUERY] ${duration.toFixed(2)}ms: ${sql}`)
+          this.options.logger?.(`[SLOW QUERY] ${duration.toFixed(2)}ms: ${data.sql}`)
         }
       }
     }
 
     return args.result
-  }
-
-  private extractSQL(node: RootOperationNode): string {
-    // Simple SQL extraction based on node type
-    // In a real implementation, this would use the query compiler
-    const nodeType = (node as {kind?: string}).kind
-    switch (nodeType) {
-      case 'SelectQueryNode':
-        return 'SELECT * FROM ...'
-      case 'InsertQueryNode':
-        return 'INSERT INTO ...'
-      case 'UpdateQueryNode':
-        return 'UPDATE ...'
-      case 'DeleteQueryNode':
-        return 'DELETE FROM ...'
-      default:
-        return 'SQL Query'
-    }
   }
 
   getMetrics(): QueryMetrics[] {
