@@ -140,7 +140,7 @@ export async function checkDatabaseHealth<DB>(
  * Monitor database health continuously
  */
 export class HealthMonitor {
-  private intervalId?: NodeJS.Timeout
+  private intervalId: NodeJS.Timeout | undefined
   private lastCheck?: HealthCheckResult
 
   constructor(
@@ -169,7 +169,7 @@ export class HealthMonitor {
   stop(): void {
     if (this.intervalId !== undefined) {
       clearInterval(this.intervalId)
-      delete (this as any).intervalId
+      this.intervalId = undefined
     }
   }
 
@@ -179,7 +179,8 @@ export class HealthMonitor {
 }
 
 /**
- * Graceful shutdown handler for database connections
+ * @deprecated Use shutdownDatabase from './shutdown' instead
+ * Re-exported for backward compatibility
  */
 export async function gracefulShutdown<DB>(
   db: Kysely<DB>,
@@ -192,12 +193,9 @@ export async function gracefulShutdown<DB>(
 
   const shutdownPromise = async () => {
     try {
-      // Call custom shutdown handler if provided
       if (onShutdown) {
         await onShutdown()
       }
-
-      // Destroy database connections
       await db.destroy()
     } catch (error) {
       console.error('Error during database shutdown:', error)
@@ -205,7 +203,6 @@ export async function gracefulShutdown<DB>(
     }
   }
 
-  // Wrap in timeout
   return Promise.race([
     shutdownPromise(),
     new Promise<void>((_, reject) =>
@@ -218,7 +215,8 @@ export async function gracefulShutdown<DB>(
 }
 
 /**
- * Register process signal handlers for graceful shutdown
+ * @deprecated Use createGracefulShutdown from './shutdown' instead
+ * Re-exported for backward compatibility
  */
 export function registerShutdownHandlers<DB>(
   db: Kysely<DB>,

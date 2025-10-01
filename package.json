@@ -38,8 +38,8 @@
     "eslint-plugin-sonarjs": "^3.0.5",
     "eslint-plugin-unicorn": "^61.0.2",
     "kysely": "^0.28.7",
-    "mysql2": "^3.11.5",
-    "pg": "^8.13.1",
+    "mysql2": "^3.15.1",
+    "pg": "^8.16.3",
     "prettier": "^3.6.2",
     "tsx": "^4.20.6",
     "turbo": "^2.5.8",
@@ -47,7 +47,7 @@
     "typescript-eslint": "^8.45.0"
   },
   "engines": {
-    "node": ">=18.0.0",
+    "node": ">=20.0.0",
     "pnpm": ">=10.0.0"
   }
 }
