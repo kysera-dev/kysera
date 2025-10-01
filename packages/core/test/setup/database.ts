@@ -1,32 +1,32 @@
-import { Kysely, SqliteDialect } from 'kysely'
+import { Kysely, SqliteDialect, Generated } from 'kysely'
 import SQLite from 'better-sqlite3'
 import type { Database as SQLiteDatabase } from 'better-sqlite3'
 
 // Test database schema
 export interface TestDatabase {
   users: {
-    id: number
+    id: Generated<number>
     email: string
     name: string
-    created_at: Date
+    created_at: Generated<Date>
     deleted_at: Date | null
   }
   posts: {
-    id: number
+    id: Generated<number>
     user_id: number
     title: string
     content: string
     published: number  // SQLite uses 0/1 for boolean
-    created_at: Date
+    created_at: Generated<Date>
     updated_at: Date | null
     deleted_at: Date | null
   }
   comments: {
-    id: number
+    id: Generated<number>
     post_id: number
     user_id: number
     content: string
-    created_at: Date
+    created_at: Generated<Date>
   }
 }
 
@@ -88,7 +88,8 @@ export function createTestDatabase(): {
     CREATE INDEX idx_users_deleted_at ON users(deleted_at);
   `)
 
-  const cleanup = () => {
+  const cleanup = async () => {
+    await db.destroy()
     sqlite.close()
   }
 
@@ -166,7 +167,7 @@ export async function withTestTransaction<T>(
 ): Promise<T> {
   return db.transaction().execute(async (trx) => {
     try {
-      const result = await fn(trx)
+      await fn(trx)
       throw new Error('ROLLBACK_TEST') // Always rollback
     } catch (error) {
       if ((error as Error).message === 'ROLLBACK_TEST') {

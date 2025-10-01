@@ -7,7 +7,7 @@ Production-ready TypeScript ORM built on top of Kysely with minimal core, option
 ```bash
 # Install
 npm install kysely pg
-npm install @omnitron/orm-core      # Optional: debug & utilities
+npm install @kysera/core      # Optional: debug & utilities
 npm install @kysera/repository # Optional: repository pattern
 ```
 
@@ -79,12 +79,12 @@ const users = await db
 
 | Package | Description | Size |
 |---------|-------------|------|
-| `@omnitron/orm-core` | Core utilities - debug, health, pagination, errors | ~10KB |
+| `@kysera/core` | Core utilities - debug, health, pagination, errors | ~10KB |
 | `@kysera/repository` | Repository pattern with smart validation | ~15KB |
 | `@kysera/soft-delete` | Soft delete plugin | ~5KB |
-| `@omnitron/orm-audit` | Audit logging plugin | ~8KB |
-| `@omnitron/orm-timestamps` | Auto timestamps plugin | ~3KB |
-| `@omnitron/orm-migrations` | Migration helpers | ~10KB |
+| `@kysera/audit` | Audit logging plugin | ~8KB |
+| `@kysera/timestamps` | Auto timestamps plugin | ~3KB |
+| `@kysera/migrations` | Migration helpers | ~10KB |
 
 ## Development
 
@@ -149,7 +149,7 @@ pnpm dev
 Multi-database error parsing with typed errors:
 
 ```typescript
-import { DatabaseError, parseDatabaseError } from '@omnitron/orm-core'
+import { DatabaseError, parseDatabaseError } from '@kysera/core'
 
 try {
   await userRepo.create(userData)
@@ -167,7 +167,7 @@ try {
 Monitor database connection health:
 
 ```typescript
-import { checkDatabaseHealth } from '@omnitron/orm-core'
+import { checkDatabaseHealth } from '@kysera/core'
 
 const health = await checkDatabaseHealth(db, pool)
 // { status: 'healthy', checks: { database: {...}, pool: {...} } }
@@ -178,7 +178,7 @@ const health = await checkDatabaseHealth(db, pool)
 Both offset and cursor-based pagination:
 
 ```typescript
-import { paginate, paginateCursor } from '@omnitron/orm-core'
+import { paginate, paginateCursor } from '@kysera/core'
 
 // Offset pagination
 const result = await paginate(query, { page: 1, limit: 20 })

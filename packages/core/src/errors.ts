@@ -12,7 +12,7 @@ export class DatabaseError extends Error {
     this.name = 'DatabaseError'
   }
 
-  toJSON() {
+  toJSON(): Record<string, unknown> {
     return {
       name: this.name,
       message: this.message,
@@ -35,7 +35,7 @@ export class UniqueConstraintError extends DatabaseError {
     this.name = 'UniqueConstraintError'
   }
 
-  override toJSON() {
+  override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
       constraint: this.constraint,

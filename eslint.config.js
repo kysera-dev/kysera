@@ -12,10 +12,7 @@ export default tseslint.config(
       '**/dist/**',
       '**/node_modules/**',
       '**/.turbo/**',
-      '**/coverage/**',
-      '*.config.js',
-      '*.config.ts',
-      '*.config.mjs'
+      '**/coverage/**'
     ]
   },
   {
@@ -64,8 +61,8 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-exports': 'error',
 
       // Code Quality Rules
-      // 'complexity': ['error', 10],
-      // 'max-lines-per-function': ['error', 100],
+      'complexity': ['error', 15],
+      'max-lines-per-function': ['error', 150],
       'max-depth': ['error', 4],
       'max-nested-callbacks': ['error', 3],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
@@ -105,13 +102,6 @@ export default tseslint.config(
           format: null // Allow any format for properties
         }
       ]
-    }
-  },
-  {
-    files: ['**/*.test.ts', '**/*.spec.ts'],
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
-      'max-lines-per-function': 'off'
     }
   }
 );

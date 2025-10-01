@@ -1,4 +1,6 @@
 export * from './repository'
 export * from './plugin'
-export * from './types'
+export type * from './types'
 export * from './validation'
+export * from './base-repository'
+export * from './table-operations'

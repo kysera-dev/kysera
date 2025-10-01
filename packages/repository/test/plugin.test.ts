@@ -8,7 +8,7 @@ import type { TestDatabase } from './setup/database'
 
 describe('Plugin System', () => {
   let db: Kysely<TestDatabase>
-  let cleanup: () => void
+  let cleanup: () => Promise<void>
 
   beforeEach(async () => {
     const setup = createTestDatabase()
@@ -17,12 +17,12 @@ describe('Plugin System', () => {
     await seedTestData(db)
   })
 
-  afterEach(() => {
-    cleanup()
+  afterEach(async () => {
+    await cleanup()
   })
 
   describe('Plugin Interface', () => {
-    it('should call plugin lifecycle methods', () => {
+    it('should call plugin lifecycle methods', async () => {
       const mockPlugin: Plugin = {
         name: 'test-plugin',
         version: '1.0.0',
@@ -30,7 +30,7 @@ describe('Plugin System', () => {
         extendRepository: vi.fn(repo => repo)
       }
 
-      const orm = createORM(db, [mockPlugin])
+      const orm = await createORM(db, [mockPlugin])
 
       expect(mockPlugin.interceptQuery).not.toHaveBeenCalled()
       expect(mockPlugin.extendRepository).not.toHaveBeenCalled()
@@ -75,7 +75,7 @@ describe('Plugin System', () => {
         }
       }
 
-      const orm = createORM(db, [loggingPlugin])
+      const orm = await createORM(db, [loggingPlugin])
 
       // Use applyPlugins in queries
       const result = await orm.applyPlugins(
@@ -107,7 +107,7 @@ describe('Plugin System', () => {
         }
       }
 
-      const orm = createORM(db, [filterPlugin])
+      const orm = await createORM(db, [filterPlugin])
 
       const result = await orm.applyPlugins(
         db.selectFrom('users').selectAll(),
@@ -140,7 +140,7 @@ describe('Plugin System', () => {
         }
       }
 
-      const orm = createORM(db, [plugin1, plugin2])
+      const orm = await createORM(db, [plugin1, plugin2])
       const metadata = {}
 
       await orm.applyPlugins(
@@ -155,7 +155,7 @@ describe('Plugin System', () => {
   })
 
   describe('Repository Extension', () => {
-    it('should extend repository with new methods', () => {
+    it('should extend repository with new methods', async () => {
       interface ExtendedRepo {
         findByEmail(email: string): Promise<any>
         countAll(): Promise<number>
@@ -179,7 +179,7 @@ describe('Plugin System', () => {
         }
       }
 
-      const orm = createORM(db, [extensionPlugin])
+      const orm = await createORM(db, [extensionPlugin])
 
       const repo = orm.createRepository((executor) => {
         const base = createRepositoryFactory(executor)
@@ -196,7 +196,7 @@ describe('Plugin System', () => {
       expect(repo.countAll).toBeDefined()
     })
 
-    it('should chain repository extensions', () => {
+    it('should chain repository extensions', async () => {
       const plugin1: Plugin = {
         name: 'plugin1',
         version: '1.0.0',
@@ -215,7 +215,7 @@ describe('Plugin System', () => {
         })
       }
 
-      const orm = createORM(db, [plugin1, plugin2])
+      const orm = await createORM(db, [plugin1, plugin2])
 
       const repo = orm.createRepository((executor) => {
         const base = createRepositoryFactory(executor)
@@ -257,7 +257,7 @@ describe('Plugin System', () => {
         })
       }
 
-      const repo = withPlugins(factory, db, [countingPlugin])
+      const repo = await withPlugins(factory, db, [countingPlugin])
 
       await repo.findAll()
       await repo.findById(1)
@@ -282,7 +282,7 @@ describe('Plugin System', () => {
         }
       }
 
-      const orm = createORM(db, [metadataPlugin])
+      const orm = await createORM(db, [metadataPlugin])
 
       // First, soft-delete Bob
       await db
@@ -314,7 +314,7 @@ describe('Plugin System', () => {
   })
 
   describe('Error Handling', () => {
-    it('should handle plugin errors gracefully', () => {
+    it('should handle plugin errors gracefully', async () => {
       const errorPlugin: Plugin = {
         name: 'error-plugin',
         version: '1.0.0',
@@ -323,7 +323,7 @@ describe('Plugin System', () => {
         }
       }
 
-      const orm = createORM(db, [errorPlugin])
+      const orm = await createORM(db, [errorPlugin])
 
       // Plugin error should be thrown immediately when applyPlugins is called
       expect(() =>

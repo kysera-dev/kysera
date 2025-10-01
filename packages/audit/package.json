@@ -1,0 +1,66 @@
+{
+  "name": "@kysera/audit",
+  "version": "0.1.0",
+  "description": "Audit logging plugin for Kysera ORM",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:multi-db": "vitest run test/multi-db.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src test",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\""
+  },
+  "dependencies": {
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@kysera/repository": "workspace:*",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.6.0",
+    "better-sqlite3": "^12.4.1",
+    "kysely": "^0.28.7",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "@kysera/repository": "workspace:*",
+    "kysely": "^0.28.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "bun": ">=1.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/omnitron-dev/kysera",
+    "directory": "packages/audit"
+  },
+  "keywords": [
+    "kysely",
+    "orm",
+    "typescript",
+    "audit",
+    "logging",
+    "tracking"
+  ],
+  "author": "Omnitron Dev",
+  "license": "MIT",
+  "sideEffects": false
+}

@@ -1,0 +1,454 @@
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { Kysely } from 'kysely'
+import {
+  DatabaseType,
+  MultiDbTestDatabase,
+  createTestDb,
+  initializeSchema,
+  seedDatabase,
+  clearDatabase
+} from './utils/multi-db'
+import {
+  parseDatabaseError,
+  UniqueConstraintError,
+  ForeignKeyConstraintError,
+  NotNullConstraintError,
+  checkHealth,
+  createDebugPlugin,
+  paginateOffset,
+  paginateCursor
+} from '../src'
+
+// Test all database types based on environment
+const getDatabaseTypes = (): DatabaseType[] => {
+  const types: DatabaseType[] = ['sqlite']
+
+  if (process.env.TEST_POSTGRES === 'true') {
+    types.push('postgres')
+  }
+
+  if (process.env.TEST_MYSQL === 'true') {
+    types.push('mysql')
+  }
+
+  return types
+}
+
+describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', (dbType) => {
+  let db: Kysely<MultiDbTestDatabase>
+
+  beforeAll(async () => {
+    db = createTestDb(dbType)
+    await initializeSchema(db, dbType)
+  })
+
+  afterAll(async () => {
+    await db.destroy()
+  })
+
+  beforeEach(async () => {
+    await clearDatabase(db)
+    await seedDatabase(db)
+  })
+
+  describe('Error Handling', () => {
+    it('should handle unique constraint violations', async () => {
+      try {
+        await db
+          .insertInto('users')
+          .values({ email: 'alice@example.com', name: 'Duplicate Alice' })
+          .execute()
+        expect.fail('Should have thrown unique constraint error')
+      } catch (error) {
+        const parsed = parseDatabaseError(error, dbType)
+        expect(parsed).toBeInstanceOf(UniqueConstraintError)
+        expect(parsed.constraint).toMatch(/email|users_email/)
+        expect(parsed.columns).toContain('email')
+      }
+    })
+
+    it('should handle foreign key violations', async () => {
+      try {
+        await db
+          .insertInto('posts')
+          .values({
+            user_id: 999999,
+            title: 'Invalid User Post',
+            content: 'This should fail',
+            published: false
+          })
+          .execute()
+        expect.fail('Should have thrown foreign key error')
+      } catch (error) {
+        const parsed = parseDatabaseError(error, dbType)
+        expect(parsed).toBeInstanceOf(ForeignKeyConstraintError)
+        expect(parsed.table).toMatch(/posts|users/)
+      }
+    })
+
+    it('should handle not null violations', async () => {
+      try {
+        await db
+          .insertInto('users')
+          .values({ email: null as any, name: 'No Email' })
+          .execute()
+        expect.fail('Should have thrown not null error')
+      } catch (error) {
+        const parsed = parseDatabaseError(error, dbType)
+        expect(parsed).toBeInstanceOf(NotNullConstraintError)
+        expect(parsed.column).toBe('email')
+      }
+    })
+
+    it('should handle cascading deletes', async () => {
+      // Get user with posts
+      const user = await db
+        .selectFrom('users')
+        .selectAll()
+        .where('email', '=', 'alice@example.com')
+        .executeTakeFirst()
+
+      expect(user).toBeDefined()
+
+      // Check posts exist
+      const postsBefore = await db
+        .selectFrom('posts')
+        .selectAll()
+        .where('user_id', '=', user!.id)
+        .execute()
+
+      expect(postsBefore).toHaveLength(2)
+
+      // Delete user (should cascade to posts)
+      await db
+        .deleteFrom('users')
+        .where('id', '=', user!.id)
+        .execute()
+
+      // Check posts are deleted
+      const postsAfter = await db
+        .selectFrom('posts')
+        .selectAll()
+        .where('user_id', '=', user!.id)
+        .execute()
+
+      expect(postsAfter).toHaveLength(0)
+    })
+  })
+
+  describe('Health Checks', () => {
+    it('should check database health', async () => {
+      const health = await checkHealth(db as any)
+      expect(health.healthy).toBe(true)
+      expect(health.latencyMs).toBeGreaterThan(0)
+      expect(health.latencyMs).toBeLessThan(100)
+    })
+
+    it('should detect connection issues', async () => {
+      // Create a new database with wrong credentials
+      const badDb = dbType === 'sqlite'
+        ? createTestDb('sqlite') // SQLite always works
+        : new Kysely({
+            dialect: db.getExecutor() as any,
+            log: []
+          })
+
+      if (dbType !== 'sqlite') {
+        // Override connection with bad credentials
+        const health = await checkHealth(badDb as any).catch(err => ({ healthy: false }))
+        expect(health.healthy).toBe(false)
+      }
+
+      await badDb.destroy()
+    })
+  })
+
+  describe('Pagination', () => {
+    it('should paginate with offset', async () => {
+      const query = db
+        .selectFrom('users')
+        .selectAll()
+        .orderBy('email', 'asc')
+
+      const page1 = await paginateOffset(query, { limit: 2, offset: 0 })
+      expect(page1.items).toHaveLength(2)
+      expect(page1.items[0]!.email).toBe('alice@example.com')
+      expect(page1.hasMore).toBe(true)
+
+      const page2 = await paginateOffset(query, { limit: 2, offset: 2 })
+      expect(page2.items).toHaveLength(2)
+      expect(page2.items[0]!.email).toBe('charlie@example.com')
+      expect(page2.hasMore).toBe(true)
+
+      const page3 = await paginateOffset(query, { limit: 2, offset: 4 })
+      expect(page3.items).toHaveLength(1)
+      expect(page3.items[0]!.email).toBe('eve@example.com')
+      expect(page3.hasMore).toBe(false)
+    })
+
+    it('should paginate with cursor', async () => {
+      const query = db
+        .selectFrom('posts')
+        .selectAll()
+        .where('published', '=', true)
+
+      const page1 = await paginateCursor(query, {
+        orderBy: { column: 'title', direction: 'asc' },
+        limit: 2
+      })
+
+      expect(page1.items).toHaveLength(2)
+      expect(page1.hasMore).toBe(true)
+      expect(page1.nextCursor).toBeDefined()
+
+      const page2 = await paginateCursor(query, {
+        orderBy: { column: 'title', direction: 'asc' },
+        limit: 2,
+        cursor: page1.nextCursor
+      })
+
+      expect(page2.items).toHaveLength(2)
+      expect(page2.items[0]!.id).not.toBe(page1.items[0]!.id)
+    })
+
+    it('should handle multi-column cursor pagination', async () => {
+      const query = db
+        .selectFrom('posts')
+        .selectAll()
+        .where('published', '=', true)
+
+      const page1 = await paginateCursor(query, {
+        orderBy: [
+          { column: 'published', direction: 'desc' },
+          { column: 'title', direction: 'asc' }
+        ],
+        limit: 2
+      })
+
+      expect(page1.items).toHaveLength(2)
+      expect(page1.hasMore).toBe(true)
+
+      const page2 = await paginateCursor(query, {
+        orderBy: [
+          { column: 'published', direction: 'desc' },
+          { column: 'title', direction: 'asc' }
+        ],
+        limit: 2,
+        cursor: page1.nextCursor
+      })
+
+      expect(page2.items).toHaveLength(2)
+      expect(page2.items[0]!.id).not.toBe(page1.items[0]!.id)
+    })
+  })
+
+  describe('Transactions', () => {
+    it('should rollback on error', async () => {
+      const initialCount = await db
+        .selectFrom('users')
+        .select(db.fn.count('id').as('count'))
+        .executeTakeFirst()
+
+      try {
+        await db.transaction().execute(async (trx) => {
+          // Insert valid user
+          await trx
+            .insertInto('users')
+            .values({ email: 'test@example.com', name: 'Test' })
+            .execute()
+
+          // Insert duplicate (should fail)
+          await trx
+            .insertInto('users')
+            .values({ email: 'test@example.com', name: 'Duplicate' })
+            .execute()
+        })
+      } catch {
+        // Expected to fail
+      }
+
+      const finalCount = await db
+        .selectFrom('users')
+        .select(db.fn.count('id').as('count'))
+        .executeTakeFirst()
+
+      expect(finalCount?.count).toBe(initialCount?.count)
+    })
+
+    it('should commit successful transactions', async () => {
+      const initialCount = await db
+        .selectFrom('users')
+        .select(db.fn.count('id').as('count'))
+        .executeTakeFirst()
+
+      await db.transaction().execute(async (trx) => {
+        await trx
+          .insertInto('users')
+          .values({ email: 'tx1@example.com', name: 'Transaction 1' })
+          .execute()
+
+        await trx
+          .insertInto('users')
+          .values({ email: 'tx2@example.com', name: 'Transaction 2' })
+          .execute()
+      })
+
+      const finalCount = await db
+        .selectFrom('users')
+        .select(db.fn.count('id').as('count'))
+        .executeTakeFirst()
+
+      expect(Number(finalCount?.count)).toBe(Number(initialCount?.count) + 2)
+    })
+  })
+
+  describe('Complex Queries', () => {
+    it('should handle joins', async () => {
+      const results = await db
+        .selectFrom('posts')
+        .innerJoin('users', 'users.id', 'posts.user_id')
+        .leftJoin('comments', 'comments.post_id', 'posts.id')
+        .select([
+          'posts.title',
+          'users.name as author',
+          db.fn.count('comments.id').as('comment_count')
+        ])
+        .where('posts.published', '=', true)
+        .groupBy(['posts.id', 'posts.title', 'users.name'])
+        .orderBy('comment_count', 'desc')
+        .execute()
+
+      expect(results.length).toBeGreaterThan(0)
+      expect(results[0]?.title).toBeDefined()
+      expect(results[0]?.author).toBeDefined()
+      expect(results[0]?.comment_count).toBeDefined()
+    })
+
+    it('should handle subqueries', async () => {
+      const usersWithPosts = await db
+        .selectFrom('users')
+        .selectAll('users')
+        .select((eb) => [
+          eb
+            .selectFrom('posts')
+            .select(eb.fn.count('id').as('count'))
+            .whereRef('posts.user_id', '=', 'users.id')
+            .as('post_count')
+        ])
+        .having((eb) => eb.fn.count('posts.id'), '>', 0)
+        .execute()
+
+      expect(usersWithPosts.length).toBeGreaterThan(0)
+      usersWithPosts.forEach(user => {
+        expect(user.post_count).toBeDefined()
+      })
+    })
+
+    it('should handle CTEs', async () => {
+      const result = await db
+        .with('active_users', (db) =>
+          db
+            .selectFrom('users')
+            .innerJoin('posts', 'posts.user_id', 'users.id')
+            .select(['users.id', 'users.name'])
+            .where('posts.published', '=', true)
+            .groupBy(['users.id', 'users.name'])
+        )
+        .selectFrom('active_users')
+        .selectAll()
+        .execute()
+
+      expect(result.length).toBeGreaterThan(0)
+    })
+  })
+
+  describe('Debug Plugin', () => {
+    it('should log queries', async () => {
+      const logs: string[] = []
+      const debugPlugin = createDebugPlugin({
+        logger: (query) => logs.push(query.sql)
+      })
+
+      const debugDb = db.withPlugin(debugPlugin)
+
+      await debugDb
+        .selectFrom('users')
+        .selectAll()
+        .where('email', '=', 'alice@example.com')
+        .execute()
+
+      expect(logs).toHaveLength(1)
+      expect(logs[0]).toContain('select')
+      expect(logs[0]!.toLowerCase()).toContain('users')
+    })
+
+    it('should measure query performance', async () => {
+      let executionTime = 0
+      const debugPlugin = createDebugPlugin({
+        logger: (query) => {
+          executionTime = query.executionTime || 0
+        }
+      })
+
+      const debugDb = db.withPlugin(debugPlugin)
+
+      await debugDb
+        .selectFrom('posts')
+        .selectAll()
+        .execute()
+
+      expect(executionTime).toBeGreaterThan(0)
+    })
+  })
+
+  describe('Batch Operations', () => {
+    it('should handle bulk inserts', async () => {
+      const newUsers = Array.from({ length: 100 }, (_, i) => ({
+        email: `bulk${i}@example.com`,
+        name: `Bulk User ${i}`
+      }))
+
+      await db
+        .insertInto('users')
+        .values(newUsers)
+        .execute()
+
+      const count = await db
+        .selectFrom('users')
+        .select(db.fn.count('id').as('count'))
+        .executeTakeFirst()
+
+      expect(Number(count?.count)).toBeGreaterThan(100)
+    })
+
+    it('should handle bulk updates', async () => {
+      await db
+        .updateTable('posts')
+        .set({ published: true })
+        .where('published', '=', false)
+        .execute()
+
+      const unpublished = await db
+        .selectFrom('posts')
+        .selectAll()
+        .where('published', '=', false)
+        .execute()
+
+      expect(unpublished).toHaveLength(0)
+    })
+
+    it('should handle bulk deletes', async () => {
+      await db
+        .deleteFrom('comments')
+        .where('content', 'like', '%help%')
+        .execute()
+
+      const remaining = await db
+        .selectFrom('comments')
+        .selectAll()
+        .execute()
+
+      expect(remaining.every(c => !c.content.includes('help'))).toBe(true)
+    })
+  })
+})

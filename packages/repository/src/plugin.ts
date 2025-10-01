@@ -1,12 +1,5 @@
-import type { SelectQueryBuilder, InsertQueryBuilder, UpdateQueryBuilder, DeleteQueryBuilder } from 'kysely'
-import type { Executor } from '@kysera/core'
-
-// Generic query builder type
-export type AnyQueryBuilder =
-  | SelectQueryBuilder<any, any, any>
-  | InsertQueryBuilder<any, any, any>
-  | UpdateQueryBuilder<any, any, any, any>
-  | DeleteQueryBuilder<any, any, any>
+import type { Kysely } from 'kysely'
+import type { AnyQueryBuilder } from './types'
 
 export interface QueryBuilderContext {
   operation: 'select' | 'insert' | 'update' | 'delete'
@@ -27,7 +20,7 @@ export interface Plugin {
   version: string
 
   // Lifecycle hooks
-  onInit?(executor: Executor<any>): Promise<void> | void
+  onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
 
   // Query builder interceptors (can modify query)
   interceptQuery?<QB extends AnyQueryBuilder>(
@@ -40,16 +33,44 @@ export interface Plugin {
   onError?(context: QueryContext, error: unknown): Promise<void> | void
 
   // Repository extensions
-  extendRepository?(repo: any): any
+  extendRepository?<T extends object>(repo: T): T
+}
+
+/**
+ * Plugin application function type
+ */
+export type ApplyPluginsFunction = <QB extends AnyQueryBuilder>(
+  qb: QB,
+  operation: string,
+  table: string,
+  metadata?: Record<string, unknown>
+) => QB
+
+/**
+ * ORM with plugin support
+ */
+export interface PluginOrm<DB> {
+  executor: Kysely<DB>
+  createRepository: <T extends object>(
+    factory: (executor: Kysely<DB>, applyPlugins: ApplyPluginsFunction) => T
+  ) => T
+  applyPlugins: ApplyPluginsFunction
+  plugins: Plugin[]
 }
 
 /**
  * Create ORM with plugin support
  */
-export function createORM<DB>(executor: Executor<DB>, plugins: Plugin[] = []) {
+export async function createORM<DB>(
+  executor: Kysely<DB>,
+  plugins: Plugin[] = []
+): Promise<PluginOrm<DB>> {
   // Initialize plugins
   for (const plugin of plugins) {
-    plugin.onInit?.(executor)
+    const result = plugin.onInit?.(executor)
+    if (result instanceof Promise) {
+      await result
+    }
   }
 
   // Helper to apply plugin interceptors to queries
@@ -64,7 +85,7 @@ export function createORM<DB>(executor: Executor<DB>, plugins: Plugin[] = []) {
     for (const plugin of plugins) {
       if (plugin.interceptQuery) {
         result = plugin.interceptQuery(result, {
-          operation: operation as any,
+          operation: operation as 'select' | 'insert' | 'update' | 'delete',
           table,
           metadata
         })
@@ -75,8 +96,8 @@ export function createORM<DB>(executor: Executor<DB>, plugins: Plugin[] = []) {
   }
 
   // Create enhanced repositories
-  function createRepository<T>(
-    factory: (executor: Executor<DB>, applyPlugins: any) => T
+  function createRepository<T extends object>(
+    factory: (executor: Kysely<DB>, applyPlugins: ApplyPluginsFunction) => T
   ): T {
     let repo = factory(executor, applyPlugins)
 
@@ -98,28 +119,51 @@ export function createORM<DB>(executor: Executor<DB>, plugins: Plugin[] = []) {
 }
 
 /**
+ * Repository method wrapper for automatic plugin application
+ */
+interface RepositoryMethod {
+  (...args: unknown[]): unknown
+}
+
+/**
+ * Wrap a repository method to automatically apply plugins
+ */
+function wrapMethod<T extends RepositoryMethod>(
+  method: T,
+  context: unknown
+): T {
+  return function wrappedMethod(...args: unknown[]): unknown {
+    return method.apply(context, args)
+  } as T
+}
+
+/**
  * Helper to reduce repository boilerplate with plugins
  */
-export function withPlugins<DB, T>(
-  factory: (executor: Executor<DB>) => T,
-  executor: Executor<DB>,
+export async function withPlugins<DB, T extends object>(
+  factory: (executor: Kysely<DB>) => T,
+  executor: Kysely<DB>,
   plugins: Plugin[]
-): T {
-  const orm = createORM(executor, plugins)
+): Promise<T> {
+  const orm = await createORM(executor, plugins)
 
-  return orm.createRepository((exec, _apply) => {
+  return orm.createRepository((exec: Kysely<DB>, _applyPlugins: ApplyPluginsFunction) => {
     const base = factory(exec)
 
-    // Wrap all methods to apply plugins automatically
-    return Object.entries(base as any).reduce((acc, [key, value]) => {
+    // Create a new object with wrapped methods
+    const wrappedRepo = {} as T
+
+    for (const [key, value] of Object.entries(base)) {
       if (typeof value === 'function') {
-        ;(acc as any)[key] = function(...args: any[]) {
-          return value.apply(this, args)
-        }
+        (wrappedRepo as Record<string, unknown>)[key] = wrapMethod(
+          value as RepositoryMethod,
+          base
+        )
       } else {
-        ;(acc as any)[key] = value
+        (wrappedRepo as Record<string, unknown>)[key] = value
       }
-      return acc
-    }, {} as T)
+    }
+
+    return wrappedRepo
   })
 }
