@@ -17,6 +17,8 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "docs": "typedoc",
+    "docs:serve": "pnpm docs && npx http-server docs/api -p 8080 -o",
     "changeset": "changeset",
     "version": "changeset version",
     "publish": "turbo run build lint test && changeset publish"
@@ -43,6 +45,7 @@
     "prettier": "^3.6.2",
     "tsx": "^4.20.6",
     "turbo": "^2.5.8",
+    "typedoc": "^0.28.13",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.45.0"
   },

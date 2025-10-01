@@ -326,11 +326,12 @@ MIT
 
 ### Quick Links
 
-- 📖 [Getting Started Guide](./GETTING_STARTED.md)
-- 📚 [Full Specification](./specs/spec.md)
-- 🔌 [Plugin Authoring Guide](./PLUGIN_AUTHORING_GUIDE.md)
-- 🗺️ [Detailed Roadmap](./roadmap.md)
-- 📝 [Development Principles](./CLAUDE.md)
+- 📖 [Getting Started Guide](./GETTING_STARTED.md) - 5-minute quick start
+- ✨ [Best Practices](./BEST_PRACTICES.md) - Production-ready patterns
+- 📚 [Full Specification](./specs/spec.md) - Complete technical spec
+- 🔌 [Plugin Authoring Guide](./PLUGIN_AUTHORING_GUIDE.md) - Create your own plugins
+- 🗺️ [Detailed Roadmap](./roadmap.md) - Project progress and planning
+- 📝 [Development Principles](./CLAUDE.md) - Codebase philosophy
 
 ## Philosophy
 

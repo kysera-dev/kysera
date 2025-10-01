@@ -1,0 +1,48 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "./packages/core/src/index.ts",
+    "./packages/repository/src/index.ts",
+    "./packages/migrations/src/index.ts",
+    "./packages/soft-delete/src/index.ts",
+    "./packages/audit/src/index.ts",
+    "./packages/timestamps/src/index.ts"
+  ],
+  "entryPointStrategy": "expand",
+  "out": "docs/api",
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/*.bench.ts",
+    "**/node_modules/**"
+  ],
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "excludeInternal": false,
+  "readme": "README.md",
+  "name": "Kysera API Documentation",
+  "includeVersion": true,
+  "sort": ["source-order"],
+  "categorizeByGroup": true,
+  "defaultCategory": "Other",
+  "categoryOrder": [
+    "Core",
+    "Repository",
+    "Migrations",
+    "Plugins",
+    "*"
+  ],
+  "navigation": {
+    "includeCategories": true,
+    "includeGroups": true
+  },
+  "plugin": [],
+  "theme": "default",
+  "customCss": "",
+  "gitRevision": "main",
+  "gitRemote": "origin",
+  "githubPages": true,
+  "hideGenerator": false,
+  "searchInComments": true,
+  "cleanOutputDir": true
+}
