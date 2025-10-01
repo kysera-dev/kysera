@@ -64,9 +64,9 @@ function decodeCursor(cursor: string): Record<string, any> {
 }
 
 export interface PaginationOptions {
-  page?: number
-  limit?: number
-  cursor?: string
+  page?: number | undefined
+  limit?: number | undefined
+  cursor?: string | undefined
 }
 
 export interface PaginatedResult<T> {
@@ -130,8 +130,8 @@ export interface CursorOptions<T> {
     column: keyof T & string
     direction: 'asc' | 'desc'
   }>
-  cursor?: string
-  limit?: number
+  cursor?: string | undefined
+  limit?: number | undefined
 }
 
 /**

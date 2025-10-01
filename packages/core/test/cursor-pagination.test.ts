@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { Kysely, SqliteDialect, sql } from 'kysely'
+import { Kysely, SqliteDialect, type Generated } from 'kysely'
 import Database from 'better-sqlite3'
 import { paginateCursor } from '../src/pagination'
 
 interface TestDatabase {
   products: {
-    id: number
+    id: Generated<number>
     name: string
     score: number
-    created_at: string
+    created_at: Generated<string>
     price: number
   }
 }
