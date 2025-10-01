@@ -14,16 +14,6 @@ interface TestUser {
   deleted_at: string | null
 }
 
-interface TestPost {
-  id: number
-  user_id: number
-  title: string
-  content: string
-  published: number
-  created_at: string
-  deleted_at: string | null
-}
-
 describe('Soft Delete Plugin - Query Operations', () => {
   let db: Kysely<TestDatabase>
   let cleanup: () => void
@@ -139,7 +129,7 @@ describe('Soft Delete Plugin - Query Operations', () => {
         .where('name', '=', 'Alice')
 
       const context = { operation: 'delete', table: 'users', metadata: {} }
-      const result = orm.applyPlugins(
+      const _result = orm.applyPlugins(
         deleteQuery,
         'delete',
         'users',

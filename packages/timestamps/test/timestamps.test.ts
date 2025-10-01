@@ -420,19 +420,19 @@ describe('Timestamps Plugin', () => {
       const user = await extendedRepo.create({
         name: 'John Doe',
         email: 'john@example.com'
-      }) as any
+      })
 
-      expect(user['created_at']).toBeDefined()
-      expect(user['updated_at']).toBeNull() // Only set on update
+      expect(user.created_at).toBeDefined()
+      expect(user.updated_at).toBeNull() // Only set on update
 
       // Update the user
       await new Promise(resolve => setTimeout(resolve, 10))
-      const updated = await extendedRepo.update(user['id'] as number, {
+      const updated = await extendedRepo.update(user.id as number, {
         name: 'Jane Doe'
-      }) as any
+      })
 
-      expect(updated['updated_at']).toBeDefined()
-      expect(updated['updated_at']).not.toBe(user['created_at'])
+      expect(updated.updated_at).toBeDefined()
+      expect(updated.updated_at).not.toBe(user.created_at)
     })
 
     it('should handle multiple plugins together', async () => {

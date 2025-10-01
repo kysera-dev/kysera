@@ -75,7 +75,6 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
         .selectAll()
 
       // Build where clause dynamically to avoid type issues
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       const result = await (query as any)
         .where('id', '=', id)
         .executeTakeFirst()
