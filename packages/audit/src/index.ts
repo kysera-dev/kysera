@@ -691,6 +691,66 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         }
       }
 
+      // Get audit logs for entire table with optional filters
+      extendedRepo.getTableAuditLogs = async function(filters?: {
+        operation?: string
+        userId?: string
+        startDate?: Date | string
+        endDate?: Date | string
+      }): Promise<ParsedAuditLogEntry[]> {
+        let query = (executor as any)
+          .selectFrom(auditTable)
+          .selectAll()
+          .where('table_name', '=', tableName)
+
+        // Apply filters
+        if (filters?.operation) {
+          query = query.where('operation', '=', filters.operation)
+        }
+        if (filters?.userId) {
+          query = query.where('changed_by', '=', filters.userId)
+        }
+        if (filters?.startDate) {
+          const startDateStr = typeof filters.startDate === 'string'
+            ? filters.startDate
+            : filters.startDate.toISOString()
+          query = query.where('changed_at', '>=', startDateStr)
+        }
+        if (filters?.endDate) {
+          const endDateStr = typeof filters.endDate === 'string'
+            ? filters.endDate
+            : filters.endDate.toISOString()
+          query = query.where('changed_at', '<=', endDateStr)
+        }
+
+        const logs = await query.orderBy('changed_at', 'desc').execute()
+
+        return logs.map((log: AuditLogEntry) => ({
+          ...log,
+          old_values: log.old_values ? JSON.parse(log.old_values) : null,
+          new_values: log.new_values ? JSON.parse(log.new_values) : null,
+          metadata: log.metadata ? JSON.parse(log.metadata) : null
+        })) as ParsedAuditLogEntry[]
+      }
+
+      // Get all changes made by a specific user for this table
+      extendedRepo.getUserChanges = async function(userId: string): Promise<ParsedAuditLogEntry[]> {
+        const logs = await (executor as any)
+          .selectFrom(auditTable)
+          .selectAll()
+          .where('table_name', '=', tableName)
+          .where('changed_by', '=', userId)
+          .orderBy('changed_at', 'desc')
+          .execute()
+
+        return logs.map((log: AuditLogEntry) => ({
+          ...log,
+          old_values: log.old_values ? JSON.parse(log.old_values) : null,
+          new_values: log.new_values ? JSON.parse(log.new_values) : null,
+          metadata: log.metadata ? JSON.parse(log.metadata) : null
+        })) as ParsedAuditLogEntry[]
+      }
+
       return baseRepo
     }
   }
