@@ -1,4 +1,4 @@
-import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, type Generated } from 'kysely'
+import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, sql, type Generated } from 'kysely'
 import { Pool } from 'pg'
 import { createPool } from 'mysql2'
 import betterSqlite3 from 'better-sqlite3'
@@ -86,15 +86,30 @@ export function createTestDb(type: DatabaseType): Kysely<MultiDbTestDatabase> {
  * Initialize database schema
  */
 export async function initializeSchema(db: Kysely<MultiDbTestDatabase>, type: DatabaseType): Promise<void> {
-  // Drop existing tables
-  await db.schema.dropTable('posts').ifExists().execute()
-  await db.schema.dropTable('users').ifExists().execute()
+  // Disable foreign key checks for MySQL to allow dropping tables with FK constraints
+  if (type === 'mysql') {
+    await sql`SET FOREIGN_KEY_CHECKS = 0`.execute(db)
+  }
+
+  // Drop existing tables - use CASCADE for PostgreSQL to handle dependencies
+  if (type === 'postgres') {
+    await sql`DROP TABLE IF EXISTS posts CASCADE`.execute(db)
+    await sql`DROP TABLE IF EXISTS users CASCADE`.execute(db)
+  } else {
+    await db.schema.dropTable('posts').ifExists().execute()
+    await db.schema.dropTable('users').ifExists().execute()
+  }
+
+  // Re-enable foreign key checks for MySQL
+  if (type === 'mysql') {
+    await sql`SET FOREIGN_KEY_CHECKS = 1`.execute(db)
+  }
 
   // Create users table
   let usersTable = db.schema
     .createTable('users')
     .addColumn('id', type === 'postgres' ? 'serial' : 'integer', col =>
-      col.primaryKey().autoIncrement())
+      type === 'postgres' ? col.primaryKey() : col.primaryKey().autoIncrement())
     .addColumn('email', 'varchar(255)', col => col.notNull().unique())
     .addColumn('name', 'varchar(255)')
 
@@ -110,8 +125,8 @@ export async function initializeSchema(db: Kysely<MultiDbTestDatabase>, type: Da
   let postsTable = db.schema
     .createTable('posts')
     .addColumn('id', type === 'postgres' ? 'serial' : 'integer', col =>
-      col.primaryKey().autoIncrement())
-    .addColumn('user_id', 'integer', col => col.notNull().references('users.id'))
+      type === 'postgres' ? col.primaryKey() : col.primaryKey().autoIncrement())
+    .addColumn('user_id', 'integer', col => col.notNull())
     .addColumn('title', 'varchar(255)', col => col.notNull())
     .addColumn('content', 'text')
 
@@ -121,7 +136,31 @@ export async function initializeSchema(db: Kysely<MultiDbTestDatabase>, type: Da
     postsTable = postsTable.addColumn('deleted_at', 'timestamp')
   }
 
+  // Add foreign key constraint (works for MySQL and PostgreSQL, SQLite uses inline)
+  if (type === 'mysql' || type === 'postgres') {
+    postsTable = postsTable.addForeignKeyConstraint(
+      'posts_user_id_fk',
+      ['user_id'],
+      'users',
+      ['id']
+    )
+  }
+
   await postsTable.execute()
+
+  // For SQLite, recreate with inline foreign key
+  if (type === 'sqlite') {
+    await db.schema.dropTable('posts').execute()
+
+    await db.schema
+      .createTable('posts')
+      .addColumn('id', 'integer', col => col.primaryKey().autoIncrement())
+      .addColumn('user_id', 'integer', col => col.notNull().references('users.id'))
+      .addColumn('title', 'varchar(255)', col => col.notNull())
+      .addColumn('content', 'text')
+      .addColumn('deleted_at', 'text')
+      .execute()
+  }
 }
 
 /**

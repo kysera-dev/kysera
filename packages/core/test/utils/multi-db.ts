@@ -129,7 +129,7 @@ export async function initializeSchema(db: Kysely<any>, type: DatabaseType): Pro
   let usersTable = db.schema
     .createTable('users')
     .addColumn('id', type === 'postgres' ? 'serial' : 'integer', col =>
-      col.primaryKey().autoIncrement())
+      type === 'postgres' ? col.primaryKey() : col.primaryKey().autoIncrement())
     .addColumn('email', 'varchar(255)', col => col.notNull().unique())
     .addColumn('name', 'varchar(255)')
 
@@ -151,9 +151,8 @@ export async function initializeSchema(db: Kysely<any>, type: DatabaseType): Pro
   let postsTable = db.schema
     .createTable('posts')
     .addColumn('id', type === 'postgres' ? 'serial' : 'integer', col =>
-      col.primaryKey().autoIncrement())
-    .addColumn('user_id', 'integer', col =>
-      col.notNull().references('users.id').onDelete('cascade'))
+      type === 'postgres' ? col.primaryKey() : col.primaryKey().autoIncrement())
+    .addColumn('user_id', 'integer', col => col.notNull())
     .addColumn('title', 'varchar(255)', col => col.notNull())
     .addColumn('content', 'text')
     .addColumn('published', 'boolean', col => col.notNull().defaultTo(false))
@@ -168,17 +167,48 @@ export async function initializeSchema(db: Kysely<any>, type: DatabaseType): Pro
       .addColumn('updated_at', 'timestamp')
   }
 
+  // Add foreign key constraint
+  if (type === 'sqlite') {
+    // SQLite doesn't support adding FK after table creation, must be inline
+    // But inline references in Kysely don't support cascade for SQLite properly
+    // We'll add it manually via raw SQL after table creation
+  } else {
+    // MySQL and PostgreSQL: add explicit foreign key constraint
+    postsTable = postsTable.addForeignKeyConstraint(
+      'posts_user_id_fk',
+      ['user_id'],
+      'users',
+      ['id'],
+      cb => cb.onDelete('cascade')
+    )
+  }
+
   await postsTable.execute()
+
+  // For SQLite, we need to recreate the table with proper foreign key
+  if (type === 'sqlite') {
+    await db.schema.dropTable('posts').execute()
+
+    await db.schema
+      .createTable('posts')
+      .addColumn('id', 'integer', col => col.primaryKey().autoIncrement())
+      .addColumn('user_id', 'integer', col =>
+        col.notNull().references('users.id').onDelete('cascade'))
+      .addColumn('title', 'varchar(255)', col => col.notNull())
+      .addColumn('content', 'text')
+      .addColumn('published', 'boolean', col => col.notNull().defaultTo(false))
+      .addColumn('created_at', 'text', col => col.notNull().defaultTo('CURRENT_TIMESTAMP'))
+      .addColumn('updated_at', 'text')
+      .execute()
+  }
 
   // Create comments table
   let commentsTable = db.schema
     .createTable('comments')
     .addColumn('id', type === 'postgres' ? 'serial' : 'integer', col =>
-      col.primaryKey().autoIncrement())
-    .addColumn('post_id', 'integer', col =>
-      col.notNull().references('posts.id').onDelete('cascade'))
-    .addColumn('user_id', 'integer', col =>
-      col.notNull().references('users.id').onDelete('cascade'))
+      type === 'postgres' ? col.primaryKey() : col.primaryKey().autoIncrement())
+    .addColumn('post_id', 'integer', col => col.notNull())
+    .addColumn('user_id', 'integer', col => col.notNull())
     .addColumn('content', 'text', col => col.notNull())
 
   if (type === 'sqlite') {
@@ -189,34 +219,100 @@ export async function initializeSchema(db: Kysely<any>, type: DatabaseType): Pro
       .addColumn('created_at', 'timestamp', col => col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`))
   }
 
+  // Add foreign key constraints
+  if (type !== 'sqlite') {
+    commentsTable = commentsTable
+      .addForeignKeyConstraint('comments_post_id_fk', ['post_id'], 'posts', ['id'], cb => cb.onDelete('cascade'))
+      .addForeignKeyConstraint('comments_user_id_fk', ['user_id'], 'users', ['id'], cb => cb.onDelete('cascade'))
+  }
+
   await commentsTable.execute()
 
+  // For SQLite, recreate with inline foreign keys
+  if (type === 'sqlite') {
+    await db.schema.dropTable('comments').execute()
+
+    await db.schema
+      .createTable('comments')
+      .addColumn('id', 'integer', col => col.primaryKey().autoIncrement())
+      .addColumn('post_id', 'integer', col =>
+        col.notNull().references('posts.id').onDelete('cascade'))
+      .addColumn('user_id', 'integer', col =>
+        col.notNull().references('users.id').onDelete('cascade'))
+      .addColumn('content', 'text', col => col.notNull())
+      .addColumn('created_at', 'text', col => col.notNull().defaultTo('CURRENT_TIMESTAMP'))
+      .execute()
+  }
+
   // Create categories table
-  await db.schema
+  let categoriesTable = db.schema
     .createTable('categories')
     .addColumn('id', type === 'postgres' ? 'serial' : 'integer', col =>
-      col.primaryKey().autoIncrement())
+      type === 'postgres' ? col.primaryKey() : col.primaryKey().autoIncrement())
     .addColumn('name', 'varchar(255)', col => col.notNull())
     .addColumn('slug', 'varchar(255)', col => col.notNull().unique())
-    .addColumn('parent_id', 'integer', col =>
-      col.references('categories.id').onDelete('cascade'))
-    .execute()
+    .addColumn('parent_id', 'integer')
+
+  if (type !== 'sqlite') {
+    categoriesTable = categoriesTable.addForeignKeyConstraint(
+      'categories_parent_id_fk',
+      ['parent_id'],
+      'categories',
+      ['id'],
+      cb => cb.onDelete('cascade')
+    )
+  }
+
+  await categoriesTable.execute()
+
+  // For SQLite, recreate with inline foreign key
+  if (type === 'sqlite') {
+    await db.schema.dropTable('categories').execute()
+
+    await db.schema
+      .createTable('categories')
+      .addColumn('id', 'integer', col => col.primaryKey().autoIncrement())
+      .addColumn('name', 'varchar(255)', col => col.notNull())
+      .addColumn('slug', 'varchar(255)', col => col.notNull().unique())
+      .addColumn('parent_id', 'integer', col =>
+        col.references('categories.id').onDelete('cascade'))
+      .execute()
+  }
 
   // Create post_categories junction table
-  await db.schema
+  let postCategoriesTable = db.schema
     .createTable('post_categories')
-    .addColumn('post_id', 'integer', col =>
-      col.notNull().references('posts.id').onDelete('cascade'))
-    .addColumn('category_id', 'integer', col =>
-      col.notNull().references('categories.id').onDelete('cascade'))
+    .addColumn('post_id', 'integer', col => col.notNull())
+    .addColumn('category_id', 'integer', col => col.notNull())
     .addPrimaryKeyConstraint('pk_post_categories', ['post_id', 'category_id'])
-    .execute()
+
+  if (type !== 'sqlite') {
+    postCategoriesTable = postCategoriesTable
+      .addForeignKeyConstraint('pc_post_id_fk', ['post_id'], 'posts', ['id'], cb => cb.onDelete('cascade'))
+      .addForeignKeyConstraint('pc_category_id_fk', ['category_id'], 'categories', ['id'], cb => cb.onDelete('cascade'))
+  }
+
+  await postCategoriesTable.execute()
+
+  // For SQLite, recreate with inline foreign keys
+  if (type === 'sqlite') {
+    await db.schema.dropTable('post_categories').execute()
+
+    await db.schema
+      .createTable('post_categories')
+      .addColumn('post_id', 'integer', col =>
+        col.notNull().references('posts.id').onDelete('cascade'))
+      .addColumn('category_id', 'integer', col =>
+        col.notNull().references('categories.id').onDelete('cascade'))
+      .addPrimaryKeyConstraint('pk_post_categories', ['post_id', 'category_id'])
+      .execute()
+  }
 
   // Create audit_logs table
   let auditTable = db.schema
     .createTable('audit_logs')
     .addColumn('id', type === 'postgres' ? 'serial' : 'integer', col =>
-      col.primaryKey().autoIncrement())
+      type === 'postgres' ? col.primaryKey() : col.primaryKey().autoIncrement())
     .addColumn('table_name', 'varchar(255)', col => col.notNull())
     .addColumn('operation', 'varchar(50)', col => col.notNull())
     .addColumn('entity_id', 'varchar(255)', col => col.notNull())
