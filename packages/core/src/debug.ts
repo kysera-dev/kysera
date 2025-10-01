@@ -7,6 +7,12 @@ export interface DebugOptions {
   slowQueryThreshold?: number
   onSlowQuery?: (sql: string, duration: number) => void
   logger?: (message: string) => void
+  /**
+   * Maximum number of metrics to keep in memory
+   * When limit is reached, oldest metrics are removed (circular buffer)
+   * @default 1000
+   */
+  maxMetrics?: number
 }
 
 export interface QueryMetrics {
@@ -28,18 +34,21 @@ interface QueryData {
 class DebugPlugin implements KyselyPlugin {
   private metrics: QueryMetrics[] = []
   private queryData = new WeakMap<object, QueryData>()
+  private maxMetrics: number
 
   constructor(private options: DebugOptions = {}) {
     this.options = {
       logQuery: true,
       logParams: false,
       slowQueryThreshold: 100,
+      maxMetrics: 1000,
       logger: (message: string): void => {
         // Using console.warn which is allowed by ESLint rules
         console.warn(message)
       },
       ...options
     }
+    this.maxMetrics = this.options.maxMetrics ?? 1000
   }
 
   transformQuery(args: PluginTransformQueryArgs): RootOperationNode {
@@ -76,7 +85,11 @@ class DebugPlugin implements KyselyPlugin {
         timestamp: Date.now()
       }
 
+      // Circular buffer: keep only last N metrics
       this.metrics.push(metric)
+      if (this.metrics.length > this.maxMetrics) {
+        this.metrics.shift() // Remove oldest metric
+      }
 
       if (this.options.logQuery) {
         const message = this.options.logParams
@@ -148,12 +161,33 @@ export function formatSQL(sql: string): string {
 
 /**
  * Create a query profiler
+ *
+ * @example
+ * ```typescript
+ * const profiler = new QueryProfiler({ maxQueries: 500 })
+ * profiler.record({ sql: 'SELECT * FROM users', duration: 10, timestamp: Date.now() })
+ * const summary = profiler.getSummary()
+ * console.log(`Total queries: ${summary.totalQueries}`)
+ * console.log(`Average duration: ${summary.averageDuration.toFixed(2)}ms`)
+ * ```
  */
 export class QueryProfiler {
   private queries: QueryMetrics[] = []
+  private maxQueries: number
+
+  /**
+   * @param options.maxQueries - Maximum number of queries to keep in memory (default: 1000)
+   */
+  constructor(options: { maxQueries?: number } = {}) {
+    this.maxQueries = options.maxQueries ?? 1000
+  }
 
   record(metric: QueryMetrics): void {
     this.queries.push(metric)
+    // Circular buffer: keep only last N queries
+    if (this.queries.length > this.maxQueries) {
+      this.queries.shift() // Remove oldest query
+    }
   }
 
   getSummary(): {

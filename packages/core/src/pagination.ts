@@ -1,5 +1,68 @@
 import type { SelectQueryBuilder, ExpressionBuilder } from 'kysely'
 
+/**
+ * Encode cursor for pagination
+ *
+ * Optimizations:
+ * - Single column: encodes value directly (more compact)
+ * - Multi-column: uses JSON encoding (more flexible)
+ *
+ * Format:
+ * - Single column: `${base64(column)}:${base64(value)}`
+ * - Multi-column: `${base64(JSON.stringify(obj))}`
+ */
+function encodeCursor<T>(orderBy: Array<{ column: keyof T & string }>, lastRow: T): string {
+  if (orderBy.length === 1) {
+    // Single column optimization: encode column and value separately
+    const column = orderBy[0]!.column
+    const value = (lastRow as any)[column]
+
+    // Handle undefined/null values (shouldn't normally happen, but handle gracefully)
+    if (value === undefined || value === null) {
+      // Fall back to multi-column encoding which handles undefined correctly
+      const cursorObj = { [column]: value }
+      return Buffer.from(JSON.stringify(cursorObj)).toString('base64')
+    }
+
+    const columnB64 = Buffer.from(String(column)).toString('base64')
+    const valueB64 = Buffer.from(JSON.stringify(value)).toString('base64')
+    return `${columnB64}:${valueB64}`
+  }
+
+  // Multi-column: use JSON encoding
+  const cursorObj = orderBy.reduce((acc, { column }) => {
+    acc[column] = (lastRow as any)[column]
+    return acc
+  }, {} as Record<string, any>)
+
+  return Buffer.from(JSON.stringify(cursorObj)).toString('base64')
+}
+
+/**
+ * Decode cursor for pagination
+ *
+ * Supports both formats:
+ * - Single column: `${base64(column)}:${base64(value)}`
+ * - Multi-column: `${base64(JSON.stringify(obj))}`
+ */
+function decodeCursor(cursor: string): Record<string, any> {
+  // Check for single-column format (has colon separator)
+  if (cursor.includes(':') && cursor.split(':').length === 2) {
+    try {
+      const [columnB64, valueB64] = cursor.split(':') as [string, string]
+      const column = Buffer.from(columnB64, 'base64').toString()
+      const value = JSON.parse(Buffer.from(valueB64, 'base64').toString())
+      return { [column]: value }
+    } catch {
+      // Fall through to multi-column decoding
+    }
+  }
+
+  // Multi-column format (or single-column fallback)
+  const decoded = JSON.parse(Buffer.from(cursor, 'base64').toString())
+  return decoded as Record<string, any>
+}
+
 export interface PaginationOptions {
   page?: number
   limit?: number
@@ -91,9 +154,7 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
     // Decode and validate cursor
     let decoded: Record<string, any>
     try {
-      decoded = JSON.parse(
-        Buffer.from(cursor, 'base64').toString()
-      ) as Record<string, any>
+      decoded = decodeCursor(cursor)
     } catch {
       throw new Error('Invalid pagination cursor: unable to decode')
     }
@@ -175,14 +236,9 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
   const hasNext = data.length > limit
   if (hasNext) data.pop()
 
-  // Encode cursor from last row
+  // Encode cursor from last row (optimized for single-column cursors)
   const nextCursor = hasNext && data.length > 0
-    ? Buffer.from(JSON.stringify(
-        orderBy.reduce((acc, { column }) => {
-          acc[column] = (data[data.length - 1] as any)[column]
-          return acc
-        }, {} as Record<string, any>)
-      )).toString('base64')
+    ? encodeCursor(orderBy, data[data.length - 1] as O)
     : undefined
 
   const result: PaginatedResult<O> = {
