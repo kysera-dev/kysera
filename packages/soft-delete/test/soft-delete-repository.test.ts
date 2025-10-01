@@ -15,16 +15,6 @@ interface TestUser {
   deleted_at: string | null
 }
 
-interface TestPost {
-  id: number
-  user_id: number
-  title: string
-  content: string
-  published: number
-  created_at: string
-  deleted_at: string | null
-}
-
 // Define repository interface
 interface SoftDeleteRepository {
   tableName: string
@@ -276,12 +266,12 @@ describe('Soft Delete Plugin - Repository Extension', () => {
     }
 
     // Charlie should be completely gone
-    const result = await db
+    const deletedCharlie = await db
       .selectFrom('users')
       .selectAll()
       .where('id', '=', charlieId)
       .executeTakeFirst()
 
-    expect(result).toBeUndefined()
+    expect(deletedCharlie).toBeUndefined()
   })
 })

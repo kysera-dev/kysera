@@ -4,9 +4,7 @@ import type { Kysely, SelectQueryBuilder } from 'kysely'
 /**
  * Database schema with timestamp columns
  */
-interface TimestampedTable {
-  [key: string]: unknown
-}
+type TimestampedTable = Record<string, unknown>;
 
 /**
  * Timestamp methods added to repositories
@@ -180,7 +178,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
       // Save original methods
       const originalCreate = baseRepo.create.bind(baseRepo)
       const originalUpdate = baseRepo.update.bind(baseRepo)
-      const executor = baseRepo.executor as unknown as Kysely<Record<string, TimestampedTable>>
+      const executor = baseRepo.executor as Kysely<Record<string, TimestampedTable>>
 
       const extendedRepo = {
         ...baseRepo,
@@ -262,7 +260,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
         /**
          * Find recently updated records
          */
-        async findRecentlyUpdated(limit: number = 10): Promise<unknown[]> {
+        async findRecentlyUpdated(limit = 10): Promise<unknown[]> {
           const result = await executor
             .selectFrom(baseRepo.tableName as never)
             .selectAll()
@@ -275,7 +273,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
         /**
          * Find recently created records
          */
-        async findRecentlyCreated(limit: number = 10): Promise<unknown[]> {
+        async findRecentlyCreated(limit = 10): Promise<unknown[]> {
           const result = await executor
             .selectFrom(baseRepo.tableName as never)
             .selectAll()

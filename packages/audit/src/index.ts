@@ -103,12 +103,12 @@ export interface ParsedAuditLogEntry {
 interface BaseRepositoryLike {
   tableName?: string
   executor?: unknown
-  create?: Function
-  update?: Function
-  delete?: Function
-  bulkCreate?: Function
-  bulkUpdate?: Function
-  bulkDelete?: Function
+  create?: (data: unknown) => Promise<unknown>
+  update?: (id: number, data: unknown) => Promise<unknown>
+  delete?: (id: number) => Promise<boolean>
+  bulkCreate?: (data: unknown[]) => Promise<unknown[]>
+  bulkUpdate?: (updates: { id: number; data: unknown }[]) => Promise<unknown[]>
+  bulkDelete?: (ids: number[]) => Promise<number>
 }
 
 // ============================================================================
@@ -124,11 +124,18 @@ async function checkAuditTableExists<DB>(
 ): Promise<boolean> {
   try {
     // Try to query the table structure
-    await (executor as any)
-      .selectFrom(auditTable)
-      .select('id')
-      .limit(0)
-      .execute()
+    // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
+    await (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Kysely query builder chaining
+      (executor as any)
+        .selectFrom(auditTable)
+         
+        .select('id')
+         
+        .limit(0)
+         
+        .execute()
+    )
     // If we get here, table exists
     return true
   } catch {
@@ -144,18 +151,32 @@ async function createAuditTable<DB>(
   executor: Kysely<DB>,
   auditTable: string
 ): Promise<void> {
-  await (executor.schema as any)
-    .createTable(auditTable)
-    .addColumn('id', 'integer', (col: any) => col.primaryKey().autoIncrement())
-    .addColumn('table_name', 'text', (col: any) => col.notNull())
-    .addColumn('entity_id', 'text', (col: any) => col.notNull())
-    .addColumn('operation', 'text', (col: any) => col.notNull())
-    .addColumn('old_values', 'text')
-    .addColumn('new_values', 'text')
-    .addColumn('changed_by', 'text')
-    .addColumn('changed_at', 'text', (col: any) => col.notNull())
-    .addColumn('metadata', 'text')
-    .execute()
+  // Kysely schema builder requires `any` cast for dynamic table creation with runtime column types
+  await (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Kysely schema builder chaining
+    (executor.schema as any)
+      .createTable(auditTable)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Column builder callback
+      .addColumn('id', 'integer', (col: any) => col.primaryKey().autoIncrement())
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Column builder callback
+      .addColumn('table_name', 'text', (col: any) => col.notNull())
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Column builder callback
+      .addColumn('entity_id', 'text', (col: any) => col.notNull())
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Column builder callback
+      .addColumn('operation', 'text', (col: any) => col.notNull())
+       
+      .addColumn('old_values', 'text')
+       
+      .addColumn('new_values', 'text')
+       
+      .addColumn('changed_by', 'text')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Column builder callback
+      .addColumn('changed_at', 'text', (col: any) => col.notNull())
+       
+      .addColumn('metadata', 'text')
+       
+      .execute()
+  )
 }
 
 /**
@@ -172,12 +193,16 @@ function getAuditTimestamp(options: AuditOptions): string {
  * Serialize values for audit log
  */
 function serializeAuditValues(values: unknown): string | null {
-  if (!values) return null
   if (values === null || values === undefined) return null
 
   try {
     return JSON.stringify(values)
   } catch {
+    // Safe conversion for non-JSON values
+    if (typeof values === 'object') {
+      // For objects that can't be stringified, use toString()
+      return '[Object]'
+    }
     return String(values)
   }
 }
@@ -197,19 +222,25 @@ async function createAuditLogEntry<DB>(
 ): Promise<void> {
   const timestamp = getAuditTimestamp(options)
 
-  await (executor as any)
-    .insertInto(auditTable)
-    .values({
-      table_name: entityType,
-      entity_id: String(entityId),
-      operation,
-      old_values: serializeAuditValues(oldValues),
-      new_values: serializeAuditValues(newValues),
-      changed_by: options.getUserId ? options.getUserId() : null,
-      changed_at: timestamp,
-      metadata: options.metadata ? JSON.stringify(options.metadata()) : null
-    })
-    .execute()
+  // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
+  await (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Kysely query builder chaining
+    (executor as any)
+      .insertInto(auditTable)
+       
+      .values({
+        table_name: entityType,
+        entity_id: String(entityId),
+        operation,
+        old_values: serializeAuditValues(oldValues),
+        new_values: serializeAuditValues(newValues),
+        changed_by: options.getUserId ? options.getUserId() : null,
+        changed_at: timestamp,
+        metadata: options.metadata ? JSON.stringify(options.metadata()) : null
+      })
+       
+      .execute()
+  )
 }
 
 /**
@@ -217,6 +248,7 @@ async function createAuditLogEntry<DB>(
  */
 function isRepositoryLike(obj: unknown): obj is BaseRepositoryLike {
   if (!obj || typeof obj !== 'object') return false
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Type narrowing requires `any` cast after typeof check
   const repo = obj as any
   return 'tableName' in repo && 'executor' in repo
 }
@@ -225,16 +257,24 @@ function isRepositoryLike(obj: unknown): obj is BaseRepositoryLike {
  * Helper function to fetch an entity by ID
  */
 async function fetchEntityById(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type parameter needed for Kysely
   executor: Kysely<any>,
   tableName: string,
   id: number
 ): Promise<unknown> {
   try {
-    const entity = await (executor as any)
-      .selectFrom(tableName)
-      .selectAll()
-      .where('id', '=', id)
-      .executeTakeFirst()
+    // Kysely requires dynamic table access via `any` cast since tableName is a runtime string
+    const entity = await (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Kysely query builder chaining
+      (executor as any)
+        .selectFrom(tableName)
+         
+        .selectAll()
+         
+        .where('id', '=', id)
+         
+        .executeTakeFirst()
+    )
     return entity
   } catch {
     return null
@@ -258,6 +298,7 @@ async function fetchEntityById(
  * ```
  */
 async function fetchEntitiesByIds(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type parameter needed for Kysely
   executor: Kysely<any>,
   tableName: string,
   ids: number[]
@@ -270,16 +311,23 @@ async function fetchEntitiesByIds(
 
   try {
     // Fetch all entities in a single query
-    const entities = await (executor as any)
-      .selectFrom(tableName)
-      .selectAll()
-      .where('id', 'in', ids)
-      .execute()
+    // Kysely requires dynamic table access via `any` cast since tableName is a runtime string
+    const entities = await (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Kysely query builder chaining
+      (executor as any)
+        .selectFrom(tableName)
+         
+        .selectAll()
+         
+        .where('id', 'in', ids)
+         
+        .execute()
+    )
 
     // Build map for O(1) lookups
     for (const entity of entities) {
-      const id = (entity as any).id
-      if (id !== undefined && id !== null) {
+      const id = (entity as { id?: number }).id
+      if (id !== undefined) {
         entityMap.set(id, entity)
       }
     }
@@ -288,6 +336,434 @@ async function fetchEntitiesByIds(
   } catch {
     // Return empty map on error
     return entityMap
+  }
+}
+
+// ============================================================================
+// Repository Extension Helpers
+// ============================================================================
+
+/**
+ * Wrap the create method with audit logging
+ */
+function wrapCreateMethod(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
+  baseRepo: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
+  executor: Kysely<any>,
+  auditTable: string,
+  tableName: string,
+  captureNewValues: boolean,
+  skipSystemOperations: boolean,
+  options: AuditOptions
+): void {
+   
+  if (!baseRepo.create) return
+
+   
+  const originalCreate = baseRepo.create.bind(baseRepo)
+   
+  baseRepo.create = async function(input: unknown) {
+     
+    const result = await originalCreate(input)
+
+    if (!skipSystemOperations) {
+       
+      await createAuditLogEntry(
+        executor,
+        auditTable,
+        tableName,
+        String((result).id),
+        'INSERT',
+        null,
+        captureNewValues ? result : null,
+        options
+      )
+    }
+
+    return result
+  }
+}
+
+/**
+ * Wrap the update method with audit logging
+ */
+function wrapUpdateMethod(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
+  baseRepo: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
+  executor: Kysely<any>,
+  auditTable: string,
+  tableName: string,
+  captureOldValues: boolean,
+  captureNewValues: boolean,
+  skipSystemOperations: boolean,
+  options: AuditOptions
+): void {
+  if (!baseRepo.update) return
+
+  const originalUpdate = baseRepo.update.bind(baseRepo)
+  baseRepo.update = async function(id: number, input: unknown) {
+    // Fetch old values if needed
+    let oldValues: unknown = null
+    if (captureOldValues) {
+      oldValues = await fetchEntityById(executor, tableName, id)
+    }
+
+    const result = await originalUpdate(id, input)
+
+    if (!skipSystemOperations) {
+      await createAuditLogEntry(
+        executor,
+        auditTable,
+        tableName,
+        String(id),
+        'UPDATE',
+        oldValues,
+        captureNewValues ? result : null,
+        options
+      )
+    }
+
+    return result
+  }
+}
+
+/**
+ * Wrap the delete method with audit logging
+ */
+function wrapDeleteMethod(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
+  baseRepo: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
+  executor: Kysely<any>,
+  auditTable: string,
+  tableName: string,
+  captureOldValues: boolean,
+  skipSystemOperations: boolean,
+  options: AuditOptions
+): void {
+  if (!baseRepo.delete) return
+
+  const originalDelete = baseRepo.delete.bind(baseRepo)
+  baseRepo.delete = async function(id: number) {
+    // Fetch old values before deletion
+    let oldValues: unknown = null
+    if (captureOldValues) {
+      oldValues = await fetchEntityById(executor, tableName, id)
+    }
+
+    const result = await originalDelete(id)
+
+    if (!skipSystemOperations && result) {
+      await createAuditLogEntry(
+        executor,
+        auditTable,
+        tableName,
+        String(id),
+        'DELETE',
+        oldValues,
+        null,
+        options
+      )
+    }
+
+    return result
+  }
+}
+
+/**
+ * Wrap the bulkCreate method with audit logging
+ */
+function wrapBulkCreateMethod(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
+  baseRepo: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
+  executor: Kysely<any>,
+  auditTable: string,
+  tableName: string,
+  captureNewValues: boolean,
+  skipSystemOperations: boolean,
+  options: AuditOptions
+): void {
+  if (!baseRepo.bulkCreate) return
+
+  const originalBulkCreate = baseRepo.bulkCreate.bind(baseRepo)
+  baseRepo.bulkCreate = async function(inputs: unknown[]) {
+    const results = await originalBulkCreate(inputs)
+
+    if (!skipSystemOperations && Array.isArray(results)) {
+      for (const result of results) {
+         
+        await createAuditLogEntry(
+          executor,
+          auditTable,
+          tableName,
+          String((result).id),
+          'INSERT',
+          null,
+          captureNewValues ? result : null,
+          options
+        )
+      }
+    }
+
+    return results
+  }
+}
+
+/**
+ * Wrap the bulkUpdate method with audit logging
+ */
+function wrapBulkUpdateMethod(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
+  baseRepo: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
+  executor: Kysely<any>,
+  auditTable: string,
+  tableName: string,
+  captureOldValues: boolean,
+  captureNewValues: boolean,
+  skipSystemOperations: boolean,
+  options: AuditOptions
+): void {
+  if (!baseRepo.bulkUpdate) return
+
+  const originalBulkUpdate = baseRepo.bulkUpdate.bind(baseRepo)
+  baseRepo.bulkUpdate = async function(updates: { id: number, data: unknown }[]) {
+    // Fetch old values before update if needed
+    // Use bulk fetch to avoid N+1 queries (performance optimization)
+    const oldValuesMap = new Map<number, unknown>()
+    if (captureOldValues) {
+      const ids = updates.map(u => u.id)
+      const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids)
+      // Copy to our map
+      for (const [id, entity] of fetchedOldValues) {
+        oldValuesMap.set(id, entity)
+      }
+    }
+
+    const results = await originalBulkUpdate(updates)
+
+    if (!skipSystemOperations && Array.isArray(results)) {
+      for (const result of results) {
+         
+        const id = (result).id as number
+
+        await createAuditLogEntry(
+          executor,
+          auditTable,
+          tableName,
+          String(id),
+          'UPDATE',
+          oldValuesMap.get(id) ?? null,
+          captureNewValues ? result : null,
+          options
+        )
+      }
+    }
+
+    return results
+  }
+}
+
+/**
+ * Wrap the bulkDelete method with audit logging
+ */
+function wrapBulkDeleteMethod(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
+  baseRepo: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
+  executor: Kysely<any>,
+  auditTable: string,
+  tableName: string,
+  captureOldValues: boolean,
+  skipSystemOperations: boolean,
+  options: AuditOptions
+): void {
+  if (!baseRepo.bulkDelete) return
+
+  const originalBulkDelete = baseRepo.bulkDelete.bind(baseRepo)
+  baseRepo.bulkDelete = async function(ids: number[]) {
+    // Fetch old values before deletion if needed
+    // Use bulk fetch to avoid N+1 queries (performance optimization)
+    const oldValuesMap = new Map<number, unknown>()
+    if (captureOldValues) {
+      const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids)
+      // Copy to our map
+      for (const [id, entity] of fetchedOldValues) {
+        oldValuesMap.set(id, entity)
+      }
+    }
+
+    const result = await originalBulkDelete(ids)
+
+    if (!skipSystemOperations) {
+      for (const id of ids) {
+        await createAuditLogEntry(
+          executor,
+          auditTable,
+          tableName,
+          String(id),
+          'DELETE',
+          oldValuesMap.get(id) ?? null,
+          null,
+          options
+        )
+      }
+    }
+
+    return result
+  }
+}
+
+/**
+ * Add audit query methods to repository
+ */
+function addAuditQueryMethods(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
+  extendedRepo: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
+  baseRepo: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
+  executor: Kysely<any>,
+  auditTable: string,
+  tableName: string
+): void {
+  // Get audit history for a specific entity (returns parsed entries)
+  extendedRepo.getAuditHistory = async function(entityId: number | string): Promise<ParsedAuditLogEntry[]> {
+    // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const logs = await (executor as any)
+      .selectFrom(auditTable)
+      .selectAll()
+      .where('table_name', '=', tableName)
+      .where('entity_id', '=', String(entityId))
+      .orderBy('changed_at', 'desc')
+      .execute()
+
+    return logs.map((log: AuditLogEntry) => ({
+      ...log,
+      old_values: log.old_values ? JSON.parse(log.old_values) : null,
+      new_values: log.new_values ? JSON.parse(log.new_values) : null,
+      metadata: log.metadata ? JSON.parse(log.metadata) : null
+    })) as ParsedAuditLogEntry[]
+  }
+
+  // Alias for backwards compatibility
+  extendedRepo.getAuditLogs = extendedRepo.getAuditHistory
+
+  // Get a specific audit log entry
+  extendedRepo.getAuditLog = async function(auditId: number): Promise<AuditLogEntry | null> {
+    // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const log = await (executor as any)
+      .selectFrom(auditTable)
+      .selectAll()
+      .where('id', '=', auditId)
+      .executeTakeFirst()
+
+    return log as AuditLogEntry | null
+  }
+
+  // Restore entity from audit log
+  extendedRepo.restoreFromAudit = async function(auditId: number): Promise<unknown> {
+    const log = await extendedRepo.getAuditLog(auditId)
+    if (!log) {
+      throw new Error(`Audit log ${String(auditId)} not found`)
+    }
+
+    // Parse the values
+    const values = log.old_values ?? log.new_values
+    if (!values) {
+      throw new Error(`No values found in audit log ${String(auditId)}`)
+    }
+
+    const parsedValues = JSON.parse(values)
+    const entityId = parseInt(log.entity_id)
+
+    // For DELETE operations, restore using old_values (the entity before deletion)
+    // For UPDATE operations, restore using old_values (revert the update)
+    if (log.operation === 'DELETE') {
+      // Re-create the deleted entity
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- Checked above for existence
+      return await baseRepo.create!(parsedValues)
+    } else if (log.operation === 'UPDATE') {
+      // Revert to old values
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- Checked above for existence
+      return await baseRepo.update!(entityId, parsedValues)
+    } else {
+      throw new Error(`Cannot restore from ${log.operation} operation`)
+    }
+  }
+
+  // Get audit logs for entire table with optional filters
+  extendedRepo.getTableAuditLogs = async function(filters?: {
+    operation?: string
+    userId?: string
+    startDate?: Date | string
+    endDate?: Date | string
+  }): Promise<ParsedAuditLogEntry[]> {
+    // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query = (executor as any)
+      .selectFrom(auditTable)
+      .selectAll()
+      .where('table_name', '=', tableName)
+
+    // Apply filters
+    if (filters?.operation) {
+       
+      query = query.where('operation', '=', filters.operation)
+    }
+    if (filters?.userId) {
+       
+      query = query.where('changed_by', '=', filters.userId)
+    }
+    if (filters?.startDate) {
+      const startDateStr = typeof filters.startDate === 'string'
+        ? filters.startDate
+        : filters.startDate.toISOString()
+       
+      query = query.where('changed_at', '>=', startDateStr)
+    }
+    if (filters?.endDate) {
+      const endDateStr = typeof filters.endDate === 'string'
+        ? filters.endDate
+        : filters.endDate.toISOString()
+       
+      query = query.where('changed_at', '<=', endDateStr)
+    }
+
+     
+    const logs = await query.orderBy('changed_at', 'desc').execute()
+
+    return logs.map((log: AuditLogEntry) => ({
+      ...log,
+      old_values: log.old_values ? JSON.parse(log.old_values) : null,
+      new_values: log.new_values ? JSON.parse(log.new_values) : null,
+      metadata: log.metadata ? JSON.parse(log.metadata) : null
+    })) as ParsedAuditLogEntry[]
+  }
+
+  // Get all changes made by a specific user for this table
+  extendedRepo.getUserChanges = async function(userId: string): Promise<ParsedAuditLogEntry[]> {
+    // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const logs = await (executor as any)
+      .selectFrom(auditTable)
+      .selectAll()
+      .where('table_name', '=', tableName)
+      .where('changed_by', '=', userId)
+      .orderBy('changed_at', 'desc')
+      .execute()
+
+    return logs.map((log: AuditLogEntry) => ({
+      ...log,
+      old_values: log.old_values ? JSON.parse(log.old_values) : null,
+      new_values: log.new_values ? JSON.parse(log.new_values) : null,
+      metadata: log.metadata ? JSON.parse(log.metadata) : null
+    })) as ParsedAuditLogEntry[]
   }
 }
 
@@ -429,9 +905,12 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         return repo
       }
 
-      const baseRepo = repo as T & BaseRepositoryLike
-      const tableName = baseRepo.tableName!
-      const executor = baseRepo.executor as Kysely<any>
+      const baseRepo = repo
+       
+      const typedRepo = repo
+      const tableName = typedRepo.tableName ?? ''
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
+      const executor = typedRepo.executor as Kysely<any>
 
       // Check if this table should be audited
       const { tables, excludeTables } = options
@@ -442,314 +921,23 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
       }
 
       // If blacklist exists, skip tables in the blacklist
-      if (excludeTables && excludeTables.includes(tableName)) {
+      if (excludeTables?.includes(tableName)) {
         return repo
       }
 
-      // Wrap create method
-      if (baseRepo.create) {
-        const originalCreate = baseRepo.create.bind(baseRepo)
-        ;(baseRepo as any).create = async function(input: unknown) {
-          const result = await originalCreate(input)
+      // Wrap all CRUD methods with audit logging
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
+      const mutableRepo = typedRepo as any
 
-          if (!skipSystemOperations) {
-            await createAuditLogEntry(
-              executor,
-              auditTable,
-              tableName,
-              (result as any).id,
-              'INSERT',
-              null,
-              captureNewValues ? result : null,
-              options
-            )
-          }
-
-          return result
-        }
-      }
-
-      // Wrap update method
-      if (baseRepo.update) {
-        const originalUpdate = baseRepo.update.bind(baseRepo)
-        ;(baseRepo as any).update = async function(id: number, input: unknown) {
-          // Fetch old values if needed
-          let oldValues: unknown = null
-          if (captureOldValues) {
-            oldValues = await fetchEntityById(executor, tableName, id)
-          }
-
-          const result = await originalUpdate(id, input)
-
-          if (!skipSystemOperations) {
-            await createAuditLogEntry(
-              executor,
-              auditTable,
-              tableName,
-              id,
-              'UPDATE',
-              oldValues,
-              captureNewValues ? result : null,
-              options
-            )
-          }
-
-          return result
-        }
-      }
-
-      // Wrap delete method
-      if (baseRepo.delete) {
-        const originalDelete = baseRepo.delete.bind(baseRepo)
-        ;(baseRepo as any).delete = async function(id: number) {
-          // Fetch old values before deletion
-          let oldValues: unknown = null
-          if (captureOldValues) {
-            oldValues = await fetchEntityById(executor, tableName, id)
-          }
-
-          const result = await originalDelete(id)
-
-          if (!skipSystemOperations && result) {
-            await createAuditLogEntry(
-              executor,
-              auditTable,
-              tableName,
-              id,
-              'DELETE',
-              oldValues,
-              null,
-              options
-            )
-          }
-
-          return result
-        }
-      }
-
-      // Wrap bulkCreate method
-      if (baseRepo.bulkCreate) {
-        const originalBulkCreate = baseRepo.bulkCreate.bind(baseRepo)
-        ;(baseRepo as any).bulkCreate = async function(inputs: unknown[]) {
-          const results = await originalBulkCreate(inputs)
-
-          if (!skipSystemOperations && Array.isArray(results)) {
-            for (const result of results) {
-              await createAuditLogEntry(
-                executor,
-                auditTable,
-                tableName,
-                (result as any).id,
-                'INSERT',
-                null,
-                captureNewValues ? result : null,
-                options
-              )
-            }
-          }
-
-          return results
-        }
-      }
-
-      // Wrap bulkUpdate method
-      if (baseRepo.bulkUpdate) {
-        const originalBulkUpdate = baseRepo.bulkUpdate.bind(baseRepo)
-        ;(baseRepo as any).bulkUpdate = async function(updates: { id: number, data: unknown }[]) {
-          // Fetch old values before update if needed
-          // Use bulk fetch to avoid N+1 queries (performance optimization)
-          const oldValuesMap = new Map<number, unknown>()
-          if (captureOldValues) {
-            const ids = updates.map(u => u.id)
-            const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids)
-            // Copy to our map
-            for (const [id, entity] of fetchedOldValues) {
-              oldValuesMap.set(id, entity)
-            }
-          }
-
-          const results = await originalBulkUpdate(updates)
-
-          if (!skipSystemOperations && Array.isArray(results)) {
-            for (const result of results) {
-              const id = (result as any).id
-
-              await createAuditLogEntry(
-                executor,
-                auditTable,
-                tableName,
-                id,
-                'UPDATE',
-                oldValuesMap.get(id) || null,
-                captureNewValues ? result : null,
-                options
-              )
-            }
-          }
-
-          return results
-        }
-      }
-
-      // Wrap bulkDelete method
-      if (baseRepo.bulkDelete) {
-        const originalBulkDelete = baseRepo.bulkDelete.bind(baseRepo)
-        ;(baseRepo as any).bulkDelete = async function(ids: number[]) {
-          // Fetch old values before deletion if needed
-          // Use bulk fetch to avoid N+1 queries (performance optimization)
-          const oldValuesMap = new Map<number, unknown>()
-          if (captureOldValues) {
-            const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids)
-            // Copy to our map
-            for (const [id, entity] of fetchedOldValues) {
-              oldValuesMap.set(id, entity)
-            }
-          }
-
-          const result = await originalBulkDelete(ids)
-
-          if (!skipSystemOperations) {
-            for (const id of ids) {
-              await createAuditLogEntry(
-                executor,
-                auditTable,
-                tableName,
-                id,
-                'DELETE',
-                oldValuesMap.get(id) || null,
-                null,
-                options
-              )
-            }
-          }
-
-          return result
-        }
-      }
+      wrapCreateMethod(mutableRepo, executor, auditTable, tableName, captureNewValues, skipSystemOperations, options)
+      wrapUpdateMethod(mutableRepo, executor, auditTable, tableName, captureOldValues, captureNewValues, skipSystemOperations, options)
+      wrapDeleteMethod(mutableRepo, executor, auditTable, tableName, captureOldValues, skipSystemOperations, options)
+      wrapBulkCreateMethod(mutableRepo, executor, auditTable, tableName, captureNewValues, skipSystemOperations, options)
+      wrapBulkUpdateMethod(mutableRepo, executor, auditTable, tableName, captureOldValues, captureNewValues, skipSystemOperations, options)
+      wrapBulkDeleteMethod(mutableRepo, executor, auditTable, tableName, captureOldValues, skipSystemOperations, options)
 
       // Add audit query methods
-      const extendedRepo = baseRepo as any
-
-      // Get audit history for a specific entity (returns parsed entries)
-      extendedRepo.getAuditHistory = async function(entityId: number | string): Promise<ParsedAuditLogEntry[]> {
-        const logs = await (executor as any)
-          .selectFrom(auditTable)
-          .selectAll()
-          .where('table_name', '=', tableName)
-          .where('entity_id', '=', String(entityId))
-          .orderBy('changed_at', 'desc')
-          .execute()
-
-        return logs.map((log: AuditLogEntry) => ({
-          ...log,
-          old_values: log.old_values ? JSON.parse(log.old_values) : null,
-          new_values: log.new_values ? JSON.parse(log.new_values) : null,
-          metadata: log.metadata ? JSON.parse(log.metadata) : null
-        })) as ParsedAuditLogEntry[]
-      }
-
-      // Alias for backwards compatibility
-      extendedRepo.getAuditLogs = extendedRepo.getAuditHistory
-
-      // Get a specific audit log entry
-      extendedRepo.getAuditLog = async function(auditId: number): Promise<AuditLogEntry | null> {
-        const log = await (executor as any)
-          .selectFrom(auditTable)
-          .selectAll()
-          .where('id', '=', auditId)
-          .executeTakeFirst()
-
-        return log as AuditLogEntry | null
-      }
-
-      // Restore entity from audit log
-      extendedRepo.restoreFromAudit = async function(auditId: number): Promise<unknown> {
-        const log = await extendedRepo.getAuditLog(auditId)
-        if (!log) {
-          throw new Error(`Audit log ${auditId} not found`)
-        }
-
-        // Parse the values
-        const values = log.old_values || log.new_values
-        if (!values) {
-          throw new Error(`No values found in audit log ${auditId}`)
-        }
-
-        const parsedValues = JSON.parse(values)
-        const entityId = parseInt(log.entity_id)
-
-        // For DELETE operations, restore using old_values (the entity before deletion)
-        // For UPDATE operations, restore using old_values (revert the update)
-        if (log.operation === 'DELETE') {
-          // Re-create the deleted entity
-          return await baseRepo.create!(parsedValues)
-        } else if (log.operation === 'UPDATE') {
-          // Revert to old values
-          return await baseRepo.update!(entityId, parsedValues)
-        } else {
-          throw new Error(`Cannot restore from ${log.operation} operation`)
-        }
-      }
-
-      // Get audit logs for entire table with optional filters
-      extendedRepo.getTableAuditLogs = async function(filters?: {
-        operation?: string
-        userId?: string
-        startDate?: Date | string
-        endDate?: Date | string
-      }): Promise<ParsedAuditLogEntry[]> {
-        let query = (executor as any)
-          .selectFrom(auditTable)
-          .selectAll()
-          .where('table_name', '=', tableName)
-
-        // Apply filters
-        if (filters?.operation) {
-          query = query.where('operation', '=', filters.operation)
-        }
-        if (filters?.userId) {
-          query = query.where('changed_by', '=', filters.userId)
-        }
-        if (filters?.startDate) {
-          const startDateStr = typeof filters.startDate === 'string'
-            ? filters.startDate
-            : filters.startDate.toISOString()
-          query = query.where('changed_at', '>=', startDateStr)
-        }
-        if (filters?.endDate) {
-          const endDateStr = typeof filters.endDate === 'string'
-            ? filters.endDate
-            : filters.endDate.toISOString()
-          query = query.where('changed_at', '<=', endDateStr)
-        }
-
-        const logs = await query.orderBy('changed_at', 'desc').execute()
-
-        return logs.map((log: AuditLogEntry) => ({
-          ...log,
-          old_values: log.old_values ? JSON.parse(log.old_values) : null,
-          new_values: log.new_values ? JSON.parse(log.new_values) : null,
-          metadata: log.metadata ? JSON.parse(log.metadata) : null
-        })) as ParsedAuditLogEntry[]
-      }
-
-      // Get all changes made by a specific user for this table
-      extendedRepo.getUserChanges = async function(userId: string): Promise<ParsedAuditLogEntry[]> {
-        const logs = await (executor as any)
-          .selectFrom(auditTable)
-          .selectAll()
-          .where('table_name', '=', tableName)
-          .where('changed_by', '=', userId)
-          .orderBy('changed_at', 'desc')
-          .execute()
-
-        return logs.map((log: AuditLogEntry) => ({
-          ...log,
-          old_values: log.old_values ? JSON.parse(log.old_values) : null,
-          new_values: log.new_values ? JSON.parse(log.new_values) : null,
-          metadata: log.metadata ? JSON.parse(log.metadata) : null
-        })) as ParsedAuditLogEntry[]
-      }
+      addAuditQueryMethods(mutableRepo, mutableRepo, executor, auditTable, tableName)
 
       return baseRepo
     }
@@ -775,7 +963,7 @@ export function auditPluginPostgreSQL(options: AuditOptions = {}): Plugin {
   // In future, we can add PostgreSQL-specific optimizations
   return auditPlugin({
     ...options,
-    getTimestamp: options.getTimestamp || (() => new Date().toISOString())
+    getTimestamp: options.getTimestamp ?? (() => new Date().toISOString())
   })
 }
 
@@ -794,7 +982,7 @@ export function auditPluginMySQL(options: AuditOptions = {}): Plugin {
   // In future, we can add MySQL-specific optimizations
   return auditPlugin({
     ...options,
-    getTimestamp: options.getTimestamp || (() => new Date().toISOString())
+    getTimestamp: options.getTimestamp ?? (() => new Date().toISOString())
   })
 }
 
@@ -813,6 +1001,6 @@ export function auditPluginSQLite(options: AuditOptions = {}): Plugin {
   // In future, we can add SQLite-specific optimizations
   return auditPlugin({
     ...options,
-    getTimestamp: options.getTimestamp || (() => new Date().toISOString())
+    getTimestamp: options.getTimestamp ?? (() => new Date().toISOString())
   })
 }
