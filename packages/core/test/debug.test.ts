@@ -145,6 +145,71 @@ describe('Debug Utilities', () => {
       expect(sqls).toContain('insert')
       expect(sqls).toContain('update')
     })
+
+    it('should limit metrics to maxMetrics option (circular buffer)', async () => {
+      const debugDb = withDebug(db, {
+        logQuery: false,
+        maxMetrics: 3
+      })
+
+      // Execute 5 queries
+      for (let i = 0; i < 5; i++) {
+        await debugDb.selectFrom('users').selectAll().execute()
+      }
+
+      const metrics = debugDb.getMetrics()
+      // Should keep only last 3 metrics
+      expect(metrics).toHaveLength(3)
+    })
+
+    it('should remove oldest metrics when limit is exceeded', async () => {
+      const debugDb = withDebug(db, {
+        logQuery: false,
+        maxMetrics: 2
+      })
+
+      // Execute 3 queries to trigger circular buffer
+      await debugDb.selectFrom('users').select('id').execute()
+      await debugDb.selectFrom('users').select('name').execute()
+      await debugDb.selectFrom('users').select('email').execute()
+
+      const metrics = debugDb.getMetrics()
+      expect(metrics).toHaveLength(2)
+
+      // First query (select id) should be removed
+      const sqls = metrics.map(m => m.sql.toLowerCase()).join(' ')
+      expect(sqls).toContain('name')
+      expect(sqls).toContain('email')
+    })
+
+    it('should use default maxMetrics of 1000 when not specified', async () => {
+      const debugDb = withDebug(db, {
+        logQuery: false
+      })
+
+      // Execute 1001 queries to exceed default limit
+      for (let i = 0; i < 1001; i++) {
+        await debugDb.selectFrom('users').selectAll().execute()
+      }
+
+      const metrics = debugDb.getMetrics()
+      // Should keep only last 1000 metrics
+      expect(metrics).toHaveLength(1000)
+    })
+
+    it('should handle maxMetrics of 1 (keep only last metric)', async () => {
+      const debugDb = withDebug(db, {
+        logQuery: false,
+        maxMetrics: 1
+      })
+
+      await debugDb.selectFrom('users').select('id').execute()
+      await debugDb.selectFrom('users').select('name').execute()
+
+      const metrics = debugDb.getMetrics()
+      expect(metrics).toHaveLength(1)
+      expect(metrics[0]?.sql.toLowerCase()).toContain('name')
+    })
   })
 
   describe('formatSQL', () => {
@@ -251,6 +316,91 @@ describe('Debug Utilities', () => {
       expect(summary.queries).toHaveLength(2)
       expect(summary.queries).toContainEqual(metric1)
       expect(summary.queries).toContainEqual(metric2)
+    })
+
+    it('should limit queries to maxQueries option (circular buffer)', () => {
+      const profiler = new QueryProfiler({ maxQueries: 3 })
+
+      // Record 5 queries
+      for (let i = 0; i < 5; i++) {
+        profiler.record({
+          sql: `SELECT ${i}`,
+          params: [],
+          duration: i,
+          timestamp: Date.now()
+        })
+      }
+
+      const summary = profiler.getSummary()
+      // Should keep only last 3 queries
+      expect(summary.queries).toHaveLength(3)
+      expect(summary.totalQueries).toBe(3)
+    })
+
+    it('should remove oldest queries when limit is exceeded', () => {
+      const profiler = new QueryProfiler({ maxQueries: 2 })
+
+      profiler.record({ sql: 'QUERY 1', duration: 1, timestamp: Date.now() })
+      profiler.record({ sql: 'QUERY 2', duration: 2, timestamp: Date.now() })
+      profiler.record({ sql: 'QUERY 3', duration: 3, timestamp: Date.now() })
+
+      const summary = profiler.getSummary()
+      expect(summary.queries).toHaveLength(2)
+
+      // First query should be removed
+      const sqls = summary.queries.map(q => q.sql).join(' ')
+      expect(sqls).toContain('QUERY 2')
+      expect(sqls).toContain('QUERY 3')
+      expect(sqls).not.toContain('QUERY 1')
+    })
+
+    it('should use default maxQueries of 1000 when not specified', () => {
+      const profiler = new QueryProfiler()
+
+      // Record 1001 queries to exceed default limit
+      for (let i = 0; i < 1001; i++) {
+        profiler.record({
+          sql: `SELECT ${i}`,
+          params: [],
+          duration: i,
+          timestamp: Date.now()
+        })
+      }
+
+      const summary = profiler.getSummary()
+      // Should keep only last 1000 queries
+      expect(summary.queries).toHaveLength(1000)
+      expect(summary.totalQueries).toBe(1000)
+    })
+
+    it('should handle maxQueries of 1 (keep only last query)', () => {
+      const profiler = new QueryProfiler({ maxQueries: 1 })
+
+      profiler.record({ sql: 'QUERY 1', duration: 1, timestamp: Date.now() })
+      profiler.record({ sql: 'QUERY 2', duration: 2, timestamp: Date.now() })
+
+      const summary = profiler.getSummary()
+      expect(summary.queries).toHaveLength(1)
+      expect(summary.queries[0]?.sql).toBe('QUERY 2')
+    })
+
+    it('should correctly calculate summary with circular buffer', () => {
+      const profiler = new QueryProfiler({ maxQueries: 3 })
+
+      // Record 5 queries with known durations
+      profiler.record({ sql: 'Q1', duration: 10, timestamp: Date.now() })
+      profiler.record({ sql: 'Q2', duration: 20, timestamp: Date.now() })
+      profiler.record({ sql: 'Q3', duration: 30, timestamp: Date.now() }) // oldest kept
+      profiler.record({ sql: 'Q4', duration: 40, timestamp: Date.now() })
+      profiler.record({ sql: 'Q5', duration: 50, timestamp: Date.now() })
+
+      const summary = profiler.getSummary()
+      // Should only have Q3, Q4, Q5 (last 3)
+      expect(summary.totalQueries).toBe(3)
+      expect(summary.totalDuration).toBe(120) // 30 + 40 + 50
+      expect(summary.averageDuration).toBe(40) // 120 / 3
+      expect(summary.slowestQuery?.duration).toBe(50)
+      expect(summary.fastestQuery?.duration).toBe(30)
     })
   })
 })
