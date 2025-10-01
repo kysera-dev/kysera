@@ -2,11 +2,10 @@ import { Kysely, PostgresDialect } from 'kysely'
 import { Pool } from 'pg'
 import { createGracefulShutdown, createMetricsPool, withDebug } from '@kysera/core'
 import type { Database } from './schema'
-import 'dotenv/config'
 
 // Create base pool
 const basePool = new Pool({
-  connectionString: process.env['DATABASE_URL'] || 'postgresql://localhost/blog_example',
+  connectionString: process.env['DATABASE_URL'] || 'postgresql://localhost/ecommerce_example',
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,

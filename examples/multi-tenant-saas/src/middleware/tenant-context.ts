@@ -55,7 +55,7 @@ export class TenantContext {
  */
 export function createTenantScopedDb(
   db: Kysely<Database>,
-  context: TenantContext
+  _context: TenantContext
 ): Kysely<Database> {
   // In a production application, you might use a Kysely plugin
   // to automatically add tenant_id filters to all queries.
