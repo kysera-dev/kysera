@@ -16,11 +16,13 @@ const rootDir = resolve(__dirname, '..');
  */
 function exec(cmd, silent = false) {
   try {
-    return execSync(cmd, {
+    const result = execSync(cmd, {
       cwd: rootDir,
       encoding: 'utf-8',
       stdio: silent ? 'pipe' : 'inherit',
-    }).trim();
+    });
+    // execSync returns null when stdio is 'inherit'
+    return result ? result.trim() : '';
   } catch (error) {
     console.error(`❌ Command failed: ${cmd}`);
     throw error;
@@ -108,13 +110,22 @@ function isPublished(name, version) {
  */
 function publishPackage(name, path) {
   console.log(`\n📦 Publishing ${name}...`);
-  exec('pnpm publish --access public --no-git-checks', false);
+  try {
+    execSync('pnpm publish --access public --no-git-checks', {
+      cwd: path,
+      encoding: 'utf-8',
+      stdio: 'inherit',
+    });
+  } catch (error) {
+    console.error(`❌ Failed to publish ${name}`);
+    throw error;
+  }
 }
 
 /**
  * Main publish flow
  */
-async function main() {
+function main() {
   const args = process.argv.slice(2);
   const isDryRun = args.includes('--dry-run');
   const skipTests = args.includes('--skip-tests');
@@ -199,9 +210,7 @@ async function main() {
   // 7. Publish packages
   console.log('📤 Publishing packages...');
   for (const pkg of toPublish) {
-    process.chdir(pkg.path);
     publishPackage(pkg.name, pkg.path);
-    process.chdir(rootDir);
   }
 
   // 8. Get version from root package.json
@@ -228,8 +237,10 @@ async function main() {
 }
 
 // Handle errors gracefully
-main().catch((error) => {
+try {
+  main();
+} catch (error) {
   console.error('\n❌ Publish failed:');
   console.error(error.message);
   process.exit(1);
-});
+}
