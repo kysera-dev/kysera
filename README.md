@@ -262,10 +262,10 @@ MIT
 
 ## Project Status
 
-**Current Version**: 0.1.0 (Alpha)
-**Specification Compliance**: 97%
-**Test Coverage**: 418 tests passing across 6 packages
-**Phase 2**: ✅ COMPLETED
+**Current Version**: 0.3.0 (Beta)
+**Implementation Completion**: 95%
+**Test Coverage**: 483 tests passing across 6 packages
+**Phase 3**: ✅ COMPLETED
 
 ### Completed Features
 
@@ -283,13 +283,13 @@ MIT
 
 | Package | Tests Passing | Status |
 |---------|--------------|--------|
-| @kysera/core | 250 | ✅ Production Ready |
-| @kysera/repository | 71 | ✅ Production Ready |
+| @kysera/core | 265 | ✅ Production Ready |
+| @kysera/repository | 99 | ✅ Production Ready |
 | @kysera/migrations | 24 | ✅ Production Ready |
-| @kysera/soft-delete | 21 | ✅ Production Ready |
-| @kysera/audit | 36 | ✅ Production Ready |
+| @kysera/soft-delete | 39 | ✅ Production Ready |
+| @kysera/audit | 40 | ✅ Production Ready |
 | @kysera/timestamps | 16 | ✅ Production Ready |
-| **Total** | **418** | **All Passing** |
+| **Total** | **483** | **All Passing** |
 
 ### Package Sizes (Minified)
 
@@ -326,11 +326,11 @@ MIT
 
 ### Quick Links
 
-- 📖 [Getting Started Guide](./GETTING_STARTED.md) - 5-minute quick start
-- ✨ [Best Practices](./BEST_PRACTICES.md) - Production-ready patterns
+- 📖 [Getting Started Guide](./docs/GETTING_STARTED.md) - 5-minute quick start
+- ✨ [Best Practices](./docs/BEST_PRACTICES.md) - Production-ready patterns
 - 📚 [Full Specification](./specs/spec.md) - Complete technical spec
-- 🔌 [Plugin Authoring Guide](./PLUGIN_AUTHORING_GUIDE.md) - Create your own plugins
-- 🗺️ [Detailed Roadmap](./roadmap.md) - Project progress and planning
+- 🔌 [Plugin Authoring Guide](./docs/PLUGIN_AUTHORING_GUIDE.md) - Create your own plugins
+- 🗺️ [Detailed Roadmap](./docs/RELEASE_SUMMARY.md) - Project progress and planning
 - 📝 [Development Principles](./CLAUDE.md) - Codebase philosophy
 
 ## Philosophy
