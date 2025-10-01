@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { z } from 'zod'
 import { createTestDatabase } from './setup/database'
 import { createRepositoryFactory } from '../src'
@@ -35,16 +35,16 @@ interface User {
 
 describe('Batch Operations - Parallel Execution', () => {
   let db: Kysely<TestDatabase>
-  let cleanup: () => Promise<void>
+  let cleanup: () => void
 
-  beforeEach(async () => {
+  beforeEach(() => {
     const setup = createTestDatabase()
     db = setup.db
     cleanup = setup.cleanup
   })
 
-  afterEach(async () => {
-    await cleanup()
+  afterEach(() => {
+    cleanup()
   })
 
   describe('bulkUpdate', () => {
@@ -251,27 +251,11 @@ describe('Batch Operations - Parallel Execution', () => {
       const factory = createRepositoryFactory(db)
 
       await db.transaction().execute(async (trx) => {
-        const userRepo = factory.create({
-          tableName: 'users',
-          mapRow: (row: Selectable<TestDatabase['users']>): User => ({
-            id: row.id,
-            email: row.email,
-            name: row.name,
-            created_at: row.created_at,
-            deleted_at: row.deleted_at
-          }),
-          schemas: {
-            entity: UserSchema,
-            create: CreateUserSchema,
-            update: UpdateUserSchema
-          }
-        })
-
         // Note: This uses the transaction executor
         const txFactory = createRepositoryFactory(trx)
-        const txUserRepo = txFactory.create({
+        const txUserRepo = txFactory.create<'users', User>({
           tableName: 'users',
-          mapRow: (row: Selectable<TestDatabase['users']>): User => ({
+          mapRow: (row: any): User => ({
             id: row.id,
             email: row.email,
             name: row.name,

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { z } from 'zod'
 import { createTestDatabase } from './setup/database'
 import { createRepositoryFactory, createRepositoriesFactory, type Executor } from '../src'
-import type { Kysely, Selectable } from 'kysely'
+import type { Kysely } from 'kysely'
 import type { TestDatabase } from './setup/database'
 
 // Define schemas for validation
@@ -62,25 +62,25 @@ interface Post {
 
 describe('Repository Helpers', () => {
   let db: Kysely<TestDatabase>
-  let cleanup: () => Promise<void>
+  let cleanup: () => void
 
-  beforeEach(async () => {
+  beforeEach(() => {
     const setup = createTestDatabase()
     db = setup.db
     cleanup = setup.cleanup
   })
 
-  afterEach(async () => {
-    await cleanup()
+  afterEach(() => {
+    cleanup()
   })
 
   describe('createRepositoriesFactory', () => {
     it('should create a factory that returns multiple repositories', () => {
-      const createUserRepository = (executor: Executor<TestDatabase>) => {
+      const createUserRepository = (executor: Executor<any>) => {
         const factory = createRepositoryFactory(executor)
-        return factory.create({
+        return factory.create<'users', User>({
           tableName: 'users',
-          mapRow: (row: Selectable<TestDatabase['users']>): User => ({
+          mapRow: (row: any): User => ({
             id: row.id,
             email: row.email,
             name: row.name,
@@ -95,11 +95,11 @@ describe('Repository Helpers', () => {
         })
       }
 
-      const createPostRepository = (executor: Executor<TestDatabase>) => {
+      const createPostRepository = (executor: Executor<any>) => {
         const factory = createRepositoryFactory(executor)
-        return factory.create({
+        return factory.create<'posts', Post>({
           tableName: 'posts',
-          mapRow: (row: Selectable<TestDatabase['posts']>): Post => ({
+          mapRow: (row: any): Post => ({
             id: row.id,
             user_id: row.user_id,
             title: row.title,
@@ -119,7 +119,7 @@ describe('Repository Helpers', () => {
         posts: createPostRepository
       })
 
-      const repos = createRepositories(db)
+      const repos = createRepositories(db as any)
 
       expect(repos).toHaveProperty('users')
       expect(repos).toHaveProperty('posts')
@@ -128,11 +128,11 @@ describe('Repository Helpers', () => {
     })
 
     it('should work with database instance', async () => {
-      const createUserRepository = (executor: Executor<TestDatabase>) => {
+      const createUserRepository = (executor: Executor<any>) => {
         const factory = createRepositoryFactory(executor)
-        return factory.create({
+        return factory.create<'users', User>({
           tableName: 'users',
-          mapRow: (row: Selectable<TestDatabase['users']>): User => ({
+          mapRow: (row: any): User => ({
             id: row.id,
             email: row.email,
             name: row.name,
@@ -151,7 +151,7 @@ describe('Repository Helpers', () => {
         users: createUserRepository
       })
 
-      const repos = createRepositories(db)
+      const repos = createRepositories(db as any)
 
       // Create user through factory-created repository
       const user = await repos.users.create({
@@ -169,11 +169,11 @@ describe('Repository Helpers', () => {
     })
 
     it('should work with transactions (one-liner!)', async () => {
-      const createUserRepository = (executor: Executor<TestDatabase>) => {
+      const createUserRepository = (executor: Executor<any>) => {
         const factory = createRepositoryFactory(executor)
-        return factory.create({
+        return factory.create<'users', User>({
           tableName: 'users',
-          mapRow: (row: Selectable<TestDatabase['users']>): User => ({
+          mapRow: (row: any): User => ({
             id: row.id,
             email: row.email,
             name: row.name,
@@ -188,11 +188,11 @@ describe('Repository Helpers', () => {
         })
       }
 
-      const createPostRepository = (executor: Executor<TestDatabase>) => {
+      const createPostRepository = (executor: Executor<any>) => {
         const factory = createRepositoryFactory(executor)
-        return factory.create({
+        return factory.create<'posts', Post>({
           tableName: 'posts',
-          mapRow: (row: Selectable<TestDatabase['posts']>): Post => ({
+          mapRow: (row: any): Post => ({
             id: row.id,
             user_id: row.user_id,
             title: row.title,
@@ -214,7 +214,7 @@ describe('Repository Helpers', () => {
 
       // This is the clean one-liner usage!
       await db.transaction().execute(async (trx) => {
-        const repos = createRepositories(trx)
+        const repos = createRepositories(trx as any)
 
         const user = await repos.users.create({
           email: 'trx@example.com',
@@ -232,7 +232,7 @@ describe('Repository Helpers', () => {
       })
 
       // Verify data was committed
-      const repos = createRepositories(db)
+      const repos = createRepositories(db as any)
       const users = await repos.users.findAll()
       const posts = await repos.posts.findAll()
 
@@ -242,11 +242,11 @@ describe('Repository Helpers', () => {
     })
 
     it('should support transaction rollback', async () => {
-      const createUserRepository = (executor: Executor<TestDatabase>) => {
+      const createUserRepository = (executor: Executor<any>) => {
         const factory = createRepositoryFactory(executor)
-        return factory.create({
+        return factory.create<'users', User>({
           tableName: 'users',
-          mapRow: (row: Selectable<TestDatabase['users']>): User => ({
+          mapRow: (row: any): User => ({
             id: row.id,
             email: row.email,
             name: row.name,
@@ -267,7 +267,7 @@ describe('Repository Helpers', () => {
 
       try {
         await db.transaction().execute(async (trx) => {
-          const repos = createRepositories(trx)
+          const repos = createRepositories(trx as any)
 
           await repos.users.create({
             email: 'rollback@example.com',
@@ -282,17 +282,17 @@ describe('Repository Helpers', () => {
       }
 
       // Verify data was rolled back
-      const repos = createRepositories(db)
+      const repos = createRepositories(db as any)
       const users = await repos.users.findAll()
       expect(users).toHaveLength(0)
     })
 
     it('should support nested repository creation', async () => {
-      const createUserRepository = (executor: Executor<TestDatabase>) => {
+      const createUserRepository = (executor: Executor<any>) => {
         const factory = createRepositoryFactory(executor)
-        return factory.create({
+        return factory.create<'users', User>({
           tableName: 'users',
-          mapRow: (row: Selectable<TestDatabase['users']>): User => ({
+          mapRow: (row: any): User => ({
             id: row.id,
             email: row.email,
             name: row.name,
@@ -312,7 +312,7 @@ describe('Repository Helpers', () => {
       })
 
       // Use factory in normal context
-      const repos1 = createRepositories(db)
+      const repos1 = createRepositories(db as any)
       const user1 = await repos1.users.create({
         email: 'user1@example.com',
         name: 'User 1'
@@ -320,7 +320,7 @@ describe('Repository Helpers', () => {
 
       // Use same factory in transaction
       await db.transaction().execute(async (trx) => {
-        const repos2 = createRepositories(trx)
+        const repos2 = createRepositories(trx as any)
         const user2 = await repos2.users.create({
           email: 'user2@example.com',
           name: 'User 2'
@@ -330,17 +330,17 @@ describe('Repository Helpers', () => {
       })
 
       // Verify both users exist
-      const repos3 = createRepositories(db)
+      const repos3 = createRepositories(db as any)
       const allUsers = await repos3.users.findAll()
       expect(allUsers).toHaveLength(2)
     })
 
     it('should support multiple factories with different repository sets', () => {
-      const createUserRepository = (executor: Executor<TestDatabase>) => {
+      const createUserRepository = (executor: Executor<any>) => {
         const factory = createRepositoryFactory(executor)
-        return factory.create({
+        return factory.create<'users', User>({
           tableName: 'users',
-          mapRow: (row: Selectable<TestDatabase['users']>): User => ({
+          mapRow: (row: any): User => ({
             id: row.id,
             email: row.email,
             name: row.name,
@@ -355,11 +355,11 @@ describe('Repository Helpers', () => {
         })
       }
 
-      const createPostRepository = (executor: Executor<TestDatabase>) => {
+      const createPostRepository = (executor: Executor<any>) => {
         const factory = createRepositoryFactory(executor)
-        return factory.create({
+        return factory.create<'posts', Post>({
           tableName: 'posts',
-          mapRow: (row: Selectable<TestDatabase['posts']>): Post => ({
+          mapRow: (row: any): Post => ({
             id: row.id,
             user_id: row.user_id,
             title: row.title,
@@ -384,8 +384,8 @@ describe('Repository Helpers', () => {
         posts: createPostRepository
       })
 
-      const userOnlyRepos = createUserOnlyRepos(db)
-      const allRepos = createAllRepos(db)
+      const userOnlyRepos = createUserOnlyRepos(db as any)
+      const allRepos = createAllRepos(db as any)
 
       expect(userOnlyRepos).toHaveProperty('users')
       expect(userOnlyRepos).not.toHaveProperty('posts')

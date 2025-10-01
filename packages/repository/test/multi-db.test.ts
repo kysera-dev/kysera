@@ -1,16 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
-import { Kysely, Insertable, Updateable, Selectable } from 'kysely'
+import { Kysely, type Selectable } from 'kysely'
 import { z } from 'zod'
 import {
-  DatabaseType,
-  MultiDbTestDatabase,
+  type DatabaseType,
+  type MultiDbTestDatabase,
   createTestDb,
   initializeSchema,
   seedDatabase,
   clearDatabase
+  // @ts-ignore - Cross-package test utility import (monorepo)
 } from '../../core/test/utils/multi-db'
 import { createRepositoryFactory } from '../src/repository'
-import { createORM } from '../src/plugin'
 import { parseDatabaseError } from '@kysera/core'
 
 // Test schemas
@@ -28,14 +28,18 @@ const UserUpdateSchema = z.object({
 const createPostSchemas = (dbType: DatabaseType) => {
   // SQLite and MySQL use integers (0/1) for booleans
   const booleanField = (dbType === 'sqlite' || dbType === 'mysql')
-    ? z.boolean().transform(val => val ? 1 : 0).or(z.number())
+    ? z.union([z.boolean().transform(val => val ? 1 : 0), z.number()])
     : z.boolean()
+
+  const booleanFieldWithDefault = (dbType === 'sqlite' || dbType === 'mysql')
+    ? z.union([z.boolean().transform(val => val ? 1 : 0), z.number()]).default(0)
+    : z.boolean().default(false)
 
   const PostCreateSchema = z.object({
     user_id: z.number(),
     title: z.string(),
     content: z.string().nullable().optional(),
-    published: booleanField.default(false as any)
+    published: booleanFieldWithDefault
   })
 
   const PostUpdateSchema = z.object({
@@ -48,20 +52,17 @@ const createPostSchemas = (dbType: DatabaseType) => {
 }
 
 type User = Selectable<MultiDbTestDatabase['users']>
-type UserCreate = z.infer<typeof UserCreateSchema>
-type UserUpdate = z.infer<typeof UserUpdateSchema>
-
 type Post = Selectable<MultiDbTestDatabase['posts']>
 
 // Test all database types based on environment
 const getDatabaseTypes = (): DatabaseType[] => {
   const types: DatabaseType[] = ['sqlite']
 
-  if (process.env.TEST_POSTGRES === 'true') {
+  if (process.env['TEST_POSTGRES'] === 'true') {
     types.push('postgres')
   }
 
-  if (process.env.TEST_MYSQL === 'true') {
+  if (process.env['TEST_MYSQL'] === 'true') {
     types.push('mysql')
   }
 
@@ -70,7 +71,6 @@ const getDatabaseTypes = (): DatabaseType[] => {
 
 describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', (dbType) => {
   let db: Kysely<MultiDbTestDatabase>
-  let orm: any
   let userRepository: any
   let postRepository: any
 
@@ -78,8 +78,7 @@ describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', (dbTyp
     db = createTestDb(dbType)
     await initializeSchema(db, dbType)
 
-    // Create ORM and repositories
-    orm = await createORM(db, [])
+    // Create repositories
     const factory = createRepositoryFactory(db)
 
     userRepository = factory.create({
@@ -203,7 +202,7 @@ describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', (dbTyp
 
       const updated = await userRepository.bulkUpdate(updates)
       expect(updated).toHaveLength(2)
-      updated.forEach((u: User, i: number) => {
+      updated.forEach((u: User) => {
         expect(u.name).toContain('Updated')
       })
     })
@@ -424,11 +423,11 @@ describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', (dbTyp
           'posts.title',
           'users.name as author_name'
         ])
-        .where('posts.published', '=', (dbType === 'sqlite' || dbType === 'mysql') ? 1 : true)
+        .where('posts.published', '=', (dbType === 'sqlite' || dbType === 'mysql') ? 1 as any : true as any)
         .execute()
 
       expect(results.length).toBeGreaterThan(0)
-      expect(results[0].author_name).toBeDefined()
+      expect(results[0]?.author_name).toBeDefined()
     })
 
     it('should handle aggregations', async () => {
@@ -442,11 +441,11 @@ describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', (dbTyp
       const publishedResult = await db
         .selectFrom('posts')
         .select(db.fn.count('id').as('published_count'))
-        .where('published', '=', (dbType === 'sqlite' || dbType === 'mysql') ? 1 : true)
+        .where('published', '=', (dbType === 'sqlite' || dbType === 'mysql') ? 1 as any : true as any)
         .executeTakeFirst()
 
-      expect(Number(totalResult?.total)).toBeGreaterThan(0)
-      expect(Number(publishedResult?.published_count)).toBeGreaterThan(0)
+      expect(Number(totalResult?.total || 0)).toBeGreaterThan(0)
+      expect(Number(publishedResult?.published_count || 0)).toBeGreaterThan(0)
     })
 
     it('should handle subqueries', async () => {
@@ -457,7 +456,7 @@ describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', (dbTyp
           'users.name',
           db.selectFrom('posts')
             .select(db.fn.count('id').as('count'))
-            .whereRef('posts.user_id', '=', 'users.id')
+            .whereRef('posts.user_id', '=', 'users.id' as any)
             .as('post_count')
         ])
         .execute()

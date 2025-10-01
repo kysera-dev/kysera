@@ -129,7 +129,7 @@ describe('Soft Delete Plugin - Query Operations', () => {
         .where('name', '=', 'Alice')
 
       const context = { operation: 'delete', table: 'users', metadata: {} }
-      const _result = orm.applyPlugins(
+      orm.applyPlugins(
         deleteQuery,
         'delete',
         'users',

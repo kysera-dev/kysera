@@ -1,5 +1,6 @@
-import type { Kysely, Selectable, Transaction } from 'kysely'
+import type { Selectable, Transaction } from 'kysely'
 import type { z } from 'zod'
+import type { Executor } from './helpers'
 
 /**
  * Core repository interface
@@ -79,7 +80,7 @@ export interface TableOperations<Table> {
 export function createBaseRepository<DB, Table, Entity>(
   operations: TableOperations<Table>,
   config: RepositoryConfig<Table, Entity>,
-  db: Kysely<DB>
+  db: Executor<DB>
 ): BaseRepository<DB, Entity> {
   const {
     mapRow,

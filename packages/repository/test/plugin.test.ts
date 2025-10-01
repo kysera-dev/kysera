@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createTestDatabase, seedTestData } from './setup/database'
-import { createORM, withPlugins } from '../src/plugin'
+import { createORM, withPlugins, type Plugin } from '../src/plugin'
 import { createRepositoryFactory } from '../src/repository'
-import type { Plugin } from '../src/types'
 import type { Kysely } from 'kysely'
 import type { TestDatabase } from './setup/database'
 
@@ -13,7 +12,7 @@ describe('Plugin System', () => {
   beforeEach(async () => {
     const setup = createTestDatabase()
     db = setup.db
-    cleanup = setup.cleanup
+    cleanup = setup.cleanup as () => Promise<void>
     await seedTestData(db)
   })
 
@@ -26,8 +25,8 @@ describe('Plugin System', () => {
       const mockPlugin: Plugin = {
         name: 'test-plugin',
         version: '1.0.0',
-        interceptQuery: vi.fn((qb, context) => qb),
-        extendRepository: vi.fn(repo => repo)
+        interceptQuery: vi.fn((qb: any, _context: any) => qb),
+        extendRepository: vi.fn((repo: any) => repo)
       }
 
       const orm = await createORM(db, [mockPlugin])
@@ -36,11 +35,11 @@ describe('Plugin System', () => {
       expect(mockPlugin.extendRepository).not.toHaveBeenCalled()
 
       // Create a repository with the plugin
-      const repo = orm.createRepository((executor, applyPlugins) => {
+      orm.createRepository((executor) => {
         const base = createRepositoryFactory(executor)
         return base.create({
           tableName: 'users' as keyof TestDatabase & string,
-          mapRow: (row) => row,
+          mapRow: (row: any) => row,
           schemas: {
             create: {} as any
           }
@@ -65,7 +64,7 @@ describe('Plugin System', () => {
       const loggingPlugin: Plugin = {
         name: 'logging-plugin',
         version: '1.0.0',
-        interceptQuery: (qb, context) => {
+        interceptQuery: (qb: any, context: any) => {
           interceptedQueries.push({
             operation: context.operation,
             table: context.table,
@@ -98,7 +97,7 @@ describe('Plugin System', () => {
       const filterPlugin: Plugin = {
         name: 'filter-plugin',
         version: '1.0.0',
-        interceptQuery: (qb, context) => {
+        interceptQuery: (qb: any, context: any) => {
           if (context.operation === 'select' && context.table === 'users') {
             // Add a filter to only return Alice
             return (qb as any).where('name', '=', 'Alice')
@@ -124,7 +123,7 @@ describe('Plugin System', () => {
       const plugin1: Plugin = {
         name: 'plugin1',
         version: '1.0.0',
-        interceptQuery: (qb, context) => {
+        interceptQuery: (qb: any, context: any) => {
           context.metadata['plugin1'] = true
           return qb
         }
@@ -133,7 +132,7 @@ describe('Plugin System', () => {
       const plugin2: Plugin = {
         name: 'plugin2',
         version: '1.0.0',
-        interceptQuery: (qb, context) => {
+        interceptQuery: (qb: any, context: any) => {
           context.metadata['plugin2'] = true
           expect(context.metadata['plugin1']).toBe(true)
           return qb
@@ -156,11 +155,6 @@ describe('Plugin System', () => {
 
   describe('Repository Extension', () => {
     it('should extend repository with new methods', async () => {
-      interface ExtendedRepo {
-        findByEmail(email: string): Promise<any>
-        countAll(): Promise<number>
-      }
-
       const extensionPlugin: Plugin = {
         name: 'extension-plugin',
         version: '1.0.0',
@@ -240,7 +234,7 @@ describe('Plugin System', () => {
       const countingPlugin: Plugin = {
         name: 'counting-plugin',
         version: '1.0.0',
-        interceptQuery: (qb, context) => {
+        interceptQuery: (qb: any, _context: any) => {
           queryCount++
           return qb
         }
@@ -271,7 +265,7 @@ describe('Plugin System', () => {
       const metadataPlugin: Plugin = {
         name: 'metadata-plugin',
         version: '1.0.0',
-        interceptQuery: (qb, context) => {
+        interceptQuery: (qb: any, context: any) => {
           if (context.metadata['skipFilter']) {
             return qb
           }
@@ -287,7 +281,7 @@ describe('Plugin System', () => {
       // First, soft-delete Bob
       await db
         .updateTable('users')
-        .set({ deleted_at: new Date().toISOString() })  // SQLite uses strings for dates
+        .set({ deleted_at: new Date().toISOString() as any })  // SQLite uses strings for dates
         .where('name', '=', 'Bob')
         .execute()
 

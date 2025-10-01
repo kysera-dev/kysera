@@ -5,6 +5,7 @@ import { createORM } from '@kysera/repository'
 import { createRepositoryFactory } from '@kysera/repository'
 import type { Kysely } from 'kysely'
 import type { TestDatabase } from './setup/database'
+import { z } from 'zod'
 
 // Type definitions for test data
 interface TestUser {
@@ -55,8 +56,8 @@ describe('Soft Delete Plugin - Repository Extension', () => {
         tableName: 'users' as keyof TestDatabase,
         mapRow: (row) => row as TestUser,
         schemas: {
-          create: { parse: (v: unknown) => v } as { parse: (v: unknown) => unknown },
-          update: { parse: (v: unknown) => v } as { parse: (v: unknown) => unknown }
+          create: z.any(),
+          update: z.any()
         }
       })
     }) as SoftDeleteRepository
@@ -78,8 +79,8 @@ describe('Soft Delete Plugin - Repository Extension', () => {
         tableName: 'users' as keyof TestDatabase,
         mapRow: (row) => row as TestUser,
         schemas: {
-          create: { parse: (v: unknown) => v } as { parse: (v: unknown) => unknown },
-          update: { parse: (v: unknown) => v } as { parse: (v: unknown) => unknown }
+          create: z.any(),
+          update: z.any()
         }
       })
     }) as SoftDeleteRepository
@@ -123,8 +124,8 @@ describe('Soft Delete Plugin - Repository Extension', () => {
         tableName: 'users' as keyof TestDatabase,
         mapRow: (row) => row as TestUser,
         schemas: {
-          create: { parse: (v: unknown) => v } as { parse: (v: unknown) => unknown },
-          update: { parse: (v: unknown) => v } as { parse: (v: unknown) => unknown }
+          create: z.any(),
+          update: z.any()
         }
       })
     }) as SoftDeleteRepository
@@ -174,7 +175,7 @@ describe('Soft Delete Plugin - Repository Extension', () => {
         tableName: 'users' as keyof TestDatabase,
         mapRow: (row) => row as TestUser,
         schemas: {
-          create: { parse: (v: unknown) => v } as { parse: (v: unknown) => unknown }
+          create: z.any()
         }
       })
     }) as SoftDeleteRepository
@@ -209,7 +210,7 @@ describe('Soft Delete Plugin - Repository Extension', () => {
         tableName: 'users' as keyof TestDatabase,
         mapRow: (row) => row as TestUser,
         schemas: {
-          create: { parse: (v: unknown) => v } as { parse: (v: unknown) => unknown }
+          create: z.any()
         }
       })
     }) as SoftDeleteRepository
@@ -241,7 +242,7 @@ describe('Soft Delete Plugin - Repository Extension', () => {
         tableName: 'users' as keyof TestDatabase,
         mapRow: (row) => row as TestUser,
         schemas: {
-          create: { parse: (v: unknown) => v } as { parse: (v: unknown) => unknown }
+          create: z.any()
         }
       })
     }) as SoftDeleteRepository
