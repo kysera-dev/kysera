@@ -48,8 +48,8 @@ describe('Debug Utilities', () => {
       await debugDb.selectFrom('users').selectAll().execute()
 
       expect(logger).toHaveBeenCalled()
-      expect(logger.mock.calls[0][0]).toContain('[SQL]')
-      expect(logger.mock.calls[0][0].toLowerCase()).toContain('select')
+      expect(logger.mock.calls[0]?.[0]).toContain('[SQL]')
+      expect(logger.mock.calls[0]?.[0].toLowerCase()).toContain('select')
     })
 
     it('should log query parameters when enabled', async () => {
@@ -67,7 +67,7 @@ describe('Debug Utilities', () => {
         .execute()
 
       expect(logger).toHaveBeenCalled()
-      const message = logger.mock.calls[0][0]
+      const message = logger.mock.calls[0]?.[0]
       expect(message).toContain('[SQL]')
       expect(message).toContain('[Params]')
       // For now, params are empty in our simplified implementation
@@ -101,8 +101,8 @@ describe('Debug Utilities', () => {
       await debugDb.selectFrom('users').selectAll().execute()
 
       expect(onSlowQuery).toHaveBeenCalled()
-      expect(onSlowQuery.mock.calls[0][0].toLowerCase()).toContain('select')
-      expect(onSlowQuery.mock.calls[0][1]).toBeGreaterThanOrEqual(0)
+      expect(onSlowQuery.mock.calls[0]?.[0].toLowerCase()).toContain('select')
+      expect(onSlowQuery.mock.calls[0]?.[1]).toBeGreaterThanOrEqual(0)
     })
 
     it('should clear metrics', async () => {
