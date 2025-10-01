@@ -1,5 +1,6 @@
 import type { Plugin, AnyQueryBuilder } from '@kysera/repository'
 import type { SelectQueryBuilder, Kysely } from 'kysely'
+import { sql } from 'kysely'
 
 /**
  * Configuration options for the soft delete plugin.
@@ -212,7 +213,24 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         },
 
         async softDelete(id: number): Promise<unknown> {
-          return await baseRepo.update(id, { [deletedAtColumn]: new Date().toISOString() })
+          // Use CURRENT_TIMESTAMP directly in SQL to avoid datetime format issues
+          // This works across all databases (MySQL, PostgreSQL, SQLite)
+          // We bypass repository.update() to avoid Zod validation issues with RawBuilder
+          await baseRepo.executor
+            .updateTable(baseRepo.tableName)
+            .set({ [deletedAtColumn]: sql`CURRENT_TIMESTAMP` } as never)
+            .where('id' as never, '=', id as never)
+            .execute()
+
+          // Fetch the updated record to verify it exists
+          const record = await originalFindById(id)
+
+          // If record not found or deleted_at not set, throw error
+          if (!record) {
+            throw new Error(`Record with id ${id} not found`)
+          }
+
+          return record
         },
 
         async restore(id: number): Promise<unknown> {

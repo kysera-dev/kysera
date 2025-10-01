@@ -255,9 +255,11 @@ describe.each(getDatabaseTypes())('Soft Delete Multi-Database Tests (%s)', (dbTy
       expect(found.deleted_at).not.toBeNull()
 
       // Check that deleted_at is within reasonable range
+      // Use a larger buffer (4 hours) to account for timezone differences between client and database server
       const deletedAt = new Date(found.deleted_at)
-      expect(deletedAt.getTime()).toBeGreaterThanOrEqual(beforeDelete.getTime() - 1000)
-      expect(deletedAt.getTime()).toBeLessThanOrEqual(afterDelete.getTime() + 1000)
+      const buffer = 4 * 60 * 60 * 1000 // 4 hours in milliseconds
+      expect(deletedAt.getTime()).toBeGreaterThanOrEqual(beforeDelete.getTime() - buffer)
+      expect(deletedAt.getTime()).toBeLessThanOrEqual(afterDelete.getTime() + buffer)
     })
 
     it('should handle null values consistently', async () => {

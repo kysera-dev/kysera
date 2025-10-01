@@ -1,4 +1,5 @@
 import type { Kysely } from 'kysely'
+import { sql } from 'kysely'
 import type { Plugin } from '@kysera/repository'
 
 // ============================================================================
@@ -220,14 +221,17 @@ async function createAuditLogEntry<DB>(
   newValues: unknown,
   options: AuditOptions
 ): Promise<void> {
-  const timestamp = getAuditTimestamp(options)
+  // Use SQL CURRENT_TIMESTAMP for database-native timestamp handling
+  // This avoids timezone issues between client and server
+  // If user provides custom getTimestamp, respect it but they need to ensure proper format
+  const timestamp = options.getTimestamp ? getAuditTimestamp(options) : sql`CURRENT_TIMESTAMP`
 
   // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
   await (
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Kysely query builder chaining
     (executor as any)
       .insertInto(auditTable)
-       
+
       .values({
         table_name: entityType,
         entity_id: String(entityId),
@@ -721,18 +725,22 @@ function addAuditQueryMethods(
       query = query.where('changed_by', '=', filters.userId)
     }
     if (filters?.startDate) {
-      const startDateStr = typeof filters.startDate === 'string'
-        ? filters.startDate
-        : filters.startDate.toISOString()
-       
-      query = query.where('changed_at', '>=', startDateStr)
+      // Format date as 'YYYY-MM-DD HH:MM:SS' which works for string comparison
+      // across all databases (SQLite, MySQL, PostgreSQL)
+      const startDate = typeof filters.startDate === 'string'
+        ? new Date(filters.startDate)
+        : filters.startDate
+      const formattedStart = startDate.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '')
+      query = query.where('changed_at', '>=', formattedStart)
     }
     if (filters?.endDate) {
-      const endDateStr = typeof filters.endDate === 'string'
-        ? filters.endDate
-        : filters.endDate.toISOString()
-       
-      query = query.where('changed_at', '<=', endDateStr)
+      // Format date as 'YYYY-MM-DD HH:MM:SS' which works for string comparison
+      // across all databases (SQLite, MySQL, PostgreSQL)
+      const endDate = typeof filters.endDate === 'string'
+        ? new Date(filters.endDate)
+        : filters.endDate
+      const formattedEnd = endDate.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '')
+      query = query.where('changed_at', '<=', formattedEnd)
     }
 
      
@@ -978,11 +986,22 @@ export function auditPluginPostgreSQL(options: AuditOptions = {}): Plugin {
  * @returns Plugin instance configured for MySQL
  */
 export function auditPluginMySQL(options: AuditOptions = {}): Plugin {
-  // For now, use the same implementation as the generic plugin
-  // In future, we can add MySQL-specific optimizations
+  // MySQL-specific timestamp formatting
+  // MySQL DATETIME doesn't accept ISO 8601 format, needs 'YYYY-MM-DD HH:MM:SS'
+  const mysqlTimestamp = (): string => {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    const hours = String(now.getHours()).padStart(2, '0')
+    const minutes = String(now.getMinutes()).padStart(2, '0')
+    const seconds = String(now.getSeconds()).padStart(2, '0')
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+  }
+
   return auditPlugin({
     ...options,
-    getTimestamp: options.getTimestamp ?? (() => new Date().toISOString())
+    getTimestamp: options.getTimestamp ?? mysqlTimestamp
   })
 }
 

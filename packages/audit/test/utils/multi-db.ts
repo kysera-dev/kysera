@@ -130,7 +130,7 @@ export async function initializeSchema(db: Kysely<MultiDbTestDatabase>, type: Da
   let usersTable = db.schema
     .createTable('users')
     .addColumn('id', type === 'postgres' ? 'serial' : 'integer', col =>
-      col.primaryKey().autoIncrement())
+      type === 'postgres' ? col.primaryKey() : col.primaryKey().autoIncrement())
     .addColumn('email', 'varchar(255)', col => col.notNull().unique())
     .addColumn('name', 'varchar(255)')
 
@@ -152,7 +152,7 @@ export async function initializeSchema(db: Kysely<MultiDbTestDatabase>, type: Da
   let postsTable = db.schema
     .createTable('posts')
     .addColumn('id', type === 'postgres' ? 'serial' : 'integer', col =>
-      col.primaryKey().autoIncrement())
+      type === 'postgres' ? col.primaryKey() : col.primaryKey().autoIncrement())
     .addColumn('user_id', 'integer', col =>
       col.notNull().references('users.id').onDelete('cascade'))
     .addColumn('title', 'varchar(255)', col => col.notNull())
@@ -175,7 +175,7 @@ export async function initializeSchema(db: Kysely<MultiDbTestDatabase>, type: Da
   let commentsTable = db.schema
     .createTable('comments')
     .addColumn('id', type === 'postgres' ? 'serial' : 'integer', col =>
-      col.primaryKey().autoIncrement())
+      type === 'postgres' ? col.primaryKey() : col.primaryKey().autoIncrement())
     .addColumn('post_id', 'integer', col =>
       col.notNull().references('posts.id').onDelete('cascade'))
     .addColumn('user_id', 'integer', col =>
@@ -196,7 +196,7 @@ export async function initializeSchema(db: Kysely<MultiDbTestDatabase>, type: Da
   await db.schema
     .createTable('categories')
     .addColumn('id', type === 'postgres' ? 'serial' : 'integer', col =>
-      col.primaryKey().autoIncrement())
+      type === 'postgres' ? col.primaryKey() : col.primaryKey().autoIncrement())
     .addColumn('name', 'varchar(255)', col => col.notNull())
     .addColumn('slug', 'varchar(255)', col => col.notNull().unique())
     .addColumn('parent_id', 'integer', col =>
@@ -217,7 +217,7 @@ export async function initializeSchema(db: Kysely<MultiDbTestDatabase>, type: Da
   let auditTable = db.schema
     .createTable('audit_logs')
     .addColumn('id', type === 'postgres' ? 'serial' : 'integer', col =>
-      col.primaryKey().autoIncrement())
+      type === 'postgres' ? col.primaryKey() : col.primaryKey().autoIncrement())
     .addColumn('table_name', 'varchar(255)', col => col.notNull())
     .addColumn('operation', 'varchar(50)', col => col.notNull())
     .addColumn('entity_id', 'varchar(255)', col => col.notNull())

@@ -52,6 +52,7 @@ describe.each(getDatabaseTypes())('Audit Plugin Multi-Database Tests (%s)', (dbT
     await initializeSchema(db, dbType)
 
     // Create ORM with audit plugin
+    // Now uses SQL CURRENT_TIMESTAMP for all databases, avoiding timezone issues
     const audit = auditPlugin({
       getUserId: () => currentUserId,
       tables: ['users', 'posts'],
@@ -305,11 +306,11 @@ describe.each(getDatabaseTypes())('Audit Plugin Multi-Database Tests (%s)', (dbT
         name: 'History User'
       })
 
-      // Add delay to ensure different timestamps (SQLite millisecond precision)
-      await new Promise(resolve => setTimeout(resolve, 100))
+      // Add delay to ensure different timestamps
+      // SQL CURRENT_TIMESTAMP has 1-second precision in SQLite/MySQL, so need full second delays
+      await new Promise(resolve => setTimeout(resolve, 1100))
       await userRepo.update(user.id, { name: 'First Update' })
-      // Add delay to ensure different timestamps (SQLite millisecond precision)
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await new Promise(resolve => setTimeout(resolve, 1100))
       await userRepo.update(user.id, { name: 'Second Update' })
 
       const history = await userRepo.getAuditHistory(user.id)
@@ -343,15 +344,17 @@ describe.each(getDatabaseTypes())('Audit Plugin Multi-Database Tests (%s)', (dbT
 
       const startDate = new Date()
 
-      // Small delay to ensure different timestamps
-      await new Promise(resolve => setTimeout(resolve, 10))
+      // Delay to ensure different timestamps
+      // SQL CURRENT_TIMESTAMP has 1-second precision in SQLite/MySQL
+      await new Promise(resolve => setTimeout(resolve, 1100))
 
       await userRepo.update(user.id, { name: 'Updated' })
 
+      await new Promise(resolve => setTimeout(resolve, 1100))
       const endDate = new Date()
 
       // Create another update after the end date
-      await new Promise(resolve => setTimeout(resolve, 10))
+      await new Promise(resolve => setTimeout(resolve, 1100))
       await userRepo.update(user.id, { name: 'After End' })
 
       const logs = await userRepo.getTableAuditLogs({
@@ -459,16 +462,29 @@ describe.each(getDatabaseTypes())('Audit Plugin Multi-Database Tests (%s)', (dbT
       // you should use the ORM's createRepository within the transaction.
 
       await db.transaction().execute(async (trx) => {
-        const user = await trx
-          .insertInto('users')
-          .values({
-            email: 'tx@example.com',
-            name: 'Transaction User'
-          })
-          .returningAll()
-          .executeTakeFirstOrThrow()
-
-        const userId = user.id
+        // MySQL doesn't support RETURNING clause, so we need to handle it differently
+        let userId: number
+        if (dbType === 'mysql') {
+          const result = await trx
+            .insertInto('users')
+            .values({
+              email: 'tx@example.com',
+              name: 'Transaction User'
+            })
+            .executeTakeFirstOrThrow()
+          // MySQL returns insertId from execute result
+          userId = Number(result.insertId)
+        } else {
+          const user = await trx
+            .insertInto('users')
+            .values({
+              email: 'tx@example.com',
+              name: 'Transaction User'
+            })
+            .returningAll()
+            .executeTakeFirstOrThrow()
+          userId = user.id
+        }
 
         await trx
           .insertInto('posts')
