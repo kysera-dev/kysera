@@ -1,5 +1,4 @@
 import type { Kysely } from 'kysely'
-import type { Pool } from 'pg'
 
 export interface HealthCheckResult {
   status: 'healthy' | 'degraded' | 'unhealthy'
@@ -30,16 +29,42 @@ export interface PoolMetrics {
 }
 
 /**
- * Extended Pool with metrics access
+ * Generic database pool interface.
+ * Works with connection pools from different database drivers:
+ * - PostgreSQL (pg.Pool)
+ * - MySQL (mysql2.Pool)
+ * - SQLite (better-sqlite3 Database - no pooling, but compatible interface)
+ *
+ * This interface provides a minimal common API that all pool types support.
  */
-export interface MetricsPool extends Pool {
+export interface DatabasePool {
+  /**
+   * End/close the pool and release all connections.
+   * For PostgreSQL: pool.end()
+   * For MySQL: pool.end()
+   * For SQLite: database.close()
+   */
+  end(): Promise<void> | void
+
+  /**
+   * Optional: Execute a query on the pool.
+   * Not all pool types support this method directly.
+   */
+  query?(sql: string, values?: any[]): Promise<any>
+}
+
+/**
+ * Extended Pool with metrics access.
+ * This interface works with any DatabasePool type.
+ */
+export interface MetricsPool extends DatabasePool {
   getMetrics(): PoolMetrics
 }
 
 /**
- * Type definitions for Pool internals
+ * Type definitions for PostgreSQL Pool internals (pg package)
  */
-interface PoolInternals {
+interface PostgreSQLPoolInternals {
   readonly totalCount: number
   readonly idleCount: number
   readonly waitingCount: number
@@ -49,19 +74,116 @@ interface PoolInternals {
 }
 
 /**
- * Create pool with metrics capabilities
+ * Type definitions for MySQL Pool (mysql2/promise package)
  */
-export function createMetricsPool(pool: Pool): MetricsPool {
+interface MySQLPoolInternals {
+  pool?: {
+    _allConnections?: { length: number }
+    _freeConnections?: { length: number }
+  }
+  config?: {
+    connectionLimit?: number
+  }
+}
+
+/**
+ * Type definitions for SQLite Database (better-sqlite3 package)
+ * SQLite doesn't have connection pooling, so we return static metrics
+ */
+interface SQLiteDatabase {
+  open: boolean
+  readonly?: boolean
+  memory: boolean
+  name: string
+}
+
+/**
+ * Create pool with metrics capabilities for any database type.
+ * Automatically detects the pool type and extracts metrics accordingly.
+ *
+ * Supported pool types:
+ * - PostgreSQL (pg.Pool) - Uses totalCount, idleCount, waitingCount
+ * - MySQL (mysql2.Pool) - Uses _allConnections, _freeConnections
+ * - SQLite (better-sqlite3.Database) - No pooling, returns static metrics
+ *
+ * @param pool - Database connection pool (PostgreSQL, MySQL, or SQLite)
+ * @returns Pool with getMetrics() method
+ *
+ * @example
+ * ```typescript
+ * // PostgreSQL
+ * import pg from 'pg'
+ * const pgPool = new pg.Pool({ max: 10 })
+ * const metricsPool = createMetricsPool(pgPool)
+ * console.log(metricsPool.getMetrics()) // { total: 10, idle: 8, active: 2, waiting: 0 }
+ *
+ * // MySQL
+ * import mysql from 'mysql2/promise'
+ * const mysqlPool = mysql.createPool({ connectionLimit: 10 })
+ * const metricsPool = createMetricsPool(mysqlPool)
+ * console.log(metricsPool.getMetrics()) // { total: 10, idle: 8, active: 2, waiting: 0 }
+ *
+ * // SQLite (no pooling)
+ * import Database from 'better-sqlite3'
+ * const db = new Database(':memory:')
+ * const metricsPool = createMetricsPool(db as any)
+ * console.log(metricsPool.getMetrics()) // { total: 1, idle: 0, active: 1, waiting: 0 }
+ * ```
+ */
+export function createMetricsPool(pool: DatabasePool): MetricsPool {
   const metricsPool = pool as MetricsPool
 
   metricsPool.getMetrics = function() {
-    const internals = this as unknown as PoolInternals
+    const anyPool = this as any
 
+    // PostgreSQL (pg) Pool detection
+    // Has: totalCount, idleCount, waitingCount properties
+    if ('totalCount' in anyPool && 'idleCount' in anyPool) {
+      const pgInternals = anyPool as PostgreSQLPoolInternals
+      return {
+        total: pgInternals.totalCount || pgInternals.options?.max || 10,
+        idle: pgInternals.idleCount || 0,
+        waiting: pgInternals.waitingCount || 0,
+        active: (pgInternals.totalCount || 0) - (pgInternals.idleCount || 0)
+      }
+    }
+
+    // MySQL (mysql2) Pool detection
+    // Has: pool._allConnections, pool._freeConnections arrays
+    if ('pool' in anyPool && anyPool.pool?._allConnections) {
+      const mysqlInternals = anyPool as MySQLPoolInternals
+      const allConnections = mysqlInternals.pool?._allConnections?.length || 0
+      const freeConnections = mysqlInternals.pool?._freeConnections?.length || 0
+      const connectionLimit = mysqlInternals.config?.connectionLimit || 10
+
+      return {
+        total: connectionLimit,
+        idle: freeConnections,
+        waiting: 0, // MySQL doesn't expose waiting connections count
+        active: allConnections - freeConnections
+      }
+    }
+
+    // SQLite (better-sqlite3) Database detection
+    // Has: open, memory, name properties
+    // SQLite doesn't have connection pooling, so return static metrics
+    if ('open' in anyPool && 'memory' in anyPool) {
+      const sqliteDb = anyPool as SQLiteDatabase
+      return {
+        total: 1, // SQLite is single-connection
+        idle: 0,
+        waiting: 0,
+        active: sqliteDb.open ? 1 : 0
+      }
+    }
+
+    // Fallback for unknown pool types
+    // Return safe default metrics
     return {
-      total: internals.totalCount || internals.options?.max || 10,
-      idle: internals.idleCount || 0,
-      waiting: internals.waitingCount || 0,
-      active: (internals.totalCount || 0) - (internals.idleCount || 0)
+      total: 10,
+      idle: 0,
+      waiting: 0,
+      active: 0
     }
   }
 
