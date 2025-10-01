@@ -102,34 +102,50 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
         finalQuery = finalQuery.where(column as any, op, decoded[column])
       }
     } else {
-      // Multi-column cursor (PostgreSQL syntax)
-      // For ascending: (col1, col2, ...) > ($1, $2, ...)
-      const allAsc = orderBy.every(o => o.direction === 'asc')
+      // Multi-column cursor - Build compound OR conditions
+      // For each level, create: (previous columns =) AND (current column >/<)
+      //
+      // Example for score ASC, created_at ASC with cursor (50, '2024-01-01'):
+      // WHERE (score > 50)
+      //    OR (score = 50 AND created_at > '2024-01-01')
 
-      if (allAsc) {
-        // PostgreSQL row value syntax - more efficient
-        // Simplified version without complex SQL template literals
+      finalQuery = finalQuery.where((eb: any) => {
+        const conditions: any[] = []
+
         for (let i = 0; i < orderBy.length; i++) {
-          const orderItem = orderBy[i]
-          if (orderItem && i === 0) {
-            const { column, direction } = orderItem
-            const value = decoded[column]
-            const op = direction === 'asc' ? '>' : '<'
-            finalQuery = finalQuery.where(column as any, op, value)
+          const currentOrder = orderBy[i]
+          if (!currentOrder) continue
+
+          const { column, direction } = currentOrder
+          const value = decoded[column]
+          const op = direction === 'asc' ? '>' : '<'
+
+          // Build AND condition for this level
+          const andConditions: any[] = []
+
+          // Equality on all previous columns
+          for (let j = 0; j < i; j++) {
+            const prevOrder = orderBy[j]
+            if (prevOrder) {
+              const prevCol = prevOrder.column
+              andConditions.push(eb(prevCol, '=', decoded[prevCol]))
+            }
+          }
+
+          // Comparison on current column
+          andConditions.push(eb(column, op, value))
+
+          // Combine with AND
+          if (andConditions.length === 1) {
+            conditions.push(andConditions[0])
+          } else {
+            conditions.push(eb.and(andConditions))
           }
         }
-      } else {
-        // Fallback to compound WHERE for mixed ordering
-        // For mixed ordering, we need to build a complex WHERE clause
-        // This is less efficient than row value comparison but works with all databases
-        // For now, use simpler approach: filter by first column only
-        const firstOrder = orderBy[0]
-        if (firstOrder) {
-          const { column, direction } = firstOrder
-          const op = direction === 'asc' ? '>' : '<'
-          finalQuery = finalQuery.where(column as any, op, decoded[column])
-        }
-      }
+
+        // Combine all conditions with OR
+        return eb.or(conditions)
+      })
     }
   }
 
