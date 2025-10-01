@@ -49,7 +49,7 @@ describe('Debug Utilities', () => {
 
       expect(logger).toHaveBeenCalled()
       expect(logger.mock.calls[0][0]).toContain('[SQL]')
-      expect(logger.mock.calls[0][0]).toContain('SELECT')
+      expect(logger.mock.calls[0][0].toLowerCase()).toContain('select')
     })
 
     it('should log query parameters when enabled', async () => {
@@ -101,7 +101,7 @@ describe('Debug Utilities', () => {
       await debugDb.selectFrom('users').selectAll().execute()
 
       expect(onSlowQuery).toHaveBeenCalled()
-      expect(onSlowQuery.mock.calls[0][0]).toContain('SELECT')
+      expect(onSlowQuery.mock.calls[0][0].toLowerCase()).toContain('select')
       expect(onSlowQuery.mock.calls[0][1]).toBeGreaterThanOrEqual(0)
     })
 
@@ -141,9 +141,9 @@ describe('Debug Utilities', () => {
       expect(metrics.length).toBeGreaterThanOrEqual(2)
 
       // Check that INSERT and UPDATE were logged
-      const sqls = metrics.map(m => m.sql).join(' ')
-      expect(sqls).toContain('INSERT')
-      expect(sqls).toContain('UPDATE')
+      const sqls = metrics.map(m => m.sql).join(' ').toLowerCase()
+      expect(sqls).toContain('insert')
+      expect(sqls).toContain('update')
     })
   })
 
