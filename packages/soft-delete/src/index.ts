@@ -1,20 +1,39 @@
 import type { Plugin, AnyQueryBuilder } from '@kysera/repository'
 import type { SelectQueryBuilder, Kysely } from 'kysely'
 
+/**
+ * Configuration options for the soft delete plugin.
+ *
+ * @example
+ * ```typescript
+ * const plugin = softDeletePlugin({
+ *   deletedAtColumn: 'deleted_at',
+ *   includeDeleted: false,
+ *   tables: ['users', 'posts'] // Only these tables support soft delete
+ * })
+ * ```
+ */
 export interface SoftDeleteOptions {
   /**
-   * Column name for soft delete timestamp
+   * Column name for soft delete timestamp.
+   *
+   * @default 'deleted_at'
    */
   deletedAtColumn?: string
 
   /**
-   * Include deleted records by default
+   * Include deleted records by default in queries.
+   * When false, soft-deleted records are automatically filtered out.
+   *
+   * @default false
    */
   includeDeleted?: boolean
 
   /**
    * List of tables that support soft delete.
    * If not provided, all tables are assumed to support it.
+   *
+   * @example ['users', 'posts', 'comments']
    */
   tables?: string[]
 }
@@ -28,8 +47,55 @@ interface BaseRepository {
 }
 
 /**
- * Soft Delete Plugin
- * Automatically filters out soft-deleted records from queries
+ * Soft Delete Plugin for Kysera ORM
+ *
+ * This plugin implements soft delete functionality using the Method Override pattern:
+ * - Automatically filters out soft-deleted records from SELECT queries
+ * - Adds softDelete(), restore(), and hardDelete() methods to repositories
+ * - Provides findWithDeleted() and findDeleted() utility methods
+ *
+ * ## Usage
+ *
+ * ```typescript
+ * import { softDeletePlugin } from '@kysera/soft-delete'
+ * import { createORM } from '@kysera/repository'
+ *
+ * const orm = await createORM(db, [
+ *   softDeletePlugin({
+ *     deletedAtColumn: 'deleted_at',
+ *     tables: ['users', 'posts']
+ *   })
+ * ])
+ *
+ * const userRepo = orm.createRepository(createUserRepository)
+ *
+ * // Soft delete a user (sets deleted_at)
+ * await userRepo.softDelete(1)
+ *
+ * // Find all users (excludes soft-deleted)
+ * await userRepo.findAll()
+ *
+ * // Find including deleted
+ * await userRepo.findAllWithDeleted()
+ *
+ * // Restore a soft-deleted user
+ * await userRepo.restore(1)
+ *
+ * // Permanently delete (real DELETE)
+ * await userRepo.hardDelete(1)
+ * ```
+ *
+ * ## Architecture Note
+ *
+ * This plugin uses Method Override, not full query interception:
+ * - ✅ SELECT queries are automatically filtered
+ * - ❌ DELETE queries are NOT automatically converted to soft deletes
+ * - Use softDelete() method explicitly instead of delete()
+ *
+ * This design is intentional for simplicity and explicitness.
+ *
+ * @param options - Configuration options for soft delete behavior
+ * @returns Plugin instance that can be used with createORM
  */
 export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
   const {
@@ -42,6 +108,17 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
     name: '@kysera/soft-delete',
     version: '1.0.0',
 
+    /**
+     * Intercept queries to automatically filter soft-deleted records.
+     *
+     * NOTE: This plugin uses the Method Override pattern, not full query interception.
+     * - SELECT queries are automatically filtered to exclude soft-deleted records
+     * - DELETE operations are NOT automatically converted to soft deletes
+     * - Use the softDelete() method instead of delete() to perform soft deletes
+     * - Use hardDelete() method to bypass soft delete and perform a real DELETE
+     *
+     * This approach is simpler and more explicit than full query interception.
+     */
     interceptQuery<QB extends AnyQueryBuilder>(qb: QB, context: { operation: string; table: string; metadata: Record<string, unknown> }): QB {
       // Check if table supports soft delete
       const supportsSoftDelete = !tables || tables.includes(context.table)
@@ -63,19 +140,27 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           .where(`${context.table}.${deletedAtColumn}` as never, 'is', null) as QB
       }
 
-      // For DELETE operations, convert to soft delete
-      if (
-        supportsSoftDelete &&
-        context.operation === 'delete' &&
-        !context.metadata['hardDelete']
-      ) {
-        // This requires special handling in repository
-        context.metadata['convertToSoftDelete'] = true
-      }
+      // Note: DELETE operations are NOT intercepted here
+      // Use softDelete() method instead of delete() to perform soft deletes
+      // This is by design - method override is simpler and more explicit
 
       return qb
     },
 
+    /**
+     * Extend repository with soft delete methods.
+     *
+     * Adds the following methods to repositories:
+     * - softDelete(id): Marks record as deleted by setting deleted_at timestamp
+     * - restore(id): Restores a soft-deleted record by setting deleted_at to null
+     * - hardDelete(id): Permanently deletes a record (bypasses soft delete)
+     * - findWithDeleted(id): Find a record including soft-deleted ones
+     * - findAllWithDeleted(): Find all records including soft-deleted ones
+     * - findDeleted(): Find only soft-deleted records
+     *
+     * Also overrides findAll() and findById() to automatically filter out
+     * soft-deleted records (unless includeDeleted option is set).
+     */
     extendRepository<T extends object>(repo: T): T {
       // Type assertion is safe here as we're checking for BaseRepository properties
       const baseRepo = repo as unknown as BaseRepository
