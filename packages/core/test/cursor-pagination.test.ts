@@ -491,4 +491,111 @@ describe('Cursor Pagination - Complex Scenarios', () => {
       expect(seenIds.size).toBe(10) // All records retrieved
     })
   })
+
+  describe('Cursor validation', () => {
+    it('should reject invalid base64 cursor', async () => {
+      await expect(
+        paginateCursor(
+          db.selectFrom('products').selectAll(),
+          {
+            cursor: 'invalid-cursor-not-base64!!!',
+            orderBy: [{ column: 'score', direction: 'asc' }]
+          }
+        )
+      ).rejects.toThrow('Invalid pagination cursor: unable to decode')
+    })
+
+    it('should reject cursor with invalid JSON', async () => {
+      // Create base64 of invalid JSON
+      const invalidCursor = Buffer.from('not valid json').toString('base64')
+
+      await expect(
+        paginateCursor(
+          db.selectFrom('products').selectAll(),
+          {
+            cursor: invalidCursor,
+            orderBy: [{ column: 'score', direction: 'asc' }]
+          }
+        )
+      ).rejects.toThrow('Invalid pagination cursor: unable to decode')
+    })
+
+    it('should reject cursor missing required columns', async () => {
+      // Create cursor with only 'score' but query needs 'score' and 'created_at'
+      const incompleteCursor = Buffer.from(JSON.stringify({ score: 100 })).toString('base64')
+
+      await expect(
+        paginateCursor(
+          db.selectFrom('products').selectAll(),
+          {
+            cursor: incompleteCursor,
+            orderBy: [
+              { column: 'score', direction: 'asc' },
+              { column: 'created_at', direction: 'asc' }
+            ]
+          }
+        )
+      ).rejects.toThrow("Invalid pagination cursor: missing column 'created_at'")
+    })
+
+    it('should reject cursor with wrong columns', async () => {
+      // Create cursor with 'price' instead of 'score'
+      const wrongCursor = Buffer.from(JSON.stringify({ price: 100 })).toString('base64')
+
+      await expect(
+        paginateCursor(
+          db.selectFrom('products').selectAll(),
+          {
+            cursor: wrongCursor,
+            orderBy: [{ column: 'score', direction: 'asc' }]
+          }
+        )
+      ).rejects.toThrow("Invalid pagination cursor: missing column 'score'")
+    })
+
+    it('should accept valid cursor with extra columns', async () => {
+      // Cursor with extra columns should be accepted (cursor has more data than needed)
+      const validCursor = Buffer.from(JSON.stringify({
+        score: 80,
+        created_at: '2024-01-01',
+        extraField: 'ignored'
+      })).toString('base64')
+
+      const result = await paginateCursor(
+        db.selectFrom('products').selectAll(),
+        {
+          cursor: validCursor,
+          orderBy: [
+            { column: 'score', direction: 'asc' },
+            { column: 'created_at', direction: 'asc' }
+          ]
+        }
+      )
+
+      // Should work and return results after score 80, created_at '2024-01-01'
+      expect(result.data.length).toBeGreaterThanOrEqual(0)
+      for (const item of result.data) {
+        expect(
+          item.score > 80 ||
+          (item.score === 80 && item.created_at > '2024-01-01')
+        ).toBe(true)
+      }
+    })
+
+    it('should handle empty cursor string', async () => {
+      // Empty string should be treated as no cursor
+      const result = await paginateCursor(
+        db.selectFrom('products').selectAll(),
+        {
+          cursor: '',
+          orderBy: [{ column: 'score', direction: 'asc' }],
+          limit: 100
+        }
+      )
+
+      // Should return first page since empty cursor is falsy
+      expect(result.data).toHaveLength(10) // All 10 products
+      expect(result.data[0]?.score).toBe(50) // Starts from lowest score
+    })
+  })
 })
