@@ -95,10 +95,16 @@ export function parseDatabaseError(
   if (dialect === 'postgres' && 'code' in dbError) {
     switch (dbError.code) {
       case '23505': // unique_violation
+        // Extract columns from detail message: "Key (email)=(value) already exists."
+        const detailMatch = dbError.detail?.match(/Key \(([^)]+)\)=/)
+        const columns = detailMatch
+          ? detailMatch[1].split(',').map((col: string) => col.trim())
+          : (dbError.columns || [])
+
         return new UniqueConstraintError(
           dbError.constraint || 'unique',
           dbError.table || 'unknown',
-          dbError.columns || []
+          columns
         )
 
       case '23503': // foreign_key_violation
@@ -135,11 +141,18 @@ export function parseDatabaseError(
       case 'ER_DUP_ENTRY':
       case 'ER_DUP_KEY':
         // Parse MySQL duplicate entry error
+        // Format: "Duplicate entry 'value' for key 'table.column'" or "'constraint_name'"
         const dupMatch = dbError.sqlMessage?.match(/Duplicate entry '(.+?)' for key '(.+?)'/)
+        const constraintName = dupMatch?.[2] || 'unique'
+
+        // Extract column name from constraint (format: "table.column" or "column")
+        const columnMatch = constraintName.match(/\.([^.]+)$/) || constraintName.match(/^([^.]+)$/)
+        const columns = columnMatch ? [columnMatch[1]] : []
+
         const error = new UniqueConstraintError(
-          dupMatch?.[2] || 'unique',
+          constraintName,
           'unknown', // MySQL doesn't provide table name easily
-          []
+          columns
         )
         // Override code for MySQL
         ;(error as any).code = 'ER_DUP_ENTRY'
@@ -147,6 +160,8 @@ export function parseDatabaseError(
 
       case 'ER_NO_REFERENCED_ROW':
       case 'ER_NO_REFERENCED_ROW_2':
+      case 'ER_ROW_IS_REFERENCED':
+      case 'ER_ROW_IS_REFERENCED_2':
         return new ForeignKeyError(
           'foreign_key',
           'unknown',
@@ -155,10 +170,21 @@ export function parseDatabaseError(
 
       case 'ER_BAD_NULL_ERROR':
         const nullMatch = dbError.sqlMessage?.match(/Column '(.+?)' cannot be null/)
+        const columnName = nullMatch?.[1]
         return new DatabaseError(
-          `Not null constraint violation`,
+          columnName ? `Not null constraint violation on column ${columnName}` : 'Not null constraint violation',
           'ER_BAD_NULL_ERROR',
-          nullMatch?.[1]
+          columnName
+        )
+
+      case 'ER_NO_DEFAULT_FOR_FIELD':
+        // MySQL 8.0+ uses this error code instead of ER_BAD_NULL_ERROR
+        const fieldMatch = dbError.sqlMessage?.match(/Field '(.+?)' doesn't have a default value/)
+        const fieldName = fieldMatch?.[1]
+        return new DatabaseError(
+          fieldName ? `Not null constraint violation on column ${fieldName}` : 'Not null constraint violation',
+          'ER_NO_DEFAULT_FOR_FIELD',
+          fieldName
         )
 
       default:
