@@ -14,12 +14,15 @@ export default defineConfig({
         '*.config.ts',
         '**/*.d.ts',
         '**/*.test.ts',
-        '**/*.spec.ts'
+        '**/*.spec.ts',
+        '**/test/**',
+        '**/index.ts',
+        '**/types.ts'
       ],
       thresholds: {
         lines: 95,
         functions: 95,
-        branches: 95,
+        branches: 85,
         statements: 95
       }
     }

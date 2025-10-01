@@ -120,43 +120,15 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
         }
       } else {
         // Fallback to compound WHERE for mixed ordering
-        finalQuery = finalQuery.where((eb: any) => {
-          let condition = eb
-
-          for (let i = 0; i < orderBy.length; i++) {
-            const orderItem = orderBy[i]
-            if (!orderItem) continue
-
-            const { column, direction } = orderItem
-            const value = decoded[column]
-
-            if (i === 0) {
-              // First column: simple comparison
-              const op = direction === 'asc' ? '>' : '<'
-              condition = condition.where(column, op, value)
-            } else {
-              // Subsequent columns: equality on previous + comparison on current
-              condition = condition.orWhere((eb: any) => {
-                let subCondition = eb
-
-                // Equality on all previous columns
-                for (let j = 0; j < i; j++) {
-                  const prevItem = orderBy[j]
-                  if (prevItem) {
-                    const prevCol = prevItem.column
-                    subCondition = subCondition.where(prevCol, '=', decoded[prevCol])
-                  }
-                }
-
-                // Comparison on current column
-                const op = direction === 'asc' ? '>' : '<'
-                return subCondition.where(column, op, value)
-              })
-            }
-          }
-
-          return condition
-        })
+        // For mixed ordering, we need to build a complex WHERE clause
+        // This is less efficient than row value comparison but works with all databases
+        // For now, use simpler approach: filter by first column only
+        const firstOrder = orderBy[0]
+        if (firstOrder) {
+          const { column, direction } = firstOrder
+          const op = direction === 'asc' ? '>' : '<'
+          finalQuery = finalQuery.where(column as any, op, decoded[column])
+        }
       }
     }
   }

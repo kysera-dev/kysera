@@ -84,8 +84,8 @@ Kysera is a pragmatic TypeScript ORM that provides a thin, powerful layer on top
 ┌────────────────────────────────────────────┐
 │  Optional Plugins                          │
 │  @kysera/soft-delete                       │
-│  @omnitron/orm-audit                       │
-│  @omnitron/orm-timestamps                  │
+│  @kysera/audit                             │
+│  @kysera/timestamps                        │
 ├────────────────────────────────────────────┤
 │  Repository Layer (Optional)               │
 │  @kysera/repository                        │
@@ -114,9 +114,9 @@ Kysera is a pragmatic TypeScript ORM that provides a thin, powerful layer on top
 // Optional packages
 @kysera/repository    // Repository pattern (~15KB)
 @kysera/soft-delete   // Soft delete plugin (~5KB)
-@omnitron/orm-audit         // Audit logging (~8KB)
-@omnitron/orm-timestamps    // Auto timestamps (~3KB)
-@omnitron/orm-migrations    // Migration helpers (~10KB)
+@kysera/audit         // Audit logging (~8KB)
+@kysera/timestamps    // Auto timestamps (~3KB)
+@kysera/migrations    // Migration helpers (~10KB)
 ```
 
 ## Layer 0: Kysely Foundation
@@ -727,7 +727,7 @@ export const softDeletePlugin: Plugin = {
 
 // Audit Plugin
 export const auditPlugin: Plugin = {
-  name: '@omnitron/orm-audit',
+  name: '@kysera/audit',
   version: '1.0.0',
 
   extendRepository(repo) {
@@ -1971,7 +1971,7 @@ await createGracefulShutdown(db)
 // src/repositories/index.ts
 import { createUserRepository } from './user'
 import { createPostRepository } from './post'
-import { softDeletePlugin, auditPlugin } from '@omnitron/orm-plugins'
+import { softDeletePlugin, auditPlugin } from '@kysera/orm-plugins'
 
 export function createRepositories(executor: Executor) {
   const orm = createORM(executor, [softDeletePlugin, auditPlugin])
@@ -2217,7 +2217,7 @@ router.get('/health', async (req, res) => {
 {
   "peerDependencies": {
     "kysely": ">=0.28.0",
-    "zod": ">=3.22.0"
+    "zod": ">=4.1.11"
   },
   "optionalDependencies": {
     "dataloader": "^2.2.2",

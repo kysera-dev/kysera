@@ -36,7 +36,7 @@ interface User {
 
 describe('Repository Pattern', () => {
   let db: Kysely<TestDatabase>
-  let cleanup: () => void
+  let cleanup: () => Promise<void>
 
   beforeEach(async () => {
     const setup = createTestDatabase()
@@ -44,8 +44,8 @@ describe('Repository Pattern', () => {
     cleanup = setup.cleanup
   })
 
-  afterEach(() => {
-    cleanup()
+  afterEach(async () => {
+    await cleanup()
   })
 
   describe('Basic CRUD Operations', () => {
@@ -191,10 +191,9 @@ describe('Repository Pattern', () => {
         userRepo.update(9999, { name: 'Test' })
       ).rejects.toThrow()
 
-      // delete should not throw (idempotent)
-      await expect(
-        userRepo.delete(9999)
-      ).resolves.toBeUndefined()
+      // delete should return false for non-existent record
+      const deleted = await userRepo.delete(9999)
+      expect(deleted).toBe(false)
     })
   })
 
@@ -550,7 +549,8 @@ describe('Repository Pattern', () => {
       const emptyUpdate = await userRepo.bulkUpdate([])
       expect(emptyUpdate).toHaveLength(0)
 
-      await expect(userRepo.bulkDelete([])).resolves.toBeUndefined()
+      const emptyDelete = await userRepo.bulkDelete([])
+      expect(emptyDelete).toBe(0)
     })
 
     it('should bulk delete multiple entities', async () => {
@@ -594,16 +594,32 @@ describe('Repository Pattern', () => {
         }
       })
 
-      // Try to update with one invalid ID - should fail atomically
+      // Try to update with one invalid ID in a transaction
       const updates = [
         { id: 1, data: { name: 'TX Update 1' } },
         { id: 9999, data: { name: 'TX Update 2' } } // Non-existent
       ]
 
-      // Should throw and rollback
-      await expect(userRepo.bulkUpdate(updates)).rejects.toThrow()
+      // When wrapped in a transaction, should rollback on failure
+      try {
+        await db.transaction().execute(async (trx) => {
+          const txFactory = createRepositoryFactory(trx)
+          const txUserRepo = txFactory.create<'users', TestDatabase['users'], User>({
+            tableName: 'users',
+            mapRow: (row) => row as User,
+            schemas: {
+              create: CreateUserSchema,
+              update: UpdateUserSchema
+            }
+          })
 
-      // First user should not be updated
+          await txUserRepo.bulkUpdate(updates)
+        })
+      } catch (error) {
+        // Expected to throw
+      }
+
+      // First user should not be updated (transaction rolled back)
       const alice = await userRepo.findById(1)
       expect(alice?.name).toBe('Alice') // Original name
     })

@@ -3,9 +3,7 @@ import { defineConfig } from 'tsup'
 export default defineConfig({
   entry: ['src/index.ts'],
   format: ['esm'],  // ESM only!
-  dts: {
-    tsconfig: './tsconfig.build.json'
-  },
+  dts: true,
   splitting: false,
   sourcemap: true,
   clean: true,
@@ -13,6 +11,5 @@ export default defineConfig({
   treeshake: true,
   external: ['kysely', '@kysera/repository'],
   target: 'esnext',  // Latest JavaScript for Bun/Deno
-  platform: 'neutral',  // Platform-agnostic
-  tsconfig: './tsconfig.build.json'
+  platform: 'neutral'  // Platform-agnostic
 })

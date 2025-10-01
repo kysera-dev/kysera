@@ -58,7 +58,7 @@ export function shouldValidate(options?: ValidationOptions): boolean {
  * Safe parse with error logging
  */
 export function safeParse<T>(
-  schema: z.ZodSchema<T>,
+  schema: z.ZodType<T>,
   data: unknown,
   options?: {
     throwOnError?: boolean
@@ -82,9 +82,14 @@ export function safeParse<T>(
  * Create a validation wrapper
  */
 export function createValidator<T>(
-  schema: z.ZodSchema<T>,
+  schema: z.ZodType<T>,
   options?: ValidationOptions
-) {
+): {
+  validate: (data: unknown) => T
+  validateSafe: (data: unknown) => T | null
+  isValid: (data: unknown) => boolean
+  validateConditional: (data: unknown) => T
+} {
   return {
     validate(data: unknown): T {
       return schema.parse(data)

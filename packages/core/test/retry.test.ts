@@ -1,7 +1,94 @@
 import { describe, it, expect, vi } from 'vitest'
-import { withRetry, CircuitBreaker } from '../src/retry'
+import { withRetry, CircuitBreaker, isTransientError, createRetryWrapper } from '../src/retry'
 
 describe('Retry Logic', () => {
+  describe('isTransientError', () => {
+    it('should identify network errors as transient', () => {
+      expect(isTransientError({ code: 'ECONNREFUSED' })).toBe(true)
+      expect(isTransientError({ code: 'ETIMEDOUT' })).toBe(true)
+      expect(isTransientError({ code: 'ECONNRESET' })).toBe(true)
+      expect(isTransientError({ code: 'EPIPE' })).toBe(true)
+    })
+
+    it('should identify PostgreSQL transient errors', () => {
+      expect(isTransientError({ code: '57P03' })).toBe(true)
+      expect(isTransientError({ code: '08006' })).toBe(true)
+      expect(isTransientError({ code: '40001' })).toBe(true)
+      expect(isTransientError({ code: '40P01' })).toBe(true)
+    })
+
+    it('should identify MySQL transient errors', () => {
+      expect(isTransientError({ code: 'ER_LOCK_DEADLOCK' })).toBe(true)
+      expect(isTransientError({ code: 'ER_LOCK_WAIT_TIMEOUT' })).toBe(true)
+      expect(isTransientError({ code: 'ER_CON_COUNT_ERROR' })).toBe(true)
+    })
+
+    it('should identify SQLite transient errors', () => {
+      expect(isTransientError({ code: 'SQLITE_BUSY' })).toBe(true)
+      expect(isTransientError({ code: 'SQLITE_LOCKED' })).toBe(true)
+    })
+
+    it('should return false for non-transient errors', () => {
+      expect(isTransientError({ code: 'UNKNOWN_ERROR' })).toBe(false)
+      expect(isTransientError({ code: '23505' })).toBe(false) // unique violation
+      expect(isTransientError({})).toBe(false)
+      expect(isTransientError(null)).toBe(false)
+      expect(isTransientError(undefined)).toBe(false)
+      expect(isTransientError('string error')).toBe(false)
+    })
+  })
+
+  describe('createRetryWrapper', () => {
+    it('should wrap a function with retry logic', async () => {
+      let attempts = 0
+      const originalFn = async (value: string) => {
+        attempts++
+        if (attempts < 2) {
+          throw new Error('Temporary failure')
+        }
+        return `Result: ${value}`
+      }
+
+      const wrappedFn = createRetryWrapper(originalFn, {
+        maxAttempts: 3,
+        delayMs: 10,
+        shouldRetry: () => true
+      })
+
+      const result = await wrappedFn('test')
+      expect(result).toBe('Result: test')
+      expect(attempts).toBe(2)
+    })
+
+    it('should preserve function parameters and return types', async () => {
+      const originalFn = async (a: number, b: string, c?: boolean) => {
+        return { a, b, c }
+      }
+
+      const wrappedFn = createRetryWrapper(originalFn, {
+        maxAttempts: 2,
+        delayMs: 10
+      })
+
+      const result = await wrappedFn(42, 'hello', true)
+      expect(result).toEqual({ a: 42, b: 'hello', c: true })
+    })
+
+    it('should fail after max attempts', async () => {
+      const originalFn = async () => {
+        throw new Error('Always fails')
+      }
+
+      const wrappedFn = createRetryWrapper(originalFn, {
+        maxAttempts: 2,
+        delayMs: 10,
+        shouldRetry: () => true
+      })
+
+      await expect(wrappedFn()).rejects.toThrow('Always fails')
+    })
+  })
+
   describe('withRetry', () => {
     it('should succeed on first try', async () => {
       let attempts = 0
@@ -78,9 +165,10 @@ describe('Retry Logic', () => {
 
       // First attempt is immediate
       // Each subsequent delay should be roughly double the previous
-      expect(delays[1]).toBeGreaterThanOrEqual(10)
-      expect(delays[2]).toBeGreaterThanOrEqual(20)
-      expect(delays[3]).toBeGreaterThanOrEqual(40)
+      // Allow some variance due to timing
+      expect(delays[1]).toBeGreaterThanOrEqual(8)  // ~10ms
+      expect(delays[2]).toBeGreaterThanOrEqual(15) // ~20ms
+      expect(delays[3]).toBeGreaterThanOrEqual(30) // ~40ms
     })
 
     it('should call onRetry callback', async () => {

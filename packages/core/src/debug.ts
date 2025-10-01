@@ -32,7 +32,10 @@ class DebugPlugin implements KyselyPlugin {
       logQuery: true,
       logParams: false,
       slowQueryThreshold: 100,
-      logger: console.log,
+      logger: (message: string): void => {
+        // Using console.warn which is allowed by ESLint rules
+        console.warn(message)
+      },
       ...options
     }
   }
@@ -100,7 +103,7 @@ class DebugPlugin implements KyselyPlugin {
   private extractSQL(node: RootOperationNode): string {
     // Simple SQL extraction based on node type
     // In a real implementation, this would use the query compiler
-    const nodeType = (node as any).kind
+    const nodeType = (node as {kind?: string}).kind
     switch (nodeType) {
       case 'SelectQueryNode':
         return 'SELECT * FROM ...'
@@ -139,7 +142,7 @@ export function withDebug<DB>(
 
   // Attach metrics methods
   debugDb.getMetrics = () => plugin.getMetrics()
-  debugDb.clearMetrics = () => plugin.clearMetrics()
+  debugDb.clearMetrics = () => { plugin.clearMetrics() }
 
   return debugDb
 }
@@ -172,14 +175,22 @@ export class QueryProfiler {
     this.queries.push(metric)
   }
 
-  getSummary() {
+  getSummary(): {
+    totalQueries: number
+    totalDuration: number
+    averageDuration: number
+    slowestQuery: QueryMetrics | null
+    fastestQuery: QueryMetrics | null
+    queries: QueryMetrics[]
+  } {
     if (this.queries.length === 0) {
       return {
         totalQueries: 0,
         totalDuration: 0,
         averageDuration: 0,
-        slowestQuery: null as QueryMetrics | null,
-        fastestQuery: null as QueryMetrics | null
+        slowestQuery: null,
+        fastestQuery: null,
+        queries: []
       }
     }
 
@@ -190,9 +201,9 @@ export class QueryProfiler {
       totalQueries: this.queries.length,
       totalDuration,
       averageDuration: totalDuration / this.queries.length,
-      slowestQuery: sorted[0],
-      fastestQuery: sorted[sorted.length - 1],
-      queries: this.queries
+      slowestQuery: sorted[0] ?? null,
+      fastestQuery: sorted[sorted.length - 1] ?? null,
+      queries: [...this.queries]
     }
   }
 

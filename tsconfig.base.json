@@ -3,7 +3,7 @@
     // Target and Module
     "target": "ES2022",
     "module": "ESNext",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "moduleResolution": "bundler",
 
     // Strict Type Checking - MAXIMUM SAFETY
@@ -31,8 +31,9 @@
 
     // Code Quality
     "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": false,
+    "skipLibCheck": true, // We can't control external library types
     "checkJs": false,
+    "verbatimModuleSyntax": true, // TypeScript 5.9.2 feature for better ESM support
 
     // Module Resolution
     "esModuleInterop": true,
@@ -60,10 +61,6 @@
     "node_modules",
     "dist",
     "build",
-    "coverage",
-    "*.config.ts",
-    "*.config.js",
-    "**/*.spec.ts",
-    "**/*.test.ts"
+    "coverage"
   ]
 }
