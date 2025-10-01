@@ -47,7 +47,7 @@
     "better-sqlite3": "^12.4.1",
     "@types/better-sqlite3": "^7.6.12",
     "tsup": "^8.5.0",
-    "zod": "^3.23.0"
+    "zod": "^4.1.11"
   },
   "sideEffects": false,
   "engines": {

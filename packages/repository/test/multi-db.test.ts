@@ -26,7 +26,8 @@ const UserUpdateSchema = z.object({
 
 // Function to create post schemas based on database type
 const createPostSchemas = (dbType: DatabaseType) => {
-  const booleanField = dbType === 'sqlite'
+  // SQLite and MySQL use integers (0/1) for booleans
+  const booleanField = (dbType === 'sqlite' || dbType === 'mysql')
     ? z.boolean().transform(val => val ? 1 : 0).or(z.number())
     : z.boolean()
 
@@ -221,13 +222,19 @@ describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', (dbTyp
 
   describe('Query Methods', () => {
     it('should find with filters', async () => {
+      // SQLite and MySQL use integers (0/1) for booleans
       const posts = await postRepository.find({
-        where: { published: dbType === 'sqlite' ? 1 : true }
+        where: { published: (dbType === 'sqlite' || dbType === 'mysql') ? 1 : true }
       })
 
       expect(posts.length).toBeGreaterThan(0)
       posts.forEach((p: Post) => {
-        expect(p.published).toBe(true)
+        // Different databases return different values for booleans:
+        // - PostgreSQL: true/false
+        // - MySQL: 1/0
+        // - SQLite: can be true/false or 1/0 depending on driver version
+        // Check for truthy value instead of exact match
+        expect(p.published).toBeTruthy()
       })
     })
 
@@ -245,7 +252,7 @@ describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', (dbTyp
       expect(totalUsers).toBe(5)
 
       const publishedPosts = await postRepository.count({
-        where: { published: dbType === 'sqlite' ? 1 : true }
+        where: { published: (dbType === 'sqlite' || dbType === 'mysql') ? 1 : true }
       })
       expect(publishedPosts).toBe(4)
     })
@@ -417,7 +424,7 @@ describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', (dbTyp
           'posts.title',
           'users.name as author_name'
         ])
-        .where('posts.published', '=', dbType === 'sqlite' ? 1 : true)
+        .where('posts.published', '=', (dbType === 'sqlite' || dbType === 'mysql') ? 1 : true)
         .execute()
 
       expect(results.length).toBeGreaterThan(0)
@@ -435,7 +442,7 @@ describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', (dbTyp
       const publishedResult = await db
         .selectFrom('posts')
         .select(db.fn.count('id').as('published_count'))
-        .where('published', '=', dbType === 'sqlite' ? 1 : true)
+        .where('published', '=', (dbType === 'sqlite' || dbType === 'mysql') ? 1 : true)
         .executeTakeFirst()
 
       expect(Number(totalResult?.total)).toBeGreaterThan(0)

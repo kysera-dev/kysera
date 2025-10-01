@@ -27,7 +27,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\""
   },
   "dependencies": {
-    "zod": "^3.23.0"
+    "zod": "^4.1.11"
   },
   "devDependencies": {
     "@kysera/repository": "workspace:*",
