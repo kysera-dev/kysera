@@ -11,6 +11,17 @@ interface TestDatabase {
     email: string
     name: string
   }
+  audit_logs: {
+    id: Generated<number>
+    table_name: string
+    entity_id: string
+    operation: string
+    old_values: string | null
+    new_values: string | null
+    changed_by: string | null
+    changed_at: string
+    metadata: string | null
+  }
 }
 
 describe('Minimal Audit Test', () => {

@@ -1,14 +1,15 @@
-import type { Kysely, Selectable, Transaction } from 'kysely'
+import type { Selectable, Transaction } from 'kysely'
 import type { z } from 'zod'
 import { createBaseRepository, type BaseRepository, type RepositoryConfig } from './base-repository'
 import { createTableOperations } from './table-operations'
+import type { Executor } from './helpers'
 
 /**
  * Extended repository interface that includes database and table information
  * for plugin compatibility
  */
 export interface Repository<Entity, DB> extends BaseRepository<DB, Entity> {
-  readonly executor: Kysely<DB>
+  readonly executor: Executor<DB>
   readonly tableName: string
   withTransaction(trx: Transaction<DB>): Repository<Entity, DB>
 }
@@ -16,8 +17,8 @@ export interface Repository<Entity, DB> extends BaseRepository<DB, Entity> {
 /**
  * Create a repository factory with proper type safety
  */
-export function createRepositoryFactory<DB>(executor: Kysely<DB>): {
-  executor: Kysely<DB>
+export function createRepositoryFactory<DB>(executor: Executor<DB>): {
+  executor: Executor<DB>
   create<
     TableName extends keyof DB & string,
     Entity
@@ -83,7 +84,7 @@ export function createRepositoryFactory<DB>(executor: Kysely<DB>): {
  * Simple repository without factory (for plugins)
  */
 export function createSimpleRepository<DB, TableName extends keyof DB & string, Entity>(
-  executor: Kysely<DB>,
+  executor: Executor<DB>,
   tableName: TableName,
   mapRow: (row: Selectable<DB[TableName]>) => Entity
 ): Repository<Entity, DB> {

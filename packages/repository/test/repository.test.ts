@@ -41,7 +41,7 @@ describe('Repository Pattern', () => {
   beforeEach(async () => {
     const setup = createTestDatabase()
     db = setup.db
-    cleanup = setup.cleanup
+    cleanup = setup.cleanup as () => Promise<void>
   })
 
   afterEach(async () => {
@@ -52,7 +52,7 @@ describe('Repository Pattern', () => {
     it('should create a repository with basic operations', async () => {
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row: Selectable<TestDatabase['users']>) => ({
           id: row.id,
@@ -108,7 +108,7 @@ describe('Repository Pattern', () => {
     it('should validate input on create', async () => {
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -142,7 +142,7 @@ describe('Repository Pattern', () => {
     it('should validate input on update if schema provided', async () => {
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -159,13 +159,13 @@ describe('Repository Pattern', () => {
 
       // Invalid email should fail
       await expect(
-        userRepo.update(user.id, {
+        userRepo.update(user.id as number, {
           email: 'invalid-email'
         })
       ).rejects.toThrow()
 
       // Valid update should succeed
-      const updated = await userRepo.update(user.id, {
+      const updated = await userRepo.update(user.id as number, {
         name: 'New Name'
       })
       expect(updated.name).toBe('New Name')
@@ -174,7 +174,7 @@ describe('Repository Pattern', () => {
     it('should handle non-existent records', async () => {
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -204,7 +204,7 @@ describe('Repository Pattern', () => {
 
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -232,7 +232,7 @@ describe('Repository Pattern', () => {
 
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -267,7 +267,7 @@ describe('Repository Pattern', () => {
         isDeleted: boolean
       }
 
-      const userRepo = factory.create<'users', TestDatabase['users'], UserEntity>({
+      const userRepo = factory.create<'users', UserEntity>({
         tableName: 'users',
         mapRow: (row: Selectable<TestDatabase['users']>): UserEntity => ({
           id: row.id,
@@ -307,7 +307,7 @@ describe('Repository Pattern', () => {
         }
       }
 
-      const postRepo = factory.create<'posts', TestDatabase['posts'], PostEntity>({
+      const postRepo = factory.create<'posts', PostEntity>({
         tableName: 'posts',
         mapRow: (row: Selectable<TestDatabase['posts']>): PostEntity => ({
           id: row.id,
@@ -346,7 +346,7 @@ describe('Repository Pattern', () => {
     it('should work with transactions', async () => {
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -356,7 +356,7 @@ describe('Repository Pattern', () => {
 
       await db.transaction().execute(async (trx) => {
         const txFactory = createRepositoryFactory(trx)
-        const txUserRepo = txFactory.create<'users', TestDatabase['users'], User>({
+        const txUserRepo = txFactory.create<'users', User>({
           tableName: 'users',
           mapRow: (row) => row as User,
           schemas: {
@@ -387,7 +387,7 @@ describe('Repository Pattern', () => {
     it('should rollback on transaction failure', async () => {
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -398,7 +398,7 @@ describe('Repository Pattern', () => {
       try {
         await db.transaction().execute(async (trx) => {
           const txFactory = createRepositoryFactory(trx)
-          const txUserRepo = txFactory.create<'users', TestDatabase['users'], User>({
+          const txUserRepo = txFactory.create<'users', User>({
             tableName: 'users',
             mapRow: (row) => row as User,
             schemas: {
@@ -430,7 +430,7 @@ describe('Repository Pattern', () => {
       await seedTestData(db)
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -441,7 +441,7 @@ describe('Repository Pattern', () => {
       // Find multiple users by IDs
       const users = await userRepo.findByIds([1, 2])
       expect(users).toHaveLength(2)
-      expect(users.map(u => u.id).sort()).toEqual([1, 2])
+      expect(users.map(u => u.id as number).sort()).toEqual([1, 2])
 
       // Empty array should return empty
       const empty = await userRepo.findByIds([])
@@ -455,7 +455,7 @@ describe('Repository Pattern', () => {
     it('should bulk create multiple entities', async () => {
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -483,7 +483,7 @@ describe('Repository Pattern', () => {
     it('should validate all inputs in bulk create', async () => {
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -504,7 +504,7 @@ describe('Repository Pattern', () => {
       await seedTestData(db)
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -531,7 +531,7 @@ describe('Repository Pattern', () => {
     it('should handle empty batch operations', async () => {
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -556,7 +556,7 @@ describe('Repository Pattern', () => {
     it('should bulk delete multiple entities', async () => {
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -571,7 +571,7 @@ describe('Repository Pattern', () => {
         { email: 'delete3@example.com', name: 'Delete 3' }
       ])
 
-      const idsToDelete = users.map(u => u.id)
+      const idsToDelete = users.map(u => u.id as number)
 
       // Delete them
       await userRepo.bulkDelete(idsToDelete)
@@ -585,7 +585,7 @@ describe('Repository Pattern', () => {
       await seedTestData(db)
       const factory = createRepositoryFactory(db)
 
-      const userRepo = factory.create<'users', TestDatabase['users'], User>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
@@ -604,7 +604,7 @@ describe('Repository Pattern', () => {
       try {
         await db.transaction().execute(async (trx) => {
           const txFactory = createRepositoryFactory(trx)
-          const txUserRepo = txFactory.create<'users', TestDatabase['users'], User>({
+          const txUserRepo = txFactory.create<'users', User>({
             tableName: 'users',
             mapRow: (row) => row as User,
             schemas: {
@@ -628,8 +628,6 @@ describe('Repository Pattern', () => {
   describe('Complex Queries', () => {
     it('should work with joined data', async () => {
       await seedTestData(db)
-
-      const factory = createRepositoryFactory(db)
 
       interface PostWithAuthor {
         id: number

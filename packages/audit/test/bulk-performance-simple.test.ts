@@ -136,15 +136,15 @@ describe('Audit Plugin - Bulk Operation Optimization', () => {
       // Verify old values were captured
       for (let i = 0; i < 3; i++) {
         const log = auditLogs[i]
-        expect(log.old_values).toBeTruthy()
+        expect(log?.old_values).toBeTruthy()
 
-        if (log.old_values) {
+        if (log?.old_values) {
           const oldValues = JSON.parse(log.old_values)
           expect(oldValues.status).toBe('active') // Old status
           expect(oldValues.name).toBe(`User ${i + 1}`)
         }
 
-        if (log.new_values) {
+        if (log?.new_values) {
           const newValues = JSON.parse(log.new_values)
           expect(newValues.status).toBe('inactive') // New status
         }
@@ -182,10 +182,10 @@ describe('Audit Plugin - Bulk Operation Optimization', () => {
       for (let i = 0; i < 3; i++) {
         const log = auditLogs[i]
         const entityId = 4 + i
-        expect(log.entity_id).toBe(String(entityId))
-        expect(log.old_values).toBeTruthy()
+        expect(log?.entity_id).toBe(String(entityId))
+        expect(log?.old_values).toBeTruthy()
 
-        if (log.old_values) {
+        if (log?.old_values) {
           const oldValues = JSON.parse(log.old_values)
           expect(oldValues.name).toBe(`User ${entityId}`)
           expect(oldValues.email).toBe(`user${entityId}@example.com`)
@@ -193,7 +193,7 @@ describe('Audit Plugin - Bulk Operation Optimization', () => {
         }
 
         // New values should be null for DELETE
-        expect(log.new_values).toBeNull()
+        expect(log?.new_values).toBeNull()
       }
 
       // Verify users were actually deleted
@@ -246,7 +246,7 @@ describe('Audit Plugin - Bulk Operation Optimization', () => {
 
       try {
         await db.transaction().execute(async (trx) => {
-          const torm = await createORM(trx, [auditPluginSQLite({ captureOldValues: true })])
+          const torm = await createORM(trx as any, [auditPluginSQLite({ captureOldValues: true })])
           const factory = createRepositoryFactory(trx)
 
           const trepo = torm.createRepository(() =>
@@ -289,7 +289,7 @@ describe('Audit Plugin - Bulk Operation Optimization', () => {
       await db.deleteFrom('audit_logs').execute()
 
       await db.transaction().execute(async (trx) => {
-        const torm = await createORM(trx, [auditPluginSQLite({ captureOldValues: true, captureNewValues: true })])
+        const torm = await createORM(trx as any, [auditPluginSQLite({ captureOldValues: true, captureNewValues: true })])
         const factory = createRepositoryFactory(trx)
 
         const trepo = torm.createRepository(() =>

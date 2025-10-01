@@ -1,5 +1,6 @@
-import type { Kysely, Selectable, InsertQueryBuilder } from 'kysely'
+import type { Selectable, InsertQueryBuilder } from 'kysely'
 import type { TableOperations } from './base-repository'
+import type { Executor } from './helpers'
 
 /**
  * Type helper to convert unknown results to typed results
@@ -13,7 +14,7 @@ function castResults<T>(results: unknown): T {
  * Check if the database is MySQL
  * MySQL doesn't support RETURNING clause properly
  */
-function isMySQL<DB>(db: Kysely<DB>): boolean {
+function isMySQL<DB>(db: Executor<DB>): boolean {
   try {
     const dbAny = db as any
     const executor = dbAny.getExecutor ? dbAny.getExecutor() : null
@@ -53,7 +54,7 @@ function isMySQL<DB>(db: Kysely<DB>): boolean {
  * the brittleness of trying to perfectly match Kysely's internal types.
  */
 export function createTableOperations<DB, TableName extends keyof DB & string>(
-  db: Kysely<DB>,
+  db: Executor<DB>,
   tableName: TableName
 ): TableOperations<DB[TableName]> {
   type Table = DB[TableName]
