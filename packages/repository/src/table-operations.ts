@@ -10,6 +10,30 @@ function castResults<T>(results: unknown): T {
 }
 
 /**
+ * Check if the database is MySQL
+ * MySQL doesn't support RETURNING clause properly
+ */
+function isMySQL<DB>(db: Kysely<DB>): boolean {
+  try {
+    const dbAny = db as any
+    const executor = dbAny.getExecutor ? dbAny.getExecutor() : null
+    const adapter = executor?.adapter
+
+    if (adapter) {
+      const adapterName = adapter.constructor?.name || ''
+      // Check for MySQL adapter
+      if (adapterName.toLowerCase().includes('mysql')) {
+        return true
+      }
+    }
+
+    return false
+  } catch {
+    return false
+  }
+}
+
+/**
  * Create table operations for a specific table
  * This handles all the Kysely-specific type complexity
  *
@@ -95,40 +119,118 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     },
 
     async insert(data: unknown): Promise<SelectTable> {
-      const result = await db
-        .insertInto(tableName)
-        .values(data as Parameters<InsertQueryBuilder<DB, TableName, unknown>['values']>[0])
-        .returningAll()
-        .executeTakeFirst()
+      const usesMySQL = isMySQL(db)
 
-      if (!result) {
-        throw new Error('Failed to create record')
+      if (usesMySQL) {
+        // MySQL doesn't support RETURNING, use insertId
+        const result = await db
+          .insertInto(tableName)
+          .values(data as Parameters<InsertQueryBuilder<DB, TableName, unknown>['values']>[0])
+          .executeTakeFirst()
+
+        const insertId = (result as any).insertId
+        if (!insertId) {
+          throw new Error('Failed to create record')
+        }
+
+        // Fetch the inserted record
+        const record = await (db as any)
+          .selectFrom(tableName)
+          .selectAll()
+          .where('id', '=', Number(insertId))
+          .executeTakeFirst()
+
+        if (!record) {
+          throw new Error('Failed to fetch created record')
+        }
+
+        return castResults<SelectTable>(record)
+      } else {
+        // PostgreSQL and SQLite support RETURNING
+        const result = await db
+          .insertInto(tableName)
+          .values(data as Parameters<InsertQueryBuilder<DB, TableName, unknown>['values']>[0])
+          .returningAll()
+          .executeTakeFirst()
+
+        if (!result) {
+          throw new Error('Failed to create record')
+        }
+
+        return castResults<SelectTable>(result)
       }
-
-      return castResults<SelectTable>(result)
     },
 
     async insertMany(data: unknown[]): Promise<SelectTable[]> {
-      const result = await db
-        .insertInto(tableName)
-        .values(data as Parameters<InsertQueryBuilder<DB, TableName, unknown>['values']>[0])
-        .returningAll()
-        .execute()
+      const usesMySQL = isMySQL(db)
 
-      return castResults<SelectTable[]>(result)
+      if (usesMySQL) {
+        // MySQL doesn't support RETURNING for bulk inserts
+        // We need to insert each row and fetch it back
+        const results: SelectTable[] = []
+
+        for (const item of data) {
+          const result = await db
+            .insertInto(tableName)
+            .values(item as Parameters<InsertQueryBuilder<DB, TableName, unknown>['values']>[0])
+            .executeTakeFirst()
+
+          const insertId = (result as any).insertId
+          if (!insertId) {
+            throw new Error('Failed to create record')
+          }
+
+          // Fetch the inserted record
+          const record = await (db as any)
+            .selectFrom(tableName)
+            .selectAll()
+            .where('id', '=', Number(insertId))
+            .executeTakeFirst()
+
+          if (record) {
+            results.push(castResults<SelectTable>(record))
+          }
+        }
+
+        return results
+      } else {
+        // PostgreSQL and SQLite support RETURNING
+        const result = await db
+          .insertInto(tableName)
+          .values(data as Parameters<InsertQueryBuilder<DB, TableName, unknown>['values']>[0])
+          .returningAll()
+          .execute()
+
+        return castResults<SelectTable[]>(result)
+      }
     },
 
     async updateById(id: number, data: unknown): Promise<SelectTable | undefined> {
+      const usesMySQL = isMySQL(db)
       const baseQuery = db.updateTable(tableName)
       const query: any = (baseQuery as any).set(data)
 
-      // Build where clause dynamically
-      const result = await query
-        .where('id', '=', id)
-        .returningAll()
-        .executeTakeFirst()
+      if (usesMySQL) {
+        // MySQL doesn't support RETURNING for UPDATE
+        await query.where('id', '=', id).execute()
 
-      return castResults<SelectTable | undefined>(result)
+        // Fetch the updated record
+        const record = await (db as any)
+          .selectFrom(tableName)
+          .selectAll()
+          .where('id', '=', id)
+          .executeTakeFirst()
+
+        return castResults<SelectTable | undefined>(record)
+      } else {
+        // PostgreSQL and SQLite support RETURNING
+        const result = await query
+          .where('id', '=', id)
+          .returningAll()
+          .executeTakeFirst()
+
+        return castResults<SelectTable | undefined>(result)
+      }
     },
 
     async deleteById(id: number): Promise<boolean> {
