@@ -253,7 +253,7 @@ describe('Health Checks with Real SQLite Database', () => {
 
       let signalHandler: Function | undefined
 
-      const processSpy = vi.spyOn(process, 'on').mockImplementation((event: string, handler: any) => {
+      const processSpy = vi.spyOn(process, 'on').mockImplementation((event: string | symbol, handler: any) => {
         if (event === 'SIGTERM') {
           signalHandler = handler
         }
@@ -290,7 +290,7 @@ describe('Health Checks with Real SQLite Database', () => {
       let signalHandler: Function | undefined
       let callCount = 0
 
-      const processSpy = vi.spyOn(process, 'on').mockImplementation((event: string, handler: any) => {
+      const processSpy = vi.spyOn(process, 'on').mockImplementation((event: string | symbol, handler: any) => {
         if (event === 'SIGTERM') {
           signalHandler = handler
         }

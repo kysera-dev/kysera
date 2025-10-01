@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { Kysely, SqliteDialect, type Generated } from 'kysely'
 import Database from 'better-sqlite3'
-import { paginateCursor } from '../src/pagination'
+import { paginateCursor, type PaginatedResult } from '../src/pagination'
 
 interface TestDatabase {
   products: {
@@ -431,7 +431,7 @@ describe('Cursor Pagination - Complex Scenarios', () => {
 
       // Fetch all records using pagination
       while (true) {
-        const page = await paginateCursor(
+        const page: PaginatedResult<any> = await paginateCursor(
           db.selectFrom('products').selectAll(),
           {
             limit: 3,
@@ -466,7 +466,7 @@ describe('Cursor Pagination - Complex Scenarios', () => {
       let cursor: string | undefined = undefined
 
       while (true) {
-        const page = await paginateCursor(
+        const page: PaginatedResult<any> = await paginateCursor(
           db.selectFrom('products').selectAll(),
           {
             limit: 3,

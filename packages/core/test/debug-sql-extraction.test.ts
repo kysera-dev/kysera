@@ -354,7 +354,7 @@ describe('Debug SQL Extraction', () => {
       await debugDb
         .selectFrom('users')
         .selectAll()
-        .where('id', 'in', (eb) =>
+        .where('id', 'in', (eb: any) =>
           eb.selectFrom('posts')
             .select('user_id')
             .where('title', '=', 'Test')

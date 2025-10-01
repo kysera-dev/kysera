@@ -14,9 +14,7 @@ describe('Performance Benchmarks', () => {
       const value = data[column]
       const columnB64 = Buffer.from(String(column)).toString('base64')
       const valueB64 = Buffer.from(JSON.stringify(value)).toString('base64')
-      const cursor = `${columnB64}:${valueB64}`
-
-      return cursor
+      void `${columnB64}:${valueB64}`
     })
 
     bench('single-column cursor encoding (old JSON approach)', () => {
@@ -29,8 +27,7 @@ describe('Performance Benchmarks', () => {
         return acc
       }, {} as Record<string, any>)
 
-      const cursor = Buffer.from(JSON.stringify(cursorObj)).toString('base64')
-      return cursor
+      void Buffer.from(JSON.stringify(cursorObj)).toString('base64')
     })
 
     bench('multi-column cursor encoding', () => {
@@ -46,8 +43,7 @@ describe('Performance Benchmarks', () => {
         return acc
       }, {} as Record<string, any>)
 
-      const cursor = Buffer.from(JSON.stringify(cursorObj)).toString('base64')
-      return cursor
+      void Buffer.from(JSON.stringify(cursorObj)).toString('base64')
     })
   })
 
@@ -73,10 +69,10 @@ describe('Performance Benchmarks', () => {
 
       // Execute queries (metrics will be limited to 100)
       for (let i = 0; i < 10; i++) {
-        await debugDb.selectFrom('users').selectAll().execute()
+        await (debugDb as any).selectFrom('users').selectAll().execute()
       }
 
-      return debugDb.getMetrics().length
+      void debugDb.getMetrics().length
     })
 
     bench('debug plugin with large circular buffer (maxMetrics: 1000)', async () => {
@@ -87,10 +83,10 @@ describe('Performance Benchmarks', () => {
 
       // Execute queries (metrics will be limited to 1000)
       for (let i = 0; i < 10; i++) {
-        await debugDb.selectFrom('users').selectAll().execute()
+        await (debugDb as any).selectFrom('users').selectAll().execute()
       }
 
-      return debugDb.getMetrics().length
+      void debugDb.getMetrics().length
     })
   })
 
@@ -124,7 +120,7 @@ describe('Performance Benchmarks', () => {
           orderBy: [{ column: 'id', direction: 'asc' }]
         }
       )
-      return result.data.length
+      void result.data.length
     })
 
     bench('cursor pagination - multi-column', async () => {
@@ -138,7 +134,7 @@ describe('Performance Benchmarks', () => {
           ]
         }
       )
-      return result.data.length
+      void result.data.length
     })
 
     bench('cursor pagination - with cursor (second page)', async () => {
@@ -160,7 +156,7 @@ describe('Performance Benchmarks', () => {
           orderBy: [{ column: 'id', direction: 'asc' }]
         }
       )
-      return result.data.length
+      void result.data.length
     })
   })
 })

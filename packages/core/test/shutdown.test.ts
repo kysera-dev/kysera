@@ -204,7 +204,7 @@ describe('Shutdown Utilities', () => {
 
     it('should use custom logger', async () => {
       const logger = vi.fn()
-      const _destroySpy = vi.spyOn(db, 'destroy').mockResolvedValue()
+      vi.spyOn(db, 'destroy').mockResolvedValue()
       let sigTermHandler: Function | undefined
 
       processOnceSpy.mockImplementation((signal: string, handler: Function) => {

@@ -197,7 +197,7 @@ describe('Pagination', () => {
 
       const result = await paginateCursor(query, {
         limit: 1,
-        orderBy: [{ column: 'posts.id', direction: 'asc' }]
+        orderBy: [{ column: 'title' as any, direction: 'asc' }]
       })
 
       expect(result.data).toHaveLength(1)
@@ -264,7 +264,7 @@ describe('Pagination', () => {
       // Soft delete a user
       await db
         .updateTable('users')
-        .set({ deleted_at: new Date().toISOString() })  // SQLite stores dates as strings
+        .set({ deleted_at: new Date().toISOString() as any })  // SQLite stores dates as strings
         .where('email', '=', 'bob@example.com')
         .execute()
 

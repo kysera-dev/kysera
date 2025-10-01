@@ -58,13 +58,15 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', (dbType) => {
       } catch (error) {
         const parsed = parseDatabaseError(error, dbType)
         expect(parsed).toBeInstanceOf(UniqueConstraintError)
-        // SQLite returns generic 'unique' constraint name
-        if (dbType === 'sqlite') {
-          expect(parsed.constraint).toBe('unique')
-        } else {
-          expect(parsed.constraint).toMatch(/email|users_email/)
+        if (parsed instanceof UniqueConstraintError) {
+          // SQLite returns generic 'unique' constraint name
+          if (dbType === 'sqlite') {
+            expect(parsed.constraint).toBe('unique')
+          } else {
+            expect(parsed.constraint).toMatch(/email|users_email/)
+          }
+          expect(parsed.columns).toContain('email')
         }
-        expect(parsed.columns).toContain('email')
       }
     })
 
@@ -83,11 +85,13 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', (dbType) => {
       } catch (error) {
         const parsed = parseDatabaseError(error, dbType)
         expect(parsed).toBeInstanceOf(ForeignKeyError)
-        // PostgreSQL provides table names, SQLite and MySQL don't
-        if (dbType === 'postgres') {
-          expect(parsed.table).not.toBe('unknown')
-        } else {
-          expect(parsed.table).toBe('unknown')
+        if (parsed instanceof ForeignKeyError) {
+          // PostgreSQL provides table names, SQLite and MySQL don't
+          if (dbType === 'postgres') {
+            expect(parsed.table).not.toBe('unknown')
+          } else {
+            expect(parsed.table).toBe('unknown')
+          }
         }
       }
     })
@@ -238,7 +242,7 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', (dbType) => {
       const query = db
         .selectFrom('posts')
         .selectAll()
-        .where('published', '=', dbType === 'sqlite' ? 1 : true)
+        .where('published', '=', (dbType === 'sqlite' ? 1 : true) as any)
 
       const page1 = await paginateCursor(query, {
         orderBy: [{ column: 'title', direction: 'asc' }],
@@ -367,7 +371,7 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', (dbType) => {
           'users.name as author',
           db.fn.count('comments.id').as('comment_count')
         ])
-        .where('posts.published', '=', dbType === 'sqlite' ? 1 : true)
+        .where('posts.published', '=', (dbType === 'sqlite' ? 1 : true) as any)
         .groupBy(['posts.id', 'posts.title', 'users.name'])
         .orderBy('comment_count', 'desc')
         .execute()
@@ -404,7 +408,7 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', (dbType) => {
             .selectFrom('users')
             .innerJoin('posts', 'posts.user_id', 'users.id')
             .select(['users.id', 'users.name'])
-            .where('posts.published', '=', dbType === 'sqlite' ? 1 : true)
+            .where('posts.published', '=', (dbType === 'sqlite' ? 1 : true) as any)
             .groupBy(['users.id', 'users.name'])
         )
         .selectFrom('active_users')
@@ -422,7 +426,7 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', (dbType) => {
 
       const debugDb = withDebug(db, {
         logger: (sql) => logs.push(sql),
-        logLevel: 'all'
+        logQuery: true
       })
 
       await debugDb
@@ -440,7 +444,7 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', (dbType) => {
       const { withDebug } = await import('../src/debug')
 
       const debugDb = withDebug(db, {
-        logLevel: 'all',
+        logQuery: true,
         slowQueryThreshold: 0
       })
 
@@ -476,14 +480,14 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', (dbType) => {
     it('should handle bulk updates', async () => {
       await db
         .updateTable('posts')
-        .set({ published: dbType === 'sqlite' ? 1 : true })
-        .where('published', '=', dbType === 'sqlite' ? 0 : false)
+        .set({ published: (dbType === 'sqlite' ? 1 : true) as any })
+        .where('published', '=', (dbType === 'sqlite' ? 0 : false) as any)
         .execute()
 
       const unpublished = await db
         .selectFrom('posts')
         .selectAll()
-        .where('published', '=', dbType === 'sqlite' ? 0 : false)
+        .where('published', '=', (dbType === 'sqlite' ? 0 : false) as any)
         .execute()
 
       expect(unpublished).toHaveLength(0)
