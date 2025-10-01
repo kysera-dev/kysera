@@ -1,0 +1,28 @@
+{
+  "name": "multi-tenant-saas-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-tenant SaaS application example using Kysera",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "migrate": "tsx src/db/migrate.ts"
+  },
+  "dependencies": {
+    "@kysera/core": "workspace:*",
+    "@kysera/repository": "workspace:*",
+    "@kysera/audit": "workspace:*",
+    "@kysera/timestamps": "workspace:*",
+    "kysely": "^0.28.7",
+    "pg": "^8.16.3",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.2"
+  }
+}
