@@ -88,9 +88,22 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
   let finalQuery = query
 
   if (cursor) {
-    const decoded = JSON.parse(
-      Buffer.from(cursor, 'base64').toString()
-    ) as Record<string, any>
+    // Decode and validate cursor
+    let decoded: Record<string, any>
+    try {
+      decoded = JSON.parse(
+        Buffer.from(cursor, 'base64').toString()
+      ) as Record<string, any>
+    } catch {
+      throw new Error('Invalid pagination cursor: unable to decode')
+    }
+
+    // Validate cursor has all required columns
+    for (const { column } of orderBy) {
+      if (!(column in decoded)) {
+        throw new Error(`Invalid pagination cursor: missing column '${String(column)}'`)
+      }
+    }
 
     // Build compound WHERE clause for cursor
     if (orderBy.length === 1) {

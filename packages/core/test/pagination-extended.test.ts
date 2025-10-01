@@ -366,14 +366,14 @@ describe('Extended Pagination Tests', () => {
       // Cursor missing required column
       const incompleteCursor = Buffer.from(JSON.stringify({})).toString('base64')
 
-      const result = await paginateCursor(query, {
-        orderBy: [{ column: 'id', direction: 'asc' }],
-        cursor: incompleteCursor,
-        limit: 10
-      })
-
-      // Should still work but might return all results
-      expect(result.data).toBeDefined()
+      // Should reject cursor with missing required columns
+      await expect(
+        paginateCursor(query, {
+          orderBy: [{ column: 'id', direction: 'asc' }],
+          cursor: incompleteCursor,
+          limit: 10
+        })
+      ).rejects.toThrow("Invalid pagination cursor: missing column 'id'")
     })
 
     it('should handle limit of 0', async () => {
