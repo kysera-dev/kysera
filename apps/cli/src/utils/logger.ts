@@ -1,5 +1,4 @@
-import chalk from 'chalk'
-import stripAnsi from 'strip-ansi'
+import { log, prism, strip } from '@xec-sh/kit'
 import { format } from 'node:util'
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
@@ -51,7 +50,7 @@ class Logger {
     if (this.json) {
       const entry = {
         level,
-        message: stripAnsi(formattedMessage),
+        message: strip(formattedMessage),
         timestamp: this.formatTimestamp()
       }
       return JSON.stringify(entry)
@@ -60,7 +59,7 @@ class Logger {
     let output = ''
 
     if (this.timestamps) {
-      output += chalk.gray(`[${this.formatTimestamp()}] `)
+      output += prism.gray(`[${this.formatTimestamp()}] `)
     }
 
     const levelTag = this.getLevelTag(level)
@@ -76,43 +75,80 @@ class Logger {
 
     switch (level) {
       case 'debug':
-        return chalk.gray('[DEBUG]')
+        return prism.gray('[DEBUG]')
       case 'info':
-        return chalk.blue('[INFO]')
+        return prism.blue('[INFO]')
       case 'warn':
-        return chalk.yellow('[WARN]')
+        return prism.yellow('[WARN]')
       case 'error':
-        return chalk.red('[ERROR]')
+        return prism.red('[ERROR]')
     }
   }
 
   public debug(message: string, ...args: any[]): void {
     if (this.shouldLog('debug')) {
-      console.log(this.formatMessage('debug', message, ...args))
+      const formatted = format(message, ...args)
+      if (this.json || this.timestamps) {
+        console.log(this.formatMessage('debug', message, ...args))
+      } else {
+        // Use console.log with gray color for debug messages
+        console.log(prism.gray(`[DEBUG] ${formatted}`))
+      }
     }
   }
 
   public info(message: string, ...args: any[]): void {
     if (this.shouldLog('info')) {
-      console.log(this.formatMessage('info', message, ...args))
+      const formatted = format(message, ...args)
+      if (this.json) {
+        console.log(this.formatMessage('info', message, ...args))
+      } else if (this.timestamps) {
+        console.log(this.formatMessage('info', message, ...args))
+      } else {
+        log.info(formatted)
+      }
     }
   }
 
   public warn(message: string, ...args: any[]): void {
     if (this.shouldLog('warn')) {
-      console.warn(this.formatMessage('warn', message, ...args))
+      const formatted = format(message, ...args)
+      if (this.json) {
+        console.warn(this.formatMessage('warn', message, ...args))
+      } else if (this.timestamps) {
+        console.warn(this.formatMessage('warn', message, ...args))
+      } else {
+        log.warn(formatted)
+      }
     }
   }
 
   public error(message: string | Error, ...args: any[]): void {
     if (this.shouldLog('error')) {
       if (message instanceof Error) {
-        console.error(this.formatMessage('error', message.message, ...args))
-        if (this.level === 'debug' && message.stack) {
-          console.error(chalk.gray(message.stack))
+        const formatted = format(message.message, ...args)
+        if (this.json) {
+          console.error(this.formatMessage('error', message.message, ...args))
+        } else if (this.timestamps) {
+          console.error(this.formatMessage('error', message.message, ...args))
+          if (this.level === 'debug' && message.stack) {
+            console.error(prism.gray(message.stack))
+          }
+        } else {
+          log.error(formatted)
+          if (this.level === 'debug' && message.stack) {
+            console.error(prism.gray(message.stack))
+          }
         }
       } else {
-        console.error(this.formatMessage('error', message, ...args))
+        const formatted = format(message, ...args)
+        if (this.json) {
+          console.error(this.formatMessage('error', message, ...args))
+        } else if (this.timestamps) {
+          console.error(this.formatMessage('error', message, ...args))
+        } else {
+          log.error(formatted)
+        }
       }
     }
   }
@@ -124,17 +160,16 @@ class Logger {
       if (this.json) {
         const entry = {
           level: 'success',
-          message: stripAnsi(formattedMessage),
+          message: strip(formattedMessage),
           timestamp: this.formatTimestamp()
         }
         console.log(JSON.stringify(entry))
-      } else {
-        let output = ''
-        if (this.timestamps) {
-          output += chalk.gray(`[${this.formatTimestamp()}] `)
-        }
-        output += chalk.green('✔') + ' ' + formattedMessage
+      } else if (this.timestamps) {
+        let output = prism.gray(`[${this.formatTimestamp()}] `)
+        output += prism.green('✔') + ' ' + formattedMessage
         console.log(output)
+      } else {
+        log.success(formattedMessage)
       }
     }
   }
@@ -156,7 +191,7 @@ class Logger {
 
   public group(label?: string): void {
     if (label) {
-      console.log(this.colors ? chalk.bold(label) : label)
+      console.log(this.colors ? prism.bold(label) : label)
     }
     console.group()
   }

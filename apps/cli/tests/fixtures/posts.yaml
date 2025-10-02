@@ -1,0 +1,35 @@
+name: posts_fixture
+version: 1.0.0
+description: Sample blog posts for testing
+dependencies:
+  - users_fixture
+tags:
+  - posts
+  - blog
+  - test
+data:
+  posts:
+    - id: 1
+      user_id: 1
+      title: "Welcome to Our Blog"
+      content: "This is the first post on our new blog platform."
+      published: true
+      created_at: "2024-01-01T10:00:00Z"
+    - id: 2
+      user_id: 2
+      title: "Getting Started with Kysera"
+      content: "Kysera is a powerful TypeScript ORM that makes database operations easy."
+      published: true
+      created_at: "2024-01-02T10:00:00Z"
+    - id: 3
+      user_id: 2
+      title: "Draft Post"
+      content: "This is a draft post that hasn't been published yet."
+      published: false
+      created_at: "2024-01-03T10:00:00Z"
+    - id: 4
+      user_id: 3
+      title: "Advanced Kysera Techniques"
+      content: "Learn advanced patterns and techniques for using Kysera effectively."
+      published: true
+      created_at: "2024-01-04T10:00:00Z"

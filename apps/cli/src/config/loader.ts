@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import * as fs from 'node:fs/promises'
 import { cosmiconfig } from 'cosmiconfig'
 import { TypeScriptLoader } from 'cosmiconfig-typescript-loader'
 import { KyseraConfigSchema, type KyseraConfig } from './schema.js'
@@ -141,4 +142,41 @@ export function setConfigValue(config: KyseraConfig, path: string, value: any): 
   }
 
   obj[lastKey] = value
+}
+
+/**
+ * Save configuration to file
+ */
+export async function saveConfig(config: KyseraConfig, configPath?: string): Promise<void> {
+  // Find or use the specified config file path
+  const resolvedPath = configPath
+    ? resolve(process.cwd(), configPath)
+    : findConfigFile() || resolve(process.cwd(), 'kysera.config.json')
+
+  // Validate configuration before saving
+  const validation = KyseraConfigSchema.safeParse(config)
+  if (!validation.success) {
+    const errors = validation.error.errors.map(e => `  - ${e.path.join('.')}: ${e.message}`).join('\n')
+    throw new Error(`Configuration validation failed:\n${errors}`)
+  }
+
+  // Determine file format from extension
+  const ext = resolvedPath.split('.').pop()?.toLowerCase()
+
+  let content: string
+  if (ext === 'json') {
+    content = JSON.stringify(config, null, 2)
+  } else if (ext === 'js' || ext === 'mjs' || ext === 'cjs') {
+    content = `module.exports = ${JSON.stringify(config, null, 2)};`
+  } else if (ext === 'ts' || ext === 'mts' || ext === 'cts') {
+    content = `import { defineConfig } from '@kysera/cli';\n\nexport default defineConfig(${JSON.stringify(config, null, 2)});`
+  } else {
+    // Default to JSON format
+    content = JSON.stringify(config, null, 2)
+  }
+
+  // Write the configuration file
+  await fs.writeFile(resolvedPath, content, 'utf-8')
+
+  logger.debug(`Configuration saved to ${resolvedPath}`)
 }
