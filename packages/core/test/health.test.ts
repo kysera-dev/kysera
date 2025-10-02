@@ -23,17 +23,18 @@ describe('Health Check', () => {
       const health = await checkDatabaseHealth(db)
 
       expect(health.status).toBe('healthy')
-      expect(health.checks.database.connected).toBe(true)
-      expect(health.checks.database.latency).toBeGreaterThanOrEqual(0)
-      expect(health.checks.database.error).toBeUndefined()
+      expect(health.checks).toHaveLength(1)
+      expect(health.checks[0]?.name).toBe('Database Connection')
+      expect(health.checks[0]?.status).toBe('healthy')
+      expect(health.metrics?.checkLatency).toBeGreaterThanOrEqual(0)
       expect(health.timestamp).toBeInstanceOf(Date)
     })
 
     it('should measure query latency accurately', async () => {
       const health = await checkDatabaseHealth(db)
 
-      expect(health.checks.database.latency).toBeGreaterThanOrEqual(0)  // May be 0 for very fast queries
-      expect(health.checks.database.latency).toBeLessThan(100) // Should be fast for SQLite
+      expect(health.metrics?.checkLatency).toBeGreaterThanOrEqual(0)  // May be 0 for very fast queries
+      expect(health.metrics?.checkLatency).toBeLessThan(100) // Should be fast for SQLite
     })
 
     it('should handle database errors gracefully', async () => {
@@ -47,9 +48,9 @@ describe('Health Check', () => {
       const health = await checkDatabaseHealth(brokenDb)
 
       expect(health.status).toBe('unhealthy')
-      expect(health.checks.database.connected).toBe(false)
-      expect(health.checks.database.error).toBe('Connection failed')
-      expect(health.checks.database.latency).toBe(-1)  // -1 indicates error
+      expect(health.checks).toHaveLength(1)
+      expect(health.checks[0]?.status).toBe('unhealthy')
+      expect(health.checks[0]?.message).toBe('Connection failed')
     })
 
     it('should include pool metrics when provided', async () => {
@@ -64,11 +65,11 @@ describe('Health Check', () => {
 
       const health = await checkDatabaseHealth(db, mockPool as any)
 
-      expect(health.checks.pool).toEqual({
-        size: 10,
-        active: 3,
-        idle: 7,
-        waiting: 0
+      expect(health.metrics?.poolMetrics).toEqual({
+        totalConnections: 10,
+        activeConnections: 3,
+        idleConnections: 7,
+        waitingRequests: 0
       })
     })
   })
