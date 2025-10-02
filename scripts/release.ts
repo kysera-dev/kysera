@@ -16,7 +16,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { glob } from 'glob'
-import { prism, prompt, select, input, confirm } from '@xec-sh/kit'
+import { prism, select, text, confirm } from '@xec-sh/kit'
 import semver from 'semver'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -292,7 +292,7 @@ async function promptVersion(currentVersion: string): Promise<string> {
   let newVersion: string
 
   if (versionType === 'custom') {
-    const customVersion = await input({
+    const customVersion = await text({
       message: 'Enter custom version:',
       validate: (value) => {
         if (!semver.valid(value)) {
@@ -301,7 +301,7 @@ async function promptVersion(currentVersion: string): Promise<string> {
         return undefined
       }
     })
-    newVersion = customVersion
+    newVersion = customVersion as string
   } else if (versionType === 'prerelease') {
     const prereleaseId = await select({
       message: 'Select prerelease type:',
