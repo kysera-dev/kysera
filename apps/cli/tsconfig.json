@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
+    "composite": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules", "tests", "**/*.test.ts", "**/*.spec.ts"],
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/repository" },
+    { "path": "../../packages/migrations" },
+    { "path": "../../packages/audit" },
+    { "path": "../../packages/soft-delete" },
+    { "path": "../../packages/timestamps" }
+  ]
+}
