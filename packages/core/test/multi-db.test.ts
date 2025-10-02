@@ -157,8 +157,8 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', (dbType) => {
       const { checkDatabaseHealth } = await import('../src/health')
       const health = await checkDatabaseHealth(db as any)
       expect(health.status).toBe('healthy')
-      expect(health.checks.database.latency).toBeGreaterThanOrEqual(0)
-      expect(health.checks.database.latency).toBeLessThan(100)
+      expect(health.metrics?.checkLatency).toBeGreaterThanOrEqual(0)
+      expect(health.metrics?.checkLatency).toBeLessThan(100)
     })
 
     it('should detect connection issues', async () => {

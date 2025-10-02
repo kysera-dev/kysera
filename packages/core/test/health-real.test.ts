@@ -21,10 +21,10 @@ describe('Health Checks with Real SQLite Database', () => {
       const result = await checkDatabaseHealth(db)
 
       expect(result.status).toBe('healthy')
-      expect(result.checks.database.connected).toBe(true)
-      expect(result.checks.database.latency).toBeGreaterThanOrEqual(0)
-      expect(result.checks.database.latency).toBeLessThan(100) // Should be fast for in-memory
-      expect(result.checks.database.error).toBeUndefined()
+      expect(result.checks[0]?.status).toBe('healthy')
+      expect(result.metrics?.checkLatency).toBeGreaterThanOrEqual(0)
+      expect(result.metrics?.checkLatency).toBeLessThan(100) // Should be fast for in-memory
+      expect(result.checks[0]?.message).toContain('Connected successfully')
       expect(result.timestamp).toBeInstanceOf(Date)
     })
 
@@ -58,7 +58,7 @@ describe('Health Checks with Real SQLite Database', () => {
       const result = await checkDatabaseHealth(mockDb)
 
       expect(result.status).toBe('degraded') // 150ms > 100ms threshold
-      expect(result.checks.database.latency).toBeGreaterThanOrEqual(150)
+      expect(result.metrics?.checkLatency).toBeGreaterThanOrEqual(150)
 
       await slowDb.destroy()
     })
@@ -76,9 +76,10 @@ describe('Health Checks with Real SQLite Database', () => {
       const result = await checkDatabaseHealth(errorDb)
 
       expect(result.status).toBe('unhealthy')
-      expect(result.checks.database.connected).toBe(false)
-      expect(result.checks.database.latency).toBe(-1)
-      expect(result.checks.database.error).toBe('Connection failed')
+      expect(result.checks[0]?.status).toBe('unhealthy')
+      // When there's an error, metrics may not be included
+      expect(result.metrics?.checkLatency).toBeUndefined()
+      expect(result.checks[0]?.message).toBe('Connection failed')
     })
 
     it('should work with MetricsPool', async () => {
@@ -95,11 +96,11 @@ describe('Health Checks with Real SQLite Database', () => {
       const metricsPool = createMetricsPool(mockPool)
       const result = await checkDatabaseHealth(db, metricsPool)
 
-      expect(result.checks.pool).toBeDefined()
-      expect(result.checks.pool?.size).toBe(10)
-      expect(result.checks.pool?.idle).toBe(7)
-      expect(result.checks.pool?.active).toBe(3) // total - idle
-      expect(result.checks.pool?.waiting).toBe(1)
+      expect(result.metrics?.poolMetrics).toBeDefined()
+      expect(result.metrics?.poolMetrics?.totalConnections).toBe(10)
+      expect(result.metrics?.poolMetrics?.idleConnections).toBe(7)
+      expect(result.metrics?.poolMetrics?.activeConnections).toBe(3)
+      expect(result.metrics?.poolMetrics?.waitingRequests).toBe(1)
     })
   })
 
