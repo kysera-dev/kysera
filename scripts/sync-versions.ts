@@ -8,14 +8,14 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { glob } from 'glob'
-import chalk from 'chalk'
+import { prism } from '@xec-sh/kit'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = path.resolve(__dirname, '..')
 const TARGET_VERSION = '0.3.0'
 
 async function syncVersions() {
-  console.log(chalk.bold.cyan('\n📦 Synchronizing package versions...\n'))
+  console.log(prism.bold(prism.cyan('\n📦 Synchronizing package versions...\n')))
 
   // Get all package.json files
   const packagePaths = await glob('**/package.json', {
@@ -28,8 +28,8 @@ async function syncVersions() {
     ]
   })
 
-  console.log(chalk.gray(`Found ${packagePaths.length} package.json files`))
-  console.log(chalk.gray(`Target version: ${TARGET_VERSION}\n`))
+  console.log(prism.gray(`Found ${packagePaths.length} package.json files`))
+  console.log(prism.gray(`Target version: ${TARGET_VERSION}\n`))
 
   for (const pkgPath of packagePaths) {
     const fullPath = path.join(ROOT_DIR, pkgPath)
@@ -68,21 +68,21 @@ async function syncVersions() {
       )
 
       if (oldVersion !== TARGET_VERSION) {
-        console.log(chalk.green(`✅ ${relPath}: ${oldVersion} → ${TARGET_VERSION}`))
+        console.log(prism.green(`✅ ${relPath}: ${oldVersion} → ${TARGET_VERSION}`))
       } else {
-        console.log(chalk.gray(`⏭️  ${relPath}: already at ${TARGET_VERSION}`))
+        console.log(prism.gray(`⏭️  ${relPath}: already at ${TARGET_VERSION}`))
       }
 
     } catch (error) {
-      console.error(chalk.red(`❌ Failed to update ${relPath}:`), error)
+      console.error(prism.red(`❌ Failed to update ${relPath}:`), error)
     }
   }
 
-  console.log(chalk.bold.green('\n✨ Version synchronization complete!\n'))
+  console.log(prism.bold(prism.green('\n✨ Version synchronization complete!\n')))
 }
 
 // Run the script
 syncVersions().catch(error => {
-  console.error(chalk.red('Fatal error:'), error)
+  console.error(prism.red('Fatal error:'), error)
   process.exit(1)
 })

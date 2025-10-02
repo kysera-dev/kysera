@@ -16,8 +16,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { glob } from 'glob'
-import inquirer from 'inquirer'
-import chalk from 'chalk'
+import { prism, prompt, select, input, confirm } from '@xec-sh/kit'
 import semver from 'semver'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -58,7 +57,7 @@ function exec(cmd: string, options: { cwd?: string; silent?: boolean } = {}): st
     return result?.trim() || ''
   } catch (error: any) {
     if (!silent) {
-      console.error(chalk.red(`❌ Command failed: ${cmd}`))
+      console.error(prism.red(`❌ Command failed: ${cmd}`))
       console.error(error.message)
     }
     throw error
@@ -159,7 +158,7 @@ function checkGitStatus(options: ReleaseOptions): void {
   const status = exec('git status --porcelain', { silent: true })
 
   if (status && !options.force) {
-    console.error(chalk.red('❌ Working directory is not clean:'))
+    console.error(prism.red('❌ Working directory is not clean:'))
     console.error(status)
     throw new Error('Please commit or stash your changes')
   }
@@ -279,47 +278,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  * Prompt for version
  */
 async function promptVersion(currentVersion: string): Promise<string> {
-  const { versionType } = await inquirer.prompt([
-    {
-      type: 'list',
-      name: 'versionType',
-      message: `Current version is ${currentVersion}. Select version type:`,
-      choices: [
-        { name: `Patch (${semver.inc(currentVersion, 'patch')})`, value: 'patch' },
-        { name: `Minor (${semver.inc(currentVersion, 'minor')})`, value: 'minor' },
-        { name: `Major (${semver.inc(currentVersion, 'major')})`, value: 'major' },
-        { name: 'Prerelease', value: 'prerelease' },
-        { name: 'Custom', value: 'custom' }
-      ]
-    }
-  ])
+  const versionType = await select({
+    message: `Current version is ${currentVersion}. Select version type:`,
+    options: [
+      { label: `Patch (${semver.inc(currentVersion, 'patch')})`, value: 'patch' },
+      { label: `Minor (${semver.inc(currentVersion, 'minor')})`, value: 'minor' },
+      { label: `Major (${semver.inc(currentVersion, 'major')})`, value: 'major' },
+      { label: 'Prerelease', value: 'prerelease' },
+      { label: 'Custom', value: 'custom' }
+    ]
+  })
 
   let newVersion: string
 
   if (versionType === 'custom') {
-    const { customVersion } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'customVersion',
-        message: 'Enter custom version:',
-        validate: (input) => {
-          if (!semver.valid(input)) {
-            return 'Invalid version format'
-          }
-          return true
+    const customVersion = await input({
+      message: 'Enter custom version:',
+      validate: (value) => {
+        if (!semver.valid(value)) {
+          return 'Invalid version format'
         }
+        return undefined
       }
-    ])
+    })
     newVersion = customVersion
   } else if (versionType === 'prerelease') {
-    const { prereleaseId } = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'prereleaseId',
-        message: 'Select prerelease type:',
-        choices: ['alpha', 'beta', 'rc']
-      }
-    ])
+    const prereleaseId = await select({
+      message: 'Select prerelease type:',
+      options: [
+        { label: 'Alpha', value: 'alpha' },
+        { label: 'Beta', value: 'beta' },
+        { label: 'RC', value: 'rc' }
+      ]
+    })
     newVersion = semver.inc(currentVersion, 'prerelease', prereleaseId) || currentVersion
   } else {
     newVersion = semver.inc(currentVersion, versionType as semver.ReleaseType) || currentVersion
@@ -332,18 +323,18 @@ async function promptVersion(currentVersion: string): Promise<string> {
  * Build all packages
  */
 async function buildPackages(): Promise<void> {
-  console.log(chalk.cyan('🔨 Building packages...'))
+  console.log(prism.cyan('🔨 Building packages...'))
   exec('pnpm build')
-  console.log(chalk.green('✅ Build completed'))
+  console.log(prism.green('✅ Build completed'))
 }
 
 /**
  * Run tests
  */
 async function runTests(): Promise<void> {
-  console.log(chalk.cyan('🧪 Running tests...'))
+  console.log(prism.cyan('🧪 Running tests...'))
   exec('pnpm test')
-  console.log(chalk.green('✅ Tests passed'))
+  console.log(prism.green('✅ Tests passed'))
 }
 
 /**
@@ -352,23 +343,23 @@ async function runTests(): Promise<void> {
 async function publishPackages(packages: Package[], options: ReleaseOptions): Promise<void> {
   const publishable = packages.filter(pkg => !pkg.private)
 
-  console.log(chalk.cyan(`\n📦 Publishing ${publishable.length} packages...`))
+  console.log(prism.cyan(`\n📦 Publishing ${publishable.length} packages...`))
 
   for (const pkg of publishable) {
-    console.log(chalk.gray(`  Publishing ${pkg.name}...`))
+    console.log(prism.gray(`  Publishing ${pkg.name}...`))
 
     if (!options.dryRun) {
       try {
         exec('pnpm publish --access public --no-git-checks', {
           cwd: pkg.path
         })
-        console.log(chalk.green(`  ✅ ${pkg.name} published`))
+        console.log(prism.green(`  ✅ ${pkg.name} published`))
       } catch (error) {
-        console.error(chalk.red(`  ❌ Failed to publish ${pkg.name}`))
+        console.error(prism.red(`  ❌ Failed to publish ${pkg.name}`))
         throw error
       }
     } else {
-      console.log(chalk.yellow(`  [DRY RUN] Would publish ${pkg.name}`))
+      console.log(prism.yellow(`  [DRY RUN] Would publish ${pkg.name}`))
     }
   }
 }
@@ -378,11 +369,11 @@ async function publishPackages(packages: Package[], options: ReleaseOptions): Pr
  */
 async function createGitRelease(version: string, options: ReleaseOptions): Promise<void> {
   if (options.dryRun) {
-    console.log(chalk.yellow(`\n[DRY RUN] Would create tag v${version}`))
+    console.log(prism.yellow(`\n[DRY RUN] Would create tag v${version}`))
     return
   }
 
-  console.log(chalk.cyan(`\n🏷️  Creating git tag v${version}...`))
+  console.log(prism.cyan(`\n🏷️  Creating git tag v${version}...`))
 
   // Commit changes
   exec('git add -A')
@@ -392,19 +383,15 @@ async function createGitRelease(version: string, options: ReleaseOptions): Promi
   exec(`git tag -a v${version} -m "Release v${version}"`)
 
   // Push
-  const { shouldPush } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'shouldPush',
-      message: 'Push to remote?',
-      default: true
-    }
-  ])
+  const shouldPush = await confirm({
+    message: 'Push to remote?',
+    initial: true
+  })
 
   if (shouldPush) {
     exec('git push')
     exec('git push --tags')
-    console.log(chalk.green('✅ Pushed to remote'))
+    console.log(prism.green('✅ Pushed to remote'))
   }
 }
 
@@ -412,7 +399,7 @@ async function createGitRelease(version: string, options: ReleaseOptions): Promi
  * Main release flow
  */
 async function main() {
-  console.log(chalk.bold.cyan('\n🚀 Kysera Monorepo Release\n'))
+  console.log(prism.bold(prism.cyan('\n🚀 Kysera Monorepo Release\n')))
 
   // Parse CLI arguments
   const args = process.argv.slice(2)
@@ -426,24 +413,24 @@ async function main() {
 
   try {
     // 1. Check git status
-    console.log(chalk.cyan('📋 Checking environment...'))
+    console.log(prism.cyan('📋 Checking environment...'))
     checkGitStatus(options)
-    console.log(chalk.green('✅ Git status clean'))
+    console.log(prism.green('✅ Git status clean'))
 
     // 2. Get current version and packages
     const currentVersion = await getCurrentVersion()
     const packages = await getAllPackages()
 
-    console.log(chalk.gray(`Current version: ${currentVersion}`))
-    console.log(chalk.gray(`Found ${packages.length} packages`))
+    console.log(prism.gray(`Current version: ${currentVersion}`))
+    console.log(prism.gray(`Found ${packages.length} packages`))
 
     // 3. Prompt for new version
     const newVersion = await promptVersion(currentVersion)
 
-    console.log(chalk.bold.green(`\n📦 Releasing version ${newVersion}\n`))
+    console.log(prism.bold(prism.green(`\n📦 Releasing version ${newVersion}\n`)))
 
     // 4. Update all package versions
-    console.log(chalk.cyan('📝 Updating package versions...'))
+    console.log(prism.cyan('📝 Updating package versions...'))
 
     // Update root package.json
     await updatePackageVersion(ROOT_DIR, newVersion)
@@ -451,15 +438,15 @@ async function main() {
     // Update all packages
     for (const pkg of packages) {
       await updatePackageVersion(pkg.path, newVersion)
-      console.log(chalk.gray(`  Updated ${pkg.name} to ${newVersion}`))
+      console.log(prism.gray(`  Updated ${pkg.name} to ${newVersion}`))
     }
 
-    console.log(chalk.green('✅ Versions updated'))
+    console.log(prism.green('✅ Versions updated'))
 
     // 5. Generate and update changelog
-    console.log(chalk.cyan('\n📄 Updating changelog...'))
+    console.log(prism.cyan('\n📄 Updating changelog...'))
     await updateChangelog(newVersion)
-    console.log(chalk.green('✅ Changelog updated'))
+    console.log(prism.green('✅ Changelog updated'))
 
     // 6. Build packages
     if (!options.skipBuild) {
@@ -480,15 +467,15 @@ async function main() {
     await createGitRelease(newVersion, options)
 
     // 10. Success!
-    console.log(chalk.bold.green('\n✨ Release completed successfully!\n'))
-    console.log(chalk.cyan('Next steps:'))
+    console.log(prism.bold(prism.green('\n✨ Release completed successfully!\n')))
+    console.log(prism.cyan('Next steps:'))
     console.log('  1. Create GitHub release: https://github.com/kysera/kysera/releases/new')
     console.log(`  2. Use tag: v${newVersion}`)
     console.log('  3. Copy changelog entry for release notes')
     console.log('  4. Announce in Discord/Twitter')
 
   } catch (error: any) {
-    console.error(chalk.red('\n❌ Release failed:'))
+    console.error(prism.red('\n❌ Release failed:'))
     console.error(error.message)
     process.exit(1)
   }
@@ -496,6 +483,6 @@ async function main() {
 
 // Run the script
 main().catch(error => {
-  console.error(chalk.red('Fatal error:'), error)
+  console.error(prism.red('Fatal error:'), error)
   process.exit(1)
 })
