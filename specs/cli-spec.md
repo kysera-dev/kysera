@@ -137,11 +137,8 @@ kysera-cli/
 ### Technology Stack
 
 - **CLI Framework**: [Commander.js](https://github.com/tj/commander.js) - Command-line interface
-- **Prompts**: [Inquirer.js](https://github.com/SBoudrias/Inquirer.js) - Interactive prompts
-- **Logging**: [Winston](https://github.com/winstonjs/winston) - Structured logging
+- **Prompts/Logging/Colors/Spinners**: [XecKit](https://www.npmjs.com/package/@xec-sh/kit?activeTab=readme) - Interactive prompts
 - **Templates**: [Handlebars](https://handlebarsjs.com/) - Template engine
-- **Colors**: [Chalk](https://github.com/chalk/chalk) - Terminal colors
-- **Spinners**: [Ora](https://github.com/sindresorhus/ora) - Loading indicators
 - **File System**: [fs-extra](https://github.com/jprichardson/node-fs-extra) - Enhanced file operations
 
 ---
@@ -1472,6 +1469,496 @@ kysera test fixtures --file ./tests/fixtures/users.json --truncate
 
 ---
 
+## kysera debug
+
+Debug and troubleshooting utilities for development and production.
+
+### Usage
+
+```bash
+kysera debug <command> [options]
+```
+
+### Subcommands
+
+#### `kysera debug sql`
+
+Watch and debug SQL queries in real-time.
+
+```bash
+kysera debug sql [options]
+
+Options:
+  --watch                   Watch SQL queries in real-time
+  --format                  Format SQL output
+  --slow-only               Show only slow queries (>100ms)
+  --threshold <ms>          Custom slow query threshold
+  --log <file>              Log to file
+  --filter <pattern>        Filter queries by pattern
+  --explain                 Run EXPLAIN on queries
+```
+
+**Example:**
+
+```bash
+kysera debug sql --watch --slow-only
+```
+
+**Output:**
+
+```
+🔍 Watching SQL queries (Ctrl+C to stop)
+
+12:00:00 | 234ms | ⚠️  SLOW
+SELECT * FROM users u
+  JOIN posts p ON p.user_id = u.id
+  WHERE u.status = 'active'
+  ORDER BY p.created_at DESC
+  LIMIT 100
+
+12:00:02 | 5ms | ✅
+INSERT INTO audit_logs (table_name, entity_id, operation, user_id)
+VALUES ('posts', 123, 'UPDATE', 'user-456')
+
+12:00:05 | 156ms | ⚠️  SLOW
+SELECT COUNT(*) FROM comments
+WHERE post_id IN (SELECT id FROM posts WHERE user_id = 789)
+```
+
+#### `kysera debug profile`
+
+Profile query performance.
+
+```bash
+kysera debug profile [options]
+
+Options:
+  --live                    Live query profiling
+  --duration <time>         Profiling duration (1m, 5m, 1h)
+  --slowest <count>         Show N slowest queries
+  --most-frequent <count>   Show N most frequent queries
+  --export <file>           Export profile data
+  --format <type>           Export format (json/csv/html)
+```
+
+**Example:**
+
+```bash
+kysera debug profile --duration 5m --slowest 10
+```
+
+**Output:**
+
+```
+📊 Query Profile Report (5 minutes)
+
+Top 10 Slowest Queries:
+1. AVG: 345ms | COUNT: 45 | TOTAL: 15.5s
+   SELECT * FROM orders WHERE status = 'pending' AND ...
+
+2. AVG: 289ms | COUNT: 12 | TOTAL: 3.5s
+   SELECT u.*, COUNT(p.id) FROM users u LEFT JOIN posts p ...
+
+Most Frequent Queries:
+1. COUNT: 1,234 | AVG: 5ms | TOTAL: 6.2s
+   SELECT * FROM users WHERE id = ?
+
+2. COUNT: 567 | AVG: 12ms | TOTAL: 6.8s
+   INSERT INTO audit_logs ...
+
+Performance Summary:
+  Total queries: 3,456
+  Average duration: 18ms
+  P50: 8ms | P95: 89ms | P99: 234ms
+  Slow queries (>100ms): 123 (3.6%)
+```
+
+#### `kysera debug errors`
+
+Analyze database errors.
+
+```bash
+kysera debug errors [options]
+
+Options:
+  --recent <count>          Show recent errors (default: 50)
+  --type <error-type>       Filter by error type
+  --analyze                 Analyze error patterns
+  --table <name>            Filter by table
+  --period <duration>       Time period (1h, 1d, 1w)
+```
+
+**Example:**
+
+```bash
+kysera debug errors --analyze --period 1d
+```
+
+**Output:**
+
+```
+🚨 Error Analysis (Last 24 hours)
+
+Error Summary:
+  Total errors: 45
+  Unique errors: 8
+  Error rate: 0.12%
+
+Top Error Types:
+1. UNIQUE_VIOLATION (18 occurrences)
+   - Table: users (12)
+   - Table: posts (6)
+   - Most common: "duplicate key value violates unique constraint"
+
+2. FOREIGN_KEY_VIOLATION (10 occurrences)
+   - Table: comments (7)
+   - Table: likes (3)
+   - Most common: "violates foreign key constraint"
+
+3. CHECK_VIOLATION (8 occurrences)
+   - Table: orders (5)
+   - Table: payments (3)
+   - Most common: "new row violates check constraint"
+
+Recommendations:
+  ✓ Add duplicate check before inserting users
+  ✓ Verify parent records exist before creating comments
+  ✓ Validate order amounts before insertion
+```
+
+#### `kysera debug circuit-breaker`
+
+Monitor and manage circuit breakers.
+
+```bash
+kysera debug circuit-breaker [options]
+
+Options:
+  --status                  Show circuit breaker status
+  --reset                   Reset circuit breaker
+  --threshold <number>      Set failure threshold
+  --timeout <ms>            Set timeout duration
+  --watch                   Watch circuit breaker status
+```
+
+**Example:**
+
+```bash
+kysera debug circuit-breaker --status
+```
+
+**Output:**
+
+```
+⚡ Circuit Breaker Status
+
+Database Connection:
+  State: CLOSED ✅
+  Failures: 0/5
+  Success rate: 99.8%
+  Last failure: 2 hours ago
+
+External API (payments):
+  State: HALF_OPEN ⚠️
+  Failures: 3/5
+  Success rate: 87.2%
+  Last failure: 2 minutes ago
+  Next retry: in 30 seconds
+
+Redis Cache:
+  State: OPEN 🔴
+  Failures: 5/5
+  Success rate: 0%
+  Last failure: 10 seconds ago
+  Circuit opens: 4 minutes 50 seconds
+```
+
+---
+
+## kysera query
+
+Advanced query utilities for data exploration and analysis.
+
+### Usage
+
+```bash
+kysera query <command> [options]
+```
+
+### Subcommands
+
+#### `kysera query by-timestamp`
+
+Query records by timestamp fields.
+
+```bash
+kysera query by-timestamp [options]
+
+Options:
+  --table <name>            Target table (required)
+  --created-after <date>    Records created after date
+  --created-before <date>   Records created before date
+  --updated-after <date>    Records updated after date
+  --recently-created <n>    N most recently created
+  --recently-updated <n>    N most recently updated
+  --format <type>           Output format (table/json/csv)
+  --export <file>           Export results
+```
+
+**Example:**
+
+```bash
+kysera query by-timestamp --table users \
+  --created-after "2025-01-01" \
+  --recently-updated 10
+```
+
+#### `kysera query soft-deleted`
+
+Query and manage soft-deleted records.
+
+```bash
+kysera query soft-deleted [options]
+
+Options:
+  --table <name>            Target table
+  --count                   Count soft-deleted records
+  --list                    List soft-deleted records
+  --restore <id>            Restore specific record
+  --purge                   Permanently delete records
+  --older-than <duration>   Filter by deletion date
+```
+
+**Example:**
+
+```bash
+kysera query soft-deleted --table users --count
+# Soft-deleted records in 'users': 45
+
+kysera query soft-deleted --table posts --list --limit 5
+```
+
+#### `kysera query analyze`
+
+Analyze query performance and suggest optimizations.
+
+```bash
+kysera query analyze <sql> [options]
+
+Options:
+  --explain                 Show query execution plan
+  --suggest                 Suggest optimizations
+  --indexes                 Suggest missing indexes
+  --format <type>           Output format
+```
+
+**Example:**
+
+```bash
+kysera query analyze "SELECT * FROM users WHERE email LIKE '%@gmail.com'" --suggest
+```
+
+**Output:**
+
+```
+📊 Query Analysis
+
+Query:
+  SELECT * FROM users WHERE email LIKE '%@gmail.com'
+
+Execution Plan:
+  Seq Scan on users (cost=0.00..1234.56)
+  Filter: email LIKE '%@gmail.com'
+
+Performance Issues:
+  ⚠️  Full table scan detected
+  ⚠️  Leading wildcard prevents index usage
+
+Suggestions:
+  1. Consider using full-text search for email domain queries
+  2. Add computed column for email domain:
+     ALTER TABLE users ADD COLUMN email_domain VARCHAR(255)
+     GENERATED ALWAYS AS (SPLIT_PART(email, '@', 2)) STORED;
+  3. Create index: CREATE INDEX idx_users_email_domain ON users(email_domain);
+
+Estimated improvement: 95% faster
+```
+
+#### `kysera query explain`
+
+Show query execution plan.
+
+```bash
+kysera query explain <sql> [options]
+
+Options:
+  --analyze                 Run EXPLAIN ANALYZE
+  --buffers                 Show buffer usage
+  --verbose                 Verbose output
+  --format <type>           Output format (text/json/yaml)
+```
+
+---
+
+## kysera repository
+
+Repository management and introspection.
+
+### Usage
+
+```bash
+kysera repository <command> [options]
+```
+
+### Subcommands
+
+#### `kysera repository list`
+
+List all repositories in the project.
+
+```bash
+kysera repository list [options]
+
+Options:
+  --show-methods            Show available methods
+  --show-plugins            Show enabled plugins
+  --show-tables             Show database tables
+  --json                    Output as JSON
+```
+
+**Example:**
+
+```bash
+kysera repository list --show-plugins
+```
+
+**Output:**
+
+```
+📚 Repositories
+
+UserRepository (./src/repositories/user.repository.ts)
+  Table: users
+  Plugins: ✓ timestamps, ✓ soft-delete, ✓ audit
+  Methods: 24 (14 base + 10 from plugins)
+
+PostRepository (./src/repositories/post.repository.ts)
+  Table: posts
+  Plugins: ✓ timestamps, ✓ audit
+  Methods: 20 (14 base + 6 from plugins)
+
+CommentRepository (./src/repositories/comment.repository.ts)
+  Table: comments
+  Plugins: ✓ timestamps
+  Methods: 18 (14 base + 4 from plugins)
+```
+
+#### `kysera repository inspect`
+
+Inspect a specific repository.
+
+```bash
+kysera repository inspect <name> [options]
+
+Options:
+  --show-schema             Show Zod schemas
+  --show-methods            Show all methods
+  --show-validation         Show validation rules
+  --show-types              Show TypeScript types
+```
+
+**Example:**
+
+```bash
+kysera repository inspect UserRepository --show-schema
+```
+
+**Output:**
+
+```
+📋 UserRepository
+
+File: ./src/repositories/user.repository.ts
+Table: users
+Entity Type: User
+
+Validation Schemas:
+
+CreateUserSchema:
+  email: z.string().email()
+  name: z.string().min(2).max(100)
+  password: z.string().min(8)
+  role: z.enum(['user', 'admin']).optional()
+
+UpdateUserSchema:
+  email: z.string().email().optional()
+  name: z.string().min(2).max(100).optional()
+  password: z.string().min(8).optional()
+  role: z.enum(['user', 'admin']).optional()
+
+Available Methods:
+  Base: findById, findAll, create, update, delete, ...
+  Timestamps: findCreatedAfter, findRecentlyUpdated, touch, ...
+  SoftDelete: softDelete, restore, hardDelete, findDeleted, ...
+  Audit: getAuditHistory, restoreFromAudit, ...
+```
+
+#### `kysera repository validate`
+
+Validate repository schemas against database.
+
+```bash
+kysera repository validate <name> [options]
+
+Options:
+  --fix                     Auto-fix validation issues
+  --strict                  Strict validation mode
+```
+
+**Example:**
+
+```bash
+kysera repository validate UserRepository
+```
+
+**Output:**
+
+```
+🔍 Validating UserRepository
+
+Database Schema:
+  ✅ Table 'users' exists
+  ✅ All required columns present
+  ⚠️  Column 'middle_name' in database but not in schema
+
+TypeScript Types:
+  ✅ Entity type matches database
+  ✅ Create/Update types are valid subsets
+
+Zod Schemas:
+  ✅ All required fields have validation
+  ⚠️  Field 'age' has no max validation
+
+Recommendations:
+  1. Add 'middle_name' to User entity type or remove from database
+  2. Add max validation to 'age' field: z.number().max(150)
+```
+
+#### `kysera repository methods`
+
+Show all available methods for a repository.
+
+```bash
+kysera repository methods <name> [options]
+
+Options:
+  --group-by-plugin         Group methods by plugin
+  --show-signatures         Show method signatures
+  --markdown                Output as markdown
+```
+
+---
+
 ## kysera plugin
 
 Manage Kysera plugins.
@@ -2043,12 +2530,507 @@ kysera migrate up
 
 ---
 
+## 🚀 Implementation Plan
+
+### Phase 1: Core Infrastructure (Week 1-2)
+
+#### 1.1 Project Setup (2 days)
+
+**Tasks:**
+1. Create `apps/cli` directory structure
+2. Setup package.json with dependencies
+3. Configure TypeScript (tsconfig.json)
+4. Setup build pipeline (tsup)
+5. Create entry point and command structure
+
+**Directory Structure:**
+```
+apps/cli/
+├── src/
+│   ├── index.ts              # CLI entry point
+│   ├── cli.ts                # Main CLI setup
+│   ├── commands/             # Command implementations
+│   ├── config/               # Configuration management
+│   ├── utils/                # Shared utilities
+│   ├── types/                # TypeScript types
+│   └── templates/            # Code templates
+├── templates/                # Project templates
+├── tests/                    # Test files
+├── package.json
+├── tsconfig.json
+├── tsup.config.ts
+└── README.md
+```
+
+**Dependencies:**
+```json
+{
+  "dependencies": {
+    "commander": "^12.1.0",
+    "@xec-sh/kit": "^2.0.0",
+    "handlebars": "^4.7.8",
+    "fs-extra": "^11.2.0",
+    "kysely": "^0.28.7",
+    "zod": "^4.1.11",
+    "@kysera/core": "workspace:*",
+    "@kysera/repository": "workspace:*",
+    "@kysera/migrations": "workspace:*",
+    "@kysera/audit": "workspace:*",
+    "@kysera/soft-delete": "workspace:*",
+    "@kysera/timestamps": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "tsup": "^8.5.0",
+    "vitest": "^3.2.4"
+  }
+}
+```
+
+#### 1.2 Configuration System (3 days)
+
+**Files to create:**
+- `src/config/loader.ts` - Load and parse kysera.config.ts
+- `src/config/validator.ts` - Validate configuration with Zod
+- `src/config/schema.ts` - Configuration schema definitions
+- `src/config/defaults.ts` - Default configuration values
+- `src/config/resolver.ts` - Resolve paths and environment variables
+
+**Key Features:**
+- Support for TypeScript config files
+- Environment variable resolution
+- Path resolution (relative to config file)
+- Config file discovery (walk up directory tree)
+- Config validation with helpful error messages
+- Support for multiple config formats (.ts, .js, .json)
+
+#### 1.3 Database Connection Manager (2 days)
+
+**Files to create:**
+- `src/utils/database.ts` - Database connection utilities
+- `src/utils/dialects/postgres.ts` - PostgreSQL specific
+- `src/utils/dialects/mysql.ts` - MySQL specific
+- `src/utils/dialects/sqlite.ts` - SQLite specific
+- `src/utils/pool.ts` - Connection pool management
+
+**Key Features:**
+- Multi-dialect support (PostgreSQL, MySQL, SQLite)
+- Connection pool management
+- Connection testing and validation
+- SSL/TLS configuration
+- Connection retry logic
+
+#### 1.4 Core Utilities (3 days)
+
+**Files to create:**
+- `src/utils/logger.ts` - Logging with XecKit
+- `src/utils/prompts.ts` - Interactive prompts
+- `src/utils/templates.ts` - Handlebars template engine
+- `src/utils/spinner.ts` - Loading spinners
+- `src/utils/table.ts` - Table formatting
+- `src/utils/colors.ts` - Color utilities
+- `src/utils/errors.ts` - Error handling
+- `src/utils/fs.ts` - File system utilities
+
+**Key Features:**
+- Colored console output
+- Interactive prompts (select, multiselect, confirm, text)
+- Progress bars and spinners
+- Table formatting for output
+- Template compilation and rendering
+- Error formatting with stack traces
+
+### Phase 2: Essential Commands (Week 2-3)
+
+#### 2.1 Init Command (3 days)
+
+**Files to create:**
+- `src/commands/init/index.ts` - Main init command
+- `src/commands/init/templates.ts` - Project templates
+- `src/commands/init/generator.ts` - File generator
+- `src/commands/init/dependencies.ts` - Dependency installer
+- `templates/basic/` - Basic template
+- `templates/api/` - API template
+- `templates/graphql/` - GraphQL template
+- `templates/monorepo/` - Monorepo template
+
+**Key Features:**
+- Interactive project setup wizard
+- Multiple project templates
+- Package manager detection and installation
+- Git repository initialization
+- Environment file generation
+- TypeScript configuration
+- ESLint/Prettier setup
+
+#### 2.2 Migration Commands (4 days)
+
+**Files to create:**
+- `src/commands/migrate/index.ts` - Migration command group
+- `src/commands/migrate/create.ts` - Create migration
+- `src/commands/migrate/up.ts` - Run migrations
+- `src/commands/migrate/down.ts` - Rollback migrations
+- `src/commands/migrate/status.ts` - Migration status
+- `src/commands/migrate/reset.ts` - Reset migrations
+- `src/commands/migrate/list.ts` - List migrations
+- `src/commands/migrate/runner.ts` - Migration runner
+- `src/commands/migrate/templates/` - Migration templates
+
+**Key Features:**
+- Migration file generation with templates
+- Up/down migration execution
+- Rollback support with transaction safety
+- Dry-run mode
+- Migration status tracking
+- Lock mechanism for concurrent execution
+- Migration validation before execution
+
+#### 2.3 Health Commands (3 days)
+
+**Files to create:**
+- `src/commands/health/index.ts` - Health command group
+- `src/commands/health/check.ts` - Health check
+- `src/commands/health/watch.ts` - Continuous monitoring
+- `src/commands/health/metrics.ts` - Metrics collection
+- `src/commands/health/pool.ts` - Connection pool monitoring
+- `src/commands/health/export.ts` - Export metrics
+
+**Key Features:**
+- Database connectivity check
+- Connection pool monitoring
+- Query performance metrics
+- Slow query detection
+- Export metrics in multiple formats
+- Real-time monitoring with auto-refresh
+- Alert thresholds and notifications
+
+### Phase 3: Code Generation (Week 3-4)
+
+#### 3.1 Generate Commands (4 days)
+
+**Files to create:**
+- `src/commands/generate/index.ts` - Generate command group
+- `src/commands/generate/repository.ts` - Repository generator
+- `src/commands/generate/model.ts` - Model generator
+- `src/commands/generate/schema.ts` - Schema generator
+- `src/commands/generate/crud.ts` - CRUD generator
+- `src/commands/generate/introspector.ts` - Database introspection
+- `src/commands/generate/templates/` - Generation templates
+
+**Key Features:**
+- Database introspection for type generation
+- Repository generation with plugin support
+- Zod schema generation
+- TypeScript interface generation
+- CRUD stack generation (model + repository + schema)
+- Custom template support
+- Code formatting after generation
+
+#### 3.2 Database Commands (3 days)
+
+**Files to create:**
+- `src/commands/db/index.ts` - Database command group
+- `src/commands/db/seed.ts` - Database seeding
+- `src/commands/db/reset.ts` - Database reset
+- `src/commands/db/dump.ts` - Database dump
+- `src/commands/db/restore.ts` - Database restore
+- `src/commands/db/tables.ts` - List tables
+- `src/commands/db/introspect.ts` - Introspect schema
+- `src/commands/db/console.ts` - Interactive console
+
+**Key Features:**
+- Database seeding from files
+- Database dump/restore
+- Table listing with statistics
+- Schema introspection
+- Interactive SQL console
+- Multi-dialect support
+
+### Phase 4: Advanced Features (Week 4-5)
+
+#### 4.1 Audit Commands (3 days)
+
+**Files to create:**
+- `src/commands/audit/index.ts` - Audit command group
+- `src/commands/audit/logs.ts` - Query audit logs
+- `src/commands/audit/history.ts` - Entity history
+- `src/commands/audit/restore.ts` - Restore from audit
+- `src/commands/audit/stats.ts` - Audit statistics
+- `src/commands/audit/cleanup.ts` - Cleanup old logs
+- `src/commands/audit/compare.ts` - Compare audit entries
+- `src/commands/audit/diff.ts` - Show entity diff
+
+**Key Features:**
+- Audit log querying with filters
+- Entity history timeline
+- Restore entities from audit logs
+- Audit statistics and analytics
+- Cleanup old audit logs
+- Compare audit entries
+- Visual diff for changes
+
+#### 4.2 Debug Commands (3 days)
+
+**Files to create:**
+- `src/commands/debug/index.ts` - Debug command group
+- `src/commands/debug/sql.ts` - SQL debugging
+- `src/commands/debug/profile.ts` - Query profiling
+- `src/commands/debug/errors.ts` - Error analysis
+- `src/commands/debug/circuit-breaker.ts` - Circuit breaker monitoring
+- `src/commands/debug/analyzer.ts` - Query analyzer
+
+**Key Features:**
+- Real-time SQL query monitoring
+- Query profiling and analysis
+- Error pattern detection
+- Circuit breaker management
+- Query optimization suggestions
+- EXPLAIN plan visualization
+
+#### 4.3 Query Commands (2 days)
+
+**Files to create:**
+- `src/commands/query/index.ts` - Query command group
+- `src/commands/query/by-timestamp.ts` - Timestamp queries
+- `src/commands/query/soft-deleted.ts` - Soft delete queries
+- `src/commands/query/analyze.ts` - Query analysis
+- `src/commands/query/explain.ts` - Query explain
+
+**Key Features:**
+- Timestamp-based queries
+- Soft-deleted records management
+- Query performance analysis
+- EXPLAIN plan execution
+- Index suggestions
+
+#### 4.4 Repository Commands (2 days)
+
+**Files to create:**
+- `src/commands/repository/index.ts` - Repository command group
+- `src/commands/repository/list.ts` - List repositories
+- `src/commands/repository/inspect.ts` - Inspect repository
+- `src/commands/repository/validate.ts` - Validate schemas
+- `src/commands/repository/methods.ts` - Show methods
+
+**Key Features:**
+- Repository discovery and listing
+- Repository inspection with schemas
+- Schema validation against database
+- Method documentation generation
+
+### Phase 5: Testing & Plugin System (Week 5-6)
+
+#### 5.1 Test Commands (2 days)
+
+**Files to create:**
+- `src/commands/test/index.ts` - Test command group
+- `src/commands/test/setup.ts` - Test setup
+- `src/commands/test/teardown.ts` - Test teardown
+- `src/commands/test/seed.ts` - Test seeding
+- `src/commands/test/fixtures.ts` - Load fixtures
+
+**Key Features:**
+- Test database setup/teardown
+- Test data seeding
+- Fixture loading
+- Isolation strategies
+
+#### 5.2 Plugin Commands (2 days)
+
+**Files to create:**
+- `src/commands/plugin/index.ts` - Plugin command group
+- `src/commands/plugin/list.ts` - List plugins
+- `src/commands/plugin/enable.ts` - Enable plugin
+- `src/commands/plugin/disable.ts` - Disable plugin
+- `src/commands/plugin/config.ts` - Configure plugin
+
+**Key Features:**
+- Plugin discovery
+- Plugin enable/disable
+- Plugin configuration
+- Custom plugin loading
+
+#### 5.3 Testing Infrastructure (2 days)
+
+**Files to create:**
+- `tests/unit/` - Unit tests
+- `tests/integration/` - Integration tests
+- `tests/e2e/` - End-to-end tests
+- `tests/fixtures/` - Test fixtures
+- `tests/utils/` - Test utilities
+
+**Key Features:**
+- Unit tests for all utilities
+- Integration tests for commands
+- E2E tests for complete workflows
+- Cross-platform testing
+- Multi-dialect testing
+
+### Phase 6: Polish & Documentation (Week 6)
+
+#### 6.1 Error Handling & UX (2 days)
+
+**Tasks:**
+- Implement comprehensive error handling
+- Add helpful error messages and suggestions
+- Improve command output formatting
+- Add progress indicators for long operations
+- Implement verbose/quiet modes
+- Add dry-run support where applicable
+
+#### 6.2 Performance Optimization (1 day)
+
+**Tasks:**
+- Optimize startup time
+- Lazy load command modules
+- Implement caching where appropriate
+- Optimize file operations
+- Profile and optimize hot paths
+
+#### 6.3 Documentation (2 days)
+
+**Tasks:**
+- Write comprehensive README.md
+- Create command documentation
+- Add inline help for all commands
+- Create example workflows
+- Document configuration options
+- Create migration guide
+
+#### 6.4 Release Preparation (1 day)
+
+**Tasks:**
+- Setup npm publishing
+- Create GitHub releases workflow
+- Add changelog generation
+- Setup versioning strategy
+- Create installation scripts
+- Test installation on different platforms
+
+### Implementation Priorities
+
+#### Priority 1 (Must Have - Week 1-3)
+- [x] Core infrastructure
+- [ ] Configuration system
+- [ ] Database connection
+- [ ] Init command
+- [ ] Migration commands (create, up, down, status)
+- [ ] Basic health check
+
+#### Priority 2 (Should Have - Week 3-4)
+- [ ] Code generation (repository, model, schema)
+- [ ] Database utilities (seed, reset, tables)
+- [ ] Audit commands (logs, history)
+- [ ] Plugin management
+
+#### Priority 3 (Nice to Have - Week 5-6)
+- [ ] Debug commands
+- [ ] Query commands
+- [ ] Repository introspection
+- [ ] Test utilities
+- [ ] Advanced health monitoring
+- [ ] Interactive console
+
+### Technology Decisions
+
+#### CLI Framework
+**Choice:** Commander.js
+- **Reason:** Mature, well-documented, TypeScript support
+- **Alternatives considered:** Yargs, Oclif, CAC
+
+#### UI/UX Library
+**Choice:** XecKit (@xec-sh/kit)
+- **Reason:** Modern, all-in-one solution for prompts, colors, spinners
+- **Alternatives considered:** Inquirer + Chalk + Ora
+
+#### Template Engine
+**Choice:** Handlebars
+- **Reason:** Simple, powerful, widely used
+- **Alternatives considered:** EJS, Mustache
+
+#### File Operations
+**Choice:** fs-extra
+- **Reason:** Enhanced fs with promises, extra utilities
+- **Alternatives considered:** Native fs/promises, node-fs
+
+### Testing Strategy
+
+#### Unit Tests
+- Test all utility functions
+- Test configuration loading and validation
+- Test template generation
+- Test error handling
+- Coverage target: >95%
+
+#### Integration Tests
+- Test command execution
+- Test database operations
+- Test file generation
+- Test plugin system
+- Coverage target: >85%
+
+#### E2E Tests
+- Test complete workflows (init → migrate → generate)
+- Test cross-platform compatibility
+- Test with different databases
+- Test error scenarios
+
+### Release Strategy
+
+#### Version 0.1.0 (Alpha)
+- Core commands (init, migrate, health)
+- Basic functionality
+- Limited to PostgreSQL
+
+#### Version 0.2.0 (Beta)
+- All planned commands
+- Multi-dialect support
+- Plugin system
+
+#### Version 1.0.0 (Stable)
+- Production ready
+- Comprehensive documentation
+- Performance optimized
+- Full test coverage
+
+### Success Metrics
+
+1. **Functionality**
+   - All planned commands implemented
+   - Multi-dialect support working
+   - Plugin system functional
+
+2. **Performance**
+   - CLI startup < 100ms
+   - Command execution < 1s for simple operations
+   - Memory usage < 50MB
+
+3. **Quality**
+   - Test coverage > 90%
+   - Zero TypeScript errors
+   - Zero ESLint warnings
+   - No runtime dependencies vulnerabilities
+
+4. **Usability**
+   - Clear error messages
+   - Helpful command output
+   - Interactive mode for complex operations
+   - Comprehensive --help for all commands
+
+5. **Documentation**
+   - All commands documented
+   - Examples for common workflows
+   - Configuration reference
+   - Migration guide from other ORMs
+
+---
+
 ## 📝 License
 
 MIT © Kysera Team
 
 ---
 
-**Last Updated:** 2025-10-01
+**Last Updated:** 2025-10-02
 **Version:** 1.0.0
-**Status:** Design Specification
+**Status:** Design Specification with Implementation Plan
