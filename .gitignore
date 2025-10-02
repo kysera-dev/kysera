@@ -39,6 +39,6 @@ yarn-error.log*
 .turbo/
 
 # Package manager
-pnpm-lock.yaml
+# pnpm-lock.yaml is tracked for reproducible builds
 
 experiments/
