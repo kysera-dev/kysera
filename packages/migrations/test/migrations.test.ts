@@ -8,6 +8,7 @@ import {
   createMigration,
   type Migration
 } from '../src/index'
+import { safeDbDestroy, safeSqliteClose } from '../../core/test/helpers/cleanup'
 
 describe('Migration System', () => {
   let db: Kysely<any>
@@ -23,8 +24,8 @@ describe('Migration System', () => {
   })
 
   afterEach(async () => {
-    await db.destroy()
-    database.close()
+    await safeDbDestroy(db)
+    safeSqliteClose(database)
   })
 
   // Helper to create test migrations
