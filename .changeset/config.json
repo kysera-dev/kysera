@@ -1,0 +1,27 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
+  "changelog": [
+    "@changesets/changelog-github",
+    { "repo": "kysera/kysera" }
+  ],
+  "commit": false,
+  "fixed": [
+    [
+      "@kysera/core",
+      "@kysera/repository",
+      "@kysera/migrations",
+      "@kysera/audit",
+      "@kysera/soft-delete",
+      "@kysera/timestamps",
+      "@kysera/cli"
+    ]
+  ],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": [],
+  "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
+    "onlyUpdatePeerDependentsWhenOutOfRange": true
+  }
+}

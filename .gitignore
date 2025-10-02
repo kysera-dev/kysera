@@ -40,3 +40,5 @@ yarn-error.log*
 
 # Package manager
 pnpm-lock.yaml
+
+experiments/

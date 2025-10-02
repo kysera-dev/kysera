@@ -284,6 +284,19 @@ async function testConnection(db: Kysely<any>): Promise<boolean> {
 /**
  * Get database version
  */
+/**
+ * Get a database connection from config
+ */
+export async function getDatabaseConnection(config: DatabaseConfig): Promise<Kysely<any> | null> {
+  try {
+    const connection = await createDatabaseConnection({ config })
+    return connection.db
+  } catch (error) {
+    logger.error(`Failed to connect to database: ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
+}
+
 export async function getDatabaseVersion(db: Kysely<any>): Promise<string> {
   try {
     // PostgreSQL

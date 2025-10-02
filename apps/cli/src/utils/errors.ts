@@ -1,4 +1,4 @@
-import chalk from 'chalk'
+import { prism } from '@xec-sh/kit'
 import { logger } from './logger.js'
 
 export class CLIError extends Error {
@@ -117,7 +117,7 @@ export function handleError(error: unknown): void {
 
 function handleCLIError(error: CLIError): void {
   logger.error('')
-  logger.error(chalk.red(`✗ ${error.message}`))
+  logger.error(prism.red(`✗ ${error.message}`))
 
   if (error instanceof ValidationError && error.errors.length > 0) {
     logger.error('')
@@ -131,36 +131,36 @@ function handleCLIError(error: CLIError): void {
     logger.error('')
     logger.error('Suggestions:')
     for (const suggestion of error.suggestions) {
-      logger.error(chalk.yellow(`  → ${suggestion}`))
+      logger.error(prism.yellow(`  → ${suggestion}`))
     }
   }
 
   if (error.code && ERROR_CODES[error.code]) {
     const codeInfo = ERROR_CODES[error.code]
     logger.error('')
-    logger.error(chalk.gray(`Error code: ${codeInfo.code}`))
+    logger.error(prism.gray(`Error code: ${codeInfo.code}`))
     if (codeInfo.suggestions && codeInfo.suggestions.length > 0) {
       logger.error('')
       logger.error('Additional suggestions:')
       for (const suggestion of codeInfo.suggestions) {
-        logger.error(chalk.gray(`  • ${suggestion}`))
+        logger.error(prism.gray(`  • ${suggestion}`))
       }
     }
   }
 
   if (logger.level === 'debug' && error.stack) {
     logger.error('')
-    logger.error(chalk.gray('Stack trace:'))
-    logger.error(chalk.gray(error.stack))
+    logger.error(prism.gray('Stack trace:'))
+    logger.error(prism.gray(error.stack))
   }
 
   logger.error('')
-  logger.error(chalk.gray(`Need help? Run 'kysera help' or visit https://kysera.dev/docs`))
+  logger.error(prism.gray(`Need help? Run 'kysera help' or visit https://kysera.dev/docs`))
 }
 
 function handleGenericError(error: Error): void {
   logger.error('')
-  logger.error(chalk.red(`✗ ${error.message}`))
+  logger.error(prism.red(`✗ ${error.message}`))
 
   // Try to provide helpful suggestions based on error message
   const suggestions = getSuggestionsFromError(error)
@@ -168,26 +168,26 @@ function handleGenericError(error: Error): void {
     logger.error('')
     logger.error('Suggestions:')
     for (const suggestion of suggestions) {
-      logger.error(chalk.yellow(`  → ${suggestion}`))
+      logger.error(prism.yellow(`  → ${suggestion}`))
     }
   }
 
   if (logger.level === 'debug' && error.stack) {
     logger.error('')
-    logger.error(chalk.gray('Stack trace:'))
-    logger.error(chalk.gray(error.stack))
+    logger.error(prism.gray('Stack trace:'))
+    logger.error(prism.gray(error.stack))
   }
 
   logger.error('')
-  logger.error(chalk.gray(`This might be a bug. Please report it at https://github.com/kysera/kysera/issues`))
+  logger.error(prism.gray(`This might be a bug. Please report it at https://github.com/kysera/kysera/issues`))
 }
 
 function handleUnknownError(error: unknown): void {
   logger.error('')
-  logger.error(chalk.red('✗ An unexpected error occurred'))
+  logger.error(prism.red('✗ An unexpected error occurred'))
   logger.error(String(error))
   logger.error('')
-  logger.error(chalk.gray(`This is likely a bug. Please report it at https://github.com/kysera/kysera/issues`))
+  logger.error(prism.gray(`This is likely a bug. Please report it at https://github.com/kysera/kysera/issues`))
 }
 
 function getSuggestionsFromError(error: Error): string[] {
