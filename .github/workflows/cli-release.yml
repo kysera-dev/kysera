@@ -37,11 +37,28 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
 
+      - name: Install system dependencies
+        run: |
+          # Install build tools required for native modules
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-setuptools python-is-python3 make g++ build-essential
+
       - name: Install dependencies
         run: |
+          # Set npm to use python3
+          npm config set python python3
+          # Install all dependencies
           pnpm install --frozen-lockfile
-          # Rebuild better-sqlite3 for the current platform
-          pnpm rebuild better-sqlite3 --recursive
+          # Rebuild better-sqlite3 specifically
+          pnpm rebuild better-sqlite3
+          # Alternative: use postinstall for better-sqlite3
+          cd node_modules/.pnpm && \
+          for dir in better-sqlite3*/node_modules/better-sqlite3; do \
+            if [ -d "$dir" ]; then \
+              echo "Rebuilding in $dir"; \
+              cd "$dir" && npm run install --build-from-source && cd -; \
+            fi; \
+          done || true
 
       - name: Run tests
         run: |
@@ -78,11 +95,28 @@ jobs:
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Install system dependencies
+        run: |
+          # Install build tools required for native modules
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-setuptools python-is-python3 make g++ build-essential
+
       - name: Install dependencies
         run: |
+          # Set npm to use python3
+          npm config set python python3
+          # Install all dependencies
           pnpm install --frozen-lockfile
-          # Rebuild better-sqlite3 for the current platform
-          pnpm rebuild better-sqlite3 --recursive
+          # Rebuild better-sqlite3 specifically
+          pnpm rebuild better-sqlite3
+          # Alternative: use postinstall for better-sqlite3
+          cd node_modules/.pnpm && \
+          for dir in better-sqlite3*/node_modules/better-sqlite3; do \
+            if [ -d "$dir" ]; then \
+              echo "Rebuilding in $dir"; \
+              cd "$dir" && npm run install --build-from-source && cd -; \
+            fi; \
+          done || true
 
       - name: Build CLI
         run: |
