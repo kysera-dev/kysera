@@ -46,7 +46,10 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile
+          # Rebuild better-sqlite3 for the current platform
+          pnpm rebuild better-sqlite3 --recursive
 
       - name: Build packages
         run: pnpm build
@@ -89,7 +92,10 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile
+          # Rebuild better-sqlite3 for the current platform
+          pnpm rebuild better-sqlite3 --recursive
 
       - name: Configure Git
         run: |
