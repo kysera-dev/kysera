@@ -1,6 +1,6 @@
 {
   "name": "@kysera/migrations",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Database migration management for Kysera ORM",
   "type": "module",
   "main": "./dist/index.js",
