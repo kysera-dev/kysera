@@ -529,7 +529,7 @@ async function main() {
     // 10. Success!
     console.log(prism.bold(prism.green('\n✨ Release completed successfully!\n')))
     console.log(prism.cyan('Next steps:'))
-    console.log('  1. Create GitHub release: https://github.com/kysera/kysera/releases/new')
+    console.log('  1. Create GitHub release: https://github.com/kysera-dev/kysera/releases/new')
     console.log(`  2. Use tag: v${newVersion}`)
     console.log('  3. Copy changelog entry for release notes')
     console.log('  4. Announce in Discord/Twitter')
