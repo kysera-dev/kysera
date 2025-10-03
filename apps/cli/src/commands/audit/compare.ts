@@ -1,6 +1,5 @@
 import { Command } from 'commander'
 import { prism, spinner } from '@xec-sh/kit'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
@@ -62,7 +61,7 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
     )
   }
 
-  const compareSpinner = spinner()
+  const compareSpinner = spinner() as any
   compareSpinner.start('Fetching audit logs...')
 
   try {
@@ -93,10 +92,10 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
     compareSpinner.succeed('Audit logs fetched successfully')
 
     // Parse values
-    const oldValues1 = parseJson(log1.old_values)
-    const newValues1 = parseJson(log1.new_values)
-    const oldValues2 = parseJson(log2.old_values)
-    const newValues2 = parseJson(log2.new_values)
+    const oldValues1 = parseJson(log1['old_values'])
+    const newValues1 = parseJson(log1['new_values'])
+    const oldValues2 = parseJson(log2['old_values'])
+    const newValues2 = parseJson(log2['new_values'])
 
     if (options.json) {
       console.log(JSON.stringify({
@@ -122,28 +121,28 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
     console.log(`  ${'-'.repeat(15)} | ${'-'.repeat(20)} | ${'-'.repeat(20)}`)
 
     // Table
-    const table1 = log1.table_name as string
-    const table2 = log2.table_name as string
+    const table1 = log1['table_name'] as string
+    const table2 = log2['table_name'] as string
     console.log(`  ${'Table'.padEnd(15)} | ${table1.padEnd(20)} | ${table2.padEnd(20)} ${table1 !== table2 ? prism.yellow('⚠') : ''}`)
 
     // Entity ID
-    const entity1 = log1.entity_id as string
-    const entity2 = log2.entity_id as string
+    const entity1 = log1['entity_id'] as string
+    const entity2 = log2['entity_id'] as string
     console.log(`  ${'Entity ID'.padEnd(15)} | ${entity1.padEnd(20)} | ${entity2.padEnd(20)} ${entity1 !== entity2 ? prism.yellow('⚠') : ''}`)
 
     // Action
-    const action1 = log1.action as string
-    const action2 = log2.action as string
+    const action1 = log1['action'] as string
+    const action2 = log2['action'] as string
     console.log(`  ${'Action'.padEnd(15)} | ${formatAction(action1).padEnd(20)} | ${formatAction(action2).padEnd(20)} ${action1 !== action2 ? prism.yellow('⚠') : ''}`)
 
     // User
-    const user1 = (log1.user_id || 'system') as string
-    const user2 = (log2.user_id || 'system') as string
+    const user1 = (log1['user_id'] || 'system') as string
+    const user2 = (log2['user_id'] || 'system') as string
     console.log(`  ${'User'.padEnd(15)} | ${user1.padEnd(20)} | ${user2.padEnd(20)} ${user1 !== user2 ? prism.yellow('⚠') : ''}`)
 
     // Timestamp
-    const time1 = new Date(log1.created_at as string)
-    const time2 = new Date(log2.created_at as string)
+    const time1 = new Date(log1['created_at'] as string)
+    const time2 = new Date(log2['created_at'] as string)
     console.log(`  ${'Timestamp'.padEnd(15)} | ${time1.toLocaleString().padEnd(20)} | ${time2.toLocaleString().padEnd(20)}`)
 
     // Time difference

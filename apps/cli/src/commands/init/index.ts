@@ -163,8 +163,19 @@ export function initCommand(): Command {
 }
 
 async function initProject(projectName: string | undefined, options: InitOptions): Promise<void> {
-  // Interactive mode if no project name provided
+  // Check if we're in a non-interactive environment
+  const isNonInteractive = process.env['NODE_ENV'] === 'test' || !process.stdin.isTTY || process.env['CI']
+
+  // Interactive mode if no project name provided (and we're in an interactive environment)
   if (!projectName) {
+    if (isNonInteractive) {
+      throw new CLIError(
+        'Project name is required in non-interactive mode',
+        'PROJECT_NAME_REQUIRED',
+        ['Provide project name as argument: kysera init <project-name>']
+      )
+    }
+
     const answers = await group({
       projectName: () => text({
         message: 'Project name',
@@ -289,8 +300,15 @@ async function initProject(projectName: string | undefined, options: InitOptions
 
   // Show creation message
   console.log('')
-  const createSpinner = spinner()
-  createSpinner.start(`Creating project ${prism.cyan(projectName)}`)
+
+  // Use the previously defined isNonInteractive variable
+  let createSpinner: any = null
+  if (!isNonInteractive) {
+    createSpinner = spinner()
+    createSpinner.start(`Creating project ${prism.cyan(projectName)}`)
+  } else {
+    console.log(`Creating project ${projectName}...`)
+  }
 
   try {
     // Create project directory
@@ -308,34 +326,65 @@ async function initProject(projectName: string | undefined, options: InitOptions
       typescript: options.typescript !== false
     })
 
-    createSpinner.succeed('Project structure created')
+    if (createSpinner) {
+      createSpinner.succeed('Project initialized successfully')
+    } else {
+      console.log('✓ Project initialized successfully')
+    }
 
     // Initialize git if requested
     if (options.git !== false) {
-      const gitSpinner = spinner()
-      gitSpinner.start('Initializing git repository')
+      let gitSpinner: any = null
+      if (!isNonInteractive) {
+        gitSpinner = spinner()
+        gitSpinner.start('Initializing git repository')
+      } else {
+        console.log('Initializing git repository...')
+      }
+
       try {
         execSync('git init', { cwd: projectPath, stdio: 'ignore' })
         execSync('git add .', { cwd: projectPath, stdio: 'ignore' })
         execSync('git commit -m "Initial commit"', { cwd: projectPath, stdio: 'ignore' })
-        gitSpinner.succeed('Git repository initialized')
+        if (gitSpinner) {
+          gitSpinner.succeed('Git repository initialized')
+        } else {
+          console.log('✓ Git repository initialized')
+        }
       } catch (error) {
-        gitSpinner.warn('Failed to initialize git repository')
+        if (gitSpinner) {
+          gitSpinner.warn('Failed to initialize git repository')
+        } else {
+          console.log('⚠ Failed to initialize git repository')
+        }
         logger.debug(`Git error: ${error}`)
       }
     }
 
     // Install dependencies if requested
     if (options.install !== false) {
-      const installSpinner = spinner()
-      installSpinner.start('Installing dependencies')
+      let installSpinner: any = null
+      if (!isNonInteractive) {
+        installSpinner = spinner()
+        installSpinner.start('Installing dependencies')
+      } else {
+        console.log('Installing dependencies...')
+      }
 
       const installCmd = getInstallCommand(packageManager)
       try {
         execSync(installCmd, { cwd: projectPath, stdio: 'ignore' })
-        installSpinner.succeed('Dependencies installed')
+        if (installSpinner) {
+          installSpinner.succeed('Dependencies installed')
+        } else {
+          console.log('✓ Dependencies installed')
+        }
       } catch (error) {
-        installSpinner.warn('Failed to install dependencies')
+        if (installSpinner) {
+          installSpinner.warn('Failed to install dependencies')
+        } else {
+          console.log('⚠ Failed to install dependencies')
+        }
         logger.debug(`Install error: ${error}`)
         console.log(prism.yellow(`\nRun ${prism.cyan(installCmd)} to install dependencies manually`))
       }
@@ -343,26 +392,40 @@ async function initProject(projectName: string | undefined, options: InitOptions
 
     // Success message
     console.log('')
-    console.log(box({
-      title: '✨ Project created successfully!',
-      body: [
-        `Project: ${prism.cyan(projectName)}`,
-        `Template: ${prism.cyan(template)}`,
-        `Database: ${prism.cyan(database)}`,
-        `Plugins: ${prism.cyan(plugins.join(', '))}`,
-        '',
-        'Next steps:',
-        projectDir !== '.' ? `  ${prism.gray('1.')} cd ${projectName}` : '',
-        `  ${prism.gray(projectDir !== '.' ? '2.' : '1.')} ${packageManager} run dev`,
-        '',
-        `Documentation: ${prism.blue('https://kysera.dev/docs')}`,
-        `GitHub: ${prism.blue('https://github.com/kysera/kysera')}`
-      ].filter(Boolean).join('\n'),
-      color: 'green'
-    }))
+    const successMessage = [
+      `Project: ${prism.cyan(projectName)}`,
+      `Template: ${prism.cyan(template)}`,
+      `Database: ${prism.cyan(database)}`,
+      `Plugins: ${prism.cyan(plugins.join(', '))}`,
+      '',
+      'Next steps:',
+      projectDir !== '.' ? `  ${prism.gray('1.')} cd ${projectName}` : '',
+      `  ${prism.gray(projectDir !== '.' ? '2.' : '1.')} ${packageManager} run dev`,
+      '',
+      `Documentation: ${prism.blue('https://kysera.dev/docs')}`,
+      `GitHub: ${prism.blue('https://github.com/kysera/kysera')}`
+    ].filter(Boolean).join('\n')
+
+    // In non-interactive mode, just print the message
+    if (isNonInteractive) {
+      console.log('✨ Project created successfully!')
+      console.log('')
+      console.log(successMessage)
+    } else {
+      // Use box in interactive mode
+      console.log(box({
+        title: '✨ Project created successfully!',
+        body: successMessage,
+        color: 'green'
+      }))
+    }
 
   } catch (error) {
-    createSpinner.fail('Failed to create project')
+    if (createSpinner) {
+      createSpinner.fail('Failed to create project')
+    } else {
+      console.log('✗ Failed to create project')
+    }
     throw error
   }
 }
@@ -469,24 +532,34 @@ async function generateProjectFiles(
 
 async function generateConfigFiles(projectPath: string, config: any): Promise<void> {
   // Generate kysera.config.ts
+  let databaseConfig = ''
+  if (config.database === 'sqlite') {
+    databaseConfig = `  database: {
+    dialect: 'sqlite',
+    database: process.env.DB_FILE || './database.sqlite'
+  },`
+  } else if (config.database === 'postgres') {
+    databaseConfig = `  database: {
+    dialect: 'postgres',
+    host: process.env.DB_HOST || 'localhost',
+    port: Number(process.env.DB_PORT) || 5432,
+    database: process.env.DB_NAME || '${config.name}',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'postgres'
+  },`
+  } else if (config.database === 'mysql') {
+    databaseConfig = `  database: {
+    dialect: 'mysql',
+    host: process.env.DB_HOST || 'localhost',
+    port: Number(process.env.DB_PORT) || 3306,
+    database: process.env.DB_NAME || '${config.name}',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || ''
+  },`
+  }
+
   const kyseraConfig = `export default {
-  database: {
-    dialect: '${config.database}',
-    connection: {
-      // Configure your database connection here
-      ${config.database === 'postgres' ? `host: process.env.DB_HOST || 'localhost',
-      port: Number(process.env.DB_PORT) || 5432,
-      database: process.env.DB_NAME || '${config.name}',
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres'` : ''}
-      ${config.database === 'mysql' ? `host: process.env.DB_HOST || 'localhost',
-      port: Number(process.env.DB_PORT) || 3306,
-      database: process.env.DB_NAME || '${config.name}',
-      user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || ''` : ''}
-      ${config.database === 'sqlite' ? `filename: process.env.DB_FILE || './database.sqlite'` : ''}
-    }
-  },
+${databaseConfig}
   migrations: {
     directory: './migrations',
     tableName: 'kysera_migrations'

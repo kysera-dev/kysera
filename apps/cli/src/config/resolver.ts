@@ -83,7 +83,7 @@ export function resolveConfigPaths(config: KyseraConfig, configPath: string): Ky
   }
 
   // Resolve logging paths
-  if (resolved.logging?.destinations) {
+  if (resolved.logging?.destinations && Array.isArray(resolved.logging.destinations)) {
     resolved.logging.destinations = resolved.logging.destinations.map((dest) => {
       if (dest.type === 'file' && 'path' in dest) {
         return {

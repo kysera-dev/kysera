@@ -19,21 +19,41 @@ export async function runCLI(
     cwd?: string
     env?: Record<string, string>
     input?: string
+    timeout?: number
   } = {}
 ): Promise<{
   code: number | null
   stdout: string
   stderr: string
 }> {
-  return new Promise((resolve) => {
-    const child = spawn('node', [CLI_PATH, ...args], {
+  return new Promise((resolve, reject) => {
+    // Use process.execPath to get the current Node.js executable
+    const child = spawn(process.execPath, [CLI_PATH, ...args], {
       cwd: options.cwd || process.cwd(),
-      env: { ...process.env, ...options.env },
+      env: {
+        ...process.env,
+        NODE_ENV: 'test',  // Always set NODE_ENV to test for CLI tests
+        ...options.env
+      },
       stdio: 'pipe'
     })
 
     let stdout = ''
     let stderr = ''
+    let timedOut = false
+
+    // Set a timeout if specified (default 30 seconds for tests)
+    const timeoutMs = options.timeout || 30000
+    const timeoutId = setTimeout(() => {
+      timedOut = true
+      child.kill('SIGTERM')
+      // Force kill after 1 second if still running
+      setTimeout(() => {
+        if (!child.killed) {
+          child.kill('SIGKILL')
+        }
+      }, 1000)
+    }, timeoutMs)
 
     child.stdout.on('data', (data) => {
       stdout += data.toString()
@@ -46,10 +66,23 @@ export async function runCLI(
     if (options.input) {
       child.stdin.write(options.input)
       child.stdin.end()
+    } else {
+      // Close stdin if no input to prevent hanging on input prompts
+      child.stdin.end()
     }
 
     child.on('close', (code) => {
-      resolve({ code, stdout, stderr })
+      clearTimeout(timeoutId)
+      if (timedOut) {
+        reject(new Error(`Command timed out after ${timeoutMs}ms\nstdout: ${stdout}\nstderr: ${stderr}`))
+      } else {
+        resolve({ code, stdout, stderr })
+      }
+    })
+
+    child.on('error', (error) => {
+      clearTimeout(timeoutId)
+      reject(error)
     })
   })
 }
@@ -202,30 +235,28 @@ export async function createTestMigrations(dir: string): Promise<void> {
   const migrationsDir = path.join(dir, 'migrations')
   await fs.mkdir(migrationsDir, { recursive: true })
 
-  // Create a simple migration
+  // Create a simple migration (no Kysely import needed as db is passed)
   const migration = `
-import { Kysely } from 'kysely'
-
-export async function up(db: Kysely<any>): Promise<void> {
+export async function up(db) {
   await db.schema
     .createTable('users')
-    .addColumn('id', 'serial', (col) => col.primaryKey())
+    .addColumn('id', 'integer', (col) => col.primaryKey().autoIncrement())
     .addColumn('email', 'varchar(255)', (col) => col.notNull().unique())
     .addColumn('name', 'varchar(255)')
-    .addColumn('created_at', 'timestamp', (col) => col.notNull().defaultTo('now()'))
+    .addColumn('created_at', 'timestamp', (col) => col.notNull().defaultTo('CURRENT_TIMESTAMP'))
     .execute()
 
   await db.schema
     .createTable('posts')
-    .addColumn('id', 'serial', (col) => col.primaryKey())
+    .addColumn('id', 'integer', (col) => col.primaryKey().autoIncrement())
     .addColumn('user_id', 'integer', (col) => col.notNull().references('users.id'))
     .addColumn('title', 'varchar(255)', (col) => col.notNull())
     .addColumn('content', 'text')
-    .addColumn('created_at', 'timestamp', (col) => col.notNull().defaultTo('now()'))
+    .addColumn('created_at', 'timestamp', (col) => col.notNull().defaultTo('CURRENT_TIMESTAMP'))
     .execute()
 }
 
-export async function down(db: Kysely<any>): Promise<void> {
+export async function down(db) {
   await db.schema.dropTable('posts').execute()
   await db.schema.dropTable('users').execute()
 }

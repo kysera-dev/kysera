@@ -1,6 +1,5 @@
 import { Command } from 'commander'
-import { prism, spinner, table, select } from '@xec-sh/kit'
-import { logger } from '../../utils/logger.js'
+import { prism, spinner, table } from '@xec-sh/kit'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
@@ -74,7 +73,7 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
     )
   }
 
-  const querySpinner = spinner()
+  const querySpinner = spinner() as any
   querySpinner.start('Querying audit logs...')
 
   try {
@@ -156,38 +155,38 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
       // Detailed view
       for (const log of logs) {
         console.log('')
-        console.log(prism.bold(`📝 Audit Log #${log.id}`))
+        console.log(prism.bold(`📝 Audit Log #${log['id']}`))
         console.log(prism.gray('─'.repeat(50)))
-        console.log(`  Timestamp: ${formatDate(log.created_at)}`)
-        console.log(`  Table: ${prism.cyan(log.table_name)}`)
-        console.log(`  Action: ${formatAction(log.action)}`)
-        console.log(`  Entity ID: ${log.entity_id}`)
-        console.log(`  User: ${log.user_id || prism.gray('system')}`)
+        console.log(`  Timestamp: ${formatDate(log['created_at'])}`)
+        console.log(`  Table: ${prism.cyan(log['table_name'])}`)
+        console.log(`  Action: ${formatAction(log['action'])}`)
+        console.log(`  Entity ID: ${log['entity_id']}`)
+        console.log(`  User: ${log['user_id'] || prism.gray('system')}`)
 
-        if (log.metadata) {
-          console.log(`  Metadata: ${prism.gray(JSON.stringify(log.metadata))}`)
+        if (log['metadata']) {
+          console.log(`  Metadata: ${prism.gray(JSON.stringify(log['metadata']))}`)
         }
 
-        if (log.old_values || log.new_values) {
+        if (log['old_values'] || log['new_values']) {
           console.log('')
           console.log(prism.cyan('  Changes:'))
 
-          if (log.action === 'INSERT') {
+          if (log['action'] === 'INSERT') {
             console.log(prism.green('    + Created with:'))
-            if (log.new_values) {
-              const values = typeof log.new_values === 'string'
-                ? JSON.parse(log.new_values)
-                : log.new_values
+            if (log['new_values']) {
+              const values = typeof log['new_values'] === 'string'
+                ? JSON.parse(log['new_values'])
+                : log['new_values']
               for (const [key, value] of Object.entries(values)) {
                 console.log(`      ${key}: ${formatValue(value)}`)
               }
             }
-          } else if (log.action === 'UPDATE') {
-            const oldValues = log.old_values
-              ? (typeof log.old_values === 'string' ? JSON.parse(log.old_values) : log.old_values)
+          } else if (log['action'] === 'UPDATE') {
+            const oldValues = log['old_values']
+              ? (typeof log['old_values'] === 'string' ? JSON.parse(log['old_values']) : log['old_values'])
               : {}
-            const newValues = log.new_values
-              ? (typeof log.new_values === 'string' ? JSON.parse(log.new_values) : log.new_values)
+            const newValues = log['new_values']
+              ? (typeof log['new_values'] === 'string' ? JSON.parse(log['new_values']) : log['new_values'])
               : {}
 
             for (const key of new Set([...Object.keys(oldValues), ...Object.keys(newValues)])) {
@@ -195,12 +194,12 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
                 console.log(`      ${key}: ${formatValue(oldValues[key])} → ${formatValue(newValues[key])}`)
               }
             }
-          } else if (log.action === 'DELETE') {
+          } else if (log['action'] === 'DELETE') {
             console.log(prism.red('    - Deleted with:'))
-            if (log.old_values) {
-              const values = typeof log.old_values === 'string'
-                ? JSON.parse(log.old_values)
-                : log.old_values
+            if (log['old_values']) {
+              const values = typeof log['old_values'] === 'string'
+                ? JSON.parse(log['old_values'])
+                : log['old_values']
               for (const [key, value] of Object.entries(values)) {
                 console.log(`      ${key}: ${formatValue(value)}`)
               }
@@ -211,13 +210,13 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
     } else {
       // Table view
       const tableData = logs.map((log: any) => ({
-        ID: log.id,
-        Time: formatDate(log.created_at, true),
-        Table: log.table_name,
-        Action: formatAction(log.action, true),
-        Entity: log.entity_id,
-        User: log.user_id || 'system',
-        Changes: log.changes_count || '-'
+        ID: log['id'],
+        Time: formatDate(log['created_at'], true),
+        Table: log['table_name'],
+        Action: formatAction(log['action'], true),
+        Entity: log['entity_id'],
+        User: log['user_id'] || 'system',
+        Changes: log['changes_count'] || '-'
       }))
 
       console.log('')

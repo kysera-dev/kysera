@@ -1,4 +1,4 @@
-import { Kysely, sql } from 'kysely'
+import { type Kysely, sql } from 'kysely'
 
 export interface Migration {
   name: string

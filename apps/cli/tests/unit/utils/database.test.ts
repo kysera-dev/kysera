@@ -8,31 +8,35 @@ import {
 import { Kysely } from 'kysely'
 
 // Mock Kysely and dialects
-vi.mock('kysely', () => ({
-  Kysely: vi.fn().mockImplementation(() => ({
-    destroy: vi.fn(),
-    introspection: {
+vi.mock('kysely', () => {
+  class MockKysely {
+    destroy = vi.fn()
+    introspection = {
       getTables: vi.fn().mockResolvedValue([
         { name: 'users', schema: 'public' },
         { name: 'posts', schema: 'public' }
       ])
-    },
-    schema: {
+    }
+    schema = {
       createTable: vi.fn().mockReturnThis(),
       dropTable: vi.fn().mockReturnThis(),
       execute: vi.fn()
-    },
-    selectFrom: vi.fn().mockReturnThis(),
-    selectAll: vi.fn().mockReturnThis(),
-    execute: vi.fn().mockResolvedValue([])
-  })),
-  PostgresDialect: vi.fn(),
-  MysqlDialect: vi.fn(),
-  SqliteDialect: vi.fn(),
-  sql: {
-    raw: vi.fn()
+    }
+    selectFrom = vi.fn().mockReturnThis()
+    selectAll = vi.fn().mockReturnThis()
+    execute = vi.fn().mockResolvedValue([])
   }
-}))
+
+  return {
+    Kysely: MockKysely,
+    PostgresDialect: vi.fn(),
+    MysqlDialect: vi.fn(),
+    SqliteDialect: vi.fn(),
+    sql: {
+      raw: vi.fn()
+    }
+  }
+})
 
 vi.mock('pg', () => ({
   Pool: vi.fn().mockImplementation(() => ({

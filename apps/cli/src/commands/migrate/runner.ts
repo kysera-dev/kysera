@@ -65,21 +65,33 @@ export class MigrationRunner {
    */
   async getMigrationFiles(): Promise<MigrationFile[]> {
     if (!existsSync(this.migrationsDir)) {
+      logger.warn(`Migration directory does not exist: ${this.migrationsDir}`)
       return []
     }
 
-    const files = readdirSync(this.migrationsDir)
-      .filter(file => file.endsWith('.ts') || file.endsWith('.js') || file.endsWith('.mjs'))
-      .sort()
+    try {
+      const files = readdirSync(this.migrationsDir)
+        .filter(file => file.endsWith('.ts') || file.endsWith('.js') || file.endsWith('.mjs'))
+        .sort()
 
-    return files.map(file => {
-      const timestamp = file.substring(0, 14) // First 14 chars are timestamp
-      return {
-        name: basename(file, file.includes('.') ? file.substring(file.lastIndexOf('.')) : ''),
-        path: join(this.migrationsDir, file),
-        timestamp
+      // Ensure files is an array before using map
+      if (!files || !Array.isArray(files)) {
+        logger.debug('No migration files found or files is not an array')
+        return []
       }
-    })
+
+      return files.map(file => {
+        const timestamp = file.substring(0, 14) // First 14 chars are timestamp
+        return {
+          name: basename(file, file.includes('.') ? file.substring(file.lastIndexOf('.')) : ''),
+          path: join(this.migrationsDir, file),
+          timestamp
+        }
+      })
+    } catch (error) {
+      logger.error(`Failed to read migration directory: ${error}`)
+      return []
+    }
   }
 
   /**
@@ -93,6 +105,12 @@ export class MigrationRunner {
         .orderBy('batch')
         .orderBy('executed_at')
         .execute()
+
+      // Ensure migrations is an array before using map
+      if (!migrations || !Array.isArray(migrations)) {
+        logger.debug('No migrations found in database or migrations is not an array:', migrations)
+        return []
+      }
 
       return migrations.map((m: any) => ({
         name: m.name,
@@ -113,16 +131,46 @@ export class MigrationRunner {
    * Get migration status (pending vs executed)
    */
   async getMigrationStatus(): Promise<MigrationStatus[]> {
-    const files = await this.getMigrationFiles()
-    const executed = await this.getExecutedMigrations()
-    const executedMap = new Map(executed.map(m => [m.name, m]))
+    try {
+      const files = await this.getMigrationFiles()
+      const executed = await this.getExecutedMigrations()
 
-    return files.map(file => ({
-      name: file.name,
-      timestamp: file.timestamp,
-      executedAt: executedMap.get(file.name)?.executed_at,
-      status: executedMap.has(file.name) ? 'executed' as const : 'pending' as const
-    }))
+      if (!files || !Array.isArray(files)) {
+        logger.debug('No migration files found')
+        return []
+      }
+
+      if (!executed || !Array.isArray(executed)) {
+        // No migrations have been executed yet
+        return files.map(file => ({
+          name: file.name,
+          timestamp: file.timestamp,
+          status: 'pending' as const
+        }))
+      }
+
+      // Extra safety check before creating the Map
+      if (!Array.isArray(executed)) {
+        logger.error('executed is not an array:', executed)
+        return files.map(file => ({
+          name: file.name,
+          timestamp: file.timestamp,
+          status: 'pending' as const
+        }))
+      }
+
+      const executedMap = new Map(executed.map(m => [m.name, m]))
+
+      return files.map(file => ({
+        name: file.name,
+        timestamp: file.timestamp,
+        executedAt: executedMap.get(file.name)?.executed_at,
+        status: executedMap.has(file.name) ? 'executed' as const : 'pending' as const
+      }))
+    } catch (error) {
+      logger.error('Error in getMigrationStatus:', error)
+      throw error
+    }
   }
 
   /**
@@ -134,11 +182,11 @@ export class MigrationRunner {
       const module = await import(fileUrl)
 
       if (!module.up || typeof module.up !== 'function') {
-        throw new Error(`Migration ${file.name} must export an 'up' function`)
+        throw new Error(`Invalid migration ${file.name}: must export an 'up' function`)
       }
 
       if (!module.down || typeof module.down !== 'function') {
-        throw new Error(`Migration ${file.name} must export a 'down' function`)
+        throw new Error(`Invalid migration ${file.name}: must export a 'down' function`)
       }
 
       return {
@@ -171,7 +219,12 @@ export class MigrationRunner {
     const executed: string[] = []
 
     const status = await this.getMigrationStatus()
-    let pending = status.filter(m => m.status === 'pending')
+    if (!status || !Array.isArray(status)) {
+      logger.warn('getMigrationStatus returned invalid data:', status)
+      return { executed, duration: Date.now() - startTime }
+    }
+
+    let pending = status.filter(m => m && m.status === 'pending')
 
     // Apply filters
     if (options.to) {
@@ -195,7 +248,7 @@ export class MigrationRunner {
     const lastBatch = await this.getLastBatch()
     const batch = lastBatch + 1
 
-    logger.info(`Running ${pending.length} migration${pending.length > 1 ? 's' : ''}...`)
+    logger.info('Running migrations')
 
     for (const migrationStatus of pending) {
       const file = await this.getMigrationFiles().then(files =>
@@ -296,7 +349,14 @@ export class MigrationRunner {
       return { rolledBack, duration: Date.now() - startTime }
     }
 
-    logger.info(`Rolling back ${toRollback.length} migration${toRollback.length > 1 ? 's' : ''}...`)
+    // Show message based on number of migrations
+    if (options.steps && options.steps === 1) {
+      logger.info('Rolling back 1 migration')
+    } else if (options.steps) {
+      logger.info(`Rolling back ${options.steps} migration${options.steps > 1 ? 's' : ''}`)
+    } else {
+      logger.info('Rolling back')
+    }
 
     for (const executedMigration of toRollback) {
       const file = await this.getMigrationFiles().then(files =>

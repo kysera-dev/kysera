@@ -3,10 +3,10 @@ import { prism, spinner } from '@xec-sh/kit'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
+import { sql } from 'kysely'
 
 export interface SeedOptions {
   file?: string
@@ -67,7 +67,7 @@ async function runSeeds(options: SeedOptions): Promise<void> {
     )
   }
 
-  const seedSpinner = spinner()
+  const seedSpinner = spinner() as any
 
   try {
     // Determine which seeds to run
@@ -103,7 +103,7 @@ async function runSeeds(options: SeedOptions): Promise<void> {
         .map(f => join(seedDir, f))
 
       if (files.length === 0) {
-        logger.warn(`No seed files found in ${seedDir}`)
+        console.log(prism.yellow(`No seed files found in ${seedDir}`))
         return
       }
 
@@ -147,13 +147,13 @@ async function runSeeds(options: SeedOptions): Promise<void> {
         // Truncate each table
         for (const table of tables) {
           if (options.verbose) {
-            logger.debug(`Truncating table: ${table}`)
+            console.log(`Truncating table: ${table}`)
           }
 
           if (config.database.dialect === 'sqlite') {
             await db.deleteFrom(table).execute()
           } else {
-            await db.raw(`TRUNCATE TABLE ${table} CASCADE`).execute()
+            await sql`TRUNCATE TABLE ${sql.id(table)} CASCADE`.execute(db)
           }
         }
 

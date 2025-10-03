@@ -43,6 +43,7 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
     throw new CLIError(
       'Database configuration not found',
       'CONFIG_ERROR',
+      undefined,
       [
         'Create a kysera.config.ts file with database configuration',
         'Or specify a config file with --config option'
@@ -57,6 +58,7 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
     throw new CLIError(
       'Failed to connect to database',
       'DATABASE_ERROR',
+      undefined,
       ['Check your database configuration', 'Ensure the database server is running']
     )
   }
@@ -96,7 +98,7 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
 
     // Display status header
     console.log('')
-    console.log(prism.bold('📊 Migration Status'))
+    console.log(prism.bold('Migration Status'))
     console.log('')
 
     // Show executed migrations
@@ -121,7 +123,7 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
         // Simple list
         for (const migration of executed) {
           const executedAt = migration.executedAt ? ` (${formatDate(migration.executedAt)})` : ''
-          console.log(`  ${prism.green('✓')} ${migration.name}${prism.gray(executedAt)}`)
+          console.log(`  ${prism.green('✓')} ${migration.name} ${prism.green('(executed)')}${prism.gray(executedAt)}`)
         }
       }
       console.log('')
@@ -150,7 +152,7 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
       } else {
         // Simple list
         for (const migration of pending) {
-          console.log(`  ${prism.gray('-')} ${migration.name}`)
+          console.log(`  ${prism.gray('-')} ${migration.name} ${prism.gray('(pending)')}`)
         }
       }
       console.log('')

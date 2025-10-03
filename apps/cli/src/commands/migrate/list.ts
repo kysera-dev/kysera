@@ -47,6 +47,7 @@ async function listMigrations(options: ListOptions): Promise<void> {
     throw new CLIError(
       'Database configuration not found',
       'CONFIG_ERROR',
+      undefined,
       [
         'Create a kysera.config.ts file with database configuration',
         'Or specify a config file with --config option'
@@ -76,6 +77,7 @@ async function listMigrations(options: ListOptions): Promise<void> {
     throw new CLIError(
       'Failed to connect to database',
       'DATABASE_ERROR',
+      undefined,
       ['Check your database configuration', 'Ensure the database server is running']
     )
   }
@@ -88,6 +90,18 @@ async function listMigrations(options: ListOptions): Promise<void> {
 
     // Get migration status
     const status = await runner.getMigrationStatus()
+
+    // Debug logging
+    logger.debug('status type:', typeof status)
+    logger.debug('status is array:', Array.isArray(status))
+
+    if (!Array.isArray(status)) {
+      logger.error('getMigrationStatus did not return an array:', status)
+      throw new CLIError(
+        'Invalid migration status returned',
+        'INVALID_STATUS'
+      )
+    }
 
     // Filter based on options
     let migrations = status
@@ -121,17 +135,17 @@ async function listMigrations(options: ListOptions): Promise<void> {
       ? 'Pending Migrations'
       : options.executed
       ? 'Executed Migrations'
-      : 'All Migrations'
+      : 'Available Migrations'
 
     console.log(prism.bold(title))
     console.log('')
 
     // Prepare table data
     const tableData = migrations.map(m => {
-      const row: any = {
+      const row: Record<string, string> = {
         Status: m.status === 'executed' ? prism.green('✓') : prism.yellow('○'),
-        Name: m.name,
-        Timestamp: m.timestamp
+        Name: String(m.name || ''),
+        Timestamp: String(m.timestamp || '')
       }
 
       if (m.status === 'executed' && m.executedAt) {
@@ -141,8 +155,39 @@ async function listMigrations(options: ListOptions): Promise<void> {
       return row
     })
 
+    // Debug log
+    logger.debug('tableData:', JSON.stringify(tableData, null, 2))
+
     // Display table
-    console.log(table(tableData))
+    if (tableData && Array.isArray(tableData) && tableData.length > 0) {
+      // @xec-sh/kit table expects plain strings, so we need to ensure
+      // prism output is converted to string (it might return objects)
+      const plainTableData = tableData.map(row => {
+        const plainRow: Record<string, string> = {}
+        for (const [key, value] of Object.entries(row)) {
+          plainRow[key] = String(value)
+        }
+        return plainRow
+      })
+
+      try {
+        console.log(table(plainTableData))
+      } catch (tableError) {
+        logger.error('Table rendering error:', tableError)
+        logger.debug('plainTableData:', plainTableData)
+        // Fallback to simple list if table fails
+        migrations.forEach(m => {
+          const status = m.status === 'executed' ? prism.green('✓') : prism.yellow('○')
+          const executedInfo = m.status === 'executed' && m.executedAt ? ` (${formatDate(m.executedAt)})` : ''
+          console.log(`  ${status} ${m.name}${executedInfo}`)
+        })
+      }
+    } else if (!Array.isArray(tableData)) {
+      logger.error('tableData is not an array:', typeof tableData, tableData)
+      console.log(prism.gray('  Error: Table data is not an array'))
+    } else {
+      console.log(prism.gray('  No migrations found'))
+    }
     console.log('')
 
     // Show summary

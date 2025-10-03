@@ -1,6 +1,5 @@
 import { Command } from 'commander'
-import { prism, text, table as displayTable } from '@xec-sh/kit'
-import { logger } from '../../utils/logger.js'
+import { prism, table as displayTable } from '@xec-sh/kit'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'

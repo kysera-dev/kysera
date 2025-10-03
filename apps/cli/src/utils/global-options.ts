@@ -53,28 +53,28 @@ class GlobalOptionsManager {
    * Check if verbose mode is enabled
    */
   isVerbose(): boolean {
-    return this.options.verbose || process.env.VERBOSE === 'true'
+    return this.options.verbose || process.env['VERBOSE'] === 'true'
   }
 
   /**
    * Check if quiet mode is enabled
    */
   isQuiet(): boolean {
-    return this.options.quiet || process.env.QUIET === 'true'
+    return this.options.quiet || process.env['QUIET'] === 'true'
   }
 
   /**
    * Check if dry-run mode is enabled
    */
   isDryRun(): boolean {
-    return this.options.dryRun || process.env.DRY_RUN === 'true'
+    return this.options.dryRun || process.env['DRY_RUN'] === 'true'
   }
 
   /**
    * Check if JSON output is enabled
    */
   isJson(): boolean {
-    return this.options.json || process.env.JSON_OUTPUT === 'true'
+    return this.options.json || process.env['JSON_OUTPUT'] === 'true'
   }
 
   /**
@@ -83,33 +83,33 @@ class GlobalOptionsManager {
   private applyOptions(): void {
     // Set environment variables
     if (this.options.verbose) {
-      process.env.VERBOSE = 'true'
+      process.env['VERBOSE'] = 'true'
       logger.setLevel('debug')
     }
 
     if (this.options.quiet) {
-      process.env.QUIET = 'true'
+      process.env['QUIET'] = 'true'
       this.enableQuietMode()
     }
 
     if (this.options.dryRun) {
-      process.env.DRY_RUN = 'true'
+      process.env['DRY_RUN'] = 'true'
     }
 
     if (this.options.json) {
-      process.env.JSON_OUTPUT = 'true'
+      process.env['JSON_OUTPUT'] = 'true'
       // Quiet mode for JSON output
       this.enableQuietMode()
     }
 
     if (this.options.noColor) {
-      process.env.NO_COLOR = 'true'
+      process.env['NO_COLOR'] = 'true'
       // Disable colors in prism/chalk
       ;(prism as any).level = 0
     }
 
     if (this.options.config) {
-      process.env.KYSERA_CONFIG = this.options.config
+      process.env['KYSERA_CONFIG'] = this.options.config
     }
   }
 

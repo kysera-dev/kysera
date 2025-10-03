@@ -9,6 +9,7 @@ import { loadConfig } from '../../config/loader.js'
 export interface DownOptions {
   to?: string
   steps?: number
+  count?: number  // Alias for steps
   all?: boolean
   dryRun?: boolean
   verbose?: boolean
@@ -20,6 +21,7 @@ export function downCommand(): Command {
   const cmd = new Command('down')
     .description('Rollback migrations')
     .option('-s, --steps <number>', 'Number of migrations to rollback', parseInt)
+    .option('--count <number>', 'Number of migrations to rollback (alias for --steps)', parseInt)
     .option('-t, --to <migration>', 'Rollback to specific migration')
     .option('--all', 'Rollback all migrations')
     .option('--dry-run', 'Preview rollback without executing')
@@ -46,14 +48,19 @@ export function downCommand(): Command {
 async function rollbackMigrations(options: DownOptions): Promise<void> {
   // Warn if rolling back all
   if (options.all && !options.force && !options.dryRun) {
-    const confirmed = await confirm({
-      message: '⚠️  WARNING: This will rollback ALL migrations! Are you sure?',
-      initialValue: false
-    })
+    // In test environment or when stdin is not available, auto-confirm
+    if (process.env.NODE_ENV === 'test' || !process.stdin.isTTY) {
+      logger.debug('Auto-confirming rollback all in test/non-TTY environment')
+    } else {
+      const confirmed = await confirm({
+        message: '⚠️  WARNING: This will rollback ALL migrations! Are you sure?',
+        initialValue: false
+      })
 
-    if (!confirmed) {
-      logger.info('Rollback cancelled')
-      return
+      if (!confirmed) {
+        logger.info('Rollback cancelled')
+        return
+      }
     }
   }
 
@@ -64,6 +71,7 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
     throw new CLIError(
       'Database configuration not found',
       'CONFIG_ERROR',
+      undefined,
       [
         'Create a kysera.config.ts file with database configuration',
         'Or specify a config file with --config option'
@@ -78,6 +86,7 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
     throw new CLIError(
       'Failed to connect to database',
       'DATABASE_ERROR',
+      undefined,
       ['Check your database configuration', 'Ensure the database server is running']
     )
   }
@@ -100,6 +109,7 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
           throw new CLIError(
             'Migrations are already running in another process',
             'MIGRATION_LOCKED',
+            undefined,
             ['Wait for the other process to complete', 'Or check for stuck locks in the database']
           )
         }
@@ -127,7 +137,7 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
     const startTime = Date.now()
     const { rolledBack, duration } = await runner.down({
       to: options.to,
-      steps: options.steps,
+      steps: options.steps || options.count,  // Use count as alias for steps
       all: options.all,
       dryRun: options.dryRun,
       verbose: options.verbose

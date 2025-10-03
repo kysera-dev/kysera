@@ -1,6 +1,5 @@
 import { Command } from 'commander'
 import { prism, spinner, confirm } from '@xec-sh/kit'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
@@ -50,8 +49,8 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
     )
   }
 
-  // Parse duration
-  const cutoffDate = parseDuration(options.olderThan)
+  // Parse duration (default to 30 days if not specified)
+  const cutoffDate = parseDuration(options.olderThan || '30d')
   const now = new Date()
 
   if (cutoffDate >= now) {
@@ -86,7 +85,7 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
     )
   }
 
-  const analyzeSpinner = spinner()
+  const analyzeSpinner = spinner() as any
   analyzeSpinner.start('Analyzing audit logs to clean up...')
 
   try {
@@ -198,7 +197,7 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
     }
 
     // Execute cleanup
-    const deleteSpinner = spinner()
+    const deleteSpinner = spinner() as any
     deleteSpinner.start('Deleting audit logs...')
 
     const batchSize = parseInt(options.batchSize || '1000', 10)
