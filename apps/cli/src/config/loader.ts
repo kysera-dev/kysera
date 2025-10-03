@@ -41,6 +41,12 @@ export async function loadConfig(configPath?: string): Promise<KyseraConfig> {
   // Validate configuration
   const validation = KyseraConfigSchema.safeParse(resolved)
   if (!validation.success) {
+    logger.debug('Validation failed:', validation.error)
+
+    if (!validation.error || !validation.error.errors || !Array.isArray(validation.error.errors)) {
+      throw new Error(`Configuration validation failed: ${JSON.stringify(validation.error)}`)
+    }
+
     const errors = validation.error.errors.map(e => `  - ${e.path.join('.')}: ${e.message}`).join('\n')
     throw new Error(`Configuration validation failed:\n${errors}`)
   }
@@ -58,6 +64,16 @@ export async function loadConfig(configPath?: string): Promise<KyseraConfig> {
  * Load configuration from a specific file
  */
 async function loadConfigFile(filePath: string): Promise<Partial<KyseraConfig>> {
+  // If it's a JSON file, load it directly
+  if (filePath.endsWith('.json')) {
+    try {
+      const content = await fs.readFile(filePath, 'utf-8')
+      return JSON.parse(content)
+    } catch (error: any) {
+      throw new Error(`Failed to load JSON configuration from ${filePath}: ${error.message}`)
+    }
+  }
+
   const explorer = cosmiconfig('kysera', {
     searchPlaces: [filePath],
     stopDir: resolve(filePath, '..'),
@@ -100,6 +116,10 @@ export function validateConfig(config: unknown): { valid: boolean; errors?: stri
 
   if (result.success) {
     return { valid: true }
+  }
+
+  if (!result.error || !result.error.errors || !Array.isArray(result.error.errors)) {
+    return { valid: false, errors: ['Validation failed'] }
   }
 
   const errors = result.error.errors.map(e => `${e.path.join('.')}: ${e.message}`)
@@ -156,6 +176,10 @@ export async function saveConfig(config: KyseraConfig, configPath?: string): Pro
   // Validate configuration before saving
   const validation = KyseraConfigSchema.safeParse(config)
   if (!validation.success) {
+    if (!validation.error || !validation.error.errors || !Array.isArray(validation.error.errors)) {
+      throw new Error(`Configuration validation failed: ${JSON.stringify(validation.error)}`)
+    }
+
     const errors = validation.error.errors.map(e => `  - ${e.path.join('.')}: ${e.message}`).join('\n')
     throw new Error(`Configuration validation failed:\n${errors}`)
   }

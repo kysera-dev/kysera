@@ -1,12 +1,11 @@
 import { Command } from 'commander'
 import { prism, spinner } from '@xec-sh/kit'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
 import { DatabaseIntrospector } from '../generate/introspector.js'
 import { writeFileSync } from 'fs'
-import { join, resolve } from 'path'
+import { resolve } from 'path'
 
 export interface DumpOptions {
   output?: string
@@ -77,7 +76,7 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
     )
   }
 
-  const dumpSpinner = spinner()
+  const dumpSpinner = spinner() as any
   dumpSpinner.start('Creating database dump...')
 
   try {

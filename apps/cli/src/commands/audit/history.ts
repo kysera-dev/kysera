@@ -1,6 +1,5 @@
 import { Command } from 'commander'
 import { prism, spinner } from '@xec-sh/kit'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
@@ -66,7 +65,7 @@ async function showEntityHistory(tableName: string, entityId: string, options: H
     )
   }
 
-  const historySpinner = spinner()
+  const historySpinner = spinner() as any
   historySpinner.start(`Fetching history for ${tableName} #${entityId}...`)
 
   try {
@@ -130,7 +129,7 @@ async function showEntityHistory(tableName: string, entityId: string, options: H
         }
       } catch (error) {
         // Entity might not exist anymore
-        logger.debug(`Could not fetch current state: ${error}`)
+        // Could not fetch current state, entity might not exist anymore
       }
 
       // Show history timeline
@@ -144,19 +143,15 @@ async function showEntityHistory(tableName: string, entityId: string, options: H
         const timestamp = new Date(log.created_at).toLocaleString()
 
         // Format action with color
-        let actionIcon = ''
         let actionColor = prism.white
         switch (log.action) {
           case 'INSERT':
-            actionIcon = '✨'
             actionColor = prism.green
             break
           case 'UPDATE':
-            actionIcon = '✏️'
             actionColor = prism.yellow
             break
           case 'DELETE':
-            actionIcon = '🗑️'
             actionColor = prism.red
             break
         }

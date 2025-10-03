@@ -8,6 +8,7 @@ import { loadConfig } from '../../config/loader.js'
 
 export interface ResetOptions {
   force?: boolean
+  run?: boolean  // Re-run migrations after reset
   seed?: boolean
   config?: string
   verbose?: boolean
@@ -17,6 +18,7 @@ export function resetCommand(): Command {
   const cmd = new Command('reset')
     .description('Reset all migrations (dangerous!)')
     .option('--force', 'Skip confirmation prompt')
+    .option('--run', 'Re-run migrations after reset')
     .option('--seed', 'Run seeds after reset')
     .option('-c, --config <path>', 'Path to configuration file')
     .option('-v, --verbose', 'Show detailed output')
@@ -63,7 +65,19 @@ export function freshCommand(): Command {
 
 async function resetMigrations(options: ResetOptions): Promise<void> {
   // Confirm dangerous operation
-  if (!options.force) {
+  // If --run is specified, we can skip confirmation in test environments
+  // since the user is explicitly asking to re-run migrations after reset
+  if (!options.force && !options.run) {
+    // In test environment or when stdin is not available, require --force
+    if (process.env.NODE_ENV === 'test' || !process.stdin.isTTY) {
+      throw new CLIError(
+        'Reset requires confirmation',
+        'RESET_REQUIRES_CONFIRMATION',
+        undefined,
+        ['Use --force flag to skip confirmation']
+      )
+    }
+
     console.log('')
     console.log(prism.red('⚠️  WARNING: This will rollback ALL migrations!'))
     console.log(prism.yellow('All data in migrated tables may be lost.'))
@@ -78,6 +92,25 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
       logger.info('Reset cancelled')
       return
     }
+  } else if (!options.force && options.run) {
+    // In test environment, --run implies confirmation
+    if (!(process.env.NODE_ENV === 'test' || !process.stdin.isTTY)) {
+      // In interactive mode, still ask for confirmation
+      console.log('')
+      console.log(prism.red('⚠️  WARNING: This will rollback ALL migrations and re-run them!'))
+      console.log(prism.yellow('All data in migrated tables may be lost.'))
+      console.log('')
+
+      const confirmed = await confirm({
+        message: 'Are you sure you want to continue?',
+        initialValue: false
+      })
+
+      if (!confirmed) {
+        logger.info('Reset cancelled')
+        return
+      }
+    }
   }
 
   // Load configuration
@@ -87,6 +120,7 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
     throw new CLIError(
       'Database configuration not found',
       'CONFIG_ERROR',
+      undefined,
       [
         'Create a kysera.config.ts file with database configuration',
         'Or specify a config file with --config option'
@@ -101,6 +135,7 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
     throw new CLIError(
       'Failed to connect to database',
       'DATABASE_ERROR',
+      undefined,
       ['Check your database configuration', 'Ensure the database server is running']
     )
   }
@@ -122,6 +157,7 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
         throw new CLIError(
           'Migrations are already running in another process',
           'MIGRATION_LOCKED',
+          undefined,
           ['Wait for the other process to complete', 'Or check for stuck locks in the database']
         )
       }
@@ -147,6 +183,16 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
       logger.info('No migrations to reset')
     }
 
+    // Re-run migrations if requested
+    if (options.run) {
+      logger.info('')
+      logger.info('Running migrations')
+      const { executed } = await runner.up({ verbose: options.verbose })
+      if (executed.length > 0) {
+        logger.info(prism.green(`✅ ${executed.length} migration${executed.length > 1 ? 's' : ''} completed successfully`))
+      }
+    }
+
     // Run seeds if requested
     if (options.seed) {
       logger.info('')
@@ -169,6 +215,16 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
 async function freshMigrations(options: ResetOptions): Promise<void> {
   // Confirm dangerous operation
   if (!options.force) {
+    // In test environment or when stdin is not available, require --force
+    if (process.env.NODE_ENV === 'test' || !process.stdin.isTTY) {
+      throw new CLIError(
+        'Fresh requires confirmation',
+        'FRESH_REQUIRES_CONFIRMATION',
+        undefined,
+        ['Use --force flag to skip confirmation']
+      )
+    }
+
     console.log('')
     console.log(prism.red('⚠️  WARNING: This will DROP ALL TABLES and re-run migrations!'))
     console.log(prism.red('ALL DATA WILL BE LOST!'))
@@ -203,6 +259,7 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
     throw new CLIError(
       'Database configuration not found',
       'CONFIG_ERROR',
+      undefined,
       [
         'Create a kysera.config.ts file with database configuration',
         'Or specify a config file with --config option'
@@ -217,6 +274,7 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
     throw new CLIError(
       'Failed to connect to database',
       'DATABASE_ERROR',
+      undefined,
       ['Check your database configuration', 'Ensure the database server is running']
     )
   }

@@ -25,11 +25,25 @@ const DatabasePoolSchema = z.object({
 }).partial()
 
 const DatabaseConfigSchema = z.object({
-  connection: DatabaseConnectionSchema,
+  connection: DatabaseConnectionSchema.optional(),
+  database: z.string().optional(), // For SQLite or connection alternatives
   dialect: DatabaseDialectSchema,
   pool: DatabasePoolSchema.optional(),
-  debug: z.boolean().optional().default(false)
-})
+  debug: z.boolean().optional().default(false),
+  // Additional database-specific options
+  host: z.string().optional(),
+  port: z.number().optional(),
+  user: z.string().optional(),
+  password: z.string().optional()
+}).refine(
+  (data) => {
+    // Either connection or database field must be present
+    return data.connection || data.database || (data.host && data.database)
+  },
+  {
+    message: 'Database configuration must include either connection string, database path (for SQLite), or host/database fields'
+  }
+)
 
 // Migration configuration schema
 const MigrationConfigSchema = z.object({

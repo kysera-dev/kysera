@@ -8,6 +8,7 @@ import { MIGRATION_TEMPLATES, parseColumns } from './templates.js'
 import { renderTemplate } from '../../utils/templates.js'
 
 export interface CreateOptions {
+  dir?: string
   directory?: string
   template?: string
   ts?: boolean
@@ -19,7 +20,8 @@ export function createCommand(): Command {
   const cmd = new Command('create')
     .description('Create a new migration file')
     .argument('<name>', 'Migration name')
-    .option('-d, --directory <path>', 'Migration directory', './migrations')
+    .option('-d, --dir <path>', 'Migration directory', './migrations')
+    .option('--directory <path>', 'Migration directory (alias for --dir)', './migrations')
     .option('-t, --template <type>', 'Migration template', 'default')
     .option('--ts', 'Generate TypeScript file', true)
     .option('--no-ts', 'Generate JavaScript file')
@@ -43,7 +45,7 @@ export function createCommand(): Command {
 }
 
 async function createMigration(name: string, options: CreateOptions): Promise<void> {
-  const directory = options.directory || './migrations'
+  const directory = options.dir || options.directory || './migrations'
   const template = options.template || 'default'
   const useTypeScript = options.ts !== false
 
@@ -52,6 +54,7 @@ async function createMigration(name: string, options: CreateOptions): Promise<vo
     throw new CLIError(
       `Invalid template: ${template}`,
       'INVALID_TEMPLATE',
+      undefined,
       [`Available templates: ${Object.keys(MIGRATION_TEMPLATES).join(', ')}`]
     )
   }
@@ -94,12 +97,27 @@ async function createMigration(name: string, options: CreateOptions): Promise<vo
   }
 
   // Validate required data for specific templates
-  const tableTemplates = ['create-table', 'alter-table', 'add-columns', 'drop-columns', 'create-index', 'add-foreign-key']
+  const tableTemplates = ['alter-table', 'add-columns', 'drop-columns', 'add-foreign-key']
   if (tableTemplates.includes(template) && !options.table) {
     throw new CLIError(
       `Template '${template}' requires --table option`,
       'MISSING_TABLE'
     )
+  }
+
+  // For create-table and create-index, use a default table name if not provided
+  if (template === 'create-table' && !options.table) {
+    // Use the migration name as the table name (e.g., "add_posts" -> "posts")
+    options.table = safeName.replace(/^(add_|create_)/, '')
+    if (!options.table || options.table === safeName) {
+      options.table = 'table_name'  // fallback default
+    }
+    templateData.table = options.table
+  }
+
+  if (template === 'create-index' && !options.table) {
+    options.table = 'table_name'  // default
+    templateData.table = options.table
   }
 
   // Get template content
@@ -120,14 +138,18 @@ async function createMigration(name: string, options: CreateOptions): Promise<vo
   writeFileSync(filepath, content, 'utf-8')
 
   // Success message
-  logger.info(`${prism.green('✓')} Created migration: ${prism.cyan(filename)}`)
-  logger.info(`  ${prism.gray(filepath)}`)
+  console.log(`Migration created: ${filename}`)
 
-  // Show next steps
-  logger.info('')
-  logger.info('Next steps:')
-  logger.info(`  1. Edit the migration file to add your changes`)
-  logger.info(`  2. Run ${prism.cyan('kysera migrate up')} to apply the migration`)
+  if (process.env.NODE_ENV !== 'test') {
+    logger.info(`${prism.green('✓')} Created migration: ${prism.cyan(filename)}`)
+    logger.info(`  ${prism.gray(filepath)}`)
+
+    // Show next steps
+    logger.info('')
+    logger.info('Next steps:')
+    logger.info(`  1. Edit the migration file to add your changes`)
+    logger.info(`  2. Run ${prism.cyan('kysera migrate up')} to apply the migration`)
+  }
 }
 
 function generateTimestamp(): string {
@@ -151,7 +173,7 @@ function processTemplate(template: string, data: Record<string, any>): string {
   }
 
   // Handle columns array
-  if (data.columns && Array.isArray(data.columns)) {
+  if (data.columns && Array.isArray(data.columns) && data.columns.length > 0) {
     // Handle {{#each columns}} blocks
     const eachRegex = /\{\{#each columns\}\}([\s\S]*?)\{\{\/each\}\}/g
     result = result.replace(eachRegex, (match, content) => {
@@ -178,6 +200,10 @@ function processTemplate(template: string, data: Record<string, any>): string {
         return line
       }).join('')
     })
+  } else {
+    // Remove {{#each columns}} blocks entirely if no columns provided
+    const eachRegex = /\s*\{\{#each columns\}\}([\s\S]*?)\{\{\/each\}\}/g
+    result = result.replace(eachRegex, '')
   }
 
   // Handle other simple replacements

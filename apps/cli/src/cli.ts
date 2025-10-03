@@ -50,7 +50,7 @@ ${prism.gray('GitHub:')} ${prism.underline(prism.blue('https://github.com/kysera
     .option('--stats', 'Show performance statistics', false)
 
   // Global hooks
-  program.hook('preAction', async (thisCommand, actionCommand) => {
+  program.hook('preAction', async (_thisCommand, actionCommand) => {
     // Track command usage
     CommandOptimizer.trackUsage(actionCommand.name())
 
@@ -58,12 +58,12 @@ ${prism.gray('GitHub:')} ${prism.underline(prism.blue('https://github.com/kysera
     const opts = program.opts()
 
     // Set up environment
-    process.env.NODE_ENV = opts.env || process.env.NODE_ENV || 'development'
+    process.env['NODE_ENV'] = opts['env'] || process.env['NODE_ENV'] || 'development'
 
     // Load configuration (if not init or help command)
     if (!['init', 'help', 'stats'].includes(actionCommand.name())) {
       try {
-        const configPath = globalOptions.getOptions().config || opts.config
+        const configPath = globalOptions.getOptions().config || opts['config']
         const config = await loadConfig(configPath)
         actionCommand.setOptionValue('_config', config)
       } catch (error) {
@@ -105,6 +105,7 @@ ${prism.gray('GitHub:')} ${prism.underline(prism.blue('https://github.com/kysera
     const placeholderCommand = new Command(name)
       .description(loader.description)
       .allowUnknownOption(true)
+      .allowExcessArguments(true)
       .action(async function(this: Command, ...args: any[]) {
         const loadStart = Date.now()
 
@@ -117,13 +118,25 @@ ${prism.gray('GitHub:')} ${prism.underline(prism.blue('https://github.com/kysera
         if (parent) {
           const index = parent.commands.findIndex(cmd => cmd.name() === name)
           if (index >= 0) {
-            parent.commands[index] = actualCommand
+            // Create a new array with the replacement
+            const newCommands = [...parent.commands]
+            newCommands[index] = actualCommand
+            // @ts-ignore - We need to replace the commands array
+            parent.commands = newCommands
           }
         }
 
-        // Re-parse with actual command
-        const commandArgs = process.argv.slice(2)
-        await actualCommand.parseAsync(commandArgs, { from: 'user' })
+        // Find where this command starts in argv
+        const cmdIndex = process.argv.indexOf(name)
+        if (cmdIndex >= 0) {
+          // Get the arguments after the command name
+          const subArgs = process.argv.slice(cmdIndex + 1)
+          // Parse with the actual command, passing only the subcommand arguments
+          await actualCommand.parseAsync(subArgs, { from: 'user' })
+        } else {
+          // Fallback: parse with all remaining args
+          await actualCommand.parseAsync(args, { from: 'user' })
+        }
       })
 
     program.addCommand(placeholderCommand)
@@ -182,7 +195,7 @@ ${prism.gray('GitHub:')} ${prism.underline(prism.blue('https://github.com/kysera
   await program.parseAsync(argv)
 
   // Show stats if requested
-  if (program.opts().stats) {
+  if (program.opts()['stats']) {
     console.log()
     console.log(prism.gray('─'.repeat(60)))
     console.log(`Command completed in ${Date.now() - startTime}ms`)

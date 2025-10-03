@@ -1,6 +1,5 @@
 import { Command } from 'commander'
 import { prism, confirm, spinner } from '@xec-sh/kit'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
@@ -51,7 +50,7 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
     })
 
     if (!confirmed) {
-      logger.info('Reset cancelled')
+      console.log('Reset cancelled')
       return
     }
   }
@@ -81,7 +80,7 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
     )
   }
 
-  const resetSpinner = spinner()
+  const resetSpinner = spinner() as any
 
   try {
     // Step 1: Drop all tables
@@ -118,7 +117,7 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
     // Drop each table
     for (const table of tables) {
       if (options.verbose) {
-        logger.debug(`Dropping table: ${table}`)
+        console.log(`Dropping table: ${table}`)
       }
 
       try {
@@ -126,7 +125,7 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
       } catch (error) {
         // Some tables might have dependencies, continue anyway
         if (options.verbose) {
-          logger.debug(`Failed to drop ${table}: ${error}`)
+          console.log(`Failed to drop ${table}: ${error}`)
         }
       }
     }

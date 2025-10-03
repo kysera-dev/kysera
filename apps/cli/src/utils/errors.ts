@@ -5,6 +5,7 @@ export class CLIError extends Error {
   constructor(
     message: string,
     public readonly code: string = 'CLI_ERROR',
+    public readonly details?: any,
     public readonly suggestions: string[] = []
   ) {
     super(message)
@@ -15,35 +16,35 @@ export class CLIError extends Error {
 
 export class ConfigurationError extends CLIError {
   constructor(message: string, suggestions: string[] = []) {
-    super(message, 'CONFIG_ERROR', suggestions)
+    super(message, 'CONFIG_ERROR', undefined, suggestions)
     this.name = 'ConfigurationError'
   }
 }
 
 export class DatabaseError extends CLIError {
   constructor(message: string, suggestions: string[] = []) {
-    super(message, 'DATABASE_ERROR', suggestions)
+    super(message, 'DATABASE_ERROR', undefined, suggestions)
     this.name = 'DatabaseError'
   }
 }
 
 export class ValidationError extends CLIError {
   constructor(message: string, public readonly errors: string[] = []) {
-    super(message, 'VALIDATION_ERROR')
+    super(message, 'VALIDATION_ERROR', { errors })
     this.name = 'ValidationError'
   }
 }
 
 export class FileSystemError extends CLIError {
   constructor(message: string, public readonly path?: string) {
-    super(message, 'FS_ERROR')
+    super(message, 'FS_ERROR', path ? { path } : undefined)
     this.name = 'FileSystemError'
   }
 }
 
 export class NetworkError extends CLIError {
   constructor(message: string, public readonly url?: string) {
-    super(message, 'NETWORK_ERROR')
+    super(message, 'NETWORK_ERROR', url ? { url } : undefined)
     this.name = 'NetworkError'
   }
 }
@@ -113,81 +114,100 @@ export function handleError(error: unknown): void {
   } else {
     handleUnknownError(error)
   }
+  process.exit(1)
 }
 
 function handleCLIError(error: CLIError): void {
-  logger.error('')
-  logger.error(prism.red(`✗ ${error.message}`))
+  const output: string[] = []
+  output.push('')
+  output.push(prism.red(`✗ ${error.message}`))
+
+  if (error.code) {
+    output.push('')
+    output.push(prism.gray(`Error code: ${error.code}`))
+  }
 
   if (error instanceof ValidationError && error.errors.length > 0) {
-    logger.error('')
-    logger.error('Validation errors:')
+    output.push('')
+    output.push('Validation errors:')
     for (const err of error.errors) {
-      logger.error(`  • ${err}`)
+      output.push(`  • ${err}`)
     }
   }
 
-  if (error.suggestions.length > 0) {
-    logger.error('')
-    logger.error('Suggestions:')
+  if (error.suggestions && error.suggestions.length > 0) {
+    output.push('')
+    output.push('Suggestions:')
     for (const suggestion of error.suggestions) {
-      logger.error(prism.yellow(`  → ${suggestion}`))
+      output.push(prism.yellow(`  → ${suggestion}`))
     }
   }
 
-  if (error.code && ERROR_CODES[error.code]) {
-    const codeInfo = ERROR_CODES[error.code]
-    logger.error('')
-    logger.error(prism.gray(`Error code: ${codeInfo.code}`))
-    if (codeInfo.suggestions && codeInfo.suggestions.length > 0) {
-      logger.error('')
-      logger.error('Additional suggestions:')
-      for (const suggestion of codeInfo.suggestions) {
-        logger.error(prism.gray(`  • ${suggestion}`))
-      }
-    }
+  // Check for verbose mode using environment variable
+  const isVerbose = process.env.VERBOSE === 'true'
+  if (isVerbose && error.details) {
+    output.push('')
+    output.push('Details:')
+    output.push(JSON.stringify(error.details, null, 2))
   }
 
-  if (logger.level === 'debug' && error.stack) {
-    logger.error('')
-    logger.error(prism.gray('Stack trace:'))
-    logger.error(prism.gray(error.stack))
+  if (isVerbose && error.stack) {
+    output.push('')
+    output.push(prism.gray('Stack trace:'))
+    output.push(prism.gray(error.stack))
   }
 
-  logger.error('')
-  logger.error(prism.gray(`Need help? Run 'kysera help' or visit https://kysera.dev/docs`))
+  output.push('')
+
+  // Add help message for specific error codes
+  if (error.code === 'CONFIG_NOT_FOUND') {
+    output.push(prism.gray(`Need help? Run 'kysera help' or visit https://kysera.dev/docs`))
+  } else {
+    output.push(prism.gray(`Need help? Run 'kysera help' or visit https://kysera.dev/docs`))
+  }
+
+  const errorMessage = output.join('\n')
+  console.error(errorMessage)
 }
 
 function handleGenericError(error: Error): void {
-  logger.error('')
-  logger.error(prism.red(`✗ ${error.message}`))
+  const output: string[] = []
+  output.push('')
+  output.push(prism.red(`✗ ${error.message}`))
 
   // Try to provide helpful suggestions based on error message
   const suggestions = getSuggestionsFromError(error)
   if (suggestions.length > 0) {
-    logger.error('')
-    logger.error('Suggestions:')
+    output.push('')
+    output.push('Suggestions:')
     for (const suggestion of suggestions) {
-      logger.error(prism.yellow(`  → ${suggestion}`))
+      output.push(prism.yellow(`  → ${suggestion}`))
     }
   }
 
-  if (logger.level === 'debug' && error.stack) {
-    logger.error('')
-    logger.error(prism.gray('Stack trace:'))
-    logger.error(prism.gray(error.stack))
+  const isVerbose = process.env.VERBOSE === 'true'
+  if (isVerbose && error.stack) {
+    output.push('')
+    output.push(prism.gray('Stack trace:'))
+    output.push(prism.gray(error.stack))
   }
 
-  logger.error('')
-  logger.error(prism.gray(`This might be a bug. Please report it at https://github.com/kysera/kysera/issues`))
+  output.push('')
+  output.push(prism.gray(`This might be a bug. Please report it at https://github.com/kysera/kysera/issues`))
+
+  console.error(output.join('\n'))
 }
 
 function handleUnknownError(error: unknown): void {
-  logger.error('')
-  logger.error(prism.red('✗ An unexpected error occurred'))
-  logger.error(String(error))
-  logger.error('')
-  logger.error(prism.gray(`This is likely a bug. Please report it at https://github.com/kysera/kysera/issues`))
+  const output: string[] = []
+  output.push('')
+  output.push(prism.red('✗ An unexpected error occurred'))
+  output.push('')
+  output.push(String(error))
+  output.push('')
+  output.push(prism.gray(`This is likely a bug. Please report it at https://github.com/kysera/kysera/issues`))
+
+  console.error(output.join('\n'))
 }
 
 function getSuggestionsFromError(error: Error): string[] {
@@ -224,17 +244,35 @@ export function assert(condition: any, message: string): asserts condition {
 }
 
 /**
- * Create a formatted error message
+ * Format error for display
  */
-export function formatError(title: string, details?: Record<string, any>): string {
-  let message = title
+export function formatError(error: unknown): string {
+  const lines: string[] = []
 
-  if (details) {
-    message += '\n\nDetails:'
-    for (const [key, value] of Object.entries(details)) {
-      message += `\n  ${key}: ${JSON.stringify(value)}`
+  if (error instanceof CLIError) {
+    lines.push(error.message)
+    lines.push(error.code)
+
+    if (error.details) {
+      if (typeof error.details === 'object') {
+        for (const [key, value] of Object.entries(error.details)) {
+          lines.push(String(value))
+        }
+      } else {
+        lines.push(String(error.details))
+      }
     }
+
+    if (error.suggestions && error.suggestions.length > 0) {
+      lines.push(...error.suggestions)
+    }
+  } else if (error instanceof Error) {
+    lines.push(error.message)
+  } else if (error === null || error === undefined) {
+    lines.push('Unknown error')
+  } else {
+    lines.push(String(error))
   }
 
-  return message
+  return lines.join('\n')
 }

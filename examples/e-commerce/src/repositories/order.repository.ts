@@ -156,7 +156,7 @@ export function createOrderRepository(executor: Executor<Database>) {
         throw new InvalidStatusTransitionError(order.status, newStatus)
       }
 
-      return this.update(orderId, { status: newStatus })
+      return await this.update(orderId, { status: newStatus })
     },
 
     async cancel(orderId: number): Promise<Order> {
@@ -173,7 +173,7 @@ export function createOrderRepository(executor: Executor<Database>) {
         throw new Error('Order is already cancelled')
       }
 
-      return this.update(orderId, { status: 'cancelled' })
+      return await this.update(orderId, { status: 'cancelled' })
     }
   }
 }

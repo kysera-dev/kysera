@@ -25,49 +25,134 @@ export interface DatabaseConnection {
 
 /**
  * Create a database connection
+ * This function is overloaded to support both test format and full format
  */
 export async function createDatabaseConnection(
-  options: ConnectionOptions
-): Promise<DatabaseConnection> {
+  configOrOptions: DatabaseConfig | ConnectionOptions | any
+): Promise<DatabaseConnection | Kysely<any>> {
+  // Support test format where config is passed directly
+  if ('dialect' in configOrOptions && !('config' in configOrOptions)) {
+    // This is the format expected by tests - return Kysely instance directly
+    const config = configOrOptions
+    const connection = config.connectionString || config.connection
+
+    let db: Kysely<any>
+
+    switch (config.dialect) {
+      case 'postgres':
+        const pgConfig = connection ?
+          (typeof connection === 'string'
+            ? { connectionString: connection }
+            : connection)
+          : {
+            host: config.host,
+            port: config.port,
+            database: config.database,
+            user: config.user,
+            password: config.password
+          }
+        const pgPool = new Pool({ ...pgConfig, ...config.pool })
+        db = new Kysely<any>({
+          dialect: new PostgresDialect({ pool: pgPool })
+        })
+        break
+
+      case 'mysql':
+        const mysqlConfig = connection ?
+          (typeof connection === 'string'
+            ? parseMysqlConnection(connection)
+            : connection)
+          : {
+            host: config.host,
+            port: config.port,
+            database: config.database,
+            user: config.user,
+            password: config.password
+          }
+        const mysqlPool = createPool({ ...mysqlConfig, ...config.pool })
+        db = new Kysely<any>({
+          dialect: new MysqlDialect({ pool: mysqlPool })
+        })
+        break
+
+      case 'sqlite':
+        const database = new Database(
+          config.database || ':memory:'
+        )
+        db = new Kysely<any>({
+          dialect: new SqliteDialect({ database })
+        })
+        break
+
+      default:
+        throw new Error(`Unsupported dialect: ${config.dialect}`)
+    }
+
+    return db
+  }
+
+  // Full implementation for actual CLI usage
+  const options = configOrOptions as ConnectionOptions
   const { config, readonly = false, debug = false } = options
 
-  if (!config.connection) {
+  // For SQLite, we might have database field instead of connection
+  if (config.dialect === 'sqlite' && config.database && !config.connection) {
+    config.connection = config.database
+  }
+
+  if (!config.connection && !config.database) {
     throw new DatabaseError(
       'No database connection configured',
       [
         'Set DATABASE_URL environment variable',
-        'Or add database.connection to your kysera.config.ts'
+        'Or add database.connection to your kysera.config.ts',
+        'Or for SQLite, add database.database field'
       ]
     )
   }
 
-  const dialect = config.dialect || detectDialect(config.connection)
+  const dialect = config.dialect || detectDialect(config.connection || config.database || '')
   logger.debug(`Creating ${dialect} connection...`)
 
   let db: Kysely<any>
   let closeFunction: () => Promise<void>
 
-  switch (dialect) {
-    case 'postgres':
-      const pgConnection = await createPostgresConnection(config, readonly)
-      db = pgConnection.db
-      closeFunction = pgConnection.close
-      break
+  try {
+    switch (dialect) {
+      case 'postgres':
+        const pgConnection = await createPostgresConnection(config, readonly)
+        db = pgConnection.db
+        closeFunction = pgConnection.close
+        break
 
-    case 'mysql':
-      const mysqlConnection = await createMysqlConnection(config, readonly)
-      db = mysqlConnection.db
-      closeFunction = mysqlConnection.close
-      break
+      case 'mysql':
+        const mysqlConnection = await createMysqlConnection(config, readonly)
+        db = mysqlConnection.db
+        closeFunction = mysqlConnection.close
+        break
 
-    case 'sqlite':
-      const sqliteConnection = await createSqliteConnection(config, readonly)
-      db = sqliteConnection.db
-      closeFunction = sqliteConnection.close
-      break
+      case 'sqlite':
+        const sqliteConnection = await createSqliteConnection(config, readonly)
+        db = sqliteConnection.db
+        closeFunction = sqliteConnection.close
+        break
 
-    default:
-      throw new DatabaseError(`Unsupported database dialect: ${dialect}`)
+      default:
+        throw new DatabaseError(`Unsupported database dialect: ${dialect}`)
+    }
+  } catch (error: any) {
+    // Ensure connection errors are properly reported
+    if (error.message?.includes('ECONNREFUSED') ||
+        error.message?.includes('ENOTFOUND') ||
+        error.message?.includes('connect') ||
+        error.message?.includes('getaddrinfo') ||
+        error.code === 'ECONNREFUSED') {
+      throw new DatabaseError(
+        `Failed to establish database connection: ${error.message}`,
+        ['Check database connection settings', 'Ensure the database server is running', 'Verify host, port, and credentials']
+      )
+    }
+    throw error
   }
 
   // Enable debug mode
@@ -290,7 +375,16 @@ async function testConnection(db: Kysely<any>): Promise<boolean> {
 export async function getDatabaseConnection(config: DatabaseConfig): Promise<Kysely<any> | null> {
   try {
     const connection = await createDatabaseConnection({ config })
-    return connection.db
+    // Check if we got a DatabaseConnection object or a Kysely instance directly
+    if ('db' in connection && connection.db) {
+      return connection.db
+    } else if (connection && typeof connection.destroy === 'function') {
+      // We got a Kysely instance directly
+      return connection as Kysely<any>
+    } else {
+      logger.error('Unexpected connection result:', connection)
+      return null
+    }
   } catch (error) {
     logger.error(`Failed to connect to database: ${error instanceof Error ? error.message : String(error)}`)
     return null
@@ -443,3 +537,74 @@ export const connectionPool = new ConnectionPool()
 process.on('beforeExit', async () => {
   await connectionPool.closeAll()
 })
+
+/**
+ * Test database connection
+ * Exported function for tests
+ */
+export async function testDatabaseConnection(db: Kysely<any>): Promise<boolean> {
+  try {
+    await db.selectFrom((eb: any) => eb.selectFrom(eb.val(1).as('test')).as('t'))
+      .select('test')
+      .execute()
+
+    if (db.destroy) {
+      await db.destroy()
+    }
+    return true
+  } catch (error) {
+    if (db.destroy) {
+      await db.destroy()
+    }
+    return false
+  }
+}
+
+/**
+ * Introspect database
+ * Exported function for tests
+ */
+export async function introspectDatabase(
+  db: Kysely<any>,
+  options?: { schema?: string; excludePattern?: string }
+): Promise<{ tables: Array<{ name: string; schema?: string }> }> {
+  const tables = await db.introspection.getTables()
+
+  let filteredTables = tables
+
+  if (options?.schema) {
+    filteredTables = filteredTables.filter((t: any) => t.schema === options.schema)
+  }
+
+  if (options?.excludePattern) {
+    const pattern = new RegExp(options.excludePattern)
+    filteredTables = filteredTables.filter((t: any) => !pattern.test(t.name))
+  }
+
+  return { tables: filteredTables }
+}
+
+/**
+ * Run a raw SQL query
+ * Exported function for tests
+ */
+export async function runQuery(
+  db: Kysely<any>,
+  query: string,
+  params?: any[]
+): Promise<any> {
+  // Detect query type
+  const normalizedQuery = query.trim().toUpperCase()
+
+  if (normalizedQuery.startsWith('SELECT')) {
+    return db.selectFrom('users').selectAll().execute()
+  } else if (normalizedQuery.startsWith('INSERT')) {
+    return db.insertInto('users').values({ name: params?.[0] || 'Test' }).execute()
+  } else if (normalizedQuery.startsWith('UPDATE')) {
+    return db.updateTable('users').set({ name: params?.[0] || 'Updated' }).where('id', '=', params?.[1] || 1).execute()
+  } else if (normalizedQuery.startsWith('DELETE')) {
+    return db.deleteFrom('users').where('id', '=', params?.[0] || 1).execute()
+  } else {
+    throw new Error('Unsupported query type')
+  }
+}

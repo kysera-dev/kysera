@@ -216,12 +216,12 @@ export class MigrationRunner {
 
     if (executed.length > 0) {
       this.logger('\nExecuted migrations:')
-      executed.forEach(name => this.logger(`  ✓ ${name}`))
+      executed.forEach(name => { this.logger(`  ✓ ${name}`); })
     }
 
     if (pending.length > 0) {
       this.logger('\nPending migrations:')
-      pending.forEach(name => this.logger(`  - ${name}`))
+      pending.forEach(name => { this.logger(`  - ${name}`); })
     }
 
     return { executed, pending }

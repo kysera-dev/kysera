@@ -203,6 +203,22 @@ class Logger {
   public table(data: any, columns?: string[]): void {
     console.table(data, columns)
   }
+
+  public setLevel(level: LogLevel): void {
+    this.level = level
+  }
+
+  public setColors(enabled: boolean): void {
+    this.colors = enabled
+  }
+
+  public setTimestamps(enabled: boolean): void {
+    this.timestamps = enabled
+  }
+
+  public setJson(enabled: boolean): void {
+    this.json = enabled
+  }
 }
 
 // Create default logger instance

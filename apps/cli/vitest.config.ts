@@ -42,7 +42,14 @@ export default defineConfig({
     threads: true,
     mockReset: true,
     restoreMocks: true,
-    clearMocks: true
+    clearMocks: true,
+    // Disable threads for e2e tests that spawn child processes
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true
+      }
+    }
   },
   resolve: {
     alias: {

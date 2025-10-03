@@ -1,6 +1,5 @@
 import { Command } from 'commander'
 import { prism, spinner } from '@xec-sh/kit'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
@@ -72,7 +71,7 @@ async function showEntityDiff(
     )
   }
 
-  const diffSpinner = spinner()
+  const diffSpinner = spinner() as any
   diffSpinner.start('Fetching entity history...')
 
   try {
@@ -218,7 +217,6 @@ function buildStateAtPoint(history: any[], upToId: number): any {
   for (const log of history) {
     if (log.id > upToId) break
 
-    const oldValues = parseJson(log.old_values)
     const newValues = parseJson(log.new_values)
 
     if (log.action === 'INSERT') {

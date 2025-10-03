@@ -1,6 +1,5 @@
 import { Command } from 'commander'
 import { prism, spinner, table } from '@xec-sh/kit'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
@@ -63,7 +62,7 @@ async function introspectDatabase(tableName: string | undefined, options: Intros
     )
   }
 
-  const introspectSpinner = spinner()
+  const introspectSpinner = spinner() as any
   introspectSpinner.start('Introspecting database...')
 
   try {

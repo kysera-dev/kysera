@@ -1,6 +1,5 @@
 import { Command } from 'commander'
 import { prism, spinner, confirm } from '@xec-sh/kit'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
@@ -63,7 +62,7 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     )
   }
 
-  const restoreSpinner = spinner()
+  const restoreSpinner = spinner() as any
   restoreSpinner.start(`Fetching audit log #${auditLogId}...`)
 
   try {
@@ -82,12 +81,11 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     restoreSpinner.succeed('Audit log found')
 
     // Parse the audit log data
-    const tableName = auditLog.table_name as string
-    const entityId = auditLog.entity_id as string
-    const action = auditLog.action as string
-    const oldValues = parseJson(auditLog.old_values)
-    const newValues = parseJson(auditLog.new_values)
-    const createdAt = new Date(auditLog.created_at as string)
+    const tableName = auditLog['table_name'] as string
+    const entityId = auditLog['entity_id'] as string
+    const action = auditLog['action'] as string
+    const oldValues = parseJson(auditLog['old_values'])
+    const createdAt = new Date(auditLog['created_at'] as string)
 
     // Determine what to restore
     let restoreData: any = null
@@ -115,7 +113,7 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     console.log(`  Entity ID: ${entityId}`)
     console.log(`  Action: ${formatAction(action)}`)
     console.log(`  Timestamp: ${createdAt.toLocaleString()}`)
-    console.log(`  User: ${auditLog.user_id || 'system'}`)
+    console.log(`  User: ${auditLog['user_id'] || 'system'}`)
 
     console.log('')
     console.log(prism.bold('🔄 Restore Plan:'))
@@ -187,12 +185,10 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     }
 
     // Execute restore
-    const executeSpinner = spinner()
+    const executeSpinner = spinner() as any
     executeSpinner.start('Executing restore...')
 
-    const trx = await db.transaction()
-
-    try {
+    await db.transaction().execute(async (trx) => {
       if (restoreAction === 'INSERT') {
         // Recreate deleted entity
         await trx
@@ -293,28 +289,22 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
           })
           .execute()
       }
+    })
 
-      await trx.commit()
+    // Show success message
+    console.log('')
+    console.log(prism.green('✅ Restore completed successfully'))
+    console.log(prism.gray(`Restored from audit log #${auditLogId}`))
+    console.log(prism.gray(`Table: ${tableName}, Entity: ${entityId}`))
 
-      // Show success message
-      console.log('')
-      console.log(prism.green('✅ Restore completed successfully'))
-      console.log(prism.gray(`Restored from audit log #${auditLogId}`))
-      console.log(prism.gray(`Table: ${tableName}, Entity: ${entityId}`))
-
-      if (options.json) {
-        console.log(JSON.stringify({
-          success: true,
-          auditLogId,
-          tableName,
-          entityId,
-          restoreAction
-        }, null, 2))
-      }
-
-    } catch (error) {
-      await trx.rollback()
-      throw error
+    if (options.json) {
+      console.log(JSON.stringify({
+        success: true,
+        auditLogId,
+        tableName,
+        entityId,
+        restoreAction
+      }, null, 2))
     }
 
   } catch (error) {

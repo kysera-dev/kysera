@@ -1,6 +1,5 @@
 import { Command } from 'commander'
 import { prism, spinner, table as displayTable } from '@xec-sh/kit'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
@@ -64,7 +63,7 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
     )
   }
 
-  const statsSpinner = spinner()
+  const statsSpinner = spinner() as any
   statsSpinner.start('Calculating audit statistics...')
 
   try {
