@@ -1,6 +1,6 @@
 {
   "name": "@kysera/timestamps",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Automatic timestamp management plugin for Kysera ORM",
   "type": "module",
   "main": "./dist/index.js",
@@ -39,13 +39,13 @@
     "@kysera/repository": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^24.6.0",
+    "@types/node": "^24.6.2",
     "kysely": "^0.28.7",
     "@kysera/repository": "workspace:*",
-    "typescript": "^5.9.2",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4",
     "better-sqlite3": "^12.4.1",
-    "@types/better-sqlite3": "^7.6.12",
+    "@types/better-sqlite3": "^7.6.13",
     "tsup": "^8.5.0",
     "zod": "^4.1.11"
   },
