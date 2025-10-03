@@ -1,6 +1,6 @@
 {
   "name": "@kysera/audit",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Audit logging plugin for Kysera ORM",
   "type": "module",
   "exports": {
@@ -32,16 +32,16 @@
   "devDependencies": {
     "@kysera/repository": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^24.6.0",
+    "@types/node": "^24.6.2",
     "better-sqlite3": "^12.4.1",
     "kysely": "^0.28.7",
     "tsup": "^8.5.0",
-    "typescript": "^5.9.2",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "peerDependencies": {
     "@kysera/repository": "workspace:*",
-    "kysely": "^0.28.0"
+    "kysely": "^0.28.7"
   },
   "engines": {
     "node": ">=20.0.0",

@@ -1,6 +1,6 @@
 {
   "name": "@kysera/migrations",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Database migration management for Kysera ORM",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,15 +32,15 @@
   "author": "Kysera Team",
   "license": "MIT",
   "peerDependencies": {
-    "kysely": "^0.28.0"
+    "kysely": "^0.28.7"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
+    "@types/node": "^24.6.2",
     "kysely": "^0.28.7",
-    "typescript": "^5.9.2",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4",
     "better-sqlite3": "^12.4.1",
-    "@types/better-sqlite3": "^7.6.12",
+    "@types/better-sqlite3": "^7.6.13",
     "tsup": "^8.5.0"
   },
   "sideEffects": false,

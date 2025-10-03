@@ -9,6 +9,14 @@
  * - Building and testing
  * - Publishing to npm
  * - Git tagging and GitHub releases
+ *
+ * Options:
+ * --list-packages, --list  List all packages with relative paths and exit
+ * --skip-tests             Skip running tests
+ * --skip-build             Skip building packages
+ * --skip-publish           Skip publishing to npm
+ * --dry-run                Simulate release without making changes
+ * --force                  Force release even with uncommitted changes
  */
 
 import { execSync } from 'node:child_process'
@@ -40,6 +48,7 @@ interface ReleaseOptions {
   skipPublish?: boolean
   dryRun?: boolean
   force?: boolean
+  listPackages?: boolean
 }
 
 /**
@@ -70,14 +79,16 @@ function exec(cmd: string, options: { cwd?: string; silent?: boolean } = {}): st
 async function getAllPackages(): Promise<Package[]> {
   const packages: Package[] = []
 
-  // Get all package.json files
-  const packagePaths = await glob('**/package.json', {
+  // Get package.json files only from workspace directories
+  // Use explicit patterns to avoid finding packages outside workspace
+  const packagePaths = await glob('{packages,apps,examples}/*/package.json', {
     cwd: ROOT_DIR,
     ignore: [
       '**/node_modules/**',
       '**/dist/**',
       '**/build/**',
-      '.test-*/**'
+      '**/.test-*/**',
+      '**/test-*/**'
     ]
   })
 
@@ -89,8 +100,20 @@ async function getAllPackages(): Promise<Package[]> {
       const content = await fs.readFile(fullPath, 'utf-8')
       const pkg = JSON.parse(content)
 
+      // Skip packages without a name
+      if (!pkg.name) {
+        continue
+      }
+
       // Skip root package.json
-      if (packageDir === ROOT_DIR) continue
+      if (packageDir === ROOT_DIR) {
+        continue
+      }
+
+      // Only include packages that belong to @kysera scope or examples
+      if (!pkg.name.startsWith('@kysera/') && !packageDir.includes('/examples/')) {
+        continue
+      }
 
       packages.push({
         name: pkg.name,
@@ -104,6 +127,36 @@ async function getAllPackages(): Promise<Package[]> {
   }
 
   return packages
+}
+
+/**
+ * List all packages with their relative paths
+ */
+async function listPackages(): Promise<void> {
+  const packages = await getAllPackages()
+
+  console.log(prism.bold(prism.cyan('\n📦 Kysera Monorepo Packages\n')))
+
+  const publishable = packages.filter(pkg => !pkg.private)
+  const private_pkgs = packages.filter(pkg => pkg.private)
+
+  if (publishable.length > 0) {
+    console.log(prism.bold(prism.green(`Publishable packages (${publishable.length}):\n`)))
+    for (const pkg of publishable) {
+      const relativePath = path.relative(ROOT_DIR, pkg.path)
+      console.log(`  ${prism.cyan(pkg.name.padEnd(30))} ${prism.gray(relativePath)}`)
+    }
+  }
+
+  if (private_pkgs.length > 0) {
+    console.log(prism.bold(prism.yellow(`\nPrivate packages (${private_pkgs.length}):\n`)))
+    for (const pkg of private_pkgs) {
+      const relativePath = path.relative(ROOT_DIR, pkg.path)
+      console.log(`  ${prism.yellow(pkg.name.padEnd(30))} ${prism.gray(relativePath)}`)
+    }
+  }
+
+  console.log(prism.gray(`\nTotal: ${packages.length} packages\n`))
 }
 
 /**
@@ -408,7 +461,14 @@ async function main() {
     skipBuild: args.includes('--skip-build'),
     skipPublish: args.includes('--skip-publish'),
     dryRun: args.includes('--dry-run'),
-    force: args.includes('--force')
+    force: args.includes('--force'),
+    listPackages: args.includes('--list-packages') || args.includes('--list')
+  }
+
+  // Handle --list-packages flag
+  if (options.listPackages) {
+    await listPackages()
+    return
   }
 
   try {

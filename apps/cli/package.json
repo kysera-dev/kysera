@@ -1,6 +1,6 @@
 {
   "name": "@kysera/cli",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Comprehensive command-line interface for Kysera ORM",
   "type": "module",
   "bin": {
@@ -63,13 +63,13 @@
   "dependencies": {
     "commander": "^14.0.1",
     "handlebars": "^4.7.8",
-    "fs-extra": "^11.2.0",
+    "fs-extra": "^11.3.2",
     "kysely": "^0.28.7",
     "zod": "^4.1.11",
     "dotenv": "^17.2.3",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^6.1.0",
-    "execa": "^9.5.2",
+    "execa": "^9.6.0",
     "glob": "^11.0.3",
     "pg": "^8.16.3",
     "mysql2": "^3.15.1",
