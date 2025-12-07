@@ -1,6 +1,6 @@
 {
   "name": "@kysera/timestamps",
-  "version": "0.4.1",
+  "version": "0.5.1",
   "description": "Automatic timestamp management plugin for Kysera ORM",
   "type": "module",
   "main": "./dist/index.js",
@@ -34,20 +34,29 @@
   ],
   "author": "Kysera Team",
   "license": "MIT",
-  "peerDependencies": {
-    "kysely": "^0.28.7",
-    "@kysera/repository": "workspace:*"
+  "dependencies": {
+    "@kysera/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^24.6.2",
-    "kysely": "^0.28.7",
     "@kysera/repository": "workspace:*",
-    "typescript": "^5.9.3",
-    "vitest": "^3.2.4",
-    "better-sqlite3": "^12.4.1",
     "@types/better-sqlite3": "^7.6.13",
-    "tsup": "^8.5.0",
-    "zod": "^4.1.11"
+    "@types/node": "^24.10.1",
+    "better-sqlite3": "^12.5.0",
+    "kysely": "^0.28.8",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15",
+    "zod": "^4.1.13"
+  },
+  "peerDependencies": {
+    "@kysera/repository": "workspace:*",
+    "kysely": ">=0.28.8",
+    "zod": "^4.1.13"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
   },
   "sideEffects": false,
   "engines": {

@@ -1,5 +1,5 @@
-import { db } from './connection'
-import { migrations } from './migrations'
+import { db } from './connection.js'
+import { migrations } from './migrations.js'
 import { sql } from 'kysely'
 
 async function setupMigrations() {
@@ -20,7 +20,7 @@ async function getExecutedMigrations(): Promise<string[]> {
     .orderBy('executed_at', 'asc')
     .execute()
 
-  return rows.map(r => r.name)
+  return rows.map((r: { name: string }) => r.name)
 }
 
 async function runMigrations() {

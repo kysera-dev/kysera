@@ -1,4 +1,4 @@
-import { Kysely } from 'kysely'
+import { Kysely } from 'kysely';
 
 export async function up(db: Kysely<any>): Promise<void> {
   // TODO: Implement migration

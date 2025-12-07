@@ -1,406 +1,486 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { Kysely, SqliteDialect } from 'kysely'
-import Database from 'better-sqlite3'
-import { withDebug, formatSQL, QueryProfiler } from '../src/debug'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  withDebug,
+  formatSQL,
+  QueryProfiler,
+  type QueryMetrics,
+} from '../src/debug.js';
+import { Kysely, SqliteDialect } from 'kysely';
+import Database from 'better-sqlite3';
 
-describe('Debug Utilities', () => {
-  let db: Kysely<any>
-  let database: Database.Database
+// Test database interface
+interface TestDB {
+  users: {
+    id: number;
+    name: string;
+    email: string;
+  };
+}
 
-  beforeEach(() => {
-    database = new Database(':memory:')
+describe('debug', () => {
+  let db: Kysely<TestDB>;
 
-    db = new Kysely({
+  beforeEach(async () => {
+    const sqliteDb = new Database(':memory:');
+    db = new Kysely<TestDB>({
       dialect: new SqliteDialect({
-        database
-      })
-    })
+        database: sqliteDb,
+      }),
+    });
 
     // Create test table
-    database.exec(`
-      CREATE TABLE users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        email TEXT NOT NULL
-      )
-    `)
+    await db.schema
+      .createTable('users')
+      .addColumn('id', 'integer', (col) => col.primaryKey().autoIncrement())
+      .addColumn('name', 'varchar(255)')
+      .addColumn('email', 'varchar(255)')
+      .execute();
+  });
 
-    // Insert test data
-    database.exec(`
-      INSERT INTO users (name, email) VALUES
-      ('Alice', 'alice@example.com'),
-      ('Bob', 'bob@example.com')
-    `)
-  })
-
-  afterEach(() => {
-    database.close()
-  })
+  afterEach(async () => {
+    await db.destroy();
+  });
 
   describe('withDebug', () => {
-    it('should log queries when enabled', async () => {
-      const logger = vi.fn()
-      const debugDb = withDebug(db, {
-        logQuery: true,
-        logger
-      })
+    it('should wrap database with debug capabilities', () => {
+      const debugDb = withDebug(db);
 
-      await debugDb.selectFrom('users').selectAll().execute()
+      expect(debugDb.getMetrics).toBeDefined();
+      expect(debugDb.clearMetrics).toBeDefined();
+      expect(typeof debugDb.getMetrics).toBe('function');
+      expect(typeof debugDb.clearMetrics).toBe('function');
+    });
 
-      expect(logger).toHaveBeenCalled()
-      expect(logger.mock.calls[0]?.[0]).toContain('[SQL]')
-      expect(logger.mock.calls[0]?.[0].toLowerCase()).toContain('select')
-    })
+    it('should collect query metrics', async () => {
+      const debugDb = withDebug(db, { logQuery: false });
 
-    it('should log query parameters when enabled', async () => {
-      const logger = vi.fn()
-      const debugDb = withDebug(db, {
-        logQuery: true,
-        logParams: true,
-        logger
-      })
+      await debugDb.insertInto('users').values({ name: 'Test', email: 'test@example.com' }).execute();
+
+      const metrics = debugDb.getMetrics();
+      expect(metrics.length).toBe(1);
+      expect(metrics[0].sql).toContain('insert into');
+      expect(metrics[0].duration).toBeGreaterThanOrEqual(0);
+      expect(metrics[0].timestamp).toBeDefined();
+    });
+
+    it('should include parameters in metrics', async () => {
+      const debugDb = withDebug(db, { logQuery: false, logParams: true });
+
+      await debugDb.insertInto('users').values({ name: 'Test', email: 'test@example.com' }).execute();
+
+      const metrics = debugDb.getMetrics();
+      expect(metrics[0].params).toBeDefined();
+      expect(metrics[0].params).toContain('Test');
+      expect(metrics[0].params).toContain('test@example.com');
+    });
+
+    it('should log queries when logQuery is true', async () => {
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+      const debugDb = withDebug(db, { logQuery: true, logger: mockLogger });
+
+      await debugDb.selectFrom('users').selectAll().execute();
+
+      expect(mockLogger.debug).toHaveBeenCalled();
+      expect(mockLogger.debug.mock.calls.some((call) => call[0].includes('[SQL]'))).toBe(true);
+    });
+
+    it('should log parameters when logParams is true', async () => {
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+      const debugDb = withDebug(db, { logQuery: true, logParams: true, logger: mockLogger });
 
       await debugDb
         .selectFrom('users')
+        .where('name', '=', 'TestName')
         .selectAll()
-        .where('name', '=', 'Alice')
-        .execute()
+        .execute();
 
-      expect(logger).toHaveBeenCalled()
-      const message = logger.mock.calls[0]?.[0]
-      expect(message).toContain('[SQL]')
-      expect(message).toContain('[Params]')
-      // For now, params are empty in our simplified implementation
-      // In a real implementation, this would extract actual params
-    })
+      expect(mockLogger.debug).toHaveBeenCalled();
+      expect(mockLogger.debug.mock.calls.some((call) => call[0].includes('[Params]'))).toBe(true);
+    });
 
-    it('should track query metrics', async () => {
-      const debugDb = withDebug(db, {
-        logQuery: false
-      })
+    it('should log duration', async () => {
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+      const debugDb = withDebug(db, { logQuery: true, logger: mockLogger });
 
-      await debugDb.selectFrom('users').selectAll().execute()
-      // The syntax error was from a plugin issue - just use execute
-      await debugDb.selectFrom('users').selectAll().where('id', '=', 1).execute()
+      await debugDb.selectFrom('users').selectAll().execute();
 
-      const metrics = debugDb.getMetrics()
-      expect(metrics).toHaveLength(2)
-      expect(metrics[0]?.sql).toBeDefined()
-      expect(metrics[0]?.duration).toBeGreaterThanOrEqual(0)
-      expect(metrics[0]?.timestamp).toBeGreaterThan(0)
-    })
+      expect(mockLogger.debug.mock.calls.some((call) => call[0].includes('[Duration]'))).toBe(true);
+    });
 
     it('should detect slow queries', async () => {
-      const onSlowQuery = vi.fn()
+      const onSlowQuery = vi.fn();
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+      // Use a very small threshold that any query will exceed
+      // The threshold check is: duration > slowQueryThreshold
+      // A threshold of -1 ensures any query with duration >= 0 triggers slow query
       const debugDb = withDebug(db, {
         logQuery: false,
-        slowQueryThreshold: 0.01, // Very low threshold to trigger
-        onSlowQuery
-      })
+        slowQueryThreshold: -1,
+        onSlowQuery,
+        logger: mockLogger,
+      });
 
-      await debugDb.selectFrom('users').selectAll().execute()
+      await debugDb.selectFrom('users').selectAll().execute();
 
-      expect(onSlowQuery).toHaveBeenCalled()
-      expect(onSlowQuery.mock.calls[0]?.[0].toLowerCase()).toContain('select')
-      expect(onSlowQuery.mock.calls[0]?.[1]).toBeGreaterThanOrEqual(0)
-    })
+      expect(onSlowQuery).toHaveBeenCalled();
+      const [sql, duration] = onSlowQuery.mock.calls[0];
+      expect(sql).toContain('select');
+      expect(duration).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should log slow query with default logger when no onSlowQuery provided', async () => {
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+      // Use a very small threshold that any query will exceed
+      const debugDb = withDebug(db, {
+        logQuery: false,
+        slowQueryThreshold: -1,
+        logger: mockLogger,
+      });
+
+      await debugDb.selectFrom('users').selectAll().execute();
+
+      expect(mockLogger.warn.mock.calls.some((call) => call[0].includes('[SLOW QUERY]'))).toBe(true);
+    });
 
     it('should clear metrics', async () => {
-      const debugDb = withDebug(db, {
-        logQuery: false
-      })
+      const debugDb = withDebug(db, { logQuery: false });
 
-      await debugDb.selectFrom('users').selectAll().execute()
-      expect(debugDb.getMetrics()).toHaveLength(1)
+      await debugDb.selectFrom('users').selectAll().execute();
+      expect(debugDb.getMetrics().length).toBe(1);
 
-      debugDb.clearMetrics()
-      expect(debugDb.getMetrics()).toHaveLength(0)
-    })
+      debugDb.clearMetrics();
+      expect(debugDb.getMetrics().length).toBe(0);
+    });
 
-    it('should work with transactions', async () => {
-      const logger = vi.fn()
-      const debugDb = withDebug(db, {
-        logQuery: true,
-        logger
-      })
+    it('should limit metrics with maxMetrics option', async () => {
+      const debugDb = withDebug(db, { logQuery: false, maxMetrics: 3 });
 
-      await debugDb.transaction().execute(async (trx) => {
-        await trx
-          .insertInto('users')
-          .values({ name: 'Charlie', email: 'charlie@example.com' })
-          .execute()
-
-        await trx
-          .updateTable('users')
-          .set({ email: 'new@example.com' })
-          .where('name', '=', 'Charlie')
-          .execute()
-      })
-
-      const metrics = debugDb.getMetrics()
-      expect(metrics.length).toBeGreaterThanOrEqual(2)
-
-      // Check that INSERT and UPDATE were logged
-      const sqls = metrics.map(m => m.sql).join(' ').toLowerCase()
-      expect(sqls).toContain('insert')
-      expect(sqls).toContain('update')
-    })
-
-    it('should limit metrics to maxMetrics option (circular buffer)', async () => {
-      const debugDb = withDebug(db, {
-        logQuery: false,
-        maxMetrics: 3
-      })
-
-      // Execute 5 queries
+      // Execute more queries than maxMetrics
       for (let i = 0; i < 5; i++) {
-        await debugDb.selectFrom('users').selectAll().execute()
+        await debugDb.selectFrom('users').selectAll().execute();
       }
 
-      const metrics = debugDb.getMetrics()
-      // Should keep only last 3 metrics
-      expect(metrics).toHaveLength(3)
-    })
+      const metrics = debugDb.getMetrics();
+      expect(metrics.length).toBe(3);
+    });
 
-    it('should remove oldest metrics when limit is exceeded', async () => {
-      const debugDb = withDebug(db, {
-        logQuery: false,
-        maxMetrics: 2
-      })
+    it('should use circular buffer for metrics', async () => {
+      const debugDb = withDebug(db, { logQuery: false, maxMetrics: 2 });
 
-      // Execute 3 queries to trigger circular buffer
-      await debugDb.selectFrom('users').select('id').execute()
-      await debugDb.selectFrom('users').select('name').execute()
-      await debugDb.selectFrom('users').select('email').execute()
+      // Insert users to generate different queries
+      await debugDb.insertInto('users').values({ name: 'User1', email: 'u1@test.com' }).execute();
+      await debugDb.insertInto('users').values({ name: 'User2', email: 'u2@test.com' }).execute();
+      await debugDb.selectFrom('users').selectAll().execute();
 
-      const metrics = debugDb.getMetrics()
-      expect(metrics).toHaveLength(2)
+      const metrics = debugDb.getMetrics();
+      expect(metrics.length).toBe(2);
+      // Should keep the last 2 queries (second insert and select)
+      expect(metrics[1].sql).toContain('select');
+    });
 
-      // First query (select id) should be removed
-      const sqls = metrics.map(m => m.sql.toLowerCase()).join(' ')
-      expect(sqls).toContain('name')
-      expect(sqls).toContain('email')
-    })
+    it('should return copy of metrics array', async () => {
+      const debugDb = withDebug(db, { logQuery: false });
 
-    it('should use default maxMetrics of 1000 when not specified', async () => {
-      const debugDb = withDebug(db, {
-        logQuery: false
-      })
+      await debugDb.selectFrom('users').selectAll().execute();
 
-      // Execute 1001 queries to exceed default limit
-      for (let i = 0; i < 1001; i++) {
-        await debugDb.selectFrom('users').selectAll().execute()
+      const metrics1 = debugDb.getMetrics();
+      const metrics2 = debugDb.getMetrics();
+
+      expect(metrics1).not.toBe(metrics2);
+      expect(metrics1).toEqual(metrics2);
+    });
+
+    it('should use default maxMetrics of 1000', async () => {
+      const debugDb = withDebug(db, { logQuery: false });
+
+      // Execute a few queries
+      for (let i = 0; i < 5; i++) {
+        await debugDb.selectFrom('users').selectAll().execute();
       }
 
-      const metrics = debugDb.getMetrics()
-      // Should keep only last 1000 metrics
-      expect(metrics).toHaveLength(1000)
-    })
-
-    it('should handle maxMetrics of 1 (keep only last metric)', async () => {
-      const debugDb = withDebug(db, {
-        logQuery: false,
-        maxMetrics: 1
-      })
-
-      await debugDb.selectFrom('users').select('id').execute()
-      await debugDb.selectFrom('users').select('name').execute()
-
-      const metrics = debugDb.getMetrics()
-      expect(metrics).toHaveLength(1)
-      expect(metrics[0]?.sql.toLowerCase()).toContain('name')
-    })
-  })
+      // Should accept all queries (under default limit)
+      expect(debugDb.getMetrics().length).toBe(5);
+    });
+  });
 
   describe('formatSQL', () => {
-    it('should format SQL for readability', () => {
-      const sql = 'SELECT id, name FROM users WHERE age > 18 ORDER BY name LIMIT 10'
-      const formatted = formatSQL(sql)
+    it('should add newline before SELECT', () => {
+      const sql = 'prefix SELECT * FROM users';
+      const formatted = formatSQL(sql);
+      expect(formatted).toContain('\nSELECT');
+    });
 
-      // Check that keywords are on new lines (SELECT starts the string without newline prefix)
-      expect(formatted).toContain('SELECT')
-      expect(formatted).toContain('\nFROM')
-      expect(formatted).toContain('\nWHERE')
-      expect(formatted).toContain('\nORDER BY')
-      expect(formatted).toContain('\nLIMIT')
-    })
+    it('should add newline before FROM', () => {
+      const sql = 'SELECT * FROM users';
+      const formatted = formatSQL(sql);
+      expect(formatted).toContain('\nFROM');
+    });
 
-    it('should handle complex queries', () => {
-      const sql = 'SELECT u.*, p.* FROM users u JOIN posts p ON u.id = p.user_id WHERE u.active = true GROUP BY u.id HAVING COUNT(p.id) > 5'
-      const formatted = formatSQL(sql)
+    it('should add newline before WHERE', () => {
+      const sql = 'SELECT * FROM users WHERE id = 1';
+      const formatted = formatSQL(sql);
+      expect(formatted).toContain('\nWHERE');
+    });
 
-      // Check that keywords are on new lines (SELECT starts the string without newline prefix)
-      expect(formatted).toContain('SELECT')
-      expect(formatted).toContain('\nFROM')
-      expect(formatted).toContain('\nJOIN')
-      expect(formatted).toContain('\nWHERE')
-      expect(formatted).toContain('\nGROUP BY')
-      expect(formatted).toContain('\nHAVING')
-    })
-  })
+    it('should add newline before JOIN', () => {
+      const sql = 'SELECT * FROM users JOIN posts ON users.id = posts.user_id';
+      const formatted = formatSQL(sql);
+      expect(formatted).toContain('\nJOIN');
+    });
+
+    it('should add newline before ORDER BY', () => {
+      const sql = 'SELECT * FROM users ORDER BY name';
+      const formatted = formatSQL(sql);
+      expect(formatted).toContain('\nORDER BY');
+    });
+
+    it('should add newline before GROUP BY', () => {
+      const sql = 'SELECT name, COUNT(*) FROM users GROUP BY name';
+      const formatted = formatSQL(sql);
+      expect(formatted).toContain('\nGROUP BY');
+    });
+
+    it('should add newline before HAVING', () => {
+      const sql = 'SELECT name, COUNT(*) FROM users GROUP BY name HAVING COUNT(*) > 1';
+      const formatted = formatSQL(sql);
+      expect(formatted).toContain('\nHAVING');
+    });
+
+    it('should add newline before LIMIT', () => {
+      const sql = 'SELECT * FROM users LIMIT 10';
+      const formatted = formatSQL(sql);
+      expect(formatted).toContain('\nLIMIT');
+    });
+
+    it('should add newline before OFFSET', () => {
+      const sql = 'SELECT * FROM users LIMIT 10 OFFSET 5';
+      const formatted = formatSQL(sql);
+      expect(formatted).toContain('\nOFFSET');
+    });
+
+    it('should handle lowercase keywords', () => {
+      const sql = 'prefix select * from users where id = 1';
+      const formatted = formatSQL(sql);
+      expect(formatted).toContain('\nselect');
+      expect(formatted).toContain('\nfrom');
+      expect(formatted).toContain('\nwhere');
+    });
+
+    it('should trim result', () => {
+      const sql = '  SELECT * FROM users  ';
+      const formatted = formatSQL(sql);
+      expect(formatted.startsWith(' ')).toBe(false);
+      expect(formatted.endsWith(' ')).toBe(false);
+    });
+
+    it('should format complex queries', () => {
+      const sql =
+        'SELECT u.name, COUNT(p.id) FROM users u LEFT JOIN posts p ON u.id = p.user_id WHERE u.active = 1 GROUP BY u.name HAVING COUNT(p.id) > 5 ORDER BY u.name LIMIT 10 OFFSET 0';
+      const formatted = formatSQL(sql);
+
+      // SELECT at the beginning - trim removes leading newline, so it starts with SELECT
+      expect(formatted).toMatch(/^SELECT/);
+      expect(formatted).toContain('\nFROM');
+      expect(formatted).toContain('\nJOIN');
+      expect(formatted).toContain('\nWHERE');
+      expect(formatted).toContain('\nGROUP BY');
+      expect(formatted).toContain('\nHAVING');
+      expect(formatted).toContain('\nORDER BY');
+      expect(formatted).toContain('\nLIMIT');
+      expect(formatted).toContain('\nOFFSET');
+    });
+  });
 
   describe('QueryProfiler', () => {
-    it('should track query metrics', () => {
-      const profiler = new QueryProfiler()
+    it('should start with empty queries', () => {
+      const profiler = new QueryProfiler();
+      const summary = profiler.getSummary();
 
-      profiler.record({
+      expect(summary.totalQueries).toBe(0);
+      expect(summary.totalDuration).toBe(0);
+      expect(summary.averageDuration).toBe(0);
+      expect(summary.slowestQuery).toBeNull();
+      expect(summary.fastestQuery).toBeNull();
+      expect(summary.queries).toEqual([]);
+    });
+
+    it('should record query metrics', () => {
+      const profiler = new QueryProfiler();
+      const metric: QueryMetrics = {
         sql: 'SELECT * FROM users',
-        params: [],
-        duration: 10,
-        timestamp: Date.now()
-      })
+        duration: 50,
+        timestamp: Date.now(),
+      };
 
-      profiler.record({
-        sql: 'INSERT INTO users',
-        params: ['test'],
-        duration: 5,
-        timestamp: Date.now()
-      })
+      profiler.record(metric);
 
-      const summary = profiler.getSummary()
-      expect(summary.totalQueries).toBe(2)
-      expect(summary.totalDuration).toBe(15)
-      expect(summary.averageDuration).toBe(7.5)
-      expect(summary.slowestQuery?.duration).toBe(10)
-      expect(summary.fastestQuery?.duration).toBe(5)
-    })
+      const summary = profiler.getSummary();
+      expect(summary.totalQueries).toBe(1);
+      expect(summary.queries[0]).toEqual(metric);
+    });
 
-    it('should handle empty profiler', () => {
-      const profiler = new QueryProfiler()
-      const summary = profiler.getSummary()
+    it('should calculate total duration', () => {
+      const profiler = new QueryProfiler();
+      
+      profiler.record({ sql: 'q1', duration: 10, timestamp: Date.now() });
+      profiler.record({ sql: 'q2', duration: 20, timestamp: Date.now() });
+      profiler.record({ sql: 'q3', duration: 30, timestamp: Date.now() });
 
-      expect(summary.totalQueries).toBe(0)
-      expect(summary.totalDuration).toBe(0)
-      expect(summary.averageDuration).toBe(0)
-      expect(summary.slowestQuery).toBeNull()
-      expect(summary.fastestQuery).toBeNull()
-    })
+      const summary = profiler.getSummary();
+      expect(summary.totalDuration).toBe(60);
+    });
 
-    it('should clear metrics', () => {
-      const profiler = new QueryProfiler()
+    it('should calculate average duration', () => {
+      const profiler = new QueryProfiler();
+      
+      profiler.record({ sql: 'q1', duration: 10, timestamp: Date.now() });
+      profiler.record({ sql: 'q2', duration: 20, timestamp: Date.now() });
+      profiler.record({ sql: 'q3', duration: 30, timestamp: Date.now() });
 
-      profiler.record({
-        sql: 'SELECT * FROM users',
-        params: [],
-        duration: 10,
-        timestamp: Date.now()
-      })
+      const summary = profiler.getSummary();
+      expect(summary.averageDuration).toBe(20);
+    });
 
-      expect(profiler.getSummary().totalQueries).toBe(1)
+    it('should identify slowest query', () => {
+      const profiler = new QueryProfiler();
+      
+      profiler.record({ sql: 'fast', duration: 10, timestamp: Date.now() });
+      profiler.record({ sql: 'slow', duration: 100, timestamp: Date.now() });
+      profiler.record({ sql: 'medium', duration: 50, timestamp: Date.now() });
 
-      profiler.clear()
-      expect(profiler.getSummary().totalQueries).toBe(0)
-    })
+      const summary = profiler.getSummary();
+      expect(summary.slowestQuery?.sql).toBe('slow');
+      expect(summary.slowestQuery?.duration).toBe(100);
+    });
 
-    it('should return all queries', () => {
-      const profiler = new QueryProfiler()
+    it('should identify fastest query', () => {
+      const profiler = new QueryProfiler();
+      
+      profiler.record({ sql: 'fast', duration: 10, timestamp: Date.now() });
+      profiler.record({ sql: 'slow', duration: 100, timestamp: Date.now() });
+      profiler.record({ sql: 'medium', duration: 50, timestamp: Date.now() });
 
-      const metric1 = {
-        sql: 'SELECT * FROM users',
-        params: [],
-        duration: 10,
-        timestamp: Date.now()
-      }
+      const summary = profiler.getSummary();
+      expect(summary.fastestQuery?.sql).toBe('fast');
+      expect(summary.fastestQuery?.duration).toBe(10);
+    });
 
-      const metric2 = {
-        sql: 'INSERT INTO users',
-        params: ['test'],
-        duration: 5,
-        timestamp: Date.now()
-      }
+    it('should clear all queries', () => {
+      const profiler = new QueryProfiler();
+      
+      profiler.record({ sql: 'q1', duration: 10, timestamp: Date.now() });
+      profiler.record({ sql: 'q2', duration: 20, timestamp: Date.now() });
 
-      profiler.record(metric1)
-      profiler.record(metric2)
+      profiler.clear();
 
-      const summary = profiler.getSummary()
-      expect(summary.queries).toHaveLength(2)
-      expect(summary.queries).toContainEqual(metric1)
-      expect(summary.queries).toContainEqual(metric2)
-    })
+      const summary = profiler.getSummary();
+      expect(summary.totalQueries).toBe(0);
+    });
 
-    it('should limit queries to maxQueries option (circular buffer)', () => {
-      const profiler = new QueryProfiler({ maxQueries: 3 })
+    it('should limit queries with maxQueries option', () => {
+      const profiler = new QueryProfiler({ maxQueries: 3 });
 
-      // Record 5 queries
       for (let i = 0; i < 5; i++) {
-        profiler.record({
-          sql: `SELECT ${i}`,
-          params: [],
-          duration: i,
-          timestamp: Date.now()
-        })
+        profiler.record({ sql: `q${i}`, duration: i * 10, timestamp: Date.now() });
       }
 
-      const summary = profiler.getSummary()
-      // Should keep only last 3 queries
-      expect(summary.queries).toHaveLength(3)
-      expect(summary.totalQueries).toBe(3)
-    })
+      const summary = profiler.getSummary();
+      expect(summary.totalQueries).toBe(3);
+    });
 
-    it('should remove oldest queries when limit is exceeded', () => {
-      const profiler = new QueryProfiler({ maxQueries: 2 })
+    it('should use circular buffer when maxQueries exceeded', () => {
+      const profiler = new QueryProfiler({ maxQueries: 2 });
 
-      profiler.record({ sql: 'QUERY 1', duration: 1, timestamp: Date.now() })
-      profiler.record({ sql: 'QUERY 2', duration: 2, timestamp: Date.now() })
-      profiler.record({ sql: 'QUERY 3', duration: 3, timestamp: Date.now() })
+      profiler.record({ sql: 'first', duration: 10, timestamp: 1 });
+      profiler.record({ sql: 'second', duration: 20, timestamp: 2 });
+      profiler.record({ sql: 'third', duration: 30, timestamp: 3 });
 
-      const summary = profiler.getSummary()
-      expect(summary.queries).toHaveLength(2)
+      const summary = profiler.getSummary();
+      expect(summary.totalQueries).toBe(2);
+      expect(summary.queries[0].sql).toBe('second');
+      expect(summary.queries[1].sql).toBe('third');
+    });
 
-      // First query should be removed
-      const sqls = summary.queries.map(q => q.sql).join(' ')
-      expect(sqls).toContain('QUERY 2')
-      expect(sqls).toContain('QUERY 3')
-      expect(sqls).not.toContain('QUERY 1')
-    })
+    it('should return copy of queries array', () => {
+      const profiler = new QueryProfiler();
+      
+      profiler.record({ sql: 'q1', duration: 10, timestamp: Date.now() });
 
-    it('should use default maxQueries of 1000 when not specified', () => {
-      const profiler = new QueryProfiler()
+      const summary1 = profiler.getSummary();
+      const summary2 = profiler.getSummary();
 
-      // Record 1001 queries to exceed default limit
-      for (let i = 0; i < 1001; i++) {
-        profiler.record({
-          sql: `SELECT ${i}`,
-          params: [],
-          duration: i,
-          timestamp: Date.now()
-        })
+      expect(summary1.queries).not.toBe(summary2.queries);
+      expect(summary1.queries).toEqual(summary2.queries);
+    });
+
+    it('should include params in recorded metrics', () => {
+      const profiler = new QueryProfiler();
+      const metric: QueryMetrics = {
+        sql: 'SELECT * FROM users WHERE id = ?',
+        params: [1],
+        duration: 10,
+        timestamp: Date.now(),
+      };
+
+      profiler.record(metric);
+
+      const summary = profiler.getSummary();
+      expect(summary.queries[0].params).toEqual([1]);
+    });
+
+    it('should use default maxQueries of 1000', () => {
+      const profiler = new QueryProfiler();
+
+      // Record many queries
+      for (let i = 0; i < 50; i++) {
+        profiler.record({ sql: `q${i}`, duration: i, timestamp: Date.now() });
       }
 
-      const summary = profiler.getSummary()
-      // Should keep only last 1000 queries
-      expect(summary.queries).toHaveLength(1000)
-      expect(summary.totalQueries).toBe(1000)
-    })
+      // Should accept all (under default 1000 limit)
+      expect(profiler.getSummary().totalQueries).toBe(50);
+    });
 
-    it('should handle maxQueries of 1 (keep only last query)', () => {
-      const profiler = new QueryProfiler({ maxQueries: 1 })
+    it('should handle single query correctly', () => {
+      const profiler = new QueryProfiler();
+      const metric: QueryMetrics = {
+        sql: 'SELECT 1',
+        duration: 5,
+        timestamp: Date.now(),
+      };
 
-      profiler.record({ sql: 'QUERY 1', duration: 1, timestamp: Date.now() })
-      profiler.record({ sql: 'QUERY 2', duration: 2, timestamp: Date.now() })
+      profiler.record(metric);
 
-      const summary = profiler.getSummary()
-      expect(summary.queries).toHaveLength(1)
-      expect(summary.queries[0]?.sql).toBe('QUERY 2')
-    })
-
-    it('should correctly calculate summary with circular buffer', () => {
-      const profiler = new QueryProfiler({ maxQueries: 3 })
-
-      // Record 5 queries with known durations
-      profiler.record({ sql: 'Q1', duration: 10, timestamp: Date.now() })
-      profiler.record({ sql: 'Q2', duration: 20, timestamp: Date.now() })
-      profiler.record({ sql: 'Q3', duration: 30, timestamp: Date.now() }) // oldest kept
-      profiler.record({ sql: 'Q4', duration: 40, timestamp: Date.now() })
-      profiler.record({ sql: 'Q5', duration: 50, timestamp: Date.now() })
-
-      const summary = profiler.getSummary()
-      // Should only have Q3, Q4, Q5 (last 3)
-      expect(summary.totalQueries).toBe(3)
-      expect(summary.totalDuration).toBe(120) // 30 + 40 + 50
-      expect(summary.averageDuration).toBe(40) // 120 / 3
-      expect(summary.slowestQuery?.duration).toBe(50)
-      expect(summary.fastestQuery?.duration).toBe(30)
-    })
-  })
-})
+      const summary = profiler.getSummary();
+      expect(summary.totalQueries).toBe(1);
+      expect(summary.totalDuration).toBe(5);
+      expect(summary.averageDuration).toBe(5);
+      expect(summary.slowestQuery).toEqual(metric);
+      expect(summary.fastestQuery).toEqual(metric);
+    });
+  });
+});

@@ -54,6 +54,95 @@ kysera generate crud Post --api --tests
 kysera health check
 ```
 
+## 🎯 Shell Completions
+
+Kysera CLI provides shell completion scripts for Bash, Zsh, and Fish shells to enhance your development experience with tab completion for commands, subcommands, and options.
+
+### Bash
+
+**System-wide installation:**
+```bash
+sudo cp scripts/completions/kysera.bash /etc/bash_completion.d/kysera
+# or on macOS with Homebrew:
+sudo cp scripts/completions/kysera.bash /usr/local/etc/bash_completion.d/kysera
+```
+
+**User installation:**
+```bash
+# Add to your ~/.bashrc or ~/.bash_profile:
+source /path/to/kysera-cli/scripts/completions/kysera.bash
+```
+
+Then reload your shell:
+```bash
+source ~/.bashrc
+```
+
+### Zsh
+
+**System-wide installation:**
+```bash
+sudo cp scripts/completions/kysera.zsh /usr/local/share/zsh/site-functions/_kysera
+```
+
+**User installation:**
+```bash
+# Create completions directory if it doesn't exist
+mkdir -p ~/.zsh/completions
+
+# Copy the completion file
+cp scripts/completions/kysera.zsh ~/.zsh/completions/_kysera
+
+# Add to your ~/.zshrc:
+fpath=(~/.zsh/completions $fpath)
+autoload -U compinit && compinit
+```
+
+Then reload your shell:
+```bash
+source ~/.zshrc
+```
+
+### Fish
+
+**Installation:**
+```bash
+# User installation (recommended)
+cp scripts/completions/kysera.fish ~/.config/fish/completions/
+
+# System-wide installation
+sudo cp scripts/completions/kysera.fish /usr/share/fish/vendor_completions.d/
+```
+
+Fish will automatically load completions - no need to reload.
+
+### Features
+
+The completion scripts provide intelligent suggestions for:
+
+- **Commands**: All main commands (`init`, `migrate`, `generate`, `db`, etc.)
+- **Subcommands**: Context-aware subcommand completion (e.g., `migrate up`, `generate model`)
+- **Options**: All global and command-specific flags
+- **Values**: Predefined values for options like `--dialect`, `--validation`, `--strategy`
+- **Files**: File path completion for config files and output directories
+
+### Example Usage
+
+```bash
+# Type and press TAB:
+kysera <TAB>
+# Shows: init migrate generate db health audit debug query repository test plugin help
+
+kysera migrate <TAB>
+# Shows: create up down status list reset fresh rollback
+
+kysera generate --validation <TAB>
+# Shows: zod yup joi none
+
+kysera --config <TAB>
+# Shows: file path completions for .ts, .js, .json files
+```
+
 ## 📚 Command Overview
 
 | Command | Description |

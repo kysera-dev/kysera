@@ -2200,7 +2200,7 @@ Kysera has a **solid foundation** with one package already production-ready. Wor
 
 **Prepared by**: Claude (Sonnet 4.5)
 **Date**: 2025-10-01
-**Repository**: github.com/omnitron/kysera
+**Repository**: github.com/kysera-dev/kysera
 **License**: MIT
 
 ---

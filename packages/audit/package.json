@@ -1,6 +1,6 @@
 {
   "name": "@kysera/audit",
-  "version": "0.4.1",
+  "version": "0.5.1",
   "description": "Audit logging plugin for Kysera ORM",
   "type": "module",
   "exports": {
@@ -27,21 +27,28 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\""
   },
   "dependencies": {
-    "zod": "^4.1.11"
+    "@kysera/core": "workspace:*"
   },
   "devDependencies": {
     "@kysera/repository": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^24.6.2",
-    "better-sqlite3": "^12.4.1",
-    "kysely": "^0.28.7",
-    "tsup": "^8.5.0",
+    "@types/node": "^24.10.1",
+    "better-sqlite3": "^12.5.0",
+    "kysely": "^0.28.8",
+    "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.0.15",
+    "zod": "^4.1.13"
   },
   "peerDependencies": {
     "@kysera/repository": "workspace:*",
-    "kysely": "^0.28.7"
+    "kysely": ">=0.28.8",
+    "zod": "^4.1.13"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=20.0.0",
@@ -49,7 +56,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/omnitron-dev/kysera",
+    "url": "git+https://github.com/kysera-dev/kysera.git",
     "directory": "packages/audit"
   },
   "keywords": [
@@ -60,7 +67,7 @@
     "logging",
     "tracking"
   ],
-  "author": "Omnitron Dev",
+  "author": "Kysera Team",
   "license": "MIT",
   "sideEffects": false
 }

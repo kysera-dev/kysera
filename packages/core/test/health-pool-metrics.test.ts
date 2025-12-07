@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { createMetricsPool, type DatabasePool } from '../src/health'
+import { describe, it, expect } from 'vitest';
+import { createMetricsPool, type DatabasePool } from '../src/health.js';
 
 /**
  * Comprehensive tests for multi-database pool metrics support.
@@ -18,19 +18,19 @@ describe('Multi-Database Pool Metrics', () => {
         waitingCount: 2,
         options: { max: 10 },
         end: async () => {},
-        query: async () => ({})
-      }
+        query: async () => ({}),
+      };
 
-      const metricsPool = createMetricsPool(pgPool)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(pgPool);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 10,
         idle: 7,
         active: 3, // totalCount - idleCount
-        waiting: 2
-      })
-    })
+        waiting: 2,
+      });
+    });
 
     it('should handle PostgreSQL pool with zero connections', () => {
       const pgPool: DatabasePool & Record<string, any> = {
@@ -38,38 +38,38 @@ describe('Multi-Database Pool Metrics', () => {
         idleCount: 0,
         waitingCount: 0,
         options: { max: 10 },
-        end: async () => {}
-      }
+        end: async () => {},
+      };
 
-      const metricsPool = createMetricsPool(pgPool)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(pgPool);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 10, // Falls back to options.max
         idle: 0,
         active: 0,
-        waiting: 0
-      })
-    })
+        waiting: 0,
+      });
+    });
 
     it('should handle PostgreSQL pool without options', () => {
       const pgPool: DatabasePool & Record<string, any> = {
         totalCount: 5,
         idleCount: 3,
         waitingCount: 1,
-        end: async () => {}
-      }
+        end: async () => {},
+      };
 
-      const metricsPool = createMetricsPool(pgPool)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(pgPool);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 5,
         idle: 3,
         active: 2,
-        waiting: 1
-      })
-    })
+        waiting: 1,
+      });
+    });
 
     it('should handle PostgreSQL pool at full capacity', () => {
       const pgPool: DatabasePool & Record<string, any> = {
@@ -77,20 +77,20 @@ describe('Multi-Database Pool Metrics', () => {
         idleCount: 0,
         waitingCount: 5,
         options: { max: 10 },
-        end: async () => {}
-      }
+        end: async () => {},
+      };
 
-      const metricsPool = createMetricsPool(pgPool)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(pgPool);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 10,
         idle: 0,
         active: 10,
-        waiting: 5
-      })
-    })
-  })
+        waiting: 5,
+      });
+    });
+  });
 
   describe('MySQL Pool (mysql2)', () => {
     it('should extract metrics from MySQL pool', () => {
@@ -98,92 +98,92 @@ describe('Multi-Database Pool Metrics', () => {
       const mysqlPool: DatabasePool & Record<string, any> = {
         pool: {
           _allConnections: new Array(5), // 5 total connections
-          _freeConnections: new Array(3) // 3 free connections
+          _freeConnections: new Array(3), // 3 free connections
         },
         config: {
-          connectionLimit: 10
+          connectionLimit: 10,
         },
         end: async () => {},
-        query: async () => ({})
-      }
+        query: async () => ({}),
+      };
 
-      const metricsPool = createMetricsPool(mysqlPool)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(mysqlPool);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 10, // connectionLimit
         idle: 3, // _freeConnections.length
         active: 2, // _allConnections.length - _freeConnections.length
-        waiting: 0 // MySQL doesn't expose waiting count
-      })
-    })
+        waiting: 0, // MySQL doesn't expose waiting count
+      });
+    });
 
     it('should handle MySQL pool with zero connections', () => {
       const mysqlPool: DatabasePool & Record<string, any> = {
         pool: {
           _allConnections: [],
-          _freeConnections: []
+          _freeConnections: [],
         },
         config: {
-          connectionLimit: 10
+          connectionLimit: 10,
         },
-        end: async () => {}
-      }
+        end: async () => {},
+      };
 
-      const metricsPool = createMetricsPool(mysqlPool)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(mysqlPool);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 10,
         idle: 0,
         active: 0,
-        waiting: 0
-      })
-    })
+        waiting: 0,
+      });
+    });
 
     it('should handle MySQL pool without config', () => {
       const mysqlPool: DatabasePool & Record<string, any> = {
         pool: {
           _allConnections: new Array(3),
-          _freeConnections: new Array(1)
+          _freeConnections: new Array(1),
         },
-        end: async () => {}
-      }
+        end: async () => {},
+      };
 
-      const metricsPool = createMetricsPool(mysqlPool)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(mysqlPool);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 10, // Default fallback
         idle: 1,
         active: 2,
-        waiting: 0
-      })
-    })
+        waiting: 0,
+      });
+    });
 
     it('should handle MySQL pool at full capacity', () => {
       const mysqlPool: DatabasePool & Record<string, any> = {
         pool: {
           _allConnections: new Array(10),
-          _freeConnections: []
+          _freeConnections: [],
         },
         config: {
-          connectionLimit: 10
+          connectionLimit: 10,
         },
-        end: async () => {}
-      }
+        end: async () => {},
+      };
 
-      const metricsPool = createMetricsPool(mysqlPool)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(mysqlPool);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 10,
         idle: 0,
         active: 10,
-        waiting: 0
-      })
-    })
-  })
+        waiting: 0,
+      });
+    });
+  });
 
   describe('SQLite Database (better-sqlite3)', () => {
     it('should extract metrics from SQLite database', () => {
@@ -194,19 +194,19 @@ describe('Multi-Database Pool Metrics', () => {
         readonly: false,
         name: 'test.db',
         close: () => {},
-        end: () => {}
-      }
+        end: () => {},
+      };
 
-      const metricsPool = createMetricsPool(sqliteDb)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(sqliteDb);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 1, // SQLite is single-connection
         idle: 0,
         active: 1, // Database is open
-        waiting: 0
-      })
-    })
+        waiting: 0,
+      });
+    });
 
     it('should handle closed SQLite database', () => {
       const sqliteDb: DatabasePool & Record<string, any> = {
@@ -214,19 +214,19 @@ describe('Multi-Database Pool Metrics', () => {
         memory: true,
         name: ':memory:',
         close: () => {},
-        end: () => {}
-      }
+        end: () => {},
+      };
 
-      const metricsPool = createMetricsPool(sqliteDb)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(sqliteDb);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 1,
         idle: 0,
         active: 0, // Database is closed
-        waiting: 0
-      })
-    })
+        waiting: 0,
+      });
+    });
 
     it('should handle readonly SQLite database', () => {
       const sqliteDb: DatabasePool & Record<string, any> = {
@@ -235,19 +235,19 @@ describe('Multi-Database Pool Metrics', () => {
         readonly: true,
         name: 'readonly.db',
         close: () => {},
-        end: () => {}
-      }
+        end: () => {},
+      };
 
-      const metricsPool = createMetricsPool(sqliteDb)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(sqliteDb);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 1,
         idle: 0,
         active: 1,
-        waiting: 0
-      })
-    })
+        waiting: 0,
+      });
+    });
 
     it('should handle in-memory SQLite database', () => {
       const sqliteDb: DatabasePool & Record<string, any> = {
@@ -256,73 +256,73 @@ describe('Multi-Database Pool Metrics', () => {
         readonly: false,
         name: ':memory:',
         close: () => {},
-        end: () => {}
-      }
+        end: () => {},
+      };
 
-      const metricsPool = createMetricsPool(sqliteDb)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(sqliteDb);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 1,
         idle: 0,
         active: 1,
-        waiting: 0
-      })
-    })
-  })
+        waiting: 0,
+      });
+    });
+  });
 
   describe('Unknown Pool Types', () => {
     it('should return safe defaults for unknown pool type', () => {
       const unknownPool: DatabasePool = {
-        end: async () => {}
-      }
+        end: async () => {},
+      };
 
-      const metricsPool = createMetricsPool(unknownPool)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(unknownPool);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 10,
         idle: 0,
         active: 0,
-        waiting: 0
-      })
-    })
+        waiting: 0,
+      });
+    });
 
     it('should handle empty object as pool', () => {
       const emptyPool: DatabasePool = {
-        end: () => {}
-      }
+        end: () => {},
+      };
 
-      const metricsPool = createMetricsPool(emptyPool)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(emptyPool);
+      const metrics = metricsPool.getMetrics();
 
       expect(metrics).toEqual({
         total: 10,
         idle: 0,
         active: 0,
-        waiting: 0
-      })
-    })
-  })
+        waiting: 0,
+      });
+    });
+  });
 
   describe('Pool Interface Compatibility', () => {
     it('should preserve original pool methods', () => {
-      const mockEnd = async () => {}
-      const mockQuery = async () => ({ rows: [] })
+      const mockEnd = async () => {};
+      const mockQuery = async () => ({ rows: [] });
 
       const pgPool: DatabasePool & Record<string, any> = {
         totalCount: 5,
         idleCount: 2,
         waitingCount: 0,
         end: mockEnd,
-        query: mockQuery
-      }
+        query: mockQuery,
+      };
 
-      const metricsPool = createMetricsPool(pgPool)
+      const metricsPool = createMetricsPool(pgPool);
 
-      expect(metricsPool.end).toBe(mockEnd)
-      expect(metricsPool.query).toBe(mockQuery)
-    })
+      expect(metricsPool.end).toBe(mockEnd);
+      expect(metricsPool.query).toBe(mockQuery);
+    });
 
     it('should add getMetrics method without affecting pool', () => {
       const pgPool: DatabasePool & Record<string, any> = {
@@ -330,15 +330,15 @@ describe('Multi-Database Pool Metrics', () => {
         idleCount: 2,
         waitingCount: 0,
         customMethod: () => 'custom',
-        end: async () => {}
-      }
+        end: async () => {},
+      };
 
-      const metricsPool = createMetricsPool(pgPool)
+      const metricsPool = createMetricsPool(pgPool);
 
-      expect(metricsPool.getMetrics).toBeDefined()
-      expect(typeof metricsPool.getMetrics).toBe('function')
-      expect((metricsPool as any).customMethod()).toBe('custom')
-    })
+      expect(metricsPool.getMetrics).toBeDefined();
+      expect(typeof metricsPool.getMetrics).toBe('function');
+      expect((metricsPool as any).customMethod()).toBe('custom');
+    });
 
     it('should work with synchronous end() method', () => {
       const sqliteDb: DatabasePool & Record<string, any> = {
@@ -346,31 +346,31 @@ describe('Multi-Database Pool Metrics', () => {
         memory: true,
         name: ':memory:',
         close: () => {},
-        end: () => {} // Synchronous
-      }
+        end: () => {}, // Synchronous
+      };
 
-      const metricsPool = createMetricsPool(sqliteDb)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(sqliteDb);
+      const metrics = metricsPool.getMetrics();
 
-      expect(metrics.total).toBe(1)
-      expect(typeof metricsPool.end).toBe('function')
-    })
+      expect(metrics.total).toBe(1);
+      expect(typeof metricsPool.end).toBe('function');
+    });
 
     it('should work with async end() method', () => {
       const pgPool: DatabasePool & Record<string, any> = {
         totalCount: 5,
         idleCount: 2,
         waitingCount: 0,
-        end: async () => {} // Async
-      }
+        end: async () => {}, // Async
+      };
 
-      const metricsPool = createMetricsPool(pgPool)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(pgPool);
+      const metrics = metricsPool.getMetrics();
 
-      expect(metrics.total).toBe(5)
-      expect(typeof metricsPool.end).toBe('function')
-    })
-  })
+      expect(metrics.total).toBe(5);
+      expect(typeof metricsPool.end).toBe('function');
+    });
+  });
 
   describe('Real-world Scenarios', () => {
     it('should handle PostgreSQL pool under load', () => {
@@ -379,37 +379,37 @@ describe('Multi-Database Pool Metrics', () => {
         idleCount: 5,
         waitingCount: 10,
         options: { max: 20 },
-        end: async () => {}
-      }
+        end: async () => {},
+      };
 
-      const metricsPool = createMetricsPool(pgPool)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(pgPool);
+      const metrics = metricsPool.getMetrics();
 
-      expect(metrics.total).toBe(20)
-      expect(metrics.active).toBe(15) // High usage
-      expect(metrics.idle).toBe(5)
-      expect(metrics.waiting).toBe(10) // Requests waiting
-    })
+      expect(metrics.total).toBe(20);
+      expect(metrics.active).toBe(15); // High usage
+      expect(metrics.idle).toBe(5);
+      expect(metrics.waiting).toBe(10); // Requests waiting
+    });
 
     it('should handle MySQL pool with partial connections', () => {
       const mysqlPool: DatabasePool & Record<string, any> = {
         pool: {
           _allConnections: new Array(7),
-          _freeConnections: new Array(7) // All connections idle
+          _freeConnections: new Array(7), // All connections idle
         },
         config: {
-          connectionLimit: 20
+          connectionLimit: 20,
         },
-        end: async () => {}
-      }
+        end: async () => {},
+      };
 
-      const metricsPool = createMetricsPool(mysqlPool)
-      const metrics = metricsPool.getMetrics()
+      const metricsPool = createMetricsPool(mysqlPool);
+      const metrics = metricsPool.getMetrics();
 
-      expect(metrics.total).toBe(20)
-      expect(metrics.active).toBe(0)
-      expect(metrics.idle).toBe(7)
-    })
+      expect(metrics.total).toBe(20);
+      expect(metrics.active).toBe(0);
+      expect(metrics.idle).toBe(7);
+    });
 
     it('should handle multiple SQLite databases', () => {
       const db1: DatabasePool & Record<string, any> = {
@@ -417,28 +417,28 @@ describe('Multi-Database Pool Metrics', () => {
         memory: false,
         name: 'db1.db',
         close: () => {},
-        end: () => {}
-      }
+        end: () => {},
+      };
 
       const db2: DatabasePool & Record<string, any> = {
         open: true,
         memory: false,
         name: 'db2.db',
         close: () => {},
-        end: () => {}
-      }
+        end: () => {},
+      };
 
-      const metricsPool1 = createMetricsPool(db1)
-      const metricsPool2 = createMetricsPool(db2)
+      const metricsPool1 = createMetricsPool(db1);
+      const metricsPool2 = createMetricsPool(db2);
 
-      const metrics1 = metricsPool1.getMetrics()
-      const metrics2 = metricsPool2.getMetrics()
+      const metrics1 = metricsPool1.getMetrics();
+      const metrics2 = metricsPool2.getMetrics();
 
       // Each SQLite database is independent
-      expect(metrics1.total).toBe(1)
-      expect(metrics1.active).toBe(1)
-      expect(metrics2.total).toBe(1)
-      expect(metrics2.active).toBe(1)
-    })
-  })
-})
+      expect(metrics1.total).toBe(1);
+      expect(metrics1.active).toBe(1);
+      expect(metrics2.total).toBe(1);
+      expect(metrics2.active).toBe(1);
+    });
+  });
+});

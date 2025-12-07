@@ -1,56 +1,56 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { z } from 'zod'
-import { createTestDatabase, seedTestData } from './setup/database'
-import { createRepositoryFactory } from '../src/repository'
-import type { Kysely, Selectable } from 'kysely'
-import type { TestDatabase } from './setup/database'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { z } from 'zod';
+import { createTestDatabase, seedTestData } from './setup/database.js';
+import { createRepositoryFactory } from '../src/repository.js';
+import type { Kysely, Selectable } from 'kysely';
+import type { TestDatabase } from './setup/database.js';
 
 // Define schemas for validation
 const UserSchema = z.object({
   id: z.number(),
   email: z.string().email(),
   name: z.string(),
-  created_at: z.coerce.date(),  // Coerce string to Date for SQLite
-  deleted_at: z.coerce.date().nullable()
-})
+  created_at: z.coerce.date(), // Coerce string to Date for SQLite
+  deleted_at: z.coerce.date().nullable(),
+});
 
 const CreateUserSchema = z.object({
   email: z.string().email(),
-  name: z.string().min(1)
-})
+  name: z.string().min(1),
+});
 
 const UpdateUserSchema = z.object({
   email: z.string().email().optional(),
-  name: z.string().min(1).optional()
-})
+  name: z.string().min(1).optional(),
+});
 
 // Domain type (without Generated fields)
 // Note: SQLite returns dates as strings
 interface User {
-  id: number
-  email: string
-  name: string
-  created_at: Date | string
-  deleted_at: Date | string | null
+  id: number;
+  email: string;
+  name: string;
+  created_at: Date | string;
+  deleted_at: Date | string | null;
 }
 
 describe('Repository Pattern', () => {
-  let db: Kysely<TestDatabase>
-  let cleanup: () => Promise<void>
+  let db: Kysely<TestDatabase>;
+  let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
-    const setup = createTestDatabase()
-    db = setup.db
-    cleanup = setup.cleanup as () => Promise<void>
-  })
+    const setup = createTestDatabase();
+    db = setup.db;
+    cleanup = setup.cleanup as () => Promise<void>;
+  });
 
   afterEach(async () => {
-    await cleanup()
-  })
+    await cleanup();
+  });
 
   describe('Basic CRUD Operations', () => {
     it('should create a repository with basic operations', async () => {
-      const factory = createRepositoryFactory(db)
+      const factory = createRepositoryFactory(db);
 
       const userRepo = factory.create<'users', User>({
         tableName: 'users',
@@ -59,212 +59,210 @@ describe('Repository Pattern', () => {
           email: row.email,
           name: row.name,
           created_at: row.created_at,
-          deleted_at: row.deleted_at
+          deleted_at: row.deleted_at,
         }),
         schemas: {
           entity: UserSchema,
           create: CreateUserSchema,
-          update: UpdateUserSchema
-        }
-      })
+          update: UpdateUserSchema,
+        },
+      });
 
       // Test that executor and tableName are exposed
-      expect(userRepo).toHaveProperty('executor')
-      expect(userRepo).toHaveProperty('tableName')
-      expect(userRepo.tableName).toBe('users')
+      expect(userRepo).toHaveProperty('executor');
+      expect(userRepo).toHaveProperty('tableName');
+      expect(userRepo.tableName).toBe('users');
 
       // Test create
       const newUser = await userRepo.create({
         email: 'test@example.com',
-        name: 'Test User'
-      })
+        name: 'Test User',
+      });
 
-      expect(newUser).toBeDefined()
-      expect(newUser.email).toBe('test@example.com')
-      expect(newUser.name).toBe('Test User')
-      expect(newUser.id).toBeGreaterThan(0)
+      expect(newUser).toBeDefined();
+      expect(newUser.email).toBe('test@example.com');
+      expect(newUser.name).toBe('Test User');
+      expect(newUser.id).toBeGreaterThan(0);
 
       // Test findById
-      const foundUser = await userRepo.findById(newUser.id)
-      expect(foundUser).toBeDefined()
-      expect(foundUser?.email).toBe('test@example.com')
+      const foundUser = await userRepo.findById(newUser.id);
+      expect(foundUser).toBeDefined();
+      expect(foundUser?.email).toBe('test@example.com');
 
       // Test update
       const updatedUser = await userRepo.update(newUser.id, {
-        name: 'Updated Name'
-      })
-      expect(updatedUser.name).toBe('Updated Name')
+        name: 'Updated Name',
+      });
+      expect(updatedUser.name).toBe('Updated Name');
 
       // Test findAll
-      const allUsers = await userRepo.findAll()
-      expect(allUsers).toHaveLength(1)
+      const allUsers = await userRepo.findAll();
+      expect(allUsers).toHaveLength(1);
 
       // Test delete
-      await userRepo.delete(newUser.id)
-      const deletedUser = await userRepo.findById(newUser.id)
-      expect(deletedUser).toBeNull()
-    })
+      await userRepo.delete(newUser.id);
+      const deletedUser = await userRepo.findById(newUser.id);
+      expect(deletedUser).toBeNull();
+    });
 
     it('should validate input on create', async () => {
-      const factory = createRepositoryFactory(db)
+      const factory = createRepositoryFactory(db);
 
       const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema
-        }
-      })
+          create: CreateUserSchema,
+        },
+      });
 
       // Invalid email should fail
       await expect(
         userRepo.create({
           email: 'invalid-email',
-          name: 'Test'
+          name: 'Test',
         })
-      ).rejects.toThrow()
+      ).rejects.toThrow();
 
       // Missing required field should fail
       await expect(
         userRepo.create({
-          email: 'test@example.com'
+          email: 'test@example.com',
         } as any)
-      ).rejects.toThrow()
+      ).rejects.toThrow();
 
       // Valid input should succeed
       const user = await userRepo.create({
         email: 'valid@example.com',
-        name: 'Valid User'
-      })
-      expect(user).toBeDefined()
-    })
+        name: 'Valid User',
+      });
+      expect(user).toBeDefined();
+    });
 
     it('should validate input on update if schema provided', async () => {
-      const factory = createRepositoryFactory(db)
+      const factory = createRepositoryFactory(db);
 
       const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
           create: CreateUserSchema,
-          update: UpdateUserSchema
-        }
-      })
+          update: UpdateUserSchema,
+        },
+      });
 
       // Create a user
       const user = await userRepo.create({
         email: 'test@example.com',
-        name: 'Test User'
-      })
+        name: 'Test User',
+      });
 
       // Invalid email should fail
       await expect(
         userRepo.update(user.id as number, {
-          email: 'invalid-email'
+          email: 'invalid-email',
         })
-      ).rejects.toThrow()
+      ).rejects.toThrow();
 
       // Valid update should succeed
       const updated = await userRepo.update(user.id as number, {
-        name: 'New Name'
-      })
-      expect(updated.name).toBe('New Name')
-    })
+        name: 'New Name',
+      });
+      expect(updated.name).toBe('New Name');
+    });
 
     it('should handle non-existent records', async () => {
-      const factory = createRepositoryFactory(db)
+      const factory = createRepositoryFactory(db);
 
       const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema
-        }
-      })
+          create: CreateUserSchema,
+        },
+      });
 
       // findById should return null
-      const notFound = await userRepo.findById(9999)
-      expect(notFound).toBeNull()
+      const notFound = await userRepo.findById(9999);
+      expect(notFound).toBeNull();
 
       // update should throw
-      await expect(
-        userRepo.update(9999, { name: 'Test' })
-      ).rejects.toThrow()
+      await expect(userRepo.update(9999, { name: 'Test' })).rejects.toThrow();
 
       // delete should return false for non-existent record
-      const deleted = await userRepo.delete(9999)
-      expect(deleted).toBe(false)
-    })
-  })
+      const deleted = await userRepo.delete(9999);
+      expect(deleted).toBe(false);
+    });
+  });
 
   describe('Smart Validation', () => {
     it('should validate DB results in development', async () => {
-      const originalEnv = process.env['NODE_ENV']
-      process.env['NODE_ENV'] = 'development'
+      const originalEnv = process.env['NODE_ENV'];
+      process.env['NODE_ENV'] = 'development';
 
-      const factory = createRepositoryFactory(db)
+      const factory = createRepositoryFactory(db);
 
       const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
           entity: UserSchema,
-          create: CreateUserSchema
+          create: CreateUserSchema,
         },
-        validateDbResults: true // Explicitly enable
-      })
+        validateDbResults: true, // Explicitly enable
+      });
 
       const user = await userRepo.create({
         email: 'test@example.com',
-        name: 'Test User'
-      })
+        name: 'Test User',
+      });
 
       // Should be validated against entity schema
-      expect(user.email).toMatch(/^[\w.-]+@[\w.-]+\.\w+$/)
+      expect(user.email).toMatch(/^[\w.-]+@[\w.-]+\.\w+$/);
 
       // Restore env
-      process.env['NODE_ENV'] = originalEnv
-    })
+      process.env['NODE_ENV'] = originalEnv;
+    });
 
     it('should skip validation in production by default', async () => {
-      const originalEnv = process.env['NODE_ENV']
-      process.env['NODE_ENV'] = 'production'
+      const originalEnv = process.env['NODE_ENV'];
+      process.env['NODE_ENV'] = 'production';
 
-      const factory = createRepositoryFactory(db)
+      const factory = createRepositoryFactory(db);
 
       const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
           entity: UserSchema,
-          create: CreateUserSchema
-        }
-      })
+          create: CreateUserSchema,
+        },
+      });
 
       const user = await userRepo.create({
         email: 'test@example.com',
-        name: 'Test User'
-      })
+        name: 'Test User',
+      });
 
       // Should not throw even if validation would fail
-      expect(user).toBeDefined()
+      expect(user).toBeDefined();
 
       // Restore env
-      process.env['NODE_ENV'] = originalEnv
-    })
-  })
+      process.env['NODE_ENV'] = originalEnv;
+    });
+  });
 
   describe('Type-Safe Mappers', () => {
     it('should map database rows to domain entities', async () => {
-      await seedTestData(db)
+      await seedTestData(db);
 
-      const factory = createRepositoryFactory(db)
+      const factory = createRepositoryFactory(db);
 
       interface UserEntity {
-        id: number
-        email: string
-        displayName: string // Different from DB column 'name'
-        isDeleted: boolean
+        id: number;
+        email: string;
+        displayName: string; // Different from DB column 'name'
+        isDeleted: boolean;
       }
 
       const userRepo = factory.create<'users', UserEntity>({
@@ -273,38 +271,41 @@ describe('Repository Pattern', () => {
           id: row.id,
           email: row.email,
           displayName: row.name,
-          isDeleted: row.deleted_at !== null
+          isDeleted: row.deleted_at !== null,
         }),
         schemas: {
-          create: CreateUserSchema
-        }
-      })
+          create: CreateUserSchema,
+        },
+      });
 
-      const users = await userRepo.findAll()
-      expect(users).toHaveLength(3)
-      expect(users[0]).toHaveProperty('displayName')
-      expect(users[0]).toHaveProperty('isDeleted')
-      expect(users[0]?.isDeleted).toBe(false)
-    })
+      const users = await userRepo.findAll();
+      expect(users).toHaveLength(3);
+      expect(users[0]).toHaveProperty('displayName');
+      expect(users[0]).toHaveProperty('isDeleted');
+      expect(users[0]?.isDeleted).toBe(false);
+    });
 
     it('should handle Generated fields correctly', async () => {
-      const factory = createRepositoryFactory(db)
+      const factory = createRepositoryFactory(db);
 
       // First create a user for the foreign key
-      await db.insertInto('users').values({
-        email: 'author@example.com',
-        name: 'Author'
-      }).execute()
+      await db
+        .insertInto('users')
+        .values({
+          email: 'author@example.com',
+          name: 'Author',
+        })
+        .execute();
 
       interface PostEntity {
-        id: number
-        title: string
-        authorId: number
-        isPublished: boolean
+        id: number;
+        title: string;
+        authorId: number;
+        isPublished: boolean;
         timestamps: {
-          created: Date
-          updated: Date | null
-        }
+          created: Date;
+          updated: Date | null;
+        };
       }
 
       const postRepo = factory.create<'posts', PostEntity>({
@@ -313,330 +314,330 @@ describe('Repository Pattern', () => {
           id: row.id,
           title: row.title,
           authorId: row.user_id,
-          isPublished: row.published === 1,  // Convert 0/1 to boolean
+          isPublished: row.published === 1, // Convert 0/1 to boolean
           timestamps: {
             created: row.created_at,
-            updated: row.updated_at
-          }
+            updated: row.updated_at,
+          },
         }),
         schemas: {
           create: z.object({
             user_id: z.number(),
             title: z.string(),
             content: z.string(),
-            published: z.number().optional()  // SQLite uses 0/1 for boolean
-          })
-        }
-      })
+            published: z.number().optional(), // SQLite uses 0/1 for boolean
+          }),
+        },
+      });
 
       const post = await postRepo.create({
         user_id: 1,
         title: 'Test Post',
         content: 'Test Content',
-        published: 1  // SQLite uses 0/1 for boolean
-      })
+        published: 1, // SQLite uses 0/1 for boolean
+      });
 
-      expect(post.id).toBeGreaterThan(0)
-      expect(post.timestamps.created).toBeDefined()  // Can be Date or string
-      expect(post.isPublished).toBe(true)
-    })
-  })
+      expect(post.id).toBeGreaterThan(0);
+      expect(post.timestamps.created).toBeDefined(); // Can be Date or string
+      expect(post.isPublished).toBe(true);
+    });
+  });
 
   describe('Transaction Support', () => {
     it('should work with transactions', async () => {
-      const factory = createRepositoryFactory(db)
+      const factory = createRepositoryFactory(db);
 
       const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema
-        }
-      })
+          create: CreateUserSchema,
+        },
+      });
 
       await db.transaction().execute(async (trx) => {
-        const txFactory = createRepositoryFactory(trx)
+        const txFactory = createRepositoryFactory(trx);
         const txUserRepo = txFactory.create<'users', User>({
           tableName: 'users',
           mapRow: (row) => row as User,
           schemas: {
-            create: CreateUserSchema
-          }
-        })
+            create: CreateUserSchema,
+          },
+        });
 
         const user1 = await txUserRepo.create({
           email: 'tx1@example.com',
-          name: 'Transaction User 1'
-        })
+          name: 'Transaction User 1',
+        });
 
         const user2 = await txUserRepo.create({
           email: 'tx2@example.com',
-          name: 'Transaction User 2'
-        })
+          name: 'Transaction User 2',
+        });
 
-        expect(user1.id).toBeGreaterThan(0)
-        expect(user2.id).toBeGreaterThan(user1.id)
-      })
+        expect(user1.id).toBeGreaterThan(0);
+        expect(user2.id).toBeGreaterThan(user1.id);
+      });
 
       // Verify transaction was committed
-      const users = await userRepo.findAll()
-      const txUsers = users.filter(u => u.email.includes('tx'))
-      expect(txUsers).toHaveLength(2)
-    })
+      const users = await userRepo.findAll();
+      const txUsers = users.filter((u) => u.email.includes('tx'));
+      expect(txUsers).toHaveLength(2);
+    });
 
     it('should rollback on transaction failure', async () => {
-      const factory = createRepositoryFactory(db)
-
-      const userRepo = factory.create<'users', User>({
-        tableName: 'users',
-        mapRow: (row) => row as User,
-        schemas: {
-          create: CreateUserSchema
-        }
-      })
-
-      try {
-        await db.transaction().execute(async (trx) => {
-          const txFactory = createRepositoryFactory(trx)
-          const txUserRepo = txFactory.create<'users', User>({
-            tableName: 'users',
-            mapRow: (row) => row as User,
-            schemas: {
-              create: CreateUserSchema
-            }
-          })
-
-          await txUserRepo.create({
-            email: 'rollback@example.com',
-            name: 'Should Rollback'
-          })
-
-          // Force failure
-          throw new Error('Rollback test')
-        })
-      } catch (error) {
-        // Expected
-      }
-
-      // User should not exist
-      const users = await userRepo.findAll()
-      const rollbackUser = users.find(u => u.email === 'rollback@example.com')
-      expect(rollbackUser).toBeUndefined()
-    })
-  })
-
-  describe('Batch Operations', () => {
-    it('should find multiple entities by IDs', async () => {
-      await seedTestData(db)
-      const factory = createRepositoryFactory(db)
-
-      const userRepo = factory.create<'users', User>({
-        tableName: 'users',
-        mapRow: (row) => row as User,
-        schemas: {
-          create: CreateUserSchema
-        }
-      })
-
-      // Find multiple users by IDs
-      const users = await userRepo.findByIds([1, 2])
-      expect(users).toHaveLength(2)
-      expect(users.map(u => u.id as number).sort()).toEqual([1, 2])
-
-      // Empty array should return empty
-      const empty = await userRepo.findByIds([])
-      expect(empty).toHaveLength(0)
-
-      // Non-existent IDs should return empty
-      const notFound = await userRepo.findByIds([9999, 10000])
-      expect(notFound).toHaveLength(0)
-    })
-
-    it('should bulk create multiple entities', async () => {
-      const factory = createRepositoryFactory(db)
-
-      const userRepo = factory.create<'users', User>({
-        tableName: 'users',
-        mapRow: (row) => row as User,
-        schemas: {
-          create: CreateUserSchema
-        }
-      })
-
-      const inputs = [
-        { email: 'bulk1@example.com', name: 'Bulk User 1' },
-        { email: 'bulk2@example.com', name: 'Bulk User 2' },
-        { email: 'bulk3@example.com', name: 'Bulk User 3' }
-      ]
-
-      const users = await userRepo.bulkCreate(inputs)
-      expect(users).toHaveLength(3)
-      expect(users[0]?.email).toBe('bulk1@example.com')
-      expect(users[1]?.email).toBe('bulk2@example.com')
-      expect(users[2]?.email).toBe('bulk3@example.com')
-
-      // Verify they were actually created
-      const allUsers = await userRepo.findAll()
-      expect(allUsers.length).toBeGreaterThanOrEqual(3)
-    })
-
-    it('should validate all inputs in bulk create', async () => {
-      const factory = createRepositoryFactory(db)
-
-      const userRepo = factory.create<'users', User>({
-        tableName: 'users',
-        mapRow: (row) => row as User,
-        schemas: {
-          create: CreateUserSchema
-        }
-      })
-
-      const invalidInputs = [
-        { email: 'valid@example.com', name: 'Valid' },
-        { email: 'invalid-email', name: 'Invalid' } // Bad email
-      ]
-
-      // Should fail validation for the invalid input
-      await expect(userRepo.bulkCreate(invalidInputs)).rejects.toThrow()
-    })
-
-    it('should bulk update multiple entities', async () => {
-      await seedTestData(db)
-      const factory = createRepositoryFactory(db)
+      const factory = createRepositoryFactory(db);
 
       const userRepo = factory.create<'users', User>({
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
           create: CreateUserSchema,
-          update: UpdateUserSchema
-        }
-      })
+        },
+      });
 
-      const updates = [
-        { id: 1, data: { name: 'Updated Alice' } },
-        { id: 2, data: { name: 'Updated Bob' } }
-      ]
-
-      const updated = await userRepo.bulkUpdate(updates)
-      expect(updated).toHaveLength(2)
-      expect(updated[0]?.name).toBe('Updated Alice')
-      expect(updated[1]?.name).toBe('Updated Bob')
-
-      // Verify the updates persisted
-      const alice = await userRepo.findById(1)
-      expect(alice?.name).toBe('Updated Alice')
-    })
-
-    it('should handle empty batch operations', async () => {
-      const factory = createRepositoryFactory(db)
-
-      const userRepo = factory.create<'users', User>({
-        tableName: 'users',
-        mapRow: (row) => row as User,
-        schemas: {
-          create: CreateUserSchema
-        }
-      })
-
-      // Empty operations should return empty/void without error
-      const emptyFind = await userRepo.findByIds([])
-      expect(emptyFind).toHaveLength(0)
-
-      const emptyCreate = await userRepo.bulkCreate([])
-      expect(emptyCreate).toHaveLength(0)
-
-      const emptyUpdate = await userRepo.bulkUpdate([])
-      expect(emptyUpdate).toHaveLength(0)
-
-      const emptyDelete = await userRepo.bulkDelete([])
-      expect(emptyDelete).toBe(0)
-    })
-
-    it('should bulk delete multiple entities', async () => {
-      const factory = createRepositoryFactory(db)
-
-      const userRepo = factory.create<'users', User>({
-        tableName: 'users',
-        mapRow: (row) => row as User,
-        schemas: {
-          create: CreateUserSchema
-        }
-      })
-
-      // Create some users to delete
-      const users = await userRepo.bulkCreate([
-        { email: 'delete1@example.com', name: 'Delete 1' },
-        { email: 'delete2@example.com', name: 'Delete 2' },
-        { email: 'delete3@example.com', name: 'Delete 3' }
-      ])
-
-      const idsToDelete = users.map(u => u.id as number)
-
-      // Delete them
-      await userRepo.bulkDelete(idsToDelete)
-
-      // Verify they're gone
-      const remaining = await userRepo.findByIds(idsToDelete)
-      expect(remaining).toHaveLength(0)
-    })
-
-    it('should handle bulk update in transaction', async () => {
-      await seedTestData(db)
-      const factory = createRepositoryFactory(db)
-
-      const userRepo = factory.create<'users', User>({
-        tableName: 'users',
-        mapRow: (row) => row as User,
-        schemas: {
-          create: CreateUserSchema,
-          update: UpdateUserSchema
-        }
-      })
-
-      // Try to update with one invalid ID in a transaction
-      const updates = [
-        { id: 1, data: { name: 'TX Update 1' } },
-        { id: 9999, data: { name: 'TX Update 2' } } // Non-existent
-      ]
-
-      // When wrapped in a transaction, should rollback on failure
       try {
         await db.transaction().execute(async (trx) => {
-          const txFactory = createRepositoryFactory(trx)
+          const txFactory = createRepositoryFactory(trx);
           const txUserRepo = txFactory.create<'users', User>({
             tableName: 'users',
             mapRow: (row) => row as User,
             schemas: {
               create: CreateUserSchema,
-              update: UpdateUserSchema
-            }
-          })
+            },
+          });
 
-          await txUserRepo.bulkUpdate(updates)
-        })
+          await txUserRepo.create({
+            email: 'rollback@example.com',
+            name: 'Should Rollback',
+          });
+
+          // Force failure
+          throw new Error('Rollback test');
+        });
+      } catch (error) {
+        // Expected
+      }
+
+      // User should not exist
+      const users = await userRepo.findAll();
+      const rollbackUser = users.find((u) => u.email === 'rollback@example.com');
+      expect(rollbackUser).toBeUndefined();
+    });
+  });
+
+  describe('Batch Operations', () => {
+    it('should find multiple entities by IDs', async () => {
+      await seedTestData(db);
+      const factory = createRepositoryFactory(db);
+
+      const userRepo = factory.create<'users', User>({
+        tableName: 'users',
+        mapRow: (row) => row as User,
+        schemas: {
+          create: CreateUserSchema,
+        },
+      });
+
+      // Find multiple users by IDs
+      const users = await userRepo.findByIds([1, 2]);
+      expect(users).toHaveLength(2);
+      expect(users.map((u) => u.id as number).sort()).toEqual([1, 2]);
+
+      // Empty array should return empty
+      const empty = await userRepo.findByIds([]);
+      expect(empty).toHaveLength(0);
+
+      // Non-existent IDs should return empty
+      const notFound = await userRepo.findByIds([9999, 10000]);
+      expect(notFound).toHaveLength(0);
+    });
+
+    it('should bulk create multiple entities', async () => {
+      const factory = createRepositoryFactory(db);
+
+      const userRepo = factory.create<'users', User>({
+        tableName: 'users',
+        mapRow: (row) => row as User,
+        schemas: {
+          create: CreateUserSchema,
+        },
+      });
+
+      const inputs = [
+        { email: 'bulk1@example.com', name: 'Bulk User 1' },
+        { email: 'bulk2@example.com', name: 'Bulk User 2' },
+        { email: 'bulk3@example.com', name: 'Bulk User 3' },
+      ];
+
+      const users = await userRepo.bulkCreate(inputs);
+      expect(users).toHaveLength(3);
+      expect(users[0]?.email).toBe('bulk1@example.com');
+      expect(users[1]?.email).toBe('bulk2@example.com');
+      expect(users[2]?.email).toBe('bulk3@example.com');
+
+      // Verify they were actually created
+      const allUsers = await userRepo.findAll();
+      expect(allUsers.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('should validate all inputs in bulk create', async () => {
+      const factory = createRepositoryFactory(db);
+
+      const userRepo = factory.create<'users', User>({
+        tableName: 'users',
+        mapRow: (row) => row as User,
+        schemas: {
+          create: CreateUserSchema,
+        },
+      });
+
+      const invalidInputs = [
+        { email: 'valid@example.com', name: 'Valid' },
+        { email: 'invalid-email', name: 'Invalid' }, // Bad email
+      ];
+
+      // Should fail validation for the invalid input
+      await expect(userRepo.bulkCreate(invalidInputs)).rejects.toThrow();
+    });
+
+    it('should bulk update multiple entities', async () => {
+      await seedTestData(db);
+      const factory = createRepositoryFactory(db);
+
+      const userRepo = factory.create<'users', User>({
+        tableName: 'users',
+        mapRow: (row) => row as User,
+        schemas: {
+          create: CreateUserSchema,
+          update: UpdateUserSchema,
+        },
+      });
+
+      const updates = [
+        { id: 1, data: { name: 'Updated Alice' } },
+        { id: 2, data: { name: 'Updated Bob' } },
+      ];
+
+      const updated = await userRepo.bulkUpdate(updates);
+      expect(updated).toHaveLength(2);
+      expect(updated[0]?.name).toBe('Updated Alice');
+      expect(updated[1]?.name).toBe('Updated Bob');
+
+      // Verify the updates persisted
+      const alice = await userRepo.findById(1);
+      expect(alice?.name).toBe('Updated Alice');
+    });
+
+    it('should handle empty batch operations', async () => {
+      const factory = createRepositoryFactory(db);
+
+      const userRepo = factory.create<'users', User>({
+        tableName: 'users',
+        mapRow: (row) => row as User,
+        schemas: {
+          create: CreateUserSchema,
+        },
+      });
+
+      // Empty operations should return empty/void without error
+      const emptyFind = await userRepo.findByIds([]);
+      expect(emptyFind).toHaveLength(0);
+
+      const emptyCreate = await userRepo.bulkCreate([]);
+      expect(emptyCreate).toHaveLength(0);
+
+      const emptyUpdate = await userRepo.bulkUpdate([]);
+      expect(emptyUpdate).toHaveLength(0);
+
+      const emptyDelete = await userRepo.bulkDelete([]);
+      expect(emptyDelete).toBe(0);
+    });
+
+    it('should bulk delete multiple entities', async () => {
+      const factory = createRepositoryFactory(db);
+
+      const userRepo = factory.create<'users', User>({
+        tableName: 'users',
+        mapRow: (row) => row as User,
+        schemas: {
+          create: CreateUserSchema,
+        },
+      });
+
+      // Create some users to delete
+      const users = await userRepo.bulkCreate([
+        { email: 'delete1@example.com', name: 'Delete 1' },
+        { email: 'delete2@example.com', name: 'Delete 2' },
+        { email: 'delete3@example.com', name: 'Delete 3' },
+      ]);
+
+      const idsToDelete = users.map((u) => u.id as number);
+
+      // Delete them
+      await userRepo.bulkDelete(idsToDelete);
+
+      // Verify they're gone
+      const remaining = await userRepo.findByIds(idsToDelete);
+      expect(remaining).toHaveLength(0);
+    });
+
+    it('should handle bulk update in transaction', async () => {
+      await seedTestData(db);
+      const factory = createRepositoryFactory(db);
+
+      const userRepo = factory.create<'users', User>({
+        tableName: 'users',
+        mapRow: (row) => row as User,
+        schemas: {
+          create: CreateUserSchema,
+          update: UpdateUserSchema,
+        },
+      });
+
+      // Try to update with one invalid ID in a transaction
+      const updates = [
+        { id: 1, data: { name: 'TX Update 1' } },
+        { id: 9999, data: { name: 'TX Update 2' } }, // Non-existent
+      ];
+
+      // When wrapped in a transaction, should rollback on failure
+      try {
+        await db.transaction().execute(async (trx) => {
+          const txFactory = createRepositoryFactory(trx);
+          const txUserRepo = txFactory.create<'users', User>({
+            tableName: 'users',
+            mapRow: (row) => row as User,
+            schemas: {
+              create: CreateUserSchema,
+              update: UpdateUserSchema,
+            },
+          });
+
+          await txUserRepo.bulkUpdate(updates);
+        });
       } catch (error) {
         // Expected to throw
       }
 
       // First user should not be updated (transaction rolled back)
-      const alice = await userRepo.findById(1)
-      expect(alice?.name).toBe('Alice') // Original name
-    })
-  })
+      const alice = await userRepo.findById(1);
+      expect(alice?.name).toBe('Alice'); // Original name
+    });
+  });
 
   describe('Complex Queries', () => {
     it('should work with joined data', async () => {
-      await seedTestData(db)
+      await seedTestData(db);
 
       interface PostWithAuthor {
-        id: number
-        title: string
-        content: string
+        id: number;
+        title: string;
+        content: string;
         author: {
-          id: number
-          name: string
-        }
+          id: number;
+          name: string;
+        };
       }
 
       // Manual repository for complex queries
@@ -645,31 +646,25 @@ describe('Repository Pattern', () => {
           const rows = await db
             .selectFrom('posts')
             .innerJoin('users', 'users.id', 'posts.user_id')
-            .select([
-              'posts.id',
-              'posts.title',
-              'posts.content',
-              'users.id as author_id',
-              'users.name as author_name'
-            ])
-            .execute()
+            .select(['posts.id', 'posts.title', 'posts.content', 'users.id as author_id', 'users.name as author_name'])
+            .execute();
 
-          return rows.map(row => ({
+          return rows.map((row) => ({
             id: row.id,
             title: row.title,
             content: row.content,
             author: {
               id: row.author_id,
-              name: row.author_name
-            }
-          }))
-        }
-      }
+              name: row.author_name,
+            },
+          }));
+        },
+      };
 
-      const posts = await postWithAuthorRepo.findAllWithAuthors()
-      expect(posts).toHaveLength(3)
-      expect(posts[0]?.author).toBeDefined()
-      expect(posts[0]?.author.name).toBeTruthy()
-    })
-  })
-})
+      const posts = await postWithAuthorRepo.findAllWithAuthors();
+      expect(posts).toHaveLength(3);
+      expect(posts[0]?.author).toBeDefined();
+      expect(posts[0]?.author.name).toBeTruthy();
+    });
+  });
+});

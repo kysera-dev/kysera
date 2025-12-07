@@ -523,8 +523,8 @@ const users = await db.raw('SELECT * FROM users WHERE email = ?', ['test@example
 ## Support
 
 - 📚 Documentation: [specs/spec.md](./specs/spec.md)
-- 🐛 Issues: [GitHub Issues](https://github.com/omnitron/kysera/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/omnitron/kysera/discussions)
+- 🐛 Issues: [GitHub Issues](https://github.com/kysera-dev/kysera/issues)
+- 💬 Discussions: [GitHub Discussions](https://github.com/kysera-dev/kysera/discussions)
 
 ## License
 

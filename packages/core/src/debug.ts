@@ -1,123 +1,134 @@
-import type { Kysely, PluginTransformQueryArgs, PluginTransformResultArgs, QueryResult, UnknownRow, KyselyPlugin, RootOperationNode } from 'kysely'
-import { DefaultQueryCompiler } from 'kysely'
+import type {
+  Kysely,
+  PluginTransformQueryArgs,
+  PluginTransformResultArgs,
+  QueryResult,
+  UnknownRow,
+  KyselyPlugin,
+  RootOperationNode,
+} from 'kysely';
+import { DefaultQueryCompiler } from 'kysely';
+import type { KyseraLogger } from './logger.js';
+import { consoleLogger } from './logger.js';
 
 export interface DebugOptions {
-  logQuery?: boolean
-  logParams?: boolean
-  slowQueryThreshold?: number
-  onSlowQuery?: (sql: string, duration: number) => void
-  logger?: (message: string) => void
+  logQuery?: boolean;
+  logParams?: boolean;
+  slowQueryThreshold?: number;
+  onSlowQuery?: (sql: string, duration: number) => void;
+  /**
+   * Logger for debug messages
+   * @default consoleLogger
+   */
+  logger?: KyseraLogger;
   /**
    * Maximum number of metrics to keep in memory
    * When limit is reached, oldest metrics are removed (circular buffer)
    * @default 1000
    */
-  maxMetrics?: number
+  maxMetrics?: number;
 }
 
 export interface QueryMetrics {
-  sql: string
-  params?: unknown[]
-  duration: number
-  timestamp: number
+  sql: string;
+  params?: unknown[];
+  duration: number;
+  timestamp: number;
 }
 
 interface QueryData {
-  startTime: number
-  sql: string
-  params: readonly unknown[]
+  startTime: number;
+  sql: string;
+  params: readonly unknown[];
 }
 
 /**
  * Debug plugin for Kysely
  */
 class DebugPlugin implements KyselyPlugin {
-  private metrics: QueryMetrics[] = []
-  private queryData = new WeakMap<object, QueryData>()
-  private maxMetrics: number
+  private metrics: QueryMetrics[] = [];
+  private queryData = new WeakMap<object, QueryData>();
+  private maxMetrics: number;
+  private logger: KyseraLogger;
 
   constructor(private options: DebugOptions = {}) {
+    this.logger = options.logger ?? consoleLogger;
     this.options = {
       logQuery: true,
       logParams: false,
       slowQueryThreshold: 100,
       maxMetrics: 1000,
-      logger: (message: string): void => {
-        // Using console.warn which is allowed by ESLint rules
-        console.warn(message)
-      },
-      ...options
-    }
-    this.maxMetrics = this.options.maxMetrics ?? 1000
+      logger: this.logger,
+      ...options,
+    };
+    this.maxMetrics = this.options.maxMetrics ?? 1000;
   }
 
   transformQuery(args: PluginTransformQueryArgs): RootOperationNode {
-    const startTime = performance.now()
+    const startTime = performance.now();
 
     // Compile the query to get SQL and parameters
-    const compiler = new DefaultQueryCompiler()
-    const compiled = compiler.compileQuery(args.node, args.queryId)
+    const compiler = new DefaultQueryCompiler();
+    const compiled = compiler.compileQuery(args.node, args.queryId);
 
     // Store query data for later use in transformResult
     this.queryData.set(args.queryId, {
       startTime,
       sql: compiled.sql,
-      params: compiled.parameters
-    })
+      params: compiled.parameters,
+    });
 
-    return args.node
+    return args.node;
   }
 
-  async transformResult(
-    args: PluginTransformResultArgs
-  ): Promise<QueryResult<UnknownRow>> {
-    const data = this.queryData.get(args.queryId)
+  async transformResult(args: PluginTransformResultArgs): Promise<QueryResult<UnknownRow>> {
+    const data = this.queryData.get(args.queryId);
 
     if (data) {
-      const endTime = performance.now()
-      const duration = endTime - data.startTime
-      this.queryData.delete(args.queryId)
+      const endTime = performance.now();
+      const duration = endTime - data.startTime;
+      this.queryData.delete(args.queryId);
 
       const metric: QueryMetrics = {
         sql: data.sql,
         params: [...data.params],
         duration,
-        timestamp: Date.now()
-      }
+        timestamp: Date.now(),
+      };
 
       // Circular buffer: keep only last N metrics
-      this.metrics.push(metric)
+      this.metrics.push(metric);
       if (this.metrics.length > this.maxMetrics) {
-        this.metrics.shift() // Remove oldest metric
+        this.metrics.shift(); // Remove oldest metric
       }
 
       if (this.options.logQuery) {
         const message = this.options.logParams
           ? `[SQL] ${data.sql}\n[Params] ${JSON.stringify(data.params)}`
-          : `[SQL] ${data.sql}`
-        this.options.logger?.(message)
-        this.options.logger?.(`[Duration] ${duration.toFixed(2)}ms`)
+          : `[SQL] ${data.sql}`;
+        this.logger.debug(message);
+        this.logger.debug(`[Duration] ${duration.toFixed(2)}ms`);
       }
 
       // Check for slow query
       if (this.options.slowQueryThreshold && duration > this.options.slowQueryThreshold) {
         if (this.options.onSlowQuery) {
-          this.options.onSlowQuery(data.sql, duration)
+          this.options.onSlowQuery(data.sql, duration);
         } else {
-          this.options.logger?.(`[SLOW QUERY] ${duration.toFixed(2)}ms: ${data.sql}`)
+          this.logger.warn(`[SLOW QUERY] ${duration.toFixed(2)}ms: ${data.sql}`);
         }
       }
     }
 
-    return args.result
+    return args.result;
   }
 
   getMetrics(): QueryMetrics[] {
-    return [...this.metrics]
+    return [...this.metrics];
   }
 
   clearMetrics(): void {
-    this.metrics = []
+    this.metrics = [];
   }
 }
 
@@ -127,18 +138,20 @@ class DebugPlugin implements KyselyPlugin {
 export function withDebug<DB>(
   db: Kysely<DB>,
   options: DebugOptions = {}
-): Kysely<DB> & { getMetrics: () => QueryMetrics[], clearMetrics: () => void } {
-  const plugin = new DebugPlugin(options)
+): Kysely<DB> & { getMetrics: () => QueryMetrics[]; clearMetrics: () => void } {
+  const plugin = new DebugPlugin(options);
   const debugDb = db.withPlugin(plugin) as Kysely<DB> & {
-    getMetrics: () => QueryMetrics[],
-    clearMetrics: () => void
-  }
+    getMetrics: () => QueryMetrics[];
+    clearMetrics: () => void;
+  };
 
   // Attach metrics methods
-  debugDb.getMetrics = () => plugin.getMetrics()
-  debugDb.clearMetrics = () => { plugin.clearMetrics() }
+  debugDb.getMetrics = () => plugin.getMetrics();
+  debugDb.clearMetrics = () => {
+    plugin.clearMetrics();
+  };
 
-  return debugDb
+  return debugDb;
 }
 
 /**
@@ -156,7 +169,7 @@ export function formatSQL(sql: string): string {
     .replace(/(HAVING)/gi, '\n$1')
     .replace(/(LIMIT)/gi, '\n$1')
     .replace(/(OFFSET)/gi, '\n$1')
-    .trim()
+    .trim();
 }
 
 /**
@@ -172,31 +185,31 @@ export function formatSQL(sql: string): string {
  * ```
  */
 export class QueryProfiler {
-  private queries: QueryMetrics[] = []
-  private maxQueries: number
+  private queries: QueryMetrics[] = [];
+  private maxQueries: number;
 
   /**
    * @param options.maxQueries - Maximum number of queries to keep in memory (default: 1000)
    */
   constructor(options: { maxQueries?: number } = {}) {
-    this.maxQueries = options.maxQueries ?? 1000
+    this.maxQueries = options.maxQueries ?? 1000;
   }
 
   record(metric: QueryMetrics): void {
-    this.queries.push(metric)
+    this.queries.push(metric);
     // Circular buffer: keep only last N queries
     if (this.queries.length > this.maxQueries) {
-      this.queries.shift() // Remove oldest query
+      this.queries.shift(); // Remove oldest query
     }
   }
 
   getSummary(): {
-    totalQueries: number
-    totalDuration: number
-    averageDuration: number
-    slowestQuery: QueryMetrics | null
-    fastestQuery: QueryMetrics | null
-    queries: QueryMetrics[]
+    totalQueries: number;
+    totalDuration: number;
+    averageDuration: number;
+    slowestQuery: QueryMetrics | null;
+    fastestQuery: QueryMetrics | null;
+    queries: QueryMetrics[];
   } {
     if (this.queries.length === 0) {
       return {
@@ -205,12 +218,12 @@ export class QueryProfiler {
         averageDuration: 0,
         slowestQuery: null,
         fastestQuery: null,
-        queries: []
-      }
+        queries: [],
+      };
     }
 
-    const totalDuration = this.queries.reduce((sum, q) => sum + q.duration, 0)
-    const sorted = [...this.queries].sort((a, b) => b.duration - a.duration)
+    const totalDuration = this.queries.reduce((sum, q) => sum + q.duration, 0);
+    const sorted = [...this.queries].sort((a, b) => b.duration - a.duration);
 
     return {
       totalQueries: this.queries.length,
@@ -218,11 +231,11 @@ export class QueryProfiler {
       averageDuration: totalDuration / this.queries.length,
       slowestQuery: sorted[0] ?? null,
       fastestQuery: sorted[sorted.length - 1] ?? null,
-      queries: [...this.queries]
-    }
+      queries: [...this.queries],
+    };
   }
 
   clear(): void {
-    this.queries = []
+    this.queries = [];
   }
 }

@@ -1,7 +1,7 @@
-export * from './repository'
-export * from './plugin'
-export type * from './types'
-export * from './validation'
-export * from './base-repository'
-export * from './table-operations'
-export * from './helpers'
+export * from './repository.js';
+export * from './plugin.js';
+export type * from './types.js';
+export * from './validation.js';
+export * from './base-repository.js';
+export * from './table-operations.js';
+export * from './helpers.js';

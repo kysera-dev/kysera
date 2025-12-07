@@ -1,173 +1,166 @@
-import Handlebars from 'handlebars'
-import { readFile } from 'fs-extra'
-import { resolve, dirname } from 'node:path'
+import Handlebars from 'handlebars';
+import { readFile } from 'fs-extra';
+import { resolve, dirname } from 'node:path';
 
 // Register helpers
 Handlebars.registerHelper('camelCase', (str: string) => {
-  return str.replace(/[-_](\w)/g, (_, c) => c.toUpperCase())
-})
+  return str.replace(/[-_](\w)/g, (_, c) => c.toUpperCase());
+});
 
 Handlebars.registerHelper('pascalCase', (str: string) => {
-  const camel = str.replace(/[-_](\w)/g, (_, c) => c.toUpperCase())
-  return camel.charAt(0).toUpperCase() + camel.slice(1)
-})
+  const camel = str.replace(/[-_](\w)/g, (_, c) => c.toUpperCase());
+  return camel.charAt(0).toUpperCase() + camel.slice(1);
+});
 
 Handlebars.registerHelper('kebabCase', (str: string) => {
   return str
     .replace(/([a-z])([A-Z])/g, '$1-$2')
     .replace(/[\s_]+/g, '-')
-    .toLowerCase()
-})
+    .toLowerCase();
+});
 
 Handlebars.registerHelper('snakeCase', (str: string) => {
   return str
     .replace(/([a-z])([A-Z])/g, '$1_$2')
     .replace(/[\s-]+/g, '_')
-    .toLowerCase()
-})
+    .toLowerCase();
+});
 
 Handlebars.registerHelper('upperCase', (str: string) => {
-  return str.toUpperCase()
-})
+  return str.toUpperCase();
+});
 
 Handlebars.registerHelper('lowerCase', (str: string) => {
-  return str.toLowerCase()
-})
+  return str.toLowerCase();
+});
 
 Handlebars.registerHelper('pluralize', (str: string) => {
   // Simple pluralization
   if (str.endsWith('y')) {
-    return str.slice(0, -1) + 'ies'
+    return str.slice(0, -1) + 'ies';
   }
   if (str.endsWith('s')) {
-    return str + 'es'
+    return str + 'es';
   }
-  return str + 's'
-})
+  return str + 's';
+});
 
 Handlebars.registerHelper('singularize', (str: string) => {
   // Simple singularization
   if (str.endsWith('ies')) {
-    return str.slice(0, -3) + 'y'
+    return str.slice(0, -3) + 'y';
   }
   if (str.endsWith('es')) {
-    return str.slice(0, -2)
+    return str.slice(0, -2);
   }
   if (str.endsWith('s')) {
-    return str.slice(0, -1)
+    return str.slice(0, -1);
   }
-  return str
-})
+  return str;
+});
 
 Handlebars.registerHelper('timestamp', () => {
-  return Date.now()
-})
+  return Date.now();
+});
 
 Handlebars.registerHelper('date', (format?: string) => {
-  const now = new Date()
+  const now = new Date();
   if (!format || format === 'iso') {
-    return now.toISOString()
+    return now.toISOString();
   }
   if (format === 'date') {
-    return now.toLocaleDateString()
+    return now.toLocaleDateString();
   }
   if (format === 'time') {
-    return now.toLocaleTimeString()
+    return now.toLocaleTimeString();
   }
-  return now.toLocaleString()
-})
+  return now.toLocaleString();
+});
 
 Handlebars.registerHelper('eq', (a: any, b: any) => {
-  return a === b
-})
+  return a === b;
+});
 
 Handlebars.registerHelper('ne', (a: any, b: any) => {
-  return a !== b
-})
+  return a !== b;
+});
 
 Handlebars.registerHelper('lt', (a: any, b: any) => {
-  return a < b
-})
+  return a < b;
+});
 
 Handlebars.registerHelper('gt', (a: any, b: any) => {
-  return a > b
-})
+  return a > b;
+});
 
 Handlebars.registerHelper('lte', (a: any, b: any) => {
-  return a <= b
-})
+  return a <= b;
+});
 
 Handlebars.registerHelper('gte', (a: any, b: any) => {
-  return a >= b
-})
+  return a >= b;
+});
 
 Handlebars.registerHelper('and', (...args: any[]) => {
   // Last argument is the Handlebars options object
-  args.pop()
-  return args.every(Boolean)
-})
+  args.pop();
+  return args.every(Boolean);
+});
 
 Handlebars.registerHelper('or', (...args: any[]) => {
   // Last argument is the Handlebars options object
-  args.pop()
-  return args.some(Boolean)
-})
+  args.pop();
+  return args.some(Boolean);
+});
 
 Handlebars.registerHelper('not', (value: any) => {
-  return !value
-})
+  return !value;
+});
 
 Handlebars.registerHelper('includes', (array: any[], value: any) => {
-  return Array.isArray(array) && array.includes(value)
-})
+  return Array.isArray(array) && array.includes(value);
+});
 
 Handlebars.registerHelper('join', (array: any[], separator: string = ', ') => {
-  return Array.isArray(array) ? array.join(separator) : ''
-})
+  return Array.isArray(array) ? array.join(separator) : '';
+});
 
 Handlebars.registerHelper('json', (obj: any, indent?: number) => {
-  return JSON.stringify(obj, null, indent || 2)
-})
+  return JSON.stringify(obj, null, indent || 2);
+});
 
 export interface TemplateOptions {
-  partials?: Record<string, string>
-  helpers?: Record<string, Handlebars.HelperDelegate>
+  partials?: Record<string, string>;
+  helpers?: Record<string, Handlebars.HelperDelegate>;
 }
 
 /**
  * Compile a template string
  */
-export function compileTemplate(
-  template: string,
-  options: TemplateOptions = {}
-): Handlebars.TemplateDelegate {
+export function compileTemplate(template: string, options: TemplateOptions = {}): Handlebars.TemplateDelegate {
   // Register partials
   if (options.partials) {
     for (const [name, partial] of Object.entries(options.partials)) {
-      Handlebars.registerPartial(name, partial)
+      Handlebars.registerPartial(name, partial);
     }
   }
 
   // Register custom helpers
   if (options.helpers) {
     for (const [name, helper] of Object.entries(options.helpers)) {
-      Handlebars.registerHelper(name, helper)
+      Handlebars.registerHelper(name, helper);
     }
   }
 
-  return Handlebars.compile(template)
+  return Handlebars.compile(template);
 }
 
 /**
  * Render a template string with data
  */
-export function renderTemplate(
-  template: string,
-  data: any,
-  options: TemplateOptions = {}
-): string {
-  const compiled = compileTemplate(template, options)
-  return compiled(data)
+export function renderTemplate(template: string, data: any, options: TemplateOptions = {}): string {
+  const compiled = compileTemplate(template, options);
+  return compiled(data);
 }
 
 /**
@@ -177,98 +170,94 @@ export async function loadTemplate(
   filePath: string,
   options: TemplateOptions = {}
 ): Promise<Handlebars.TemplateDelegate> {
-  const template = await readFile(filePath, 'utf8')
-  return compileTemplate(template, options)
+  const template = await readFile(filePath, 'utf8');
+  return compileTemplate(template, options);
 }
 
 /**
  * Load and render a template from file
  */
-export async function renderTemplateFile(
-  filePath: string,
-  data: any,
-  options: TemplateOptions = {}
-): Promise<string> {
-  const compiled = await loadTemplate(filePath, options)
-  return compiled(data)
+export async function renderTemplateFile(filePath: string, data: any, options: TemplateOptions = {}): Promise<string> {
+  const compiled = await loadTemplate(filePath, options);
+  return compiled(data);
 }
 
 /**
  * Create a template renderer with preset options
  */
 export class TemplateRenderer {
-  private partials: Record<string, string> = {}
-  private helpers: Record<string, Handlebars.HelperDelegate> = {}
-  private templateCache: Map<string, Handlebars.TemplateDelegate> = new Map()
+  private partials: Record<string, string> = {};
+  private helpers: Record<string, Handlebars.HelperDelegate> = {};
+  private templateCache: Map<string, Handlebars.TemplateDelegate> = new Map();
 
   constructor(options: TemplateOptions = {}) {
     if (options.partials) {
-      this.registerPartials(options.partials)
+      this.registerPartials(options.partials);
     }
     if (options.helpers) {
-      this.registerHelpers(options.helpers)
+      this.registerHelpers(options.helpers);
     }
   }
 
   registerPartial(name: string, partial: string): void {
-    this.partials[name] = partial
-    Handlebars.registerPartial(name, partial)
+    this.partials[name] = partial;
+    Handlebars.registerPartial(name, partial);
   }
 
   registerPartials(partials: Record<string, string>): void {
     for (const [name, partial] of Object.entries(partials)) {
-      this.registerPartial(name, partial)
+      this.registerPartial(name, partial);
     }
   }
 
   registerHelper(name: string, helper: Handlebars.HelperDelegate): void {
-    this.helpers[name] = helper
-    Handlebars.registerHelper(name, helper)
+    this.helpers[name] = helper;
+    Handlebars.registerHelper(name, helper);
   }
 
   registerHelpers(helpers: Record<string, Handlebars.HelperDelegate>): void {
     for (const [name, helper] of Object.entries(helpers)) {
-      this.registerHelper(name, helper)
+      this.registerHelper(name, helper);
     }
   }
 
   compile(template: string, cache: boolean = true): Handlebars.TemplateDelegate {
     if (cache) {
-      const cached = this.templateCache.get(template)
+      const cached = this.templateCache.get(template);
       if (cached) {
-        return cached
+        return cached;
       }
     }
 
-    const compiled = Handlebars.compile(template)
+    const compiled = Handlebars.compile(template);
 
     if (cache) {
-      this.templateCache.set(template, compiled)
+      this.templateCache.set(template, compiled);
     }
 
-    return compiled
+    return compiled;
   }
 
   render(template: string, data: any): string {
-    const compiled = this.compile(template)
-    return compiled(data)
+    const compiled = this.compile(template);
+    return compiled(data);
   }
 
   async renderFile(filePath: string, data: any): Promise<string> {
-    const absolutePath = resolve(filePath)
-    let compiled = this.templateCache.get(absolutePath)
+    const absolutePath = resolve(filePath);
+    let compiled = this.templateCache.get(absolutePath);
 
     if (!compiled) {
-      const template = await readFile(absolutePath, 'utf8')
-      compiled = this.compile(template, false)
-      this.templateCache.set(absolutePath, compiled)
+      const template = await readFile(absolutePath, 'utf8');
+      compiled = this.compile(template, false);
+      this.templateCache.set(absolutePath, compiled);
     }
 
-    return compiled(data)
+    return compiled(data);
   }
 
   clearCache(): void {
-    this.templateCache.clear()
+    this.templateCache.clear();
   }
 }
 
@@ -276,7 +265,7 @@ export class TemplateRenderer {
  * Create a template renderer
  */
 export function createTemplateRenderer(options: TemplateOptions = {}): TemplateRenderer {
-  return new TemplateRenderer(options)
+  return new TemplateRenderer(options);
 }
 
 /**
@@ -373,5 +362,5 @@ export const Update{{pascalCase name}}Schema = Create{{pascalCase name}}Schema.p
 
 export type Create{{pascalCase name}}Input = z.infer<typeof Create{{pascalCase name}}Schema>
 export type Update{{pascalCase name}}Input = z.infer<typeof Update{{pascalCase name}}Schema>
-`
-}
+`,
+};

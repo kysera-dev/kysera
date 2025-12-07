@@ -1,5 +1,5 @@
-import { db, pool } from './db/connection'
-import { createUserRepository } from './repositories/user.repository'
+import { db, pool } from './db/connection.js'
+import { createUserRepository } from './repositories/user.repository.js'
 import { checkDatabaseHealth, paginate } from '@kysera/core'
 
 async function main() {

@@ -1,7 +1,7 @@
 import type { Selectable } from 'kysely'
 import { z } from 'zod'
 import type { Executor } from '@kysera/core'
-import type { Database, OrdersTable, OrderStatus } from '../db/schema'
+import type { Database, OrdersTable, OrderStatus } from '../db/schema.js'
 
 // Domain types
 export type Order = Selectable<OrdersTable>

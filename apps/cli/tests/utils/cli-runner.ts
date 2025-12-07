@@ -1,9 +1,9 @@
-import { execFileSync } from 'node:child_process'
-import * as path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { execFileSync } from 'node:child_process';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const CLI_PATH = path.join(__dirname, '../../dist/index.js')
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CLI_PATH = path.join(__dirname, '../../dist/index.js');
 
 /**
  * Simple CLI test runner using execFileSync
@@ -11,8 +11,8 @@ const CLI_PATH = path.join(__dirname, '../../dist/index.js')
 export function runCLISync(
   args: string[],
   options: {
-    cwd?: string
-    env?: Record<string, string>
+    cwd?: string;
+    env?: Record<string, string>;
   } = {}
 ): { stdout: string; stderr: string; code: number } {
   try {
@@ -21,22 +21,22 @@ export function runCLISync(
       env: {
         ...process.env,
         NODE_ENV: 'test',
-        ...options.env
+        ...options.env,
       },
       encoding: 'utf-8',
-      stdio: 'pipe'
-    })
+      stdio: 'pipe',
+    });
 
     return {
       stdout: stdout || '',
       stderr: '',
-      code: 0
-    }
+      code: 0,
+    };
   } catch (error: any) {
     return {
       stdout: error.stdout || '',
       stderr: error.stderr || '',
-      code: error.status || 1
-    }
+      code: error.status || 1,
+    };
   }
 }

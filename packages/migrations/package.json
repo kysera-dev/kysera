@@ -1,7 +1,7 @@
 {
   "name": "@kysera/migrations",
-  "version": "0.4.1",
-  "description": "Database migration management for Kysera ORM",
+  "version": "0.5.1",
+  "description": "Database migration management for Kysera ORM with dry-run support and flexible rollback capabilities",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,21 +27,32 @@
     "orm",
     "migrations",
     "database",
-    "typescript"
+    "typescript",
+    "kysera"
   ],
   "author": "Kysera Team",
   "license": "MIT",
-  "peerDependencies": {
-    "kysely": "^0.28.7"
+  "dependencies": {
+    "@kysera/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^24.6.2",
-    "kysely": "^0.28.7",
-    "typescript": "^5.9.3",
-    "vitest": "^3.2.4",
-    "better-sqlite3": "^12.4.1",
     "@types/better-sqlite3": "^7.6.13",
-    "tsup": "^8.5.0"
+    "@types/node": "^24.10.1",
+    "better-sqlite3": "^12.5.0",
+    "kysely": "^0.28.8",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15",
+    "zod": "^4.1.13"
+  },
+  "peerDependencies": {
+    "kysely": ">=0.28.8",
+    "zod": "^4.1.13"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
   },
   "sideEffects": false,
   "engines": {

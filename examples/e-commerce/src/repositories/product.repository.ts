@@ -2,7 +2,7 @@ import type { Selectable } from 'kysely'
 import { sql } from 'kysely'
 import { z } from 'zod'
 import type { Executor } from '@kysera/core'
-import type { Database, ProductsTable } from '../db/schema'
+import type { Database, ProductsTable } from '../db/schema.js'
 
 // Domain types
 export type Product = Selectable<ProductsTable>

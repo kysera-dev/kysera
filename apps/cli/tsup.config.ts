@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: ['src/index.ts'],
@@ -34,7 +34,7 @@ export default defineConfig({
     'glob',
     'pg',
     'mysql2',
-    'better-sqlite3'
+    'better-sqlite3',
   ],
   noExternal: [
     '@kysera/core',
@@ -42,6 +42,6 @@ export default defineConfig({
     '@kysera/migrations',
     '@kysera/audit',
     '@kysera/soft-delete',
-    '@kysera/timestamps'
-  ]
-})
+    '@kysera/timestamps',
+  ],
+});

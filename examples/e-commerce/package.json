@@ -15,14 +15,14 @@
     "@kysera/repository": "workspace:*",
     "@kysera/audit": "workspace:*",
     "@kysera/timestamps": "workspace:*",
-    "kysely": "^0.28.7",
+    "kysely": "^0.28.8",
     "pg": "^8.16.3",
-    "zod": "^4.1.11"
+    "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@types/node": "^24.6.0",
-    "@types/pg": "^8.11.10",
-    "tsx": "^4.20.6",
-    "typescript": "^5.9.2"
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }

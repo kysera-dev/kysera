@@ -1,7 +1,7 @@
 import { Kysely, PostgresDialect } from 'kysely'
 import { Pool } from 'pg'
 import { createGracefulShutdown, createMetricsPool, withDebug } from '@kysera/core'
-import type { Database } from './schema'
+import type { Database } from './schema.js'
 import 'dotenv/config'
 
 // Create base pool
@@ -15,7 +15,7 @@ const basePool = new Pool({
 // Create pool with metrics (for health checks)
 export const pool = createMetricsPool(basePool)
 
-// Create Kysely instance using base pool (not wrapped)
+// Create Kysely instance
 const baseDb = new Kysely<Database>({
   dialect: new PostgresDialect({ pool: basePool }),
   log: process.env['NODE_ENV'] === 'development'
@@ -23,22 +23,23 @@ const baseDb = new Kysely<Database>({
     : ['error']
 })
 
-// Add debug wrapper in development
-export const db = process.env['NODE_ENV'] === 'development'
-  ? withDebug(baseDb, {
-      logQuery: true,
-      logParams: false,
-      slowQueryThreshold: 100,
-      onSlowQuery: (sql, duration) => {
-        console.warn(`Slow query (${duration}ms):`, sql)
-      }
-    })
-  : baseDb
+// Add debug wrapper in development - always wrap for consistent typing
+const debugDb = withDebug(baseDb, {
+  logQuery: process.env['NODE_ENV'] === 'development',
+  logParams: false,
+  slowQueryThreshold: 100,
+  onSlowQuery: (sql, duration) => {
+    console.warn(`Slow query (${duration}ms):`, sql)
+  }
+})
+
+// Export the database instance with proper typing
+export const db: Kysely<Database> = debugDb
 
 // Setup graceful shutdown (for production use)
 export async function setupShutdownHandlers() {
   if (process.env['NODE_ENV'] === 'production') {
-    await createGracefulShutdown(db, {
+    await createGracefulShutdown(baseDb, {
       onShutdown: async () => {
         console.log('Closing database connections...')
       }

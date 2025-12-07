@@ -1,15 +1,15 @@
-import { Command } from 'commander'
+import { Command } from 'commander';
 
 // Import repository commands
-import { listRepositoriesCommand } from './list.js'
-import { inspectRepositoryCommand } from './inspect.js'
-import { validateRepositoryCommand } from './validate.js'
-import { showMethodsCommand } from './methods.js'
+import { listRepositoriesCommand } from './list.js';
+import { inspectRepositoryCommand } from './inspect.js';
+import { validateRepositoryCommand } from './validate.js';
+import { showMethodsCommand } from './methods.js';
 
 export function repositoryCommand(): Command {
-  const cmd = new Command('repository')
-    .description('Repository introspection and management')
-    .addHelpText('after', `
+  const cmd = new Command('repository').description('Repository introspection and management').addHelpText(
+    'after',
+    `
 
 Examples:
   kysera repository list --show-methods        List all repositories with methods
@@ -25,13 +25,14 @@ Subcommands:
 
 For more information on a subcommand, run:
   kysera repository <subcommand> --help
-`)
+`
+  );
 
   // Add subcommands
-  cmd.addCommand(listRepositoriesCommand())
-  cmd.addCommand(inspectRepositoryCommand())
-  cmd.addCommand(validateRepositoryCommand())
-  cmd.addCommand(showMethodsCommand())
+  cmd.addCommand(listRepositoriesCommand());
+  cmd.addCommand(inspectRepositoryCommand());
+  cmd.addCommand(validateRepositoryCommand());
+  cmd.addCommand(showMethodsCommand());
 
-  return cmd
+  return cmd;
 }

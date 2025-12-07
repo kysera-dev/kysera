@@ -1,7 +1,7 @@
-import { db, pool } from './db/connection'
-import { createProductRepository } from './repositories/product.repository'
-import { createCartRepository } from './repositories/cart.repository'
-import { createOrderRepository } from './repositories/order.repository'
+import { db, pool } from './db/connection.js'
+import { createProductRepository } from './repositories/product.repository.js'
+import { createCartRepository } from './repositories/cart.repository.js'
+import { createOrderRepository } from './repositories/order.repository.js'
 import { checkDatabaseHealth } from '@kysera/core'
 
 /**
