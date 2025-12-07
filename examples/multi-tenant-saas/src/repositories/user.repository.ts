@@ -1,8 +1,8 @@
 import type { Selectable } from 'kysely'
 import { z } from 'zod'
 import type { Executor } from '@kysera/core'
-import type { Database, TenantUser } from '../db/schema'
-import type { TenantContext } from '../middleware/tenant-context'
+import type { Database, TenantUser } from '../db/schema.js'
+import type { TenantContext } from '../middleware/tenant-context.js'
 
 // Domain types
 export type User = Selectable<TenantUser>

@@ -1,6 +1,6 @@
-import { db, pool } from './db/connection'
-import { TenantContext } from './middleware/tenant-context'
-import { createUserRepository } from './repositories/user.repository'
+import { db, pool } from './db/connection.js'
+import { TenantContext } from './middleware/tenant-context.js'
+import { createUserRepository } from './repositories/user.repository.js'
 import { checkDatabaseHealth } from '@kysera/core'
 
 /**

@@ -2,6 +2,7 @@
   "name": "blog-app-example",
   "version": "0.4.1",
   "private": true,
+  "type": "module",
   "description": "Blog application example using Kysera ORM",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -14,15 +15,15 @@
     "@kysera/core": "workspace:*",
     "@kysera/repository": "workspace:*",
     "@kysera/soft-delete": "workspace:*",
-    "kysely": "^0.28.7",
+    "kysely": "^0.28.8",
     "pg": "^8.16.3",
-    "zod": "^4.1.11",
+    "zod": "^4.1.13",
     "dotenv": "^17.2.3"
   },
   "devDependencies": {
-    "@types/node": "^24.6.0",
-    "@types/pg": "^8.15.5",
-    "tsx": "^4.20.0",
-    "typescript": "^5.9.2"
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }

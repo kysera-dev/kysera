@@ -10,9 +10,9 @@
 
 | Metric | Value |
 |--------|-------|
-| **Version** | 0.3.0 |
+| **Version** | 0.4.1 |
 | **Bundle Size** | 2.89 KB (minified) |
-| **Test Coverage** | 16 tests passing |
+| **Test Coverage** | 67 tests passing |
 | **Dependencies** | None |
 | **Peer Dependencies** | kysely ^0.28.7, @kysera/repository workspace:* |
 | **Target Runtimes** | Node.js 20+, Bun 1.0+, Deno |
@@ -23,10 +23,11 @@
 
 - ✅ **Zero Configuration** - Works out of the box with sensible defaults
 - ✅ **Automatic Timestamps** - `created_at` on insert, `updated_at` on update
+- ✅ **Batch Operations** - Efficient `createMany`, `updateMany`, `touchMany` methods
 - ✅ **Custom Column Names** - Use any column names you want
 - ✅ **Table Filtering** - Whitelist or blacklist specific tables
 - ✅ **Date Formats** - ISO strings, Unix timestamps, or Date objects
-- ✅ **Query Helpers** - 10+ methods for timestamp-based queries
+- ✅ **Query Helpers** - 13+ methods for timestamp-based queries
 - ✅ **Type-Safe** - Full TypeScript support with inference
 - ✅ **Plugin Architecture** - Integrates seamlessly with @kysera/repository
 - ✅ **Production Ready** - Battle-tested with comprehensive test coverage
@@ -149,14 +150,18 @@ console.log(updated.updated_at)  // ✅ 2024-01-15T10:35:00.000Z
    - [Find by Update Date](#find-by-update-date)
    - [Recently Created/Updated](#recently-createdupdated)
    - [Touch Records](#touch-records)
-4. [Extended Methods](#-extended-methods)
-5. [Advanced Usage](#-advanced-usage)
-6. [Multi-Database Support](#-multi-database-support)
-7. [Type Safety](#-type-safety)
-8. [API Reference](#-api-reference)
-9. [Best Practices](#-best-practices)
-10. [Performance](#-performance)
-11. [Troubleshooting](#-troubleshooting)
+4. [Batch Operations](#-batch-operations)
+   - [createMany](#createmany)
+   - [updateMany](#updatemany)
+   - [touchMany](#touchmany)
+5. [Extended Methods](#-extended-methods)
+6. [Advanced Usage](#-advanced-usage)
+7. [Multi-Database Support](#-multi-database-support)
+8. [Type Safety](#-type-safety)
+9. [API Reference](#-api-reference)
+10. [Best Practices](#-best-practices)
+11. [Performance](#-performance)
+12. [Troubleshooting](#-troubleshooting)
 
 ---
 
@@ -176,7 +181,8 @@ const plugin = timestampsPlugin({
   setUpdatedAtOnInsert: false,
   dateFormat: 'iso',
   tables: undefined,        // All tables
-  excludeTables: undefined  // No exclusions
+  excludeTables: undefined, // No exclusions
+  primaryKeyColumn: 'id'    // Default primary key
 })
 ```
 
@@ -331,6 +337,41 @@ console.log(user.updated_at)  // 2024-01-15T10:30:00.000Z (same!)
 const updated = await userRepo.update(user.id, { name: 'Alice Smith' })
 console.log(updated.updated_at)  // 2024-01-15T10:35:00.000Z (different)
 ```
+
+### Custom Primary Key Column
+
+If your tables use a different primary key column name (e.g., `uuid`, `user_id`, `pk`), you can configure it:
+
+```typescript
+// Example: Using 'uuid' as primary key
+const plugin = timestampsPlugin({
+  primaryKeyColumn: 'uuid'
+})
+
+// Now touch() will use the configured primary key
+await userRepo.touch(userUuid)
+
+// Example: Using 'user_id' as primary key
+const plugin = timestampsPlugin({
+  primaryKeyColumn: 'user_id'
+})
+
+// Database schema
+interface Database {
+  users: {
+    user_id: Generated<number>  // Custom primary key
+    email: string
+    name: string
+    created_at: Generated<Date>
+    updated_at: Date | null
+  }
+}
+
+// Touch uses user_id instead of id
+await userRepo.touch(userId)
+```
+
+**Note:** This option only affects the `touch()` method. The `update()` method uses the repository's own primary key logic.
 
 ---
 
@@ -559,6 +600,175 @@ console.log(`User last active: ${user.updated_at}`)
 
 ---
 
+## 🚀 Batch Operations
+
+The plugin provides efficient batch operations for working with multiple records at once.
+
+### createMany
+
+Create multiple records with timestamps in a single efficient bulk INSERT operation.
+
+```typescript
+// Create multiple users at once
+const users = await userRepo.createMany([
+  { name: 'Alice', email: 'alice@example.com' },
+  { name: 'Bob', email: 'bob@example.com' },
+  { name: 'Charlie', email: 'charlie@example.com' }
+])
+
+// All records created with the same timestamp
+users.forEach(user => {
+  console.log(user.created_at)  // Same timestamp for all
+})
+
+// Empty arrays are handled gracefully
+const empty = await userRepo.createMany([])
+console.log(empty.length)  // 0
+```
+
+**Performance Benefits:**
+- Single database roundtrip instead of N queries
+- All records get the same timestamp (consistent)
+- ~10-100x faster than individual creates for large batches
+
+**Example: Bulk Import**
+
+```typescript
+// Import 1000 users from CSV
+const csvData = parseCsv('users.csv')
+const inputs = csvData.map(row => ({
+  name: row.name,
+  email: row.email
+}))
+
+// Efficient bulk insert with timestamps
+const imported = await userRepo.createMany(inputs)
+console.log(`Imported ${imported.length} users`)
+```
+
+### updateMany
+
+Update multiple records with the same data, automatically setting `updated_at` for all.
+
+```typescript
+// Update multiple users
+const userIds = [1, 2, 3, 4, 5]
+const updated = await userRepo.updateMany(userIds, {
+  status: 'active'
+})
+
+// All records updated with same timestamp
+updated.forEach(user => {
+  console.log(user.status)       // 'active'
+  console.log(user.updated_at)   // Same timestamp for all
+})
+
+// Works with string IDs too
+const stringIds = ['user-1', 'user-2', 'user-3']
+await userRepo.updateMany(stringIds, { verified: true })
+
+// Empty arrays are handled gracefully
+const empty = await userRepo.updateMany([], { status: 'inactive' })
+console.log(empty.length)  // 0
+```
+
+**Performance Benefits:**
+- Single UPDATE query with WHERE id IN clause
+- Single SELECT to fetch updated records
+- Much faster than individual updates
+
+**Example: Bulk Status Change**
+
+```typescript
+// Find inactive users
+const inactive = await userRepo.findUpdatedBefore(thirtyDaysAgo)
+const ids = inactive.map(u => u.id)
+
+// Mark all as inactive in one operation
+await userRepo.updateMany(ids, {
+  status: 'inactive',
+  reason: 'No activity for 30 days'
+})
+```
+
+### touchMany
+
+Update `updated_at` for multiple records without changing any other data.
+
+```typescript
+// Touch multiple users (update their timestamps)
+const userIds = [1, 2, 3, 4, 5]
+await userRepo.touchMany(userIds)
+
+// Verify all were touched
+const touched = await db
+  .selectFrom('users')
+  .selectAll()
+  .where('id', 'in', userIds)
+  .execute()
+
+touched.forEach(user => {
+  console.log(user.updated_at)  // All have same new timestamp
+})
+
+// Empty arrays are handled gracefully
+await userRepo.touchMany([])  // No-op
+```
+
+**Performance Benefits:**
+- Single UPDATE query setting only timestamp column
+- No data fetched or returned
+- Extremely fast even for large batches
+
+**Example: Track Session Activity**
+
+```typescript
+// Track activity for all users in a session
+const activeUserIds = await getActiveUserIds()
+
+// Update their last_seen timestamp
+await userRepo.touchMany(activeUserIds)
+
+// Find recently active users
+const active = await userRepo.findRecentlyUpdated(100)
+console.log(`${active.length} users active recently`)
+```
+
+**Example: Refresh Cache TTL**
+
+```typescript
+// Keep cache fresh for popular items
+const popularItems = await itemRepo.findPopular()
+const ids = popularItems.map(i => i.id)
+
+// Touch to refresh TTL
+await itemRepo.touchMany(ids)
+```
+
+### Combining Batch Operations
+
+All batch operations work seamlessly together:
+
+```typescript
+// 1. Create batch of users
+const created = await userRepo.createMany([
+  { name: 'User 1', email: 'user1@example.com' },
+  { name: 'User 2', email: 'user2@example.com' },
+  { name: 'User 3', email: 'user3@example.com' },
+  { name: 'User 4', email: 'user4@example.com' }
+])
+
+// 2. Update some users
+const idsToUpdate = created.slice(0, 2).map(u => u.id)
+await userRepo.updateMany(idsToUpdate, { verified: true })
+
+// 3. Touch others to mark as active
+const idsToTouch = created.slice(2).map(u => u.id)
+await userRepo.touchMany(idsToTouch)
+```
+
+---
+
 ## 🎯 Extended Methods
 
 All repositories extended by the timestamps plugin gain these methods:
@@ -574,6 +784,11 @@ interface TimestampMethods<T> {
   // Recent records
   findRecentlyCreated(limit?: number): Promise<T[]>
   findRecentlyUpdated(limit?: number): Promise<T[]>
+
+  // Batch operations
+  createMany(inputs: unknown[]): Promise<T[]>
+  updateMany(ids: (number | string)[], input: unknown): Promise<T[]>
+  touchMany(ids: (number | string)[]): Promise<void>
 
   // Bypass timestamps
   createWithoutTimestamps(input: unknown): Promise<T>
@@ -876,6 +1091,7 @@ interface TimestampsOptions {
   excludeTables?: string[]          // Default: undefined
   getTimestamp?: () => Date | string | number  // Custom generator
   dateFormat?: 'iso' | 'unix' | 'date'  // Default: 'iso'
+  primaryKeyColumn?: string         // Default: 'id'
 }
 ```
 
@@ -1003,6 +1219,60 @@ Get configured column names.
 
 ---
 
+#### createMany(inputs)
+
+Create multiple records with timestamps in a single bulk INSERT operation.
+
+**Parameters:**
+- `inputs: unknown[]` - Array of create data objects
+
+**Returns:** `Promise<T[]>` - Array of created records
+
+**Example:**
+```typescript
+const users = await userRepo.createMany([
+  { name: 'Alice', email: 'alice@example.com' },
+  { name: 'Bob', email: 'bob@example.com' }
+])
+```
+
+---
+
+#### updateMany(ids, input)
+
+Update multiple records with the same data, automatically setting updated_at.
+
+**Parameters:**
+- `ids: (number | string)[]` - Array of record IDs to update
+- `input: unknown` - Update data (applied to all records)
+
+**Returns:** `Promise<T[]>` - Array of updated records
+
+**Example:**
+```typescript
+const updated = await userRepo.updateMany([1, 2, 3], {
+  status: 'active'
+})
+```
+
+---
+
+#### touchMany(ids)
+
+Update only the updated_at timestamp for multiple records.
+
+**Parameters:**
+- `ids: (number | string)[]` - Array of record IDs to touch
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+await userRepo.touchMany([1, 2, 3, 4, 5])
+```
+
+---
+
 ## ✨ Best Practices
 
 ### 1. Use Nullable updated_at
@@ -1106,6 +1376,44 @@ await userRepo.touch(userId)  // Only updates timestamp
 // ❌ Bad: Unnecessary data transfer
 const user = await userRepo.findById(userId)
 await userRepo.update(userId, user)  // Fetches + updates all fields
+```
+
+### 8. Use Batch Operations for Multiple Records
+
+```typescript
+// ✅ Good: Batch operations (single query)
+const users = await userRepo.createMany([
+  { name: 'User 1', email: 'user1@example.com' },
+  { name: 'User 2', email: 'user2@example.com' },
+  { name: 'User 3', email: 'user3@example.com' }
+])
+// 1 INSERT query
+
+// ❌ Bad: Individual creates (N queries)
+for (const input of inputs) {
+  await userRepo.create(input)
+}
+// 3 INSERT queries (slow!)
+
+// ✅ Good: Batch update
+await userRepo.updateMany([1, 2, 3], { status: 'active' })
+// 1 UPDATE + 1 SELECT
+
+// ❌ Bad: Individual updates
+for (const id of [1, 2, 3]) {
+  await userRepo.update(id, { status: 'active' })
+}
+// 3 UPDATE queries (slow!)
+
+// ✅ Good: Batch touch
+await userRepo.touchMany([1, 2, 3, 4, 5])
+// 1 UPDATE query
+
+// ❌ Bad: Individual touches
+for (const id of [1, 2, 3, 4, 5]) {
+  await userRepo.touch(id)
+}
+// 5 UPDATE queries (slow!)
 ```
 
 ---
@@ -1284,11 +1592,11 @@ MIT © Kysera
 
 ## 🔗 Links
 
-- [GitHub Repository](https://github.com/omnitron/kysera)
+- [GitHub Repository](https://github.com/kysera-dev/kysera)
 - [@kysera/repository Documentation](../repository/README.md)
 - [@kysera/core Documentation](../core/README.md)
 - [Kysely Documentation](https://kysely.dev)
-- [Issue Tracker](https://github.com/omnitron/kysera/issues)
+- [Issue Tracker](https://github.com/kysera-dev/kysera/issues)
 
 ---
 

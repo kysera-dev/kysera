@@ -4,16 +4,25 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
-    "composite": true
+    "composite": true,
+    // Relaxed settings for CLI application (works with dynamic DB schemas)
+    "noPropertyAccessFromIndexSignature": false,
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "strictNullChecks": false,
+    "strictPropertyInitialization": false,
+    "noImplicitAny": false
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules", "tests", "**/*.test.ts", "**/*.spec.ts"],
   "references": [
-    { "path": "../../packages/core" },
-    { "path": "../../packages/repository" },
-    { "path": "../../packages/migrations" },
-    { "path": "../../packages/audit" },
-    { "path": "../../packages/soft-delete" },
-    { "path": "../../packages/timestamps" }
+    { "path": "../../packages/kysera-core" },
+    { "path": "../../packages/kysera-repository" },
+    { "path": "../../packages/kysera-migrations" },
+    { "path": "../../packages/kysera-audit" },
+    { "path": "../../packages/kysera-soft-delete" },
+    { "path": "../../packages/kysera-timestamps" }
   ]
 }

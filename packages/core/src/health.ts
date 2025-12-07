@@ -1,41 +1,44 @@
-import type { Kysely } from 'kysely'
+import type { Kysely } from 'kysely';
+import type { QueryMetrics } from './debug.js';
+import type { KyseraLogger } from './logger.js';
+import { consoleLogger } from './logger.js';
 
 export interface HealthCheckResult {
-  status: 'healthy' | 'degraded' | 'unhealthy'
+  status: 'healthy' | 'degraded' | 'unhealthy';
   checks: Array<{
-    name: string
-    status: 'healthy' | 'degraded' | 'unhealthy'
-    message?: string
-    details?: Record<string, any>
-  }>
-  errors?: string[]
+    name: string;
+    status: 'healthy' | 'degraded' | 'unhealthy';
+    message?: string;
+    details?: Record<string, any>;
+  }>;
+  errors?: string[];
   metrics?: {
-    databaseVersion?: string
+    databaseVersion?: string;
     poolMetrics?: {
-      totalConnections: number
-      activeConnections: number
-      idleConnections: number
-      waitingRequests: number
-    }
+      totalConnections: number;
+      activeConnections: number;
+      idleConnections: number;
+      waitingRequests: number;
+    };
     queryMetrics?: {
-      totalQueries?: number
-      avgResponseTime?: number
-      slowQueries?: number
-      errors?: number
-    }
-    checkLatency?: number
-  }
-  timestamp: Date
+      totalQueries?: number;
+      avgResponseTime?: number;
+      slowQueries?: number;
+      errors?: number;
+    };
+    checkLatency?: number;
+  };
+  timestamp: Date;
 }
 
 /**
  * Pool metrics interface for different database drivers
  */
 export interface PoolMetrics {
-  total: number
-  idle: number
-  active: number
-  waiting: number
+  total: number;
+  idle: number;
+  active: number;
+  waiting: number;
 }
 
 /**
@@ -54,13 +57,13 @@ export interface DatabasePool {
    * For MySQL: pool.end()
    * For SQLite: database.close()
    */
-  end(): Promise<void> | void
+  end(): Promise<void> | void;
 
   /**
    * Optional: Execute a query on the pool.
    * Not all pool types support this method directly.
    */
-  query?(sql: string, values?: any[]): Promise<any>
+  query?(sql: string, values?: any[]): Promise<any>;
 }
 
 /**
@@ -68,19 +71,19 @@ export interface DatabasePool {
  * This interface works with any DatabasePool type.
  */
 export interface MetricsPool extends DatabasePool {
-  getMetrics(): PoolMetrics
+  getMetrics(): PoolMetrics;
 }
 
 /**
  * Type definitions for PostgreSQL Pool internals (pg package)
  */
 interface PostgreSQLPoolInternals {
-  readonly totalCount: number
-  readonly idleCount: number
-  readonly waitingCount: number
+  readonly totalCount: number;
+  readonly idleCount: number;
+  readonly waitingCount: number;
   readonly options?: {
-    max?: number
-  }
+    max?: number;
+  };
 }
 
 /**
@@ -88,12 +91,12 @@ interface PostgreSQLPoolInternals {
  */
 interface MySQLPoolInternals {
   pool?: {
-    _allConnections?: { length: number }
-    _freeConnections?: { length: number }
-  }
+    _allConnections?: { length: number };
+    _freeConnections?: { length: number };
+  };
   config?: {
-    connectionLimit?: number
-  }
+    connectionLimit?: number;
+  };
 }
 
 /**
@@ -101,10 +104,10 @@ interface MySQLPoolInternals {
  * SQLite doesn't have connection pooling, so we return static metrics
  */
 interface SQLiteDatabase {
-  open: boolean
-  readonly?: boolean
-  memory: boolean
-  name: string
+  open: boolean;
+  readonly?: boolean;
+  memory: boolean;
+  name: string;
 }
 
 /**
@@ -141,50 +144,50 @@ interface SQLiteDatabase {
  * ```
  */
 export function createMetricsPool(pool: DatabasePool): MetricsPool {
-  const metricsPool = pool as MetricsPool
+  const metricsPool = pool as MetricsPool;
 
-  metricsPool.getMetrics = function() {
-    const anyPool = this as any
+  metricsPool.getMetrics = function () {
+    const anyPool = this as any;
 
     // PostgreSQL (pg) Pool detection
     // Has: totalCount, idleCount, waitingCount properties
     if ('totalCount' in anyPool && 'idleCount' in anyPool) {
-      const pgInternals = anyPool as PostgreSQLPoolInternals
+      const pgInternals = anyPool as PostgreSQLPoolInternals;
       return {
         total: pgInternals.totalCount || pgInternals.options?.max || 10,
         idle: pgInternals.idleCount || 0,
         waiting: pgInternals.waitingCount || 0,
-        active: (pgInternals.totalCount || 0) - (pgInternals.idleCount || 0)
-      }
+        active: (pgInternals.totalCount || 0) - (pgInternals.idleCount || 0),
+      };
     }
 
     // MySQL (mysql2) Pool detection
     // Has: pool._allConnections, pool._freeConnections arrays
     if ('pool' in anyPool && anyPool.pool?._allConnections) {
-      const mysqlInternals = anyPool as MySQLPoolInternals
-      const allConnections = mysqlInternals.pool?._allConnections?.length || 0
-      const freeConnections = mysqlInternals.pool?._freeConnections?.length || 0
-      const connectionLimit = mysqlInternals.config?.connectionLimit || 10
+      const mysqlInternals = anyPool as MySQLPoolInternals;
+      const allConnections = mysqlInternals.pool?._allConnections?.length || 0;
+      const freeConnections = mysqlInternals.pool?._freeConnections?.length || 0;
+      const connectionLimit = mysqlInternals.config?.connectionLimit || 10;
 
       return {
         total: connectionLimit,
         idle: freeConnections,
         waiting: 0, // MySQL doesn't expose waiting connections count
-        active: allConnections - freeConnections
-      }
+        active: allConnections - freeConnections,
+      };
     }
 
     // SQLite (better-sqlite3) Database detection
     // Has: open, memory, name properties
     // SQLite doesn't have connection pooling, so return static metrics
     if ('open' in anyPool && 'memory' in anyPool) {
-      const sqliteDb = anyPool as SQLiteDatabase
+      const sqliteDb = anyPool as SQLiteDatabase;
       return {
         total: 1, // SQLite is single-connection
         idle: 0,
         waiting: 0,
-        active: sqliteDb.open ? 1 : 0
-      }
+        active: sqliteDb.open ? 1 : 0,
+      };
     }
 
     // Fallback for unknown pool types
@@ -193,87 +196,84 @@ export function createMetricsPool(pool: DatabasePool): MetricsPool {
       total: 10,
       idle: 0,
       waiting: 0,
-      active: 0
-    }
-  }
+      active: 0,
+    };
+  };
 
-  return metricsPool
+  return metricsPool;
 }
 
 /**
  * Check database health
  */
-export async function checkDatabaseHealth<DB>(
-  db: Kysely<DB>,
-  pool?: MetricsPool
-): Promise<HealthCheckResult> {
-  const start = Date.now()
+export async function checkDatabaseHealth<DB>(db: Kysely<DB>, pool?: MetricsPool): Promise<HealthCheckResult> {
+  const start = Date.now();
 
   try {
     // Simple query to check connection
-    await db.selectNoFrom(eb => eb.val(1).as('ping')).execute()
+    await db.selectNoFrom((eb) => eb.val(1).as('ping')).execute();
 
-    const latency = Date.now() - start
-    const status = latency < 100 ? 'healthy' : latency < 500 ? 'degraded' : 'unhealthy'
+    const latency = Date.now() - start;
+    const status = latency < 100 ? 'healthy' : latency < 500 ? 'degraded' : 'unhealthy';
 
     const checks = [
       {
         name: 'Database Connection',
         status: 'healthy' as const,
-        message: `Connected successfully (${latency}ms)`
-      }
-    ]
+        message: `Connected successfully (${latency}ms)`,
+      },
+    ];
 
     const result: HealthCheckResult = {
       status,
       checks,
       metrics: {
-        checkLatency: latency
+        checkLatency: latency,
       },
-      timestamp: new Date()
-    }
+      timestamp: new Date(),
+    };
 
     // Add pool metrics if available
     if (pool?.getMetrics) {
-      const metrics = pool.getMetrics()
+      const metrics = pool.getMetrics();
       result.metrics!.poolMetrics = {
         totalConnections: metrics.total,
         activeConnections: metrics.active,
         idleConnections: metrics.idle,
-        waitingRequests: metrics.waiting
-      }
+        waitingRequests: metrics.waiting,
+      };
     }
 
-    return result
+    return result;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorMessage = error instanceof Error ? error.message : String(error);
     const result: HealthCheckResult = {
       status: 'unhealthy',
       checks: [
         {
           name: 'Database Connection',
           status: 'unhealthy',
-          message: errorMessage
-        }
+          message: errorMessage,
+        },
       ],
       errors: [errorMessage],
-      timestamp: new Date()
-    }
+      timestamp: new Date(),
+    };
 
     // Add pool metrics if available
     if (pool?.getMetrics) {
-      const metrics = pool.getMetrics()
+      const metrics = pool.getMetrics();
       result.metrics = {
         poolMetrics: {
           totalConnections: metrics.total,
           activeConnections: metrics.active,
           idleConnections: metrics.idle,
-          waitingRequests: metrics.waiting
-        }
-      }
+          waitingRequests: metrics.waiting,
+        },
+      };
     }
 
-    return result
+    return result;
   }
 }
 
@@ -284,11 +284,11 @@ export async function checkDatabaseHealth<DB>(
 export async function performHealthCheck<DB>(
   db: Kysely<DB>,
   options: {
-    verbose?: boolean
-    pool?: MetricsPool
+    verbose?: boolean;
+    pool?: MetricsPool;
   } = {}
 ): Promise<HealthCheckResult> {
-  const baseResult = await checkDatabaseHealth(db, options.pool)
+  const baseResult = await checkDatabaseHealth(db, options.pool);
 
   if (options.verbose) {
     // Add additional checks in verbose mode
@@ -296,118 +296,267 @@ export async function performHealthCheck<DB>(
       // Check database version (simplified - actual implementation would be dialect-specific)
       baseResult.metrics = {
         ...baseResult.metrics,
-        databaseVersion: 'Unknown'
-      }
+        databaseVersion: 'Unknown',
+      };
     } catch {
       // Ignore version check errors
     }
   }
 
-  return baseResult
+  return baseResult;
 }
 
 /**
- * Get database metrics
+ * Extended database with metrics tracking capability.
+ * This type represents a Kysely database instance that has been wrapped
+ * with the debug plugin (using withDebug function from './debug.js').
+ */
+export interface DatabaseWithMetrics<DB> extends Kysely<DB> {
+  getMetrics(): QueryMetrics[];
+  clearMetrics(): void;
+}
+
+/**
+ * Options for getMetrics function
+ */
+export interface GetMetricsOptions {
+  /**
+   * Time period for metrics (informational, not used for filtering)
+   * @default '1h'
+   */
+  period?: string;
+  /**
+   * Optional pool to extract connection metrics from
+   */
+  pool?: MetricsPool;
+  /**
+   * Duration threshold (in ms) to consider a query as slow
+   * @default 100
+   */
+  slowQueryThreshold?: number;
+}
+
+/**
+ * Metrics result interface
+ */
+export interface MetricsResult {
+  period: string;
+  timestamp: string;
+  connections?: {
+    total: number;
+    active: number;
+    idle: number;
+    max: number;
+  };
+  queries?: {
+    total: number;
+    avgDuration: number;
+    minDuration: number;
+    maxDuration: number;
+    p95Duration: number;
+    p99Duration: number;
+    slowCount: number;
+  };
+  recommendations?: string[];
+}
+
+/**
+ * Calculate percentile from sorted array of numbers
+ */
+function calculatePercentile(sortedValues: number[], percentile: number): number {
+  if (sortedValues.length === 0) return 0;
+  const index = Math.ceil((percentile / 100) * sortedValues.length) - 1;
+  return sortedValues[Math.max(0, index)] ?? 0;
+}
+
+/**
+ * Get database metrics from real query execution data.
+ *
+ * IMPORTANT: This function requires the database to be wrapped with the debug plugin
+ * to track query metrics. Use `withDebug()` from './debug.js' to enable metrics collection.
+ *
+ * @param db - Kysely database instance with metrics tracking (created using withDebug)
+ * @param options - Options for metrics collection
+ * @returns Real metrics data collected from actual query execution
+ * @throws {Error} If the database is not wrapped with the debug plugin
+ *
+ * @example
+ * ```typescript
+ * import { withDebug } from '@omnitron-dev/kysera-core/debug';
+ * import { getMetrics } from '@omnitron-dev/kysera-core/health';
+ *
+ * // Create a database with metrics tracking
+ * const db = new Kysely<Database>({ ... });
+ * const debugDb = withDebug(db, { maxMetrics: 1000 });
+ *
+ * // Perform some queries...
+ * await debugDb.selectFrom('users').selectAll().execute();
+ *
+ * // Get real metrics
+ * const metrics = await getMetrics(debugDb, {
+ *   slowQueryThreshold: 100,
+ *   pool: metricsPool
+ * });
+ *
+ * console.log(metrics.queries.avgDuration); // Real average from tracked queries
+ * console.log(metrics.queries.slowCount); // Real count of slow queries
+ * ```
  */
 export async function getMetrics<DB>(
-  _db: Kysely<DB>,
-  options: {
-    period?: string
-    pool?: MetricsPool
-  } = {}
-): Promise<any> {
-  const metrics: any = {
-    period: options.period || '1h',
-    timestamp: new Date().toISOString()
+  db: Kysely<DB> | DatabaseWithMetrics<DB>,
+  options: GetMetricsOptions = {}
+): Promise<MetricsResult> {
+  const { period = '1h', pool, slowQueryThreshold = 100 } = options;
+
+  // Check if database has metrics tracking enabled
+  const dbWithMetrics = db as DatabaseWithMetrics<DB>;
+  if (typeof dbWithMetrics.getMetrics !== 'function') {
+    throw new Error(
+      'Database metrics are not available. ' +
+        'To collect query metrics, wrap your database with the debug plugin using withDebug() from @omnitron-dev/kysera-core/debug. ' +
+        'Example: const debugDb = withDebug(db, { maxMetrics: 1000 });'
+    );
   }
 
+  const result: MetricsResult = {
+    period,
+    timestamp: new Date().toISOString(),
+  };
+
   // Get pool metrics if available
-  if (options.pool?.getMetrics) {
-    const poolMetrics = options.pool.getMetrics()
-    metrics.connections = {
+  if (pool?.getMetrics) {
+    const poolMetrics = pool.getMetrics();
+    result.connections = {
       total: poolMetrics.total,
       active: poolMetrics.active,
       idle: poolMetrics.idle,
       max: poolMetrics.total,
-      errors: 0
+    };
+  }
+
+  // Get real query metrics from debug plugin
+  const queryMetrics = dbWithMetrics.getMetrics();
+
+  if (queryMetrics.length > 0) {
+    // Calculate real statistics from collected metrics
+    const durations = queryMetrics.map((m) => m.duration);
+    const sortedDurations = [...durations].sort((a, b) => a - b);
+
+    const totalDuration = durations.reduce((sum, d) => sum + d, 0);
+    const avgDuration = totalDuration / durations.length;
+    const minDuration = Math.min(...durations);
+    const maxDuration = Math.max(...durations);
+    const p95Duration = calculatePercentile(sortedDurations, 95);
+    const p99Duration = calculatePercentile(sortedDurations, 99);
+    const slowCount = durations.filter((d) => d > slowQueryThreshold).length;
+
+    result.queries = {
+      total: queryMetrics.length,
+      avgDuration: Math.round(avgDuration * 100) / 100, // Round to 2 decimal places
+      minDuration: Math.round(minDuration * 100) / 100,
+      maxDuration: Math.round(maxDuration * 100) / 100,
+      p95Duration: Math.round(p95Duration * 100) / 100,
+      p99Duration: Math.round(p99Duration * 100) / 100,
+      slowCount,
+    };
+
+    // Generate recommendations based on real data
+    result.recommendations = [];
+
+    if (slowCount > queryMetrics.length * 0.1) {
+      // More than 10% slow queries
+      result.recommendations.push(
+        `High number of slow queries detected (${slowCount}/${queryMetrics.length}). ` +
+          `Consider query optimization or indexing.`
+      );
+    }
+
+    if (avgDuration > slowQueryThreshold * 0.5) {
+      result.recommendations.push(
+        `Average query duration (${avgDuration.toFixed(2)}ms) is approaching slow query threshold. ` +
+          `Monitor performance closely.`
+      );
     }
   }
 
-  // Try to get database-specific metrics
-  try {
-    // This is a simplified version - in production you'd query actual metrics tables
-    metrics.queries = {
-      total: Math.floor(Math.random() * 10000),
-      avgDuration: Math.floor(Math.random() * 50) + 10,
-      minDuration: 1,
-      maxDuration: Math.floor(Math.random() * 1000) + 100,
-      p95Duration: Math.floor(Math.random() * 200) + 50,
-      p99Duration: Math.floor(Math.random() * 500) + 100,
-      slowCount: Math.floor(Math.random() * 100),
-      errorCount: Math.floor(Math.random() * 10)
+  // Add connection pool recommendations if applicable
+  if (result.connections) {
+    const utilizationRate = result.connections.active / result.connections.total;
+    if (utilizationRate > 0.8) {
+      result.recommendations = result.recommendations || [];
+      result.recommendations.push(
+        `Connection pool utilization is high (${(utilizationRate * 100).toFixed(1)}%). ` +
+          `Consider increasing pool size.`
+      );
     }
-
-    // Add some fake table statistics
-    metrics.tables = [
-      { name: 'users', rowCount: 15234, size: 5242880, indexSize: 1048576 },
-      { name: 'posts', rowCount: 48291, size: 15728640, indexSize: 3145728 },
-      { name: 'comments', rowCount: 128493, size: 31457280, indexSize: 6291456 }
-    ]
-
-    // Add recommendations
-    metrics.recommendations = []
-    if (metrics.queries.slowCount > 50) {
-      metrics.recommendations.push('High number of slow queries detected. Consider query optimization.')
-    }
-    if (metrics.connections && metrics.connections.active > metrics.connections.total * 0.8) {
-      metrics.recommendations.push('Connection pool usage is high. Consider increasing pool size.')
-    }
-  } catch (error) {
-    // Ignore metrics collection errors
   }
 
-  return metrics
+  return result;
+}
+
+/**
+ * Options for HealthMonitor
+ */
+export interface HealthMonitorOptions {
+  /** Connection pool for metrics */
+  pool?: MetricsPool;
+  /** Interval between health checks in milliseconds */
+  intervalMs?: number;
+  /** Logger for health check messages */
+  logger?: KyseraLogger;
 }
 
 /**
  * Monitor database health continuously
  */
 export class HealthMonitor {
-  private intervalId: NodeJS.Timeout | undefined
-  private lastCheck?: HealthCheckResult
+  private intervalId: NodeJS.Timeout | undefined;
+  private lastCheck?: HealthCheckResult;
+  private pool: MetricsPool | undefined;
+  private intervalMs: number;
+  private logger: KyseraLogger;
 
   constructor(
     private db: Kysely<any>,
-    private pool?: MetricsPool,
-    private intervalMs: number = 30000
-  ) {}
+    options: HealthMonitorOptions = {}
+  ) {
+    this.pool = options.pool;
+    this.intervalMs = options.intervalMs ?? 30000;
+    this.logger = options.logger ?? consoleLogger;
+  }
 
   start(onCheck?: (result: HealthCheckResult) => void): void {
     if (this.intervalId) {
-      return
+      return;
     }
+
+    this.logger.debug(`Starting health monitor with ${this.intervalMs}ms interval`);
 
     const check = async () => {
-      this.lastCheck = await checkDatabaseHealth(this.db, this.pool)
-      onCheck?.(this.lastCheck)
-    }
+      this.lastCheck = await checkDatabaseHealth(this.db, this.pool);
+      if (this.lastCheck.status !== 'healthy') {
+        this.logger.warn(`Health check status: ${this.lastCheck.status}`);
+      }
+      onCheck?.(this.lastCheck);
+    };
 
     // Initial check
-    check()
+    check();
 
     // Schedule periodic checks
-    this.intervalId = setInterval(check, this.intervalMs)
+    this.intervalId = setInterval(check, this.intervalMs);
   }
 
   stop(): void {
     if (this.intervalId !== undefined) {
-      clearInterval(this.intervalId)
-      this.intervalId = undefined
+      this.logger.debug('Stopping health monitor');
+      clearInterval(this.intervalId);
+      this.intervalId = undefined;
     }
   }
 
   getLastCheck(): HealthCheckResult | undefined {
-    return this.lastCheck
+    return this.lastCheck;
   }
 }
 
@@ -418,33 +567,31 @@ export class HealthMonitor {
 export async function gracefulShutdown<DB>(
   db: Kysely<DB>,
   options: {
-    timeoutMs?: number
-    onShutdown?: () => void | Promise<void>
+    timeoutMs?: number;
+    onShutdown?: () => void | Promise<void>;
+    logger?: KyseraLogger;
   } = {}
 ): Promise<void> {
-  const { timeoutMs = 30000, onShutdown } = options
+  const { timeoutMs = 30000, onShutdown, logger = consoleLogger } = options;
 
   const shutdownPromise = async () => {
     try {
       if (onShutdown) {
-        await onShutdown()
+        await onShutdown();
       }
-      await db.destroy()
+      await db.destroy();
     } catch (error) {
-      console.error('Error during database shutdown:', error)
-      throw error
+      logger.error('Error during database shutdown:', error);
+      throw error;
     }
-  }
+  };
 
   return Promise.race([
     shutdownPromise(),
     new Promise<void>((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`Shutdown timeout after ${timeoutMs}ms`)),
-        timeoutMs
-      )
-    )
-  ])
+      setTimeout(() => reject(new Error(`Shutdown timeout after ${timeoutMs}ms`)), timeoutMs)
+    ),
+  ]);
 }
 
 /**
@@ -454,31 +601,32 @@ export async function gracefulShutdown<DB>(
 export function registerShutdownHandlers<DB>(
   db: Kysely<DB>,
   options: {
-    signals?: string[]
-    timeoutMs?: number
-    onShutdown?: () => void | Promise<void>
+    signals?: string[];
+    timeoutMs?: number;
+    onShutdown?: () => void | Promise<void>;
+    logger?: KyseraLogger;
   } = {}
 ): void {
-  const { signals = ['SIGTERM', 'SIGINT'], ...shutdownOptions } = options
-  let isShuttingDown = false
+  const { signals = ['SIGTERM', 'SIGINT'], logger = consoleLogger, ...shutdownOptions } = options;
+  let isShuttingDown = false;
 
   const handleShutdown = async (signal: string) => {
-    if (isShuttingDown) return
-    isShuttingDown = true
+    if (isShuttingDown) return;
+    isShuttingDown = true;
 
-    console.log(`Received ${signal}, starting graceful shutdown...`)
+    logger.info(`Received ${signal}, starting graceful shutdown...`);
 
     try {
-      await gracefulShutdown(db, shutdownOptions)
-      console.log('Database connections closed successfully')
-      process.exit(0)
+      await gracefulShutdown(db, { ...shutdownOptions, logger });
+      logger.info('Database connections closed successfully');
+      process.exit(0);
     } catch (error) {
-      console.error('Error during shutdown:', error)
-      process.exit(1)
+      logger.error('Error during shutdown:', error);
+      process.exit(1);
     }
-  }
+  };
 
-  signals.forEach(signal => {
-    process.on(signal, () => handleShutdown(signal))
-  })
+  signals.forEach((signal) => {
+    process.on(signal, () => handleShutdown(signal));
+  });
 }

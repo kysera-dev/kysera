@@ -1,16 +1,15 @@
-import { Command } from 'commander'
-import { checkCommand } from './check.js'
-import { watchCommand } from './watch.js'
-import { metricsCommand } from './metrics.js'
+import { Command } from 'commander';
+import { checkCommand } from './check.js';
+import { watchCommand } from './watch.js';
+import { metricsCommand } from './metrics.js';
 
 export function healthCommand(): Command {
-  const cmd = new Command('health')
-    .description('Monitor database health and performance')
+  const cmd = new Command('health').description('Monitor database health and performance');
 
   // Add subcommands
-  cmd.addCommand(checkCommand())
-  cmd.addCommand(watchCommand())
-  cmd.addCommand(metricsCommand())
+  cmd.addCommand(checkCommand());
+  cmd.addCommand(watchCommand());
+  cmd.addCommand(metricsCommand());
 
-  return cmd
+  return cmd;
 }

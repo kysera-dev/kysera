@@ -1,6 +1,6 @@
 {
   "name": "@kysera/core",
-  "version": "0.4.1",
+  "version": "0.5.1",
   "description": "Core utilities for Kysera ORM - debug, health, pagination, errors",
   "type": "module",
   "main": "./dist/index.js",
@@ -26,20 +26,20 @@
     "lint": "eslint ."
   },
   "peerDependencies": {
-    "kysely": ">=0.28.7"
+    "kysely": ">=0.28.8"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^24.6.2",
-    "@types/pg": "^8.15.5",
-    "@vitest/coverage-v8": "^3.2.4",
-    "better-sqlite3": "^12.4.1",
-    "kysely": "^0.28.7",
-    "mysql2": "^3.15.1",
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "@vitest/coverage-v8": "^4.0.15",
+    "better-sqlite3": "^12.5.0",
+    "kysely": "^0.28.8",
+    "mysql2": "^3.15.3",
     "pg": "^8.16.3",
-    "tsup": "^8.5.0",
+    "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.0.15"
   },
   "keywords": [
     "kysely",
@@ -51,17 +51,17 @@
     "mysql",
     "sqlite"
   ],
-  "author": "",
+  "author": "Kysera Team",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/omnitron/kysera.git",
+    "url": "git+https://github.com/kysera-dev/kysera.git",
     "directory": "packages/core"
   },
   "bugs": {
-    "url": "https://github.com/omnitron/kysera/issues"
+    "url": "https://github.com/kysera-dev/kysera/issues"
   },
-  "homepage": "https://github.com/omnitron/kysera#readme",
+  "homepage": "https://github.com/kysera-dev/kysera#readme",
   "publishConfig": {
     "access": "public"
   },

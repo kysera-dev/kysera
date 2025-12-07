@@ -10,7 +10,7 @@
 
 | Metric | Value |
 |--------|-------|
-| **Version** | 0.3.0 |
+| **Version** | 0.4.1 |
 | **Bundle Size** | 12.76 KB (minified) |
 | **Test Coverage** | 265 tests passing |
 | **Runtime Dependencies** | 0 (peer: kysely >=0.28.0) |
@@ -1926,9 +1926,9 @@ MIT © Kysera
 
 ## 🔗 Links
 
-- [GitHub Repository](https://github.com/omnitron/kysera)
+- [GitHub Repository](https://github.com/kysera-dev/kysera)
 - [Kysely Documentation](https://kysely.dev)
-- [Issue Tracker](https://github.com/omnitron/kysera/issues)
+- [Issue Tracker](https://github.com/kysera-dev/kysera/issues)
 - [Changelog](../../CHANGELOG.md)
 
 ---

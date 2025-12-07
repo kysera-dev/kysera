@@ -1,17 +1,20 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/schemas.ts'],
   format: ['esm'],
   dts: {
-    tsconfig: './tsconfig.build.json'
+    compilerOptions: {
+      composite: false,
+    },
   },
   splitting: false,
   sourcemap: true,
   clean: true,
   minify: true,
   treeshake: true,
+  external: ['kysely', 'zod', '@kysera/core'],
   target: 'esnext',
   platform: 'neutral',
-  tsconfig: './tsconfig.build.json'
-})
+  tsconfig: './tsconfig.build.json',
+});

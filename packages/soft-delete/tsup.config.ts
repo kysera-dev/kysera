@@ -1,15 +1,16 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: ['src/index.ts'],
-  format: ['esm'],  // ESM only!
+  format: ['esm'],
   dts: true,
   splitting: false,
   sourcemap: true,
   clean: true,
   minify: true,
   treeshake: true,
-  external: ['kysely', '@kysera/repository'],
-  target: 'esnext',  // Latest JavaScript for Bun/Deno
-  platform: 'neutral'  // Platform-agnostic
-})
+  external: ['kysely', 'zod', '@kysera/repository'],
+  target: 'esnext',
+  platform: 'neutral',
+  tsconfig: './tsconfig.build.json',
+});

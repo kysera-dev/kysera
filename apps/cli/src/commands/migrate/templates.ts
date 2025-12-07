@@ -166,8 +166,8 @@ export async function down(db: Kysely<any>): Promise<void> {
     // TODO: Add conditions to identify seed data
     .execute()
 }
-`
-}
+`,
+};
 
 /**
  * Parse column definitions from a string
@@ -175,36 +175,36 @@ export async function down(db: Kysely<any>): Promise<void> {
  * Example: "email:varchar(255):false:null", "age:integer:true:0"
  */
 export function parseColumns(columnsStr: string): Array<{
-  name: string
-  type: string
-  nullable: boolean
-  defaultValue?: any
+  name: string;
+  type: string;
+  nullable: boolean;
+  defaultValue?: any;
 }> {
-  if (!columnsStr) return []
+  if (!columnsStr) return [];
 
-  return columnsStr.split(',').map(col => {
-    const parts = col.trim().split(':')
+  return columnsStr.split(',').map((col) => {
+    const parts = col.trim().split(':');
     return {
       name: parts[0] || 'column',
       type: parts[1] || 'varchar(255)',
       nullable: parts[2] === 'true',
-      defaultValue: parts[3]
-    }
-  })
+      defaultValue: parts[3],
+    };
+  });
 }
 
 /**
  * Get a simplified template without handlebars syntax for simple cases
  */
 export function getSimpleTemplate(template: string, data: Record<string, any>): string {
-  let result = template
+  let result = template;
 
   // Simple string replacement for non-complex templates
   if (template === MIGRATION_TEMPLATES.default) {
-    return template
+    return template;
   }
 
   // For other templates, we need proper handlebars processing
   // For now, return the default template
-  return MIGRATION_TEMPLATES.default
+  return MIGRATION_TEMPLATES.default;
 }

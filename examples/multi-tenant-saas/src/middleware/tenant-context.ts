@@ -1,5 +1,5 @@
 import type { Kysely } from 'kysely'
-import type { Database } from '../db/schema'
+import type { Database } from '../db/schema.js'
 
 /**
  * Tenant Context

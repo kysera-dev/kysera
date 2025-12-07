@@ -11,7 +11,7 @@
 | Property | Value |
 |----------|-------|
 | **Package** | `@kysera/audit` |
-| **Version** | `0.3.0` |
+| **Version** | `0.4.1` |
 | **Bundle Size** | 6.1 KB (minified) |
 | **Dependencies** | `zod` (validation only) |
 | **Test Coverage** | 40 tests, comprehensive |
@@ -27,6 +27,7 @@
 - ✅ **User attribution** - Tracks who made each change
 - ✅ **Timestamp tracking** - Records when changes occurred
 - ✅ **Metadata support** - Add custom context (IP, user agent, etc.)
+- ✅ **Configurable primary key** - Support for custom PK columns (numeric & string IDs)
 
 ### Advanced Features
 - ✅ **Transaction-aware** - Audit logs commit/rollback with transactions
@@ -35,6 +36,7 @@
 - ✅ **Query methods** - Rich API for querying audit history
 - ✅ **Table filtering** - Whitelist/blacklist specific tables
 - ✅ **Auto-initialization** - Creates audit_logs table automatically
+- ✅ **UUID support** - Works with UUID and other string-based primary keys
 
 ### Performance Optimizations
 - ✅ **Single-query fetching** - Bulk operations avoid N+1 queries
@@ -77,9 +79,9 @@ const audit = auditPlugin({
 const orm = await createORM(db, [audit])
 
 // Create repository - audit logging is automatic!
-const factory = createRepositoryFactory(db)
-const userRepo = orm.createRepository(() =>
-  factory.create({
+// Note: Use the executor from orm.createRepository callback for proper plugin integration
+const userRepo = orm.createRepository((executor) =>
+  createRepositoryFactory(executor).create({
     tableName: 'users',
     mapRow: (row) => row as User,
     schemas: {
@@ -204,6 +206,13 @@ export interface AuditOptions {
   auditTable?: string
 
   /**
+   * Primary key column name
+   * Supports both numeric IDs and string IDs (e.g., UUIDs)
+   * @default 'id'
+   */
+  primaryKeyColumn?: string
+
+  /**
    * Whether to capture old values in updates/deletes
    * @default true
    */
@@ -259,6 +268,9 @@ import { auditPlugin } from '@kysera/audit'
 const audit = auditPlugin({
   // Custom audit table name
   auditTable: 'my_audit_logs',
+
+  // Custom primary key column (default: 'id')
+  primaryKeyColumn: 'id',  // or 'uuid', 'user_id', etc.
 
   // Value capture options
   captureOldValues: true,  // Capture state before changes
@@ -838,14 +850,17 @@ import { createORM, createRepositoryFactory } from '@kysera/repository'
 // Setup
 const db = new Kysely<Database>({ /* ... */ })
 const audit = auditPlugin({ getUserId: () => currentUserId })
-const orm = await createORM(db, [audit])
 
 // Transaction with audit logging
 async function transferFunds(fromId: number, toId: number, amount: number) {
   return await db.transaction().execute(async (trx) => {
-    // Create repositories using transaction executor
-    const accountRepo = orm.createRepository(() =>
-      createRepositoryFactory(trx).create({
+    // IMPORTANT: Create a new ORM instance with the transaction executor
+    // This ensures all plugins (including audit) use the transaction
+    const trxOrm = await createORM(trx as unknown as Kysely<Database>, [audit])
+
+    // Create repositories using transaction-bound ORM
+    const accountRepo = trxOrm.createRepository((executor) =>
+      createRepositoryFactory(executor).create({
         tableName: 'accounts',
         mapRow: (row) => row as Account,
         schemas: { update: UpdateAccountSchema }
@@ -860,7 +875,7 @@ async function transferFunds(fromId: number, toId: number, amount: number) {
     await accountRepo.update(fromId, {
       balance: fromAccount.balance - amount
     })
-    // Audit log: UPDATE with old/new balance
+    // Audit log: UPDATE with old/new balance (part of transaction)
 
     // Add to destination account
     const toAccount = await accountRepo.findById(toId)
@@ -870,7 +885,7 @@ async function transferFunds(fromId: number, toId: number, amount: number) {
     await accountRepo.update(toId, {
       balance: toAccount.balance + amount
     })
-    // Audit log: UPDATE with old/new balance
+    // Audit log: UPDATE with old/new balance (part of transaction)
 
     // If anything throws, both updates AND audit logs roll back
     return { success: true }
@@ -898,16 +913,19 @@ try {
 async function createUserWithPosts() {
   try {
     await db.transaction().execute(async (trx) => {
-      const userRepo = orm.createRepository(() =>
-        createRepositoryFactory(trx).create({
+      // Create transaction-bound ORM for proper audit logging
+      const trxOrm = await createORM(trx as unknown as Kysely<Database>, [audit])
+
+      const userRepo = trxOrm.createRepository((executor) =>
+        createRepositoryFactory(executor).create({
           tableName: 'users',
           mapRow: (row) => row as User,
           schemas: { create: CreateUserSchema }
         })
       )
 
-      const postRepo = orm.createRepository(() =>
-        createRepositoryFactory(trx).create({
+      const postRepo = trxOrm.createRepository((executor) =>
+        createRepositoryFactory(executor).create({
           tableName: 'posts',
           mapRow: (row) => row as Post,
           schemas: { create: CreatePostSchema }
@@ -1076,6 +1094,8 @@ console.log(`Completed in ${elapsed}ms`)
 
 ## 🗃️ Multi-Database Support
 
+> **Note:** All database-specific plugins (`auditPluginPostgreSQL`, `auditPluginMySQL`, `auditPluginSQLite`) currently use the same core implementation with database-appropriate timestamp formatting. The generic `auditPlugin()` also works across all databases. The database-specific variants are provided for future optimizations and explicit type clarity.
+
 ### PostgreSQL
 
 ```typescript
@@ -1089,11 +1109,11 @@ const audit = auditPluginPostgreSQL({
 
 const orm = await createORM(db, [audit])
 
-// PostgreSQL-specific features:
-// - JSONB columns for efficient storage (future)
-// - Native TIMESTAMP type
-// - Full transaction support
-// - RETURNING clause support
+// PostgreSQL features:
+// - Uses ISO8601 timestamp format
+// - Full ACID transaction support
+// - Works with RETURNING clause
+// - TEXT columns for JSON storage (JSONB support planned)
 ```
 
 #### PostgreSQL Schema
@@ -1104,11 +1124,11 @@ CREATE TABLE audit_logs (
   table_name VARCHAR(255) NOT NULL,
   entity_id VARCHAR(255) NOT NULL,
   operation VARCHAR(50) NOT NULL,
-  old_values TEXT,                    -- Future: JSONB
-  new_values TEXT,                    -- Future: JSONB
+  old_values TEXT,                    -- JSON string
+  new_values TEXT,                    -- JSON string
   changed_by VARCHAR(255),
   changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  metadata TEXT                       -- Future: JSONB
+  metadata TEXT                       -- JSON string
 );
 
 -- Recommended indexes
@@ -1139,11 +1159,10 @@ const audit = auditPluginMySQL({
 
 const orm = await createORM(db, [audit])
 
-// MySQL-specific features:
-// - JSON columns for structured data (future)
-// - DATETIME type with proper formatting
+// MySQL features:
+// - Uses 'YYYY-MM-DD HH:MM:SS' timestamp format (MySQL DATETIME compatible)
 // - InnoDB transaction support
-// - Optimized for large-scale auditing
+// - TEXT columns for JSON storage
 ```
 
 #### MySQL Schema
@@ -1154,11 +1173,11 @@ CREATE TABLE audit_logs (
   table_name VARCHAR(255) NOT NULL,
   entity_id VARCHAR(255) NOT NULL,
   operation VARCHAR(50) NOT NULL,
-  old_values TEXT,                    -- Future: JSON
-  new_values TEXT,                    -- Future: JSON
+  old_values TEXT,                    -- JSON string
+  new_values TEXT,                    -- JSON string
   changed_by VARCHAR(255),
   changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  metadata TEXT,                      -- Future: JSON
+  metadata TEXT,                      -- JSON string
   INDEX idx_audit_logs_table_name (table_name),
   INDEX idx_audit_logs_entity_id (entity_id),
   INDEX idx_audit_logs_operation (operation),
@@ -1182,11 +1201,11 @@ const audit = auditPluginSQLite({
 
 const orm = await createORM(db, [audit])
 
-// SQLite-specific features:
-// - TEXT storage for JSON
-// - ISO8601 string timestamps
+// SQLite features:
+// - Uses ISO8601 timestamp format
+// - TEXT columns for JSON storage
 // - Full ACID transaction support
-// - Perfect for testing and development
+// - Ideal for testing and development
 ```
 
 #### SQLite Schema
@@ -1214,6 +1233,104 @@ CREATE INDEX idx_audit_logs_table_entity ON audit_logs(table_name, entity_id);
 ```
 
 ## 🔧 Advanced Usage
+
+### Custom Primary Keys (UUID Support)
+
+The audit plugin supports custom primary key columns, including UUID and other string-based identifiers.
+
+#### UUID Primary Keys
+
+```typescript
+// Table with UUID primary key
+interface UsersTable {
+  uuid: string  // UUID primary key instead of numeric id
+  email: string
+  name: string
+}
+
+// Configure audit plugin for UUID
+const audit = auditPlugin({
+  primaryKeyColumn: 'uuid',  // Specify custom primary key
+  tables: ['users']
+})
+
+// Usage
+const userRepo = orm.createRepository(() =>
+  factory.create({
+    tableName: 'users',
+    mapRow: (row) => row as User,
+    schemas: { create: CreateUserSchema }
+  })
+)
+
+// All operations work with UUID
+const uuid = randomUUID()
+await userRepo.create({ uuid, email: 'test@example.com', name: 'John' })
+await userRepo.update(uuid, { name: 'Jane' })
+await userRepo.delete(uuid)
+
+// Query audit history with UUID
+const history = await userRepo.getAuditHistory(uuid)
+console.log(history)  // Full audit trail with UUID references
+```
+
+#### Custom String Primary Keys
+
+```typescript
+// Table with custom string primary key
+interface OrdersTable {
+  order_id: string  // Custom primary key like 'ORD-12345'
+  product_id: number
+  total: number
+}
+
+// Configure audit plugin
+const audit = auditPlugin({
+  primaryKeyColumn: 'order_id',  // Custom primary key column
+  tables: ['orders']
+})
+
+// Usage
+const orderRepo = orm.createRepository(() =>
+  factory.create({
+    tableName: 'orders',
+    mapRow: (row) => row as Order,
+    schemas: { create: CreateOrderSchema }
+  })
+)
+
+// Works with custom string IDs
+const orderId = `ORD-${Date.now()}`
+await orderRepo.create({ order_id: orderId, product_id: 123, total: 99.99 })
+
+// Get audit history
+const history = await orderRepo.getAuditHistory(orderId)
+```
+
+#### Numeric IDs (Default Behavior)
+
+```typescript
+// Default behavior - uses 'id' column
+const audit = auditPlugin({
+  // primaryKeyColumn: 'id' is implicit
+  tables: ['products']
+})
+
+// Works with standard numeric IDs
+await productRepo.create({ name: 'Product', price: 50.0 })
+await productRepo.update(1, { price: 60.0 })
+await productRepo.delete(1)
+```
+
+#### Backward Compatibility
+
+The `primaryKeyColumn` option defaults to `'id'`, ensuring backward compatibility with existing code:
+
+```typescript
+// These are equivalent:
+auditPlugin({ tables: ['users'] })
+auditPlugin({ primaryKeyColumn: 'id', tables: ['users'] })
+```
 
 ### Custom Timestamps
 
@@ -1271,30 +1388,35 @@ const audit = auditPlugin({
 
 ### System Operations
 
+**Important:** When `skipSystemOperations: true`, ALL audit logging is disabled regardless of the `getUserId` value. This is useful for migrations and seeding where you want to bypass audit logging entirely.
+
 ```typescript
-// Skip auditing for system operations
+// Skip auditing for ALL operations when skipSystemOperations is true
 const audit = auditPlugin({
-  skipSystemOperations: true,
+  skipSystemOperations: true,  // This alone disables all audit logging
   getUserId: () => currentUser?.id || null
 })
 
-// Usage in migrations
+// Usage in migrations - NO audit logs created
 async function runMigration() {
-  currentUser = null  // No user for system operations
-
   await userRepo.bulkCreate([
     /* ... seed data ... */
   ])
-
-  // No audit logs created because:
-  // 1. skipSystemOperations = true
-  // 2. currentUser = null
+  // No audit logs created because skipSystemOperations = true
+  // Note: getUserId value is irrelevant when skipSystemOperations is enabled
 }
 
-// Regular operations still audited
-currentUser = { id: 'user-123' }
-await userRepo.create({ email: 'test@example.com' })
-// Audit log created ✅
+// To selectively enable auditing, use conditional skipSystemOperations:
+const conditionalAudit = auditPlugin({
+  skipSystemOperations: process.env.NODE_ENV === 'test', // Skip only in tests
+  getUserId: () => currentUser?.id || null
+})
+
+// Or manage auditing per-operation using table filtering:
+const selectiveAudit = auditPlugin({
+  getUserId: () => currentUser?.id || null,
+  excludeTables: ['migrations', 'seeds']  // Exclude specific tables instead
+})
 ```
 
 ### Multiple Tables with Different Configs
@@ -1551,15 +1673,28 @@ export function auditPluginSQLite(options?: AuditOptions): Plugin
 ### Types
 
 ```typescript
+export type AuditTimestamp = Date | string
+
 export interface AuditOptions {
+  /** Table name for storing audit logs @default 'audit_logs' */
   auditTable?: string
+  /** Primary key column name (supports numeric & string IDs) @default 'id' */
+  primaryKeyColumn?: string
+  /** Whether to capture old values in updates/deletes @default true */
   captureOldValues?: boolean
+  /** Whether to capture new values in inserts/updates @default true */
   captureNewValues?: boolean
+  /** Skip auditing for system operations @default false */
   skipSystemOperations?: boolean
+  /** Whitelist of tables to audit (if set, only these tables are audited) */
   tables?: string[]
+  /** Blacklist of tables to exclude from auditing */
   excludeTables?: string[]
+  /** Function to get the current user ID */
   getUserId?: () => string | null
-  getTimestamp?: () => Date | string
+  /** Function to get the current timestamp */
+  getTimestamp?: () => AuditTimestamp
+  /** Function to get additional metadata for audit entries */
   metadata?: () => Record<string, unknown>
 }
 
@@ -1587,24 +1722,7 @@ export interface ParsedAuditLogEntry {
   metadata: Record<string, unknown> | null
 }
 
-export type AuditTimestamp = Date | string
-```
-
-### Extended Repository Methods
-
-All repositories extended with audit plugin gain these methods:
-
-```typescript
-interface AuditRepositoryExtensions<T> {
-  getAuditHistory(entityId: number | string): Promise<ParsedAuditLogEntry[]>
-  getAuditLogs(entityId: number | string): Promise<ParsedAuditLogEntry[]>
-  getAuditLog(auditId: number): Promise<AuditLogEntry | null>
-  getTableAuditLogs(filters?: AuditFilters): Promise<ParsedAuditLogEntry[]>
-  getUserChanges(userId: string): Promise<ParsedAuditLogEntry[]>
-  restoreFromAudit(auditId: number): Promise<T>
-}
-
-interface AuditFilters {
+export interface AuditFilters {
   operation?: string
   userId?: string
   startDate?: Date | string
@@ -1612,21 +1730,54 @@ interface AuditFilters {
 }
 ```
 
+### Extended Repository Methods
+
+All repositories extended with audit plugin gain these methods. The `AuditRepositoryExtensions` interface is exported for type annotations:
+
+```typescript
+export interface AuditRepositoryExtensions<T = unknown> {
+  /** Get audit history for a specific entity */
+  getAuditHistory(entityId: number | string): Promise<ParsedAuditLogEntry[]>
+  /** Alias for getAuditHistory (backwards compatibility) */
+  getAuditLogs(entityId: number | string): Promise<ParsedAuditLogEntry[]>
+  /** Get a specific audit log entry by its ID */
+  getAuditLog(auditId: number): Promise<AuditLogEntry | null>
+  /** Get audit logs for entire table with optional filters */
+  getTableAuditLogs(filters?: AuditFilters): Promise<ParsedAuditLogEntry[]>
+  /** Get all changes made by a specific user */
+  getUserChanges(userId: string): Promise<ParsedAuditLogEntry[]>
+  /** Restore entity from audit log (DELETE → re-create, UPDATE → revert) */
+  restoreFromAudit(auditId: number): Promise<T>
+}
+
+// Usage with type safety
+import type { AuditRepositoryExtensions } from '@kysera/audit'
+
+const userRepo = orm.createRepository(...) as Repository<User, DB> & AuditRepositoryExtensions<User>
+```
+
 ## ✅ Best Practices
 
 ### 1. Always Use Transaction Executor
 
+For proper audit logging within transactions, create a transaction-bound ORM:
+
 ```typescript
-// ✅ CORRECT
+// ✅ CORRECT: Create ORM with transaction executor
 await db.transaction().execute(async (trx) => {
-  const repos = createRepositories(trx)  // Pass transaction
-  await repos.users.create(...)
+  const trxOrm = await createORM(trx as unknown as Kysely<Database>, [audit])
+  const userRepo = trxOrm.createRepository((executor) =>
+    createRepositoryFactory(executor).create({...})
+  )
+  await userRepo.create(...)  // Both data and audit log in same transaction
 })
 
-// ❌ INCORRECT
+// ❌ INCORRECT: Using original ORM (audit logs may not rollback properly)
 await db.transaction().execute(async (trx) => {
-  const repos = createRepositories(db)   // Wrong executor!
-  await repos.users.create(...)
+  const userRepo = orm.createRepository((executor) =>
+    createRepositoryFactory(trx).create({...})  // Mixed executors!
+  )
+  await userRepo.create(...)
 })
 ```
 

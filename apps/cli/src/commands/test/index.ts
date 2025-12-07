@@ -1,15 +1,15 @@
-import { Command } from 'commander'
+import { Command } from 'commander';
 
 // Import test commands
-import { testSetupCommand } from './setup.js'
-import { testTeardownCommand } from './teardown.js'
-import { testSeedCommand } from './seed.js'
-import { fixturesCommand } from './fixtures.js'
+import { testSetupCommand } from './setup.js';
+import { testTeardownCommand } from './teardown.js';
+import { testSeedCommand } from './seed.js';
+import { fixturesCommand } from './fixtures.js';
 
 export function testCommand(): Command {
-  const cmd = new Command('test')
-    .description('Test environment management and utilities')
-    .addHelpText('after', `
+  const cmd = new Command('test').description('Test environment management and utilities').addHelpText(
+    'after',
+    `
 
 Examples:
   kysera test setup --environment test --migrate      Set up test database
@@ -31,13 +31,14 @@ Workflow:
 
 For more information on a subcommand, run:
   kysera test <subcommand> --help
-`)
+`
+  );
 
   // Add subcommands
-  cmd.addCommand(testSetupCommand())
-  cmd.addCommand(testTeardownCommand())
-  cmd.addCommand(testSeedCommand())
-  cmd.addCommand(fixturesCommand())
+  cmd.addCommand(testSetupCommand());
+  cmd.addCommand(testTeardownCommand());
+  cmd.addCommand(testSeedCommand());
+  cmd.addCommand(fixturesCommand());
 
-  return cmd
+  return cmd;
 }
