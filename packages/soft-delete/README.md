@@ -10,11 +10,11 @@
 
 | Metric | Value |
 |--------|-------|
-| **Version** | 0.4.1 |
-| **Bundle Size** | 477 B (minified) |
-| **Test Coverage** | 39 tests passing |
-| **Dependencies** | @kysera/repository (workspace) |
-| **Peer Dependencies** | kysely >=0.28.0 |
+| **Version** | 0.5.1 |
+| **Bundle Size** | ~4 KB (minified) |
+| **Test Coverage** | 39+ tests passing |
+| **Dependencies** | @kysera/core (workspace) |
+| **Peer Dependencies** | kysely >=0.28.8, @kysera/repository, zod ^4.1.13 |
 | **Target Runtimes** | Node.js 20+, Bun 1.0+, Deno |
 | **Module System** | ESM only |
 | **Database Support** | PostgreSQL, MySQL, SQLite |

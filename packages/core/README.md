@@ -10,10 +10,10 @@
 
 | Metric | Value |
 |--------|-------|
-| **Version** | 0.4.1 |
-| **Bundle Size** | 12.76 KB (minified) |
-| **Test Coverage** | 265 tests passing |
-| **Runtime Dependencies** | 0 (peer: kysely >=0.28.0) |
+| **Version** | 0.5.1 |
+| **Bundle Size** | ~24 KB (minified) |
+| **Test Coverage** | 363 tests passing |
+| **Runtime Dependencies** | 0 (peer: kysely >=0.28.8) |
 | **Target Runtimes** | Node.js 20+, Bun 1.0+, Deno |
 | **Module System** | ESM only |
 | **Database Support** | PostgreSQL, MySQL, SQLite |

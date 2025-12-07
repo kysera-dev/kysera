@@ -11,10 +11,11 @@
 | Property | Value |
 |----------|-------|
 | **Package** | `@kysera/audit` |
-| **Version** | `0.4.1` |
-| **Bundle Size** | 6.1 KB (minified) |
-| **Dependencies** | `zod` (validation only) |
-| **Test Coverage** | 40 tests, comprehensive |
+| **Version** | `0.5.1` |
+| **Bundle Size** | ~8 KB (minified) |
+| **Dependencies** | @kysera/core (workspace) |
+| **Peer Dependencies** | kysely >=0.28.8, @kysera/repository, zod ^4.1.13 |
+| **Test Coverage** | 40+ tests, comprehensive |
 | **Supported Databases** | PostgreSQL, MySQL, SQLite |
 | **Transaction Support** | ✅ Full ACID compliance |
 | **Type Safety** | ✅ Full TypeScript support |
