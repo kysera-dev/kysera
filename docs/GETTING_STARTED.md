@@ -5,8 +5,8 @@ A quick-start guide to using Kysera - a TypeScript ORM built on top of Kysely wi
 ## Installation
 
 ```bash
-# Install core packages
-pnpm add kysely @kysera/core @kysera/repository
+# Install core packages (zod is required for @kysera/repository)
+pnpm add kysely @kysera/core @kysera/repository zod
 
 # Install database driver (choose one)
 pnpm add pg              # PostgreSQL

@@ -5,10 +5,16 @@ Production-ready TypeScript ORM built on top of Kysely with minimal core, option
 ## Quick Start (5 Minutes to First Query)
 
 ```bash
-# Install
+# Install Kysely (required)
 npm install kysely pg
-npm install @kysera/core      # Optional: debug & utilities
-npm install @kysera/repository # Optional: repository pattern
+
+# Install Kysera packages (optional, pick what you need)
+npm install @kysera/core           # Debug, health, pagination, errors
+npm install @kysera/repository zod # Repository pattern with validation
+npm install @kysera/soft-delete    # Soft delete plugin
+npm install @kysera/audit          # Audit logging plugin
+npm install @kysera/timestamps     # Auto timestamps plugin
+npm install @kysera/migrations     # Migration system
 ```
 
 ```typescript
@@ -46,10 +52,10 @@ const users = await db
 ## Core Philosophy
 
 ### 1. Minimal Core, Optional Everything
-- Core is just Kysely + debug utilities (~10KB)
+- Core is just Kysely + debug utilities
 - Repository pattern is optional
 - All features are opt-in plugins
-- Tree-shakeable architecture
+- Tree-shakeable ESM architecture
 
 ### 2. Explicit Over Implicit
 - Every operation is traceable
@@ -77,14 +83,14 @@ const users = await db
 
 ## Packages
 
-| Package | Description | Size |
-|---------|-------------|------|
-| `@kysera/core` | Core utilities - debug, health, pagination, errors | ~10KB |
-| `@kysera/repository` | Repository pattern with smart validation | ~15KB |
-| `@kysera/soft-delete` | Soft delete plugin | ~5KB |
-| `@kysera/audit` | Audit logging plugin | ~8KB |
-| `@kysera/timestamps` | Auto timestamps plugin | ~3KB |
-| `@kysera/migrations` | Migration helpers | ~10KB |
+| Package | Description | Size | Version |
+|---------|-------------|------|---------|
+| `@kysera/core` | Core utilities - debug, health, pagination, errors | ~24KB | 0.5.1 |
+| `@kysera/repository` | Repository pattern with smart validation | ~12KB | 0.5.1 |
+| `@kysera/soft-delete` | Soft delete plugin | ~4KB | 0.5.1 |
+| `@kysera/audit` | Audit logging plugin | ~8KB | 0.5.1 |
+| `@kysera/timestamps` | Auto timestamps plugin | ~4KB | 0.5.1 |
+| `@kysera/migrations` | Migration helpers with dry-run support | ~12KB | 0.5.1 |
 
 ## Development
 
@@ -121,8 +127,10 @@ kysera/
 │   ├── timestamps/    # Timestamps plugin
 │   └── migrations/    # Migration helpers
 ├── examples/
-│   └── blog-app/      # Example blog application
-├── apps/              # Applications
+│   ├── blog-app/           # Blog application example
+│   ├── e-commerce/         # E-commerce with transactions
+│   └── multi-tenant-saas/  # Multi-tenant SaaS patterns
+├── docs/              # Documentation
 └── turbo.json         # Turborepo configuration
 ```
 
@@ -262,10 +270,10 @@ MIT
 
 ## Project Status
 
-**Current Version**: 0.3.0 (Beta)
-**Implementation Completion**: 95%
-**Test Coverage**: 483 tests passing across 6 packages
-**Phase 3**: ✅ COMPLETED
+**Current Version**: 0.5.1 (Stable)
+**Implementation Completion**: 100%
+**Test Coverage**: 554+ tests passing across 6 packages
+**Phase 4**: ✅ COMPLETED
 
 ### Completed Features
 
@@ -283,24 +291,24 @@ MIT
 
 | Package | Tests Passing | Status |
 |---------|--------------|--------|
-| @kysera/core | 265 | ✅ Production Ready |
-| @kysera/repository | 99 | ✅ Production Ready |
-| @kysera/migrations | 24 | ✅ Production Ready |
-| @kysera/soft-delete | 39 | ✅ Production Ready |
-| @kysera/audit | 40 | ✅ Production Ready |
-| @kysera/timestamps | 16 | ✅ Production Ready |
-| **Total** | **483** | **All Passing** |
+| @kysera/core | 363 | ✅ Production Ready |
+| @kysera/repository | 127 | ✅ Production Ready |
+| @kysera/migrations | 64 | ✅ Production Ready |
+| @kysera/soft-delete | 39+ | ✅ Production Ready |
+| @kysera/audit | 40+ | ✅ Production Ready |
+| @kysera/timestamps | 16+ | ✅ Production Ready |
+| **Total** | **554+** | **All Passing** |
 
 ### Package Sizes (Minified)
 
 | Package | Size | Dependencies |
 |---------|------|--------------|
-| @kysera/core | 12.76 KB | Zero runtime deps |
-| @kysera/repository | 4.93 KB | Zero runtime deps |
-| @kysera/migrations | 3.85 KB | Zero runtime deps |
-| @kysera/soft-delete | 477 B | Zero runtime deps |
-| @kysera/audit | 4.30 KB | Zero runtime deps |
-| @kysera/timestamps | 2.89 KB | Zero runtime deps |
+| @kysera/core | ~24 KB | Zero runtime deps |
+| @kysera/repository | ~12 KB | @kysera/core |
+| @kysera/migrations | ~12 KB | @kysera/core |
+| @kysera/soft-delete | ~4 KB | @kysera/core |
+| @kysera/audit | ~8 KB | @kysera/core |
+| @kysera/timestamps | ~4 KB | @kysera/core |
 
 ### Roadmap
 
@@ -317,12 +325,25 @@ MIT
 - Audit plugin optimization (10-100x performance improvement)
 - Comprehensive documentation
 
-**Phase 3** (Next):
+**Phase 3** (✅ COMPLETED):
 - Minor fixes and polish
 - Performance optimizations
 - API documentation (TypeDoc)
-- Example applications
+- Example applications (blog-app, e-commerce, multi-tenant-saas)
 - Production case studies
+
+**Phase 4** (✅ COMPLETED):
+- Comprehensive test coverage (554+ tests)
+- Security improvements
+- Zod 4.x migration
+- Plugin system enhancements
+- Migration system with dry-run support
+
+**Phase 5** (Next):
+- Community feedback integration
+- Additional database adapters
+- Advanced caching strategies
+- Performance benchmarks publication
 
 ### Quick Links
 
