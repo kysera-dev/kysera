@@ -18,11 +18,11 @@
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules", "tests", "**/*.test.ts", "**/*.spec.ts"],
   "references": [
-    { "path": "../../packages/kysera-core" },
-    { "path": "../../packages/kysera-repository" },
-    { "path": "../../packages/kysera-migrations" },
-    { "path": "../../packages/kysera-audit" },
-    { "path": "../../packages/kysera-soft-delete" },
-    { "path": "../../packages/kysera-timestamps" }
+    { "path": "../../packages/core" },
+    { "path": "../../packages/repository" },
+    { "path": "../../packages/migrations" },
+    { "path": "../../packages/audit" },
+    { "path": "../../packages/soft-delete" },
+    { "path": "../../packages/timestamps" }
   ]
 }

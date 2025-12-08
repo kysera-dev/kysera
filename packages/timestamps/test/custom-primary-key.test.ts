@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Kysely } from 'kysely';
 import Database from 'better-sqlite3';
 import { SqliteDialect } from 'kysely';
-import { createORM, createRepositoryFactory } from '../../kysera-repository/dist/index.js';
+import { createORM, createRepositoryFactory } from '@kysera/repository';
 import { timestampsPlugin, type TimestampsRepository } from '../src/index.js';
 
 // Test database schema with custom primary key

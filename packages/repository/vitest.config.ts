@@ -21,7 +21,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       // Cross-package test utilities
-      '../../kysera-core/test': path.resolve(__dirname, '../kysera-core/test'),
+      '../core/test': path.resolve(__dirname, '../core/test'),
     },
   },
 });

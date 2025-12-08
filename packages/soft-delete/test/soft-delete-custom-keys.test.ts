@@ -3,7 +3,7 @@ import { Kysely, SqliteDialect, sql, type Generated } from 'kysely';
 import sqliteConstructor from 'better-sqlite3';
 import type { Database as SQLiteDatabase } from 'better-sqlite3';
 import { softDeletePlugin } from '../src/index.js';
-import { createORM, createRepositoryFactory } from '../../kysera-repository/dist/index.js';
+import { createORM, createRepositoryFactory } from '@kysera/repository';
 import { z } from 'zod';
 
 // Custom database schema with various primary key types

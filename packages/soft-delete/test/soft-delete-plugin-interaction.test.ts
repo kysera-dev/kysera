@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDatabase, seedTestData } from './setup/database.js';
 import { softDeletePlugin } from '../src/index.js';
-import { createORM, createRepositoryFactory } from '../../kysera-repository/dist/index.js';
+import { createORM, createRepositoryFactory } from '@kysera/repository';
 import type { Kysely } from 'kysely';
 import type { TestDatabase } from './setup/database.js';
-import type { Plugin, AnyQueryBuilder } from '../../kysera-repository/dist/index.js';
+import type { Plugin, AnyQueryBuilder } from '@kysera/repository';
 import { z } from 'zod';
 
 interface TestUser {

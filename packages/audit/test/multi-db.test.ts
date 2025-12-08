@@ -7,8 +7,7 @@ import {
   initializeSchema,
   clearDatabase,
 } from './utils/multi-db.js';
-import { createRepositoryFactory } from '../../kysera-repository/dist/index.js';
-import { createORM } from '../../kysera-repository/dist/index.js';
+import { createRepositoryFactory, createORM } from '@kysera/repository';
 import { auditPlugin, type ParsedAuditLogEntry } from '../src/index.js';
 import { z } from 'zod';
 
