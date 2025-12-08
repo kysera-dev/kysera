@@ -113,6 +113,9 @@ importers:
       '@kysera/repository':
         specifier: workspace:*
         version: link:../../packages/repository
+      '@kysera/rls':
+        specifier: workspace:*
+        version: link:../../packages/rls
       '@kysera/soft-delete':
         specifier: workspace:*
         version: link:../../packages/soft-delete
@@ -214,21 +217,21 @@ importers:
         specifier: ^8.16.3
         version: 8.16.3
       zod:
-        specifier: ^4.1.11
-        version: 4.1.11
+        specifier: ^4.1.13
+        version: 4.1.13
     devDependencies:
       '@types/node':
-        specifier: ^24.6.0
-        version: 24.6.0
+        specifier: ^24.10.1
+        version: 24.10.1
       '@types/pg':
-        specifier: ^8.15.5
-        version: 8.15.5
+        specifier: ^8.15.6
+        version: 8.15.6
       tsx:
-        specifier: ^4.20.0
-        version: 4.20.6
+        specifier: ^4.21.0
+        version: 4.21.0
       typescript:
-        specifier: ^5.9.2
-        version: 5.9.2
+        specifier: ^5.9.3
+        version: 5.9.3
 
   examples/e-commerce:
     dependencies:
@@ -251,21 +254,21 @@ importers:
         specifier: ^8.16.3
         version: 8.16.3
       zod:
-        specifier: ^4.1.11
-        version: 4.1.11
+        specifier: ^4.1.13
+        version: 4.1.13
     devDependencies:
       '@types/node':
-        specifier: ^24.6.0
-        version: 24.6.0
+        specifier: ^24.10.1
+        version: 24.10.1
       '@types/pg':
-        specifier: ^8.11.10
-        version: 8.15.5
+        specifier: ^8.15.6
+        version: 8.15.6
       tsx:
-        specifier: ^4.20.6
-        version: 4.20.6
+        specifier: ^4.21.0
+        version: 4.21.0
       typescript:
-        specifier: ^5.9.2
-        version: 5.9.2
+        specifier: ^5.9.3
+        version: 5.9.3
 
   examples/multi-tenant-saas:
     dependencies:
@@ -288,21 +291,21 @@ importers:
         specifier: ^8.16.3
         version: 8.16.3
       zod:
-        specifier: ^4.1.11
-        version: 4.1.11
+        specifier: ^4.1.13
+        version: 4.1.13
     devDependencies:
       '@types/node':
-        specifier: ^24.6.0
-        version: 24.6.0
+        specifier: ^24.10.1
+        version: 24.10.1
       '@types/pg':
-        specifier: ^8.11.10
-        version: 8.15.5
+        specifier: ^8.15.6
+        version: 8.15.6
       tsx:
-        specifier: ^4.20.6
-        version: 4.20.6
+        specifier: ^4.21.0
+        version: 4.21.0
       typescript:
-        specifier: ^5.9.2
-        version: 5.9.2
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/audit:
     dependencies:
@@ -319,6 +322,9 @@ importers:
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
+      '@vitest/coverage-v8':
+        specifier: ^4.0.15
+        version: 4.0.15(vitest@4.0.15(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.1))
       better-sqlite3:
         specifier: ^12.5.0
         version: 12.5.0
@@ -386,6 +392,9 @@ importers:
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
+      '@vitest/coverage-v8':
+        specifier: ^4.0.15
+        version: 4.0.15(vitest@4.0.15(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.1))
       better-sqlite3:
         specifier: ^12.5.0
         version: 12.5.0
@@ -451,6 +460,52 @@ importers:
         specifier: ^4.1.13
         version: 4.1.13
 
+  packages/rls:
+    dependencies:
+      '@kysera/core':
+        specifier: workspace:*
+        version: link:../core
+      '@kysera/repository':
+        specifier: workspace:*
+        version: link:../repository
+      zod:
+        specifier: ^4.1.13
+        version: 4.1.13
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.10.1
+      '@types/pg':
+        specifier: ^8.15.6
+        version: 8.15.6
+      '@vitest/coverage-v8':
+        specifier: ^4.0.15
+        version: 4.0.15(vitest@4.0.15(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.1))
+      better-sqlite3:
+        specifier: ^12.5.0
+        version: 12.5.0
+      kysely:
+        specifier: ^0.28.8
+        version: 0.28.8
+      mysql2:
+        specifier: ^3.15.2
+        version: 3.15.3
+      pg:
+        specifier: ^8.16.3
+        version: 8.16.3
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.1)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.15
+        version: 4.0.15(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.1)
+
   packages/soft-delete:
     dependencies:
       '@kysera/core':
@@ -503,6 +558,9 @@ importers:
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
+      '@vitest/coverage-v8':
+        specifier: ^4.0.15
+        version: 4.0.15(vitest@4.0.15(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.1))
       better-sqlite3:
         specifier: ^12.5.0
         version: 12.5.0
@@ -3534,9 +3592,6 @@ packages:
   yoctocolors@2.1.2:
     resolution: {integrity: sha512-CzhO+pFNo8ajLM2d2IW/R93ipy99LWjtwblvC1RsoSUMZgyLbYFr221TnSNT7GjGdYui6P459mw9JH/g/zW2ug==}
     engines: {node: '>=18'}
-
-  zod@4.1.11:
-    resolution: {integrity: sha512-WPsqwxITS2tzx1bzhIKsEs19ABD5vmCVa4xBo2tq/SrV4RNZtfws1EnCWQXM6yh8bD08a1idvkB5MZSBiZsjwg==}
 
   zod@4.1.13:
     resolution: {integrity: sha512-AvvthqfqrAhNH9dnfmrfKzX5upOdjUVJYFqNSlkmGf64gRaTzlPwz99IHYnVs28qYAybvAlBV+H7pn0saFY4Ig==}
@@ -6711,7 +6766,5 @@ snapshots:
   yocto-queue@0.1.0: {}
 
   yoctocolors@2.1.2: {}
-
-  zod@4.1.11: {}
 
   zod@4.1.13: {}
