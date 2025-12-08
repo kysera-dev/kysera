@@ -2,6 +2,28 @@ import Handlebars from 'handlebars';
 import { readFile } from 'fs-extra';
 import { resolve, dirname } from 'node:path';
 
+/**
+ * Convert snake_case string to camelCase
+ */
+export function toCamelCase(str: string): string {
+  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
+/**
+ * Convert snake_case string to PascalCase
+ */
+export function toPascalCase(str: string): string {
+  const camel = toCamelCase(str);
+  return camel.charAt(0).toUpperCase() + camel.slice(1);
+}
+
+/**
+ * Convert snake_case string to kebab-case
+ */
+export function toKebabCase(str: string): string {
+  return str.replace(/_/g, '-').toLowerCase();
+}
+
 // Register helpers
 Handlebars.registerHelper('camelCase', (str: string) => {
   return str.replace(/[-_](\w)/g, (_, c) => c.toUpperCase());

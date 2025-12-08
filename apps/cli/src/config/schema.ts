@@ -97,10 +97,44 @@ const TimestampsPluginSchema = TimestampsOptionsSchema.extend({
   tables: z.array(z.string()).default(['*']).optional(),
 });
 
+/**
+ * RLS (Row-Level Security) plugin schema
+ *
+ * Configuration for the RLS plugin that provides declarative policy definition,
+ * automatic query transformation, and optional native PostgreSQL RLS generation.
+ *
+ * Note: The 'schema' field (required by RLSPluginOptions) is not included here
+ * as it contains runtime policy definitions that should be defined in code,
+ * not in the config file.
+ */
+const RLSPluginSchema = z.object({
+  /** Enable/disable RLS plugin */
+  enabled: z.boolean().default(false),
+
+  /** Tables to skip RLS for (always bypass policies) */
+  skipTables: z.array(z.string()).optional(),
+
+  /** Roles that bypass RLS entirely (e.g., ['admin', 'superuser']) */
+  bypassRoles: z.array(z.string()).optional(),
+
+  /** Require RLS context for all operations (throws if missing) */
+  requireContext: z.boolean().default(false),
+
+  /** Enable audit logging of policy decisions */
+  auditDecisions: z.boolean().default(false),
+
+  /** Default behavior when no policies match (true = deny, false = allow) */
+  defaultDeny: z.boolean().default(true),
+
+  /** Tables to apply RLS to (if not specified, applies to all tables in schema) */
+  tables: z.array(z.string()).optional(),
+});
+
 const PluginsConfigSchema = z.object({
   audit: AuditPluginSchema.optional(),
   softDelete: SoftDeletePluginSchema.optional(),
   timestamps: TimestampsPluginSchema.optional(),
+  rls: RLSPluginSchema.optional(),
 });
 
 // Code generation configuration schema

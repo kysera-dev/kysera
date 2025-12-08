@@ -99,6 +99,11 @@ const PLUGINS = {
     package: '@kysera/audit',
     description: 'Comprehensive audit logging',
   },
+  rls: {
+    name: 'Row-Level Security',
+    package: '@kysera/rls',
+    description: 'Declarative row-level security policies for multi-tenant applications',
+  },
 };
 
 export function initCommand(): Command {

@@ -7,6 +7,7 @@ import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector, TableInfo } from './introspector.js';
 import { execa } from 'execa';
+import { toCamelCase, toPascalCase, toKebabCase } from '../../utils/templates.js';
 
 export interface CrudOptions {
   table: string;
@@ -327,17 +328,4 @@ function getPrimaryKeyType(table: TableInfo): string {
     return 'number';
   }
   return DatabaseIntrospector.mapDataTypeToTypeScript(primaryKeyColumn.dataType, false);
-}
-
-function toCamelCase(str: string): string {
-  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-}
-
-function toPascalCase(str: string): string {
-  const camel = toCamelCase(str);
-  return camel.charAt(0).toUpperCase() + camel.slice(1);
-}
-
-function toKebabCase(str: string): string {
-  return str.replace(/_/g, '-');
 }

@@ -298,8 +298,8 @@ export async function performHealthCheck<DB>(
         ...baseResult.metrics,
         databaseVersion: 'Unknown',
       };
-    } catch {
-      // Ignore version check errors
+    } catch (error) {
+      consoleLogger.debug?.('Version check failed', { error: error instanceof Error ? error.message : String(error) });
     }
   }
 

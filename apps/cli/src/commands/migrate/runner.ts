@@ -4,7 +4,7 @@ import { join, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { prism } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
-import { CLIError, isExpectedError } from '../../utils/errors.js';
+import { CLIError, isExpectedError, ValidationError } from '../../utils/errors.js';
 
 export interface Migration {
   name: string;
@@ -190,11 +190,11 @@ export class MigrationRunner {
       const module = await import(fileUrl);
 
       if (!module.up || typeof module.up !== 'function') {
-        throw new Error(`Invalid migration ${file.name}: must export an 'up' function`);
+        throw new ValidationError(`Invalid migration ${file.name}: must export an 'up' function`);
       }
 
       if (!module.down || typeof module.down !== 'function') {
-        throw new Error(`Invalid migration ${file.name}: must export a 'down' function`);
+        throw new ValidationError(`Invalid migration ${file.name}: must export a 'down' function`);
       }
 
       return {

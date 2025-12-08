@@ -45,7 +45,9 @@ function isMySQL<DB>(db: Executor<DB>): boolean {
     }
 
     return false;
-  } catch {
+  } catch (error) {
+    // Expected failure when accessing internal Kysely properties - default to false
+    // This is an expected code path when adapter detection is not possible
     return false;
   }
 }

@@ -128,8 +128,9 @@ export async function testWithSavepoints<DB, T>(
       } finally {
         try {
           await sql`ROLLBACK TO SAVEPOINT test_sp`.execute(trx);
-        } catch {
+        } catch (error) {
           // Savepoint might not exist if transaction already failed
+          // This is expected when the transaction has already rolled back
         }
       }
 

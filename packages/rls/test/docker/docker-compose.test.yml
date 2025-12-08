@@ -1,0 +1,77 @@
+services:
+  # PostgreSQL for RLS integration testing
+  postgres-rls:
+    image: postgres:16-alpine
+    container_name: postgres-rls-${TEST_SUITE_ID:-default}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rls_test}
+      POSTGRES_USER: ${POSTGRES_USER:-rls_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rls_pass}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    command: >
+      postgres
+      -c shared_buffers=128MB
+      -c max_connections=100
+      -c log_statement=none
+      -c fsync=off
+      -c synchronous_commit=off
+      -c full_page_writes=off
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rls_user}"]
+      interval: 1s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
+    networks:
+      - rls-test-network
+    tmpfs:
+      - /var/lib/postgresql/data
+    labels:
+      - "test.suite=${TEST_SUITE_ID:-default}"
+      - "test.type=postgres-rls"
+      - "test.cleanup=true"
+
+  # MySQL for RLS integration testing
+  mysql-rls:
+    image: mysql:8.0
+    container_name: mysql-rls-${TEST_SUITE_ID:-default}
+    ports:
+      - "${MYSQL_PORT:-3307}:3306"
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-rls_test}
+      MYSQL_USER: ${MYSQL_USER:-rls_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-rls_pass}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    command: >
+      mysqld
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max_connections=100
+      --innodb-buffer-pool-size=128M
+      --innodb-flush-log-at-trx-commit=0
+      --skip-log-bin
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 1s
+      timeout: 3s
+      retries: 15
+      start_period: 10s
+    networks:
+      - rls-test-network
+    tmpfs:
+      - /var/lib/mysql
+    labels:
+      - "test.suite=${TEST_SUITE_ID:-default}"
+      - "test.type=mysql-rls"
+      - "test.cleanup=true"
+
+networks:
+  rls-test-network:
+    name: rls-test-network-${TEST_SUITE_ID:-default}
+    driver: bridge
+    labels:
+      - "test.suite=${TEST_SUITE_ID:-default}"
+      - "test.cleanup=true"

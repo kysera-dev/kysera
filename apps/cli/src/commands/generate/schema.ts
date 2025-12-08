@@ -6,6 +6,7 @@ import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector, TableInfo } from './introspector.js';
+import { toCamelCase, toPascalCase, toKebabCase } from '../../utils/templates.js';
 
 export interface SchemaOptions {
   table?: string;
@@ -213,17 +214,4 @@ export const safeParse${entityName}Filter = (data: unknown) => ${entityName}Filt
 `;
 
   return code;
-}
-
-function toCamelCase(str: string): string {
-  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-}
-
-function toPascalCase(str: string): string {
-  const camel = toCamelCase(str);
-  return camel.charAt(0).toUpperCase() + camel.slice(1);
-}
-
-function toKebabCase(str: string): string {
-  return str.replace(/_/g, '-');
 }

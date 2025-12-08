@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { prism, spinner, confirm } from '@xec-sh/kit';
 import { sql } from 'kysely';
 import { logger } from '../../utils/logger.js';
-import { CLIError } from '../../utils/errors.js';
+import { CLIError, CLIDatabaseError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
 import { validateIdentifier, safeTruncate, safeDropDatabase } from '../../utils/sql-sanitizer.js';
@@ -209,7 +209,7 @@ async function truncateDatabase(config: any, dbName: string, preserveLogs: boole
   const testConfig = { ...config, database: dbName };
   const db = await getDatabaseConnection(testConfig);
   if (!db) {
-    throw new Error(`Cannot connect to database ${dbName}`);
+    throw new CLIDatabaseError(`Cannot connect to database ${dbName}`);
   }
 
   try {

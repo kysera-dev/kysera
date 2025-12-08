@@ -131,6 +131,15 @@ describe('KyseraConfigSchema', () => {
             dateFormat: 'iso',
             setUpdatedAtOnInsert: false,
           },
+          rls: {
+            enabled: true,
+            skipTables: ['audit_logs'],
+            bypassRoles: ['admin'],
+            requireContext: true,
+            auditDecisions: false,
+            defaultDeny: true,
+            tables: ['users', 'posts'],
+          },
         },
         generate: {
           repositories: './src/repositories',
@@ -677,11 +686,124 @@ describe('PluginsConfigSchema', () => {
     });
   });
 
+  describe('rls plugin', () => {
+    it('should accept valid rls configuration', () => {
+      const config = {
+        rls: {
+          enabled: true,
+          skipTables: ['audit_logs', 'migrations'],
+          bypassRoles: ['admin', 'superuser'],
+          requireContext: true,
+          auditDecisions: true,
+          defaultDeny: true,
+          tables: ['users', 'posts', 'comments'],
+        },
+      };
+
+      const result = PluginsConfigSchema.safeParse(config);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept minimal rls configuration', () => {
+      const config = {
+        rls: {
+          enabled: true,
+        },
+      };
+
+      const result = PluginsConfigSchema.safeParse(config);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should use default values', () => {
+      const config = {
+        rls: {},
+      };
+
+      const result = PluginsConfigSchema.safeParse(config);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.rls?.enabled).toBe(false);
+        expect(result.data.rls?.requireContext).toBe(false);
+        expect(result.data.rls?.auditDecisions).toBe(false);
+        expect(result.data.rls?.defaultDeny).toBe(true);
+      }
+    });
+
+    it('should accept enabled false and parse correctly', () => {
+      const config = {
+        rls: {
+          enabled: false,
+        },
+      };
+
+      const result = PluginsConfigSchema.safeParse(config);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.rls?.enabled).toBe(false);
+        expect(result.data.rls).toBeDefined();
+      }
+    });
+
+    it('should accept rls with skipTables', () => {
+      const config = {
+        rls: {
+          enabled: true,
+          skipTables: ['system_logs', 'migrations'],
+        },
+      };
+
+      const result = PluginsConfigSchema.safeParse(config);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.rls?.skipTables).toEqual(['system_logs', 'migrations']);
+      }
+    });
+
+    it('should accept rls with bypassRoles', () => {
+      const config = {
+        rls: {
+          enabled: true,
+          bypassRoles: ['admin', 'system'],
+        },
+      };
+
+      const result = PluginsConfigSchema.safeParse(config);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.rls?.bypassRoles).toEqual(['admin', 'system']);
+      }
+    });
+
+    it('should accept defaultDeny false', () => {
+      const config = {
+        rls: {
+          enabled: true,
+          defaultDeny: false,
+        },
+      };
+
+      const result = PluginsConfigSchema.safeParse(config);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.rls?.defaultDeny).toBe(false);
+      }
+    });
+  });
+
   it('should accept multiple plugins', () => {
     const config = {
       audit: { enabled: true },
       softDelete: { enabled: true },
       timestamps: { enabled: true },
+      rls: { enabled: true },
     };
 
     const result = PluginsConfigSchema.safeParse(config);

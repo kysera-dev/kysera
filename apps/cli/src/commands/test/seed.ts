@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { prism, spinner, select, confirm } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
-import { CLIError } from '../../utils/errors.js';
+import { CLIError, ValidationError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
 import { validateIdentifier, safeTruncate } from '../../utils/sql-sanitizer.js';
@@ -620,7 +620,7 @@ async function runCustomSeeder(db: any, seederPath: string, options: TestSeedOpt
         seed: options.seed,
       });
     } else {
-      throw new Error('Custom seeder must export a seed function');
+      throw new ValidationError('Custom seeder must export a seed function');
     }
   } catch (error) {
     if (error instanceof CLIError) {

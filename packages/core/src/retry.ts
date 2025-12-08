@@ -2,6 +2,9 @@
  * Retry utilities for transient database errors
  */
 
+import { DatabaseError } from './errors.js';
+import { ErrorCodes } from './error-codes.js';
+
 export interface RetryOptions {
   maxAttempts?: number;
   delayMs?: number;
@@ -102,7 +105,7 @@ export class CircuitBreaker {
 
     // If circuit is open, fail fast
     if (this.state === 'open') {
-      throw new Error('Circuit breaker is open');
+      throw new DatabaseError('Circuit breaker is open', ErrorCodes.DB_CONNECTION_FAILED);
     }
 
     try {

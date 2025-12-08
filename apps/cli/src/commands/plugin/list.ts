@@ -348,6 +348,19 @@ async function discoverAvailablePlugins(): Promise<Plugin[]> {
         commands: ['rest:generate', 'rest:docs'],
       },
     },
+    {
+      name: '@kysera/rls',
+      description: 'Row-Level Security - Declarative policies for data isolation',
+      version: '0.5.1',
+      status: 'available',
+      author: 'Kysera Team',
+      category: 'schema',
+      homepage: 'https://github.com/kysera/kysera',
+      kysera: {
+        hooks: ['beforeSelect', 'beforeInsert', 'beforeUpdate', 'beforeDelete'],
+        providers: ['RLSPlugin'],
+      },
+    },
   ];
 }
 
