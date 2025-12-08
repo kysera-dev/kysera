@@ -3,7 +3,7 @@ import { Kysely } from 'kysely';
 import Database from 'better-sqlite3';
 import { SqliteDialect } from 'kysely';
 import { createORM, createRepositoryFactory } from '../../kysera-repository/dist/index.js';
-import { timestampsPlugin, type TimestampsRepository } from '../src';
+import { timestampsPlugin, type TimestampsRepository } from '../src/index.js';
 
 // Test database schema with custom primary key
 interface TestDatabase {

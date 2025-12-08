@@ -1,4 +1,5 @@
 import type { SelectQueryBuilder, ExpressionBuilder } from 'kysely';
+import { BadRequestError } from './errors.js';
 
 /**
  * Encode cursor for pagination
@@ -56,8 +57,9 @@ function decodeCursor(cursor: string): Record<string, any> {
       const column = Buffer.from(columnB64, 'base64').toString();
       const value = JSON.parse(Buffer.from(valueB64, 'base64').toString());
       return { [column]: value };
-    } catch {
-      // Fall through to multi-column decoding
+    } catch (error) {
+      // Single-column decoding failed, fall through to multi-column format
+      // This is expected when cursor format is ambiguous
     }
   }
 
@@ -155,14 +157,14 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
     let decoded: Record<string, any>;
     try {
       decoded = decodeCursor(cursor);
-    } catch {
-      throw new Error('Invalid pagination cursor: unable to decode');
+    } catch (error) {
+      throw new BadRequestError(`Invalid pagination cursor: unable to decode - ${error instanceof Error ? error.message : String(error)}`);
     }
 
     // Validate cursor has all required columns
     for (const { column } of orderBy) {
       if (!(column in decoded)) {
-        throw new Error(`Invalid pagination cursor: missing column '${String(column)}'`);
+        throw new BadRequestError(`Invalid pagination cursor: missing column '${String(column)}'`);
       }
     }
 

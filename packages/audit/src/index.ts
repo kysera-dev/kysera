@@ -1,7 +1,7 @@
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 import type { Plugin } from '@kysera/repository';
-import { NotFoundError, BadRequestError, type KyseraLogger, consoleLogger } from '@kysera/core';
+import { NotFoundError, BadRequestError, type KyseraLogger, consoleLogger } from '../../core/dist';
 import { z } from 'zod';
 
 // ============================================================================
@@ -258,8 +258,12 @@ async function checkAuditTableExists<DB>(executor: Kysely<DB>, auditTable: strin
       .execute();
     // If we get here, table exists
     return true;
-  } catch {
-    // Table doesn't exist
+  } catch (error) {
+    // Table doesn't exist or query failed - expected behavior for table existence check
+    consoleLogger.debug?.('Audit table check failed', {
+      auditTable,
+      error: error instanceof Error ? error.message : String(error)
+    });
     return false;
   }
 }
@@ -331,8 +335,11 @@ function serializeAuditValues(values: unknown): string | null {
 
   try {
     return JSON.stringify(values);
-  } catch {
-    // Safe conversion for non-JSON values
+  } catch (error) {
+    // Safe conversion for non-JSON values (e.g., circular references)
+    consoleLogger.debug?.('Failed to stringify audit values', {
+      error: error instanceof Error ? error.message : String(error)
+    });
     if (typeof values === 'object') {
       // For objects that can't be stringified, use toString()
       return '[Object]';
@@ -410,7 +417,13 @@ async function fetchEntityById(
 
       .executeTakeFirst();
     return entity;
-  } catch {
+  } catch (error) {
+    // Entity not found or query failed - expected when capturing old values for audit
+    consoleLogger.debug?.('Failed to fetch entity for audit', {
+      tableName,
+      id,
+      error: error instanceof Error ? error.message : String(error)
+    });
     return null;
   }
 }
@@ -468,8 +481,13 @@ async function fetchEntitiesByIds(
     }
 
     return entityMap;
-  } catch {
-    // Return empty map on error
+  } catch (error) {
+    // Bulk fetch failed - return empty map, audit will continue with null old values
+    consoleLogger.warn?.('Failed to bulk fetch entities for audit', {
+      tableName,
+      count: ids.length,
+      error: error instanceof Error ? error.message : String(error)
+    });
     return entityMap;
   }
 }

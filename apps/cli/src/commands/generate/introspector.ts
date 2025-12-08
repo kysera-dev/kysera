@@ -1,6 +1,7 @@
 import { Kysely } from 'kysely';
 import { logger } from '../../utils/logger.js';
 import { validateIdentifier } from '../../utils/sql-sanitizer.js';
+import { CLIError, CLIErrorCodes } from '../../utils/errors.js';
 
 export interface TableColumn {
   name: string;
@@ -53,7 +54,7 @@ export class DatabaseIntrospector {
       case 'sqlite':
         return this.getSqliteTables();
       default:
-        throw new Error(`Unsupported dialect: ${this.dialect}`);
+        throw new CLIError(`Unsupported dialect: ${this.dialect}`, CLIErrorCodes.DATABASE_ERROR);
     }
   }
 
@@ -69,7 +70,7 @@ export class DatabaseIntrospector {
       case 'sqlite':
         return this.getSqliteTableInfo(tableName);
       default:
-        throw new Error(`Unsupported dialect: ${this.dialect}`);
+        throw new CLIError(`Unsupported dialect: ${this.dialect}`, CLIErrorCodes.DATABASE_ERROR);
     }
   }
 

@@ -33,6 +33,7 @@
     "@kysera/repository": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.1",
+    "@vitest/coverage-v8": "^4.0.15",
     "better-sqlite3": "^12.5.0",
     "kysely": "^0.28.8",
     "tsup": "^8.5.1",

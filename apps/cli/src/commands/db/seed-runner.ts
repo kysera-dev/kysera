@@ -4,7 +4,7 @@ import { join, basename, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { prism } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
-import { CLIError } from '../../utils/errors.js';
+import { CLIError, ValidationError } from '../../utils/errors.js';
 
 /**
  * Seed file interface - defines the contract for seed files
@@ -251,7 +251,7 @@ export class SeedRunner {
       const module = await import(fileUrl);
 
       if (!module.seed || typeof module.seed !== 'function') {
-        throw new Error("Seed file must export a 'seed' function");
+        throw new ValidationError("Seed file must export a 'seed' function");
       }
 
       return {

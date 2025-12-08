@@ -7,6 +7,7 @@ import { KyseraConfigSchema, type KyseraConfig } from './schema.js';
 import { mergeConfig, defaultConfig } from './defaults.js';
 import { resolveConfigPaths, findConfigFile, validatePaths } from './resolver.js';
 import { logger } from '../utils/logger.js';
+import { ConfigurationError, FileSystemError } from '../utils/errors.js';
 
 /**
  * Load and validate Kysera configuration
@@ -44,17 +45,17 @@ export async function loadConfig(configPath?: string): Promise<KyseraConfig> {
     logger.debug('Validation failed:', validation.error);
 
     if (!validation.error || !validation.error.errors || !Array.isArray(validation.error.errors)) {
-      throw new Error(`Configuration validation failed: ${JSON.stringify(validation.error)}`);
+      throw new ConfigurationError(`Configuration validation failed: ${JSON.stringify(validation.error)}`);
     }
 
     const errors = validation.error.errors.map((e) => `  - ${e.path.join('.')}: ${e.message}`).join('\n');
-    throw new Error(`Configuration validation failed:\n${errors}`);
+    throw new ConfigurationError(`Configuration validation failed:\n${errors}`);
   }
 
   // Validate paths exist
   const pathErrors = validatePaths(resolved);
   if (pathErrors.length > 0) {
-    throw new Error(`Configuration path validation failed:\n  - ${pathErrors.join('\n  - ')}`);
+    throw new ConfigurationError(`Configuration path validation failed:\n  - ${pathErrors.join('\n  - ')}`);
   }
 
   return resolved;
@@ -71,7 +72,7 @@ async function loadConfigFile(filePath: string): Promise<Partial<KyseraConfig>> 
       return JSON.parse(content) as Partial<KyseraConfig>;
     } catch (error) {
       const err = error as Error;
-      throw new Error(`Failed to load JSON configuration from ${filePath}: ${err.message}`);
+      throw new FileSystemError(`Failed to load JSON configuration from ${filePath}: ${err.message}`);
     }
   }
 
@@ -88,7 +89,7 @@ async function loadConfigFile(filePath: string): Promise<Partial<KyseraConfig>> 
   try {
     const result = await explorer.load(filePath);
     if (!result || !result.config) {
-      throw new Error(`No configuration found in ${filePath}`);
+      throw new ConfigurationError(`No configuration found in ${filePath}`);
     }
 
     // Handle default export
@@ -100,7 +101,7 @@ async function loadConfigFile(filePath: string): Promise<Partial<KyseraConfig>> 
     return config;
   } catch (error) {
     const err = error as Error;
-    throw new Error(`Failed to load configuration from ${filePath}: ${err.message}`);
+    throw new FileSystemError(`Failed to load configuration from ${filePath}: ${err.message}`);
   }
 }
 
@@ -180,11 +181,11 @@ export async function saveConfig(config: KyseraConfig, configPath?: string): Pro
   const validation = KyseraConfigSchema.safeParse(config);
   if (!validation.success) {
     if (!validation.error || !validation.error.errors || !Array.isArray(validation.error.errors)) {
-      throw new Error(`Configuration validation failed: ${JSON.stringify(validation.error)}`);
+      throw new ConfigurationError(`Configuration validation failed: ${JSON.stringify(validation.error)}`);
     }
 
     const errors = validation.error.errors.map((e) => `  - ${e.path.join('.')}: ${e.message}`).join('\n');
-    throw new Error(`Configuration validation failed:\n${errors}`);
+    throw new ConfigurationError(`Configuration validation failed:\n${errors}`);
   }
 
   // Determine file format from extension

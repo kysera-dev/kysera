@@ -80,6 +80,7 @@
     "@kysera/repository": "workspace:*",
     "@kysera/migrations": "workspace:*",
     "@kysera/audit": "workspace:*",
+    "@kysera/rls": "workspace:*",
     "@kysera/soft-delete": "workspace:*",
     "@kysera/timestamps": "workspace:*",
     "@xec-sh/kit": "^0.8.3"

@@ -5,6 +5,7 @@ import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector } from '../generate/introspector.js';
 import { logger } from '../../utils/logger.js';
 import type { DatabaseInstance, TableInfo, ColumnInfo } from '../../types/index.js';
+import { toCamelCase, toPascalCase } from '../../utils/templates.js';
 
 export interface IntrospectOptions {
   table?: string;
@@ -196,13 +197,4 @@ async function getTableRowCount(db: DatabaseInstance, tableName: string): Promis
   } catch {
     return '?';
   }
-}
-
-function toCamelCase(str: string): string {
-  return str.replace(/_([a-z])/g, (_: string, letter: string) => letter.toUpperCase());
-}
-
-function toPascalCase(str: string): string {
-  const camel = toCamelCase(str);
-  return camel.charAt(0).toUpperCase() + camel.slice(1);
 }

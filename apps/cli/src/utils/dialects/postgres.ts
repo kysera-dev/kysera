@@ -1,5 +1,5 @@
 import { Kysely, sql } from 'kysely';
-import { CLIDatabaseError } from '../errors.js';
+import { CLIDatabaseError, ValidationError } from '../errors.js';
 import { logger } from '../logger.js';
 import {
   validateIdentifier,
@@ -38,7 +38,7 @@ export async function getPostgresInfo(db: Kysely<any>): Promise<PostgresInfo> {
       .executeTakeFirst();
 
     if (!result) {
-      throw new Error('Failed to get PostgreSQL info');
+      throw new CLIDatabaseError('Failed to get PostgreSQL info');
     }
 
     return result as PostgresInfo;
@@ -162,7 +162,7 @@ export async function killConnection(db: Kysely<any>, pid: number): Promise<bool
   try {
     // PID is a number, safe to use directly
     if (!Number.isInteger(pid) || pid < 0) {
-      throw new Error('Invalid PID');
+      throw new ValidationError('Invalid PID');
     }
     const result = await db
       .selectNoFrom(sql<boolean>`pg_terminate_backend(${pid})`.as('terminated'))

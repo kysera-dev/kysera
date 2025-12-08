@@ -5,7 +5,7 @@ import type { Pool as MysqlPool } from 'mysql2';
 import { createPool } from 'mysql2';
 import Database from 'better-sqlite3';
 import type { DatabaseConfig } from '../config/schema.js';
-import { CLIDatabaseError } from './errors.js';
+import { CLIDatabaseError, ValidationError } from './errors.js';
 import { logger } from './logger.js';
 import { checkDatabaseHealth } from '@kysera/core';
 
@@ -121,7 +121,7 @@ export async function createDatabaseConnection(
         break;
 
       default:
-        throw new Error(`Unsupported dialect: ${config.dialect}`);
+        throw new CLIDatabaseError(`Unsupported dialect: ${config.dialect}`);
     }
 
     return db;
@@ -486,7 +486,7 @@ export async function getDatabaseSize(db: Kysely<Database>, databaseName: string
     // SECURITY: Validate database name to prevent SQL injection
     // Database names should only contain alphanumeric characters, underscores, and hyphens
     if (!/^[a-zA-Z0-9_-]+$/.test(databaseName)) {
-      throw new Error('Invalid database name: contains unsafe characters');
+      throw new ValidationError('Invalid database name: contains unsafe characters');
     }
 
     // PostgreSQL - use parameterized query with sql.raw and proper escaping

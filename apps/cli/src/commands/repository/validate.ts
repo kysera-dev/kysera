@@ -6,6 +6,7 @@ import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { toCamelCase, toPascalCase } from '../../utils/templates.js';
 
 export interface ValidateRepositoryOptions {
   directory?: string;
@@ -696,15 +697,6 @@ function toSnakeCase(str: string): string {
   return str.replace(/[A-Z]/g, (match, index) => {
     return index > 0 ? '_' + match.toLowerCase() : match.toLowerCase();
   });
-}
-
-function toCamelCase(str: string): string {
-  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-}
-
-function toPascalCase(str: string): string {
-  const camel = toCamelCase(str);
-  return camel.charAt(0).toUpperCase() + camel.slice(1);
 }
 
 function isSnakeCase(str: string): boolean {

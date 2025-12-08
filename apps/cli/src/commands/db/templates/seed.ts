@@ -4,6 +4,8 @@
  * These templates provide starting points for creating database seeds.
  */
 
+import { ValidationError } from '../../../utils/errors.js';
+
 export const SEED_TEMPLATES = {
   /**
    * Basic seed template - simple data insertion
@@ -35,7 +37,7 @@ import type { SeedContext } from '@kysera/cli';
  */
 export async function seed(db: Kysely<any>, context?: SeedContext): Promise<void> {
   if (!context) {
-    throw new Error('SeedContext is required for factory-based seeding');
+    throw new ValidationError('SeedContext is required for factory-based seeding');
   }
 
   const { factory, logger, verbose } = context;
@@ -126,7 +128,7 @@ export async function seed(db: Kysely<any>, context?: SeedContext): Promise<void
   const userIds = users.map((u) => u.id);
 
   if (userIds.length === 0) {
-    throw new Error('No users found - ensure 01_users seed has run');
+    throw new ValidationError('No users found - ensure 01_users seed has run');
   }
 
   // Create orders for users

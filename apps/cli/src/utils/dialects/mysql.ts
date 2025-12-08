@@ -1,5 +1,5 @@
 import { Kysely, sql } from 'kysely';
-import { CLIDatabaseError } from '../errors.js';
+import { CLIDatabaseError, ValidationError } from '../errors.js';
 import { logger } from '../logger.js';
 import {
   validateIdentifier,
@@ -40,7 +40,7 @@ export async function getMysqlInfo(db: Kysely<any>): Promise<MysqlInfo> {
       .executeTakeFirst();
 
     if (!result) {
-      throw new Error('Failed to get MySQL info');
+      throw new CLIDatabaseError('Failed to get MySQL info');
     }
 
     return result as MysqlInfo;
@@ -156,7 +156,7 @@ export async function killConnection(db: Kysely<any>, processId: number): Promis
   try {
     // Process ID is a number, so it's safe to interpolate
     if (!Number.isInteger(processId) || processId < 0) {
-      throw new Error('Invalid process ID');
+      throw new ValidationError('Invalid process ID');
     }
     await sql.raw(`KILL ${processId}`).execute(db);
     return true;
@@ -250,7 +250,7 @@ export async function createDatabase(
     validateIdentifier(databaseName, 'database');
     // Charset and collation should also be validated
     if (!/^[a-zA-Z0-9_]+$/.test(charset) || !/^[a-zA-Z0-9_]+$/.test(collation)) {
-      throw new Error('Invalid charset or collation');
+      throw new ValidationError('Invalid charset or collation');
     }
     const escapedDb = escapeTypedIdentifier(databaseName, 'database', 'mysql');
     await sql.raw(`CREATE DATABASE ${escapedDb} CHARACTER SET ${charset} COLLATE ${collation}`).execute(db);
@@ -302,7 +302,7 @@ export async function getTableStatistics(
       .executeTakeFirst();
 
     if (!result) {
-      throw new Error('Table not found');
+      throw new CLIDatabaseError('Table not found');
     }
 
     const formatSize = (bytes: number) => {
