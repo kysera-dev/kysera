@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.5.1] - 2025-12-08
+
+### ✨ Features
+
+- feat: add @kysera/rls package for row-level security
+- feat: major update to v0.5.1 with comprehensive test coverage and security improvements
+
+### 🐛 Bug Fixes
+
+- fix: release script
+
+### 📝 Other Changes
+
+- chore: code style cleanup and version sync to v0.5.1
+- update main package.json
+- fix
+- docs: update all README files to reflect v0.5.1 release
+
+
 ## [0.4.1] - 2025-10-03
 
 ### ✨ Features
