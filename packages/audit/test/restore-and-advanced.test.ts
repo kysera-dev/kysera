@@ -12,8 +12,7 @@ import {
   type ParsedAuditLogEntry,
   type AuditOptions,
 } from '../src/index.js';
-import { createRepositoryFactory } from '../../kysera-repository/dist/index.js';
-import { createORM } from '../../kysera-repository/dist/index.js';
+import { createRepositoryFactory, createORM } from '@kysera/repository';
 import { z } from 'zod';
 
 // ============================================================================

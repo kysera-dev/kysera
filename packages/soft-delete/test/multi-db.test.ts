@@ -7,7 +7,7 @@ import {
   initializeSchema,
   clearDatabase,
 } from './utils/multi-db.js';
-import { createRepositoryFactory, createORM } from '../../kysera-repository/dist/index.js';
+import { createRepositoryFactory, createORM } from '@kysera/repository';
 import { softDeletePlugin } from '../src/index.js';
 import { z } from 'zod';
 

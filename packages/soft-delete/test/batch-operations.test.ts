@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDatabase, seedTestData } from './setup/database.js';
 import { softDeletePlugin, type SoftDeleteRepository } from '../src/index.js';
-import { createORM, createRepositoryFactory } from '../../kysera-repository/dist/index.js';
+import { createORM, createRepositoryFactory } from '@kysera/repository';
 import type { Kysely } from 'kysely';
 import type { TestDatabase } from './setup/database.js';
 import { z } from 'zod';

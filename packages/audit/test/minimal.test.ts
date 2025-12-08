@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Kysely, SqliteDialect, type Generated } from 'kysely';
 import betterSqlite3 from 'better-sqlite3';
 import { auditPluginSQLite } from '../src/index.js';
-import { createORM, createRepositoryFactory } from '../../kysera-repository/dist/index.js';
+import { createORM, createRepositoryFactory } from '@kysera/repository';
 import { z } from 'zod';
 
 interface TestDatabase {

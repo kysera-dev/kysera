@@ -2,8 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Kysely, SqliteDialect, type Generated, type Selectable } from 'kysely';
 import betterSqlite3 from 'better-sqlite3';
 import { auditPluginSQLite, type AuditRepositoryExtensions } from '../src/index.js';
-import { createRepositoryFactory } from '../../kysera-repository/dist/index.js';
-import { createORM } from '../../kysera-repository/dist/index.js';
+import { createRepositoryFactory, createORM } from '@kysera/repository';
 import { z } from 'zod';
 
 // Test database schema with standard 'id' column

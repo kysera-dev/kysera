@@ -8,10 +8,9 @@ import {
   initializeSchema,
   seedDatabase,
   clearDatabase,
-  // @ts-ignore - Cross-package test utility import (monorepo)
-} from '../../kysera-core/test/utils/multi-db';
+} from '../core/test/utils/multi-db.js';
 import { createRepositoryFactory } from '../src/repository.js';
-import { parseDatabaseError } from '../../kysera-core/dist/index.js';
+import { parseDatabaseError } from '@kysera/core';
 
 // Test schemas
 const UserCreateSchema = z.object({
