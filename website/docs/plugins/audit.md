@@ -1,0 +1,260 @@
+---
+sidebar_position: 3
+title: Audit
+description: Audit logging plugin for Kysera
+---
+
+# Audit Plugin
+
+Automatically track all database changes with comprehensive audit logging.
+
+## Installation
+
+```bash
+npm install @kysera/audit
+```
+
+## Basic Usage
+
+```typescript
+import { createORM } from '@kysera/repository'
+import { auditPlugin } from '@kysera/audit'
+
+const orm = await createORM(db, [
+  auditPlugin({
+    getUserId: () => currentUser?.id || null,
+    captureOldValues: true,
+    captureNewValues: true
+  })
+])
+
+const userRepo = orm.createRepository((executor) => {
+  const factory = createRepositoryFactory(executor)
+  return factory.create({ tableName: 'users', /* ... */ })
+})
+
+// All operations are automatically audited
+await userRepo.create({ email: 'john@example.com', name: 'John' })
+await userRepo.update(userId, { name: 'John Smith' })
+await userRepo.delete(userId)
+
+// Get audit history
+const history = await userRepo.getAuditHistory(userId)
+```
+
+## Configuration
+
+```typescript
+interface AuditOptions {
+  auditTable?: string                        // Default: 'audit_logs'
+  primaryKeyColumn?: string                  // Default: 'id'
+  captureOldValues?: boolean                 // Default: true
+  captureNewValues?: boolean                 // Default: true
+  skipSystemOperations?: boolean             // Default: false
+  tables?: string[]                          // Whitelist tables
+  excludeTables?: string[]                   // Blacklist tables
+  getUserId?: () => string | null
+  getTimestamp?: () => Date | string
+  metadata?: () => Record<string, unknown>   // Custom metadata
+  logger?: KyseraLogger
+}
+```
+
+### Configuration Examples
+
+```typescript
+// Basic setup
+auditPlugin({
+  getUserId: () => currentUser?.id
+})
+
+// Full setup with metadata
+auditPlugin({
+  getUserId: () => currentUser?.id,
+  captureOldValues: true,
+  captureNewValues: true,
+  metadata: () => ({
+    ip: request.ip,
+    userAgent: request.headers['user-agent'],
+    requestId: request.id
+  }),
+  excludeTables: ['sessions', 'audit_logs']
+})
+
+// UUID primary keys
+auditPlugin({
+  primaryKeyColumn: 'uuid',
+  getUserId: () => currentUser?.uuid
+})
+```
+
+## Audit Log Structure
+
+```typescript
+interface AuditLogEntry {
+  id: number
+  table_name: string
+  entity_id: string
+  operation: 'INSERT' | 'UPDATE' | 'DELETE'
+  old_values: string | null      // JSON
+  new_values: string | null      // JSON
+  changed_by: string | null
+  changed_at: string
+  metadata: string | null        // JSON
+}
+```
+
+## Added Methods
+
+| Method | Description |
+|--------|-------------|
+| `getAuditHistory(entityId, options?)` | Get change history for an entity |
+| `getAuditLogs(entityId, options?)` | Alias for getAuditHistory |
+| `getAuditLog(auditId)` | Get specific audit log entry |
+| `restoreFromAudit(auditId)` | Restore entity to previous state |
+
+## Querying Audit Logs
+
+```typescript
+// Get history for specific entity
+const history = await userRepo.getAuditHistory(userId)
+
+// With pagination
+const history = await userRepo.getAuditHistory(userId, {
+  limit: 10,
+  offset: 0
+})
+
+// Get specific audit entry
+const entry = await userRepo.getAuditLog(auditLogId)
+
+// Access parsed values
+console.log(history[0].old_values)  // Parsed object
+console.log(history[0].new_values)  // Parsed object
+```
+
+## Restoring from Audit
+
+```typescript
+// Restore entity to a previous state
+const restoredUser = await userRepo.restoreFromAudit(auditLogId)
+
+// This will:
+// 1. Read the old_values from the audit log
+// 2. Update the entity with those values
+// 3. Create a new audit entry for the restore operation
+```
+
+## Database Schema
+
+Create the audit_logs table:
+
+```sql
+CREATE TABLE audit_logs (
+  id SERIAL PRIMARY KEY,
+  table_name VARCHAR(255) NOT NULL,
+  entity_id VARCHAR(255) NOT NULL,
+  operation VARCHAR(10) NOT NULL,
+  old_values JSONB,
+  new_values JSONB,
+  changed_by VARCHAR(255),
+  changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  metadata JSONB
+);
+
+-- Indexes for common queries
+CREATE INDEX idx_audit_logs_table_entity ON audit_logs(table_name, entity_id);
+CREATE INDEX idx_audit_logs_changed_by ON audit_logs(changed_by);
+CREATE INDEX idx_audit_logs_changed_at ON audit_logs(changed_at);
+```
+
+## Transaction Support
+
+Audit logs are transaction-aware:
+
+```typescript
+await db.transaction().execute(async (trx) => {
+  const repos = createRepos(trx)
+
+  await repos.users.update(userId, { status: 'active' })
+  await repos.orders.create({ user_id: userId, ... })
+
+  // If transaction fails, audit logs are also rolled back
+})
+```
+
+## Bulk Operation Optimization
+
+The audit plugin optimizes bulk operations:
+
+```typescript
+// Instead of N queries for old values, uses single IN query
+await userRepo.bulkUpdate([
+  { id: 1, data: { status: 'active' } },
+  { id: 2, data: { status: 'active' } },
+  { id: 3, data: { status: 'active' } }
+])
+// 1 query to fetch old values
+// 1 query to update
+// 1 query to insert audit logs
+```
+
+## Database-Specific Plugins
+
+```typescript
+// PostgreSQL-optimized
+import { auditPluginPostgreSQL } from '@kysera/audit'
+
+// MySQL-optimized
+import { auditPluginMySQL } from '@kysera/audit'
+
+// SQLite-optimized
+import { auditPluginSQLite } from '@kysera/audit'
+```
+
+## Best Practices
+
+### 1. Exclude Audit Table from Auditing
+
+```typescript
+auditPlugin({
+  excludeTables: ['audit_logs']  // Prevent infinite loop
+})
+```
+
+### 2. Include Request Context
+
+```typescript
+auditPlugin({
+  getUserId: () => currentUser?.id,
+  metadata: () => ({
+    ip: request.ip,
+    sessionId: session.id,
+    userAgent: request.headers['user-agent']
+  })
+})
+```
+
+### 3. Partition Large Audit Tables
+
+```sql
+-- PostgreSQL partitioning by date
+CREATE TABLE audit_logs (
+  ...
+) PARTITION BY RANGE (changed_at);
+
+CREATE TABLE audit_logs_2024_q1 PARTITION OF audit_logs
+  FOR VALUES FROM ('2024-01-01') TO ('2024-04-01');
+```
+
+### 4. Archive Old Audit Logs
+
+```sql
+-- Move old logs to archive
+INSERT INTO audit_logs_archive
+SELECT * FROM audit_logs
+WHERE changed_at < NOW() - INTERVAL '1 year';
+
+DELETE FROM audit_logs
+WHERE changed_at < NOW() - INTERVAL '1 year';
+```

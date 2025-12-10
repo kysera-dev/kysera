@@ -2,6 +2,7 @@ packages:
   - packages/*
   - apps/*
   - examples/*
+  - website
 
 onlyBuiltDependencies:
   - better-sqlite3

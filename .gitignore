@@ -42,3 +42,4 @@ yarn-error.log*
 # pnpm-lock.yaml is tracked for reproducible builds
 
 experiments/
+.kysera-usage-stats.json
