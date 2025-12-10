@@ -236,6 +236,148 @@ type InferArgs<T> = T extends QueryFunction<any, infer A, any> ? A : never;
 type InferDB<T> = T extends QueryFunction<infer DB, any, any> ? DB : never;
 ```
 
+## Plugin Compatibility
+
+:::warning Important Limitation
+**DAL does not support Kysera plugins automatically.** Plugins like `@kysera/soft-delete`, `@kysera/timestamps`, `@kysera/audit`, and `@kysera/rls` are designed for the Repository pattern and do not apply to DAL queries.
+:::
+
+### Why Plugins Don't Work with DAL
+
+Kysera plugins work through two mechanisms:
+
+1. **`interceptQuery`** - Modifies query builders (adds WHERE clauses, etc.)
+2. **`extendRepository`** - Adds methods to repositories (softDelete, restore, etc.)
+
+DAL queries work directly with `ctx.db` (Kysely instance), bypassing these plugin hooks:
+
+```typescript
+// DAL query - plugins NOT applied
+const getUsers = createQuery((ctx) =>
+  ctx.db.selectFrom('users').selectAll().execute()  // Direct Kysely access
+);
+
+// Repository with plugins - plugins ARE applied
+const orm = await createORM(db, [softDeletePlugin()]);
+const users = await userRepo.findAll();  // Soft-deleted records filtered
+```
+
+### Plugin Compatibility Matrix
+
+| Plugin | Repository | DAL |
+|--------|-----------|-----|
+| `@kysera/soft-delete` | Automatic filtering | Manual filtering required |
+| `@kysera/timestamps` | Automatic timestamps | Manual timestamps required |
+| `@kysera/audit` | Automatic logging | Manual logging required |
+| `@kysera/rls` | Automatic filtering + validation | Context available, manual filtering |
+
+### Manual Integration Patterns
+
+If you need plugin-like behavior in DAL, implement it manually:
+
+#### Soft Delete in DAL
+
+```typescript
+const getActiveUsers = createQuery((ctx) =>
+  ctx.db
+    .selectFrom('users')
+    .selectAll()
+    .where('deleted_at', 'is', null)  // Manual soft-delete filter
+    .execute()
+);
+
+const softDeleteUser = createQuery((ctx, id: number) =>
+  ctx.db
+    .updateTable('users')
+    .set({ deleted_at: new Date().toISOString() })
+    .where('id', '=', id)
+    .execute()
+);
+```
+
+#### Timestamps in DAL
+
+```typescript
+const createUser = createQuery((ctx, data: CreateUserInput) =>
+  ctx.db
+    .insertInto('users')
+    .values({
+      ...data,
+      created_at: new Date().toISOString(),  // Manual timestamp
+      updated_at: new Date().toISOString(),
+    })
+    .returningAll()
+    .executeTakeFirstOrThrow()
+);
+```
+
+#### RLS Context in DAL
+
+RLS context (`rlsContext`) can be accessed in DAL, but you must apply filters manually:
+
+```typescript
+import { rlsContext } from '@kysera/rls';
+
+const getUsersByTenant = createQuery((ctx) => {
+  const rlsCtx = rlsContext.getContextOrNull();
+
+  let query = ctx.db.selectFrom('users').selectAll();
+
+  // Apply RLS filter manually
+  if (rlsCtx && !rlsCtx.auth.isSystem && rlsCtx.auth.tenantId) {
+    query = query.where('tenant_id', '=', rlsCtx.auth.tenantId);
+  }
+
+  return query.execute();
+});
+
+// Usage within RLS context
+await rlsContext.runAsync(
+  { auth: { userId: 1, tenantId: 'acme', roles: ['user'] } },
+  async () => {
+    const users = await getUsersByTenant(db);  // Filtered by tenant
+  }
+);
+```
+
+### Creating Reusable Middleware
+
+For consistent plugin-like behavior across DAL queries:
+
+```typescript
+// Helper function for RLS filtering
+function withTenantFilter<T>(
+  query: SelectQueryBuilder<DB, any, T>,
+  tableName: string
+): SelectQueryBuilder<DB, any, T> {
+  const ctx = rlsContext.getContextOrNull();
+  if (!ctx || ctx.auth.isSystem) return query;
+  if (!ctx.auth.tenantId) return query;
+
+  return query.where(`${tableName}.tenant_id` as any, '=', ctx.auth.tenantId);
+}
+
+// Helper function for soft-delete filtering
+function excludeDeleted<T>(
+  query: SelectQueryBuilder<DB, any, T>,
+  tableName: string,
+  column = 'deleted_at'
+): SelectQueryBuilder<DB, any, T> {
+  return query.where(`${tableName}.${column}` as any, 'is', null);
+}
+
+// Usage
+const getUsers = createQuery((ctx) =>
+  excludeDeleted(
+    withTenantFilter(
+      ctx.db.selectFrom('users').selectAll(),
+      'users'
+    ),
+    'users'
+  ).execute()
+);
+```
+
 ## When to Use DAL vs Repository
 
 | Scenario | Repository | Functional DAL |
@@ -246,3 +388,34 @@ type InferDB<T> = T extends QueryFunction<infer DB, any, any> ? DB : never;
 | Vertical Slice Architecture | Not ideal | Ideal |
 | Maximum type inference | Medium | Excellent |
 | Tree-shaking critical | Medium | Excellent |
+| **Need plugins (soft-delete, audit, RLS)** | **Native support** | **Manual integration** |
+| **Multi-tenant with RLS** | **Better** | **Requires manual filters** |
+
+## Combining DAL and Repository
+
+You can use both patterns in the same application, but be cautious:
+
+```typescript
+// Using both patterns together
+await db.transaction().execute(async (trx) => {
+  // Repository for write operations (with plugins)
+  const orm = await createORM(trx, [softDeletePlugin(), auditPlugin()]);
+  const userRepo = orm.createRepository(createUserRepository);
+  await userRepo.create({ email: 'test@example.com' });  // Plugins applied
+
+  // DAL for complex read queries
+  const ctx = createContext(trx);
+  const stats = await getUserStats(ctx);  // No plugins, but same transaction
+});
+```
+
+:::caution Transaction Consistency
+When mixing patterns, ensure both use the same transaction executor (`trx`) to maintain ACID guarantees.
+:::
+
+## See Also
+
+- [Repository vs DAL Guide](/docs/guides/dal-vs-repository) - Detailed comparison and decision guide
+- [Repository API](/docs/api/repository) - Repository pattern reference
+- [RLS Plugin](/docs/plugins/rls) - Row-Level Security for repositories
+- [Soft Delete Plugin](/docs/plugins/soft-delete) - Soft delete for repositories

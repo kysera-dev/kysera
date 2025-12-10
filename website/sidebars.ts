@@ -47,6 +47,7 @@ const sidebars: SidebarsConfig = {
         'guides/testing',
         'guides/migrations',
         'guides/pagination',
+        'guides/dal-vs-repository',
       ],
     },
     {

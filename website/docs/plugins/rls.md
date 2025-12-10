@@ -281,13 +281,42 @@ interface PolicyEvaluationContext {
 }
 ```
 
-### Policy Precedence
+### Policy Evaluation Flow
 
-1. `deny` policies are evaluated first
-2. `allow` policies grant access
-3. `filter` policies add WHERE conditions
-4. `validate` policies check input
-5. `defaultDeny` determines behavior when no policy matches
+Policies are evaluated differently depending on operation type:
+
+**For SELECT queries (`interceptQuery`):**
+```
+1. Check bypass conditions (skipTables, isSystem, bypassRoles)
+2. Get filter policies for table → registry.getFilters(table)
+3. For each filter:
+   - Call filter.getConditions(ctx) → { tenant_id: 1, status: 'active' }
+   - Apply as WHERE conditions (AND logic)
+4. Return transformed query
+```
+
+**For mutations (create/update/delete via `extendRepository`):**
+```
+1. Check bypass conditions (skipTables, isSystem, bypassRoles)
+2. DENY policies first (highest priority)
+   - If ANY deny evaluates to true → RLSPolicyViolation
+3. VALIDATE policies (create/update only)
+   - ALL validate policies must return true
+   - If ANY returns false → RLSPolicyViolation
+4. ALLOW policies
+   - At least ONE must return true
+   - If defaultDeny=true and no allows → RLSPolicyViolation
+   - If no allows match → RLSPolicyViolation
+```
+
+### Policy Type Summary
+
+| Type | Operations | Evaluation | Behavior |
+|------|------------|------------|----------|
+| **filter** | SELECT only | `interceptQuery` | Adds WHERE conditions |
+| **deny** | All mutations | First in mutation guard | If true → throw |
+| **validate** | create, update | After deny | All must be true |
+| **allow** | All mutations | Last | ≥1 must be true |
 
 ## Multi-Tenant Patterns
 
@@ -390,6 +419,56 @@ allow('read', ctx => {
 - Thrown when RLS context is missing
 - Operation requires authentication but no context was set
 - Should result in a 401 response
+
+## DAL Compatibility
+
+:::warning Functional DAL Limitation
+**RLS automatic filtering does not apply to `@kysera/dal` queries.** The RLS plugin is designed for the Repository pattern and intercepts queries through the plugin system, which DAL bypasses.
+:::
+
+### What Works with DAL
+
+| Feature | Works in DAL? |
+|---------|---------------|
+| `rlsContext.runAsync()` | Yes |
+| `rlsContext.getContextOrNull()` | Yes |
+| `rlsContext.asSystemAsync()` | Yes |
+| Automatic SELECT filtering | **No** |
+| Automatic mutation validation | **No** |
+| `repo.withoutRLS()` | **No** (repository method) |
+| `repo.canAccess()` | **No** (repository method) |
+
+### Manual RLS in DAL
+
+If using DAL with RLS requirements, apply filters manually:
+
+```typescript
+import { createQuery } from '@kysera/dal';
+import { rlsContext } from '@kysera/rls';
+
+const getPostsByTenant = createQuery((ctx) => {
+  const rlsCtx = rlsContext.getContextOrNull();
+
+  let query = ctx.db.selectFrom('posts').selectAll();
+
+  // Apply RLS filter manually
+  if (rlsCtx && !rlsCtx.auth.isSystem && rlsCtx.auth.tenantId) {
+    query = query.where('tenant_id', '=', rlsCtx.auth.tenantId);
+  }
+
+  return query.execute();
+});
+
+// Context is available
+await rlsContext.runAsync(
+  { auth: { userId: 1, tenantId: 'acme', roles: ['user'] } },
+  async () => {
+    const posts = await getPostsByTenant(db);
+  }
+);
+```
+
+For comprehensive comparison, see [Repository vs DAL Guide](/docs/guides/dal-vs-repository).
 
 ## How RLS Works
 

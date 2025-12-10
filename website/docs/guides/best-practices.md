@@ -8,6 +8,41 @@ description: Production-ready patterns for Kysera
 
 Recommendations for using Kysera effectively in production applications.
 
+## Choosing Data Access Pattern
+
+### Repository vs Functional DAL
+
+Choose the right pattern for your use case:
+
+| Use Case | Recommended |
+|----------|-------------|
+| Need plugins (soft-delete, audit, timestamps, RLS) | **Repository** |
+| Multi-tenant application with RLS | **Repository** |
+| Complex custom queries, analytics | **DAL** |
+| Vertical Slice Architecture | **DAL** |
+| Team prefers OOP patterns | **Repository** |
+| Team prefers functional patterns | **DAL** |
+
+```typescript
+// Repository: Use when you need plugins
+const orm = await createORM(db, [softDeletePlugin(), auditPlugin()]);
+const userRepo = orm.createRepository(createUserRepository);
+await userRepo.softDelete(1);  // Plugin method works!
+
+// DAL: Use for complex, custom queries
+const getAnalytics = createQuery((ctx, userId: number) =>
+  ctx.db
+    .selectFrom('events')
+    .select([sql`count(*)`.as('total')])
+    .where('user_id', '=', userId)
+    .executeTakeFirst()
+);
+```
+
+:::tip
+Pick **one primary pattern** for your project. Mixing both can lead to inconsistent behavior, especially with plugins and transactions. See [Repository vs DAL Guide](/docs/guides/dal-vs-repository) for detailed comparison.
+:::
+
 ## Repository Pattern
 
 ### Keep Repositories Thin

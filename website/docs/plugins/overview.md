@@ -96,37 +96,66 @@ extendRepository(repo) {
 interface Plugin {
   name: string
   version: string
-  dependencies?: string[]      // Plugins this depends on
-  priority?: number            // Higher = runs first
+  dependencies?: string[]      // Plugins this depends on (must be loaded first)
+  priority?: number            // Higher = runs first (default: 0)
   conflictsWith?: string[]     // Incompatible plugins
 
-  // Lifecycle
+  // Lifecycle - called once during createORM
   onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
 
-  // Query interception
-  interceptQuery?<QB>(qb: QB, context: QueryBuilderContext): QB
+  // Query interception - modify QueryBuilder before execution
+  interceptQuery?<QB extends AnyQueryBuilder>(
+    qb: QB,
+    context: QueryBuilderContext
+  ): QB
 
-  // Result handling
+  // Result handling (defined but not currently used in execution chain)
   afterQuery?(context: QueryContext, result: unknown): Promise<unknown> | unknown
   onError?(context: QueryContext, error: unknown): Promise<void> | void
 
-  // Repository extension
-  extendRepository?<T>(repo: T): T
+  // Repository extension - add/wrap methods after creation
+  extendRepository?<T extends object>(repo: T): T
+}
+
+interface QueryBuilderContext {
+  operation: 'select' | 'insert' | 'update' | 'delete'
+  table: string
+  metadata: Record<string, unknown>  // Shared across plugin chain
 }
 ```
 
+:::info Note on afterQuery and onError
+The `afterQuery` and `onError` hooks are defined in the interface but are not currently integrated into the execution chain. They are reserved for future use.
+:::
+
 ## Plugin Order
 
-Plugin order matters - outer plugins wrap inner plugins:
+Plugin order is determined by the `resolvePluginOrder` algorithm:
+
+1. **Topological sort**: Plugins with dependencies MUST run after their dependencies
+2. **Priority**: Within same level, higher `priority` runs first (default: 0)
+3. **Tie-breaking**: Alphabetical by name for stability
 
 ```typescript
-// Execution order: timestamps -> softDelete -> audit
+// Plugins are automatically sorted
 const orm = await createORM(db, [
-  auditPlugin(),      // 3. Captures everything including soft delete
-  softDeletePlugin(), // 2. Filters queries
-  timestampsPlugin()  // 1. Modifies data (innermost)
+  auditPlugin(),                    // priority: 0
+  softDeletePlugin(),               // priority: 0
+  rlsPlugin({ schema }),            // priority: 50 (runs first!)
+  timestampsPlugin()                // priority: 0
 ])
+
+// Actual execution order:
+// 1. RLS (priority 50)
+// 2. audit, softDelete, timestamps (priority 0, alphabetical)
 ```
+
+:::tip Priority Guidelines
+- **50**: Security plugins (RLS) - must filter before other plugins see data
+- **10**: Validation plugins - validate early
+- **0**: Standard plugins (default)
+- **-10**: Logging/audit plugins - capture final state
+:::
 
 ## Plugin Validation
 
