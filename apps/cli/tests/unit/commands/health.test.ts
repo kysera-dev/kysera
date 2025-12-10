@@ -39,7 +39,7 @@ vi.mock('../../../src/utils/database.js', () => ({
   getDatabaseConnection: vi.fn(),
 }));
 
-vi.mock('@kysera/core', async (importOriginal) => {
+vi.mock('@kysera/infra', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
   return {
     ...actual,
@@ -50,7 +50,7 @@ vi.mock('@kysera/core', async (importOriginal) => {
 
 import { loadConfig } from '../../../src/config/loader.js';
 import { getDatabaseConnection } from '../../../src/utils/database.js';
-import { performHealthCheck, getMetrics } from '@kysera/core';
+import { performHealthCheck, getMetrics } from '@kysera/infra';
 import { healthCommand } from '../../../src/commands/health/index.js';
 import { checkCommand } from '../../../src/commands/health/check.js';
 import { metricsCommand } from '../../../src/commands/health/metrics.js';
