@@ -1,376 +1,230 @@
-# Kysera Development Principles
+# Kysera
 
-## 🎯 Mission
+Production-ready TypeScript ORM built on Kysely. Zero compromises on reliability, type safety, and performance.
 
-Building a production-ready TypeScript ORM on top of Kysely with ZERO compromises on reliability, type safety, and performance.
+## Quick Start
 
-## ⚠️ CRITICAL: Zero-Tolerance Reliability Policy
+```bash
+pnpm install        # Install dependencies
+pnpm build          # Build all packages
+pnpm test           # Run tests
+pnpm dev            # Watch mode
+pnpm typecheck      # Type checking
+pnpm lint           # ESLint
+pnpm format         # Prettier
+```
 
-**This is a HIGH-RELIABILITY FRAMEWORK**. We DO NOT make assumptions, approximations, or partial implementations:
+**Package-specific:**
+```bash
+pnpm --filter @kysera/core build      # Build single package
+turbo build --filter=@kysera/core     # With Turborepo
+```
 
-- **100% Runtime Compatibility**: All code MUST work identically on Node.js, Bun, and Deno
-- **100% Test Coverage**: Every function, branch, and edge case MUST be tested
-- **Zero Warnings**: No TypeScript warnings, no linter warnings, no deprecation warnings
-- **Zero External Dependencies**: Core packages have ZERO external runtime dependencies
-- **No "Good Enough"**: If it's not perfect, it's not ready
-- **No Workarounds**: Fix the root cause, not the symptom
-- **No Assumptions**: Test everything, verify everything, prove everything
+## Monorepo Structure
 
-**REMEMBER**: This framework will power critical systems. A single bug could have catastrophic consequences. There is NO room for error.
-
-## 📦 Monorepo Structure
-
-### Current Directory Layout
 ```
 kysera/
-├── packages/              # Core packages
-│   ├── core/             # @kysera/core - Core utilities (8.13KB)
-│   ├── repository/       # @kysera/repository - Repository pattern (4.93KB)
-│   ├── soft-delete/      # @kysera/soft-delete - Soft delete plugin (477B)
-│   ├── migrations/       # @kysera/migrations - Migration system (planned)
-│   ├── audit/            # @kysera/audit - Audit logging (planned)
-│   └── timestamps/       # @kysera/timestamps - Auto timestamps (planned)
-├── examples/
-│   └── blog-app/         # Example blog application
-├── specs/                # Formal specifications
-│   └── spec.md          # Main specification document
-├── scripts/              # Build and tooling scripts
-├── package.json          # Root workspace configuration
-├── pnpm-workspace.yaml   # PNPM workspace configuration
-├── turbo.json           # Turborepo configuration
-├── tsconfig.base.json   # Base TypeScript configuration
-├── eslint.config.mjs    # ESLint v9 flat config
-└── CLAUDE.md           # This file
+├── packages/           # 11 published packages
+│   ├── core/          # Errors, pagination, types, logger
+│   ├── repository/    # Repository pattern + Zod validation
+│   ├── dal/           # Functional Data Access Layer
+│   ├── soft-delete/   # Soft delete plugin
+│   ├── audit/         # Audit logging with restore
+│   ├── timestamps/    # Auto created_at/updated_at
+│   ├── migrations/    # Migration system
+│   ├── rls/           # Row-Level Security
+│   ├── debug/         # Query logging & profiling
+│   ├── infra/         # Health checks, retry, circuit breaker
+│   └── testing/       # Transaction isolation, factories
+├── apps/cli/          # @kysera/cli - CLI tool
+├── examples/          # blog-app, e-commerce, multi-tenant-saas
+├── website/           # Docusaurus documentation
+└── scripts/           # Release & automation
 ```
 
-### Package Versions (Latest)
-```json
-{
-  "turbo": "2.5.8",
-  "typescript": "5.9.2",
-  "vitest": "2.1.9 / 3.2.4",
-  "tsup": "8.5.0",
-  "kysely": "0.28.7",
-  "zod": "4.1.11",
-  "pnpm": "10.17.1"
+## Version Info
+
+| Tool | Version |
+|------|---------|
+| Kysera packages | 0.6.1 |
+| Kysely (peer) | >=0.28.8 |
+| TypeScript | ^5.9.2 |
+| Turbo | ^2.6.3 |
+| Vitest | ^4.0.15 |
+| Zod (optional) | ^4.1.13 |
+| pnpm | >=10.0.0 |
+| Node.js | >=20.0.0 |
+| Bun | >=1.0.0 |
+
+## Critical Rules
+
+### Must Follow
+- ESM-only (`"type": "module"`)
+- TypeScript strict mode (all flags enabled)
+- Zero runtime dependencies in core packages
+- Cross-runtime compatibility (Node, Bun, Deno)
+- 95% test coverage minimum
+- No `any` types
+
+### Must Not Do
+- CommonJS exports
+- External runtime dependencies in core
+- Mutable state
+- Synchronous I/O
+- Runtime-specific code
+
+## Code Patterns
+
+### Repository with Plugins
+```typescript
+import { createRepository } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { auditPlugin } from '@kysera/audit'
+
+const UserRepo = createRepository({
+  table: 'users',
+  schema: UserSchema,
+  plugins: [softDeletePlugin(), auditPlugin()]
+})
+```
+
+### DAL Pattern (Functional)
+```typescript
+import { createQuery, createContext, withTransaction } from '@kysera/dal'
+
+const getUser = createQuery((ctx, id: string) =>
+  ctx.db.selectFrom('users').where('id', '=', id).executeTakeFirst()
+)
+
+const ctx = createContext(db)
+await withTransaction(ctx, async (txCtx) => {
+  await getUser(txCtx, userId)
+})
+```
+
+### Error Handling
+```typescript
+import { parseDatabaseError, DatabaseError } from '@kysera/core'
+
+try {
+  await repo.create(data)
+} catch (error) {
+  const dbError = parseDatabaseError(error, 'postgres')
+  if (dbError instanceof UniqueConstraintError) {
+    // Handle duplicate
+  }
 }
 ```
 
-## 🚀 ESM-Only Module System
+## Package Dependencies
 
-### Critical: We Support Only ESM Modules
+```
+@kysera/core (0 deps)
+    └── @kysera/repository
+        ├── @kysera/soft-delete
+        ├── @kysera/audit
+        ├── @kysera/timestamps
+        └── @kysera/rls
 
-Since we target modern runtimes (Bun, Deno, Node.js 20+), we use ESM exclusively:
+@kysera/dal (0 deps)
+@kysera/debug → @kysera/core
+@kysera/infra → @kysera/core
+@kysera/testing (0 deps)
+@kysera/migrations → @kysera/core
+```
 
-- **NO CommonJS exports** - Only `.mjs` or ESM `.js`
-- **"type": "module"** in all package.json files
-- **Import/export syntax only** - No `require()` or `module.exports`
-- **Explicit file extensions** in imports for Deno compatibility
+## Testing
 
-### Package.json Configuration
+**Test commands:**
+```bash
+pnpm test                          # All tests
+pnpm test:coverage                 # With coverage
+pnpm test:multi-db                 # PostgreSQL/MySQL/SQLite
+pnpm test:docker                   # Docker containers
+```
 
+**Coverage thresholds (vitest.config.ts):**
+- Lines: 95%
+- Functions: 95%
+- Branches: 85%
+- Statements: 95%
+
+**Test file locations:** `packages/*/test/`
+
+## Build Configuration
+
+**tsup.config.ts pattern:**
+```typescript
+export default defineConfig({
+  entry: ['src/index.ts'],
+  format: ['esm'],        // ESM only
+  dts: true,
+  minify: true,
+  treeshake: true,
+  target: 'esnext',
+  platform: 'neutral',    // Cross-runtime
+  external: ['kysely']
+})
+```
+
+**Package exports pattern:**
 ```json
 {
   "type": "module",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "engines": {
-    "node": ">=20.0.0",
-    "bun": ">=1.0.0"
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
   },
   "sideEffects": false
 }
 ```
 
-### TSup Configuration (ESM-Only)
+## Release Process
 
-```typescript
-import { defineConfig } from 'tsup'
-
-export default defineConfig({
-  entry: ['src/index.ts'],
-  format: ['esm'],  // ESM only!
-  dts: {
-    tsconfig: './tsconfig.build.json'
-  },
-  splitting: false,
-  sourcemap: true,
-  clean: true,
-  minify: true,
-  treeshake: true,
-  target: 'esnext',  // Latest JavaScript
-  platform: 'neutral',  // Platform-agnostic
-  tsconfig: './tsconfig.build.json'
-})
-```
-
-## 📐 TypeScript Configuration
-
-### Strictest Possible Settings
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "lib": ["ES2022"],
-    "moduleResolution": "bundler",
-
-    // Strict Type Checking - MAXIMUM SAFETY
-    "strict": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "strictBindCallApply": true,
-    "strictPropertyInitialization": true,
-    "noImplicitAny": true,
-    "noImplicitThis": true,
-    "useUnknownInCatchVariables": true,
-    "alwaysStrict": true,
-
-    // Additional Checks - NO COMPROMISES
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "exactOptionalPropertyTypes": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "noPropertyAccessFromIndexSignature": true,
-    "allowUnusedLabels": false,
-    "allowUnreachableCode": false,
-
-    // Module Settings
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": true,
-
-    // Output Settings
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "removeComments": true,
-
-    // Type Checking
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
-  }
-}
-```
-
-## 🧪 Testing Strategy
-
-### Testing Stack
-- **Vitest** - Modern, fast test runner
-- **@vitest/coverage-v8** - Code coverage
-- **fast-check** - Property-based testing
-- **@stryker-mutator/core** - Mutation testing
-
-### Cross-Runtime Testing
-
+Uses Changesets for versioning:
 ```bash
-# Test in Node.js
-pnpm test
-
-# Test in Bun
-bun test
-
-# Test in Deno
-deno task test
+pnpm changeset              # Create changeset
+pnpm changeset:version      # Bump versions
+pnpm release                # Full release
+pnpm release:dry            # Dry run
 ```
 
-## 🏗 Development Workflow
+## CI/CD
 
-### 1. Package Development
+GitHub Actions workflows (`.github/workflows/`):
+- `release.yml` - Main release (Node 20.x, 22.x matrix)
+- `cli-release.yml` - CLI releases
+- `deploy-docs.yml` - Documentation deployment
 
-```bash
-# Install dependencies
-pnpm install
+## Decision Framework
 
-# Build all packages
-pnpm build
-
-# Build specific package
-pnpm --filter @kysera/core build
-
-# Watch mode
-pnpm dev
-
-# Type checking
-pnpm typecheck
-
-# Linting
-pnpm lint
-
-# Format code
-pnpm format
-```
-
-### 2. Code Quality Gates
-
-All code must pass:
-- ✅ Type checking (`tsc --noEmit`)
-- ✅ Linting (ESLint v9 with strict rules)
-- ✅ Formatting (`prettier`)
-- ✅ Unit tests (>95% coverage)
-- ✅ Integration tests
-- ✅ Cross-runtime compatibility (Node, Bun, Deno)
-
-## 📦 Current Package Status
-
-### Implemented Packages
-
-| Package | Version | Size | Status | Description |
-|---------|---------|------|--------|-------------|
-| @kysera/core | 0.1.0 | 8.13KB | ✅ Built | Core utilities, error handling, pagination, health checks |
-| @kysera/repository | 0.1.0 | 4.93KB | ✅ Built | Repository pattern with Zod validation |
-| @kysera/soft-delete | 0.1.0 | 477B | ✅ Built | Soft delete plugin |
-
-### Planned Packages
-
-| Package | Status | Description |
-|---------|--------|-------------|
-| @kysera/migrations | 🚧 Planned | Database migration system |
-| @kysera/audit | 🚧 Planned | Audit logging plugin |
-| @kysera/timestamps | 🚧 Planned | Automatic created/updated timestamps |
-
-## 🚀 Performance Standards
-
-### Bundle Size Limits
-- Core: <10KB
-- Repository: <15KB
-- Plugins: <5KB each
-- Zero runtime dependencies in core
-
-### Runtime Performance
-- Operations/second: >1M
-- Memory overhead: <5%
-- Startup time: <10ms
-- Works in edge environments
-
-## 🔧 Build Configuration
-
-### Turborepo Configuration
-
-```json
-{
-  "$schema": "https://turbo.build/schema.json",
-  "tasks": {
-    "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**"],
-      "cache": true
-    },
-    "test": {
-      "cache": false
-    },
-    "dev": {
-      "persistent": true,
-      "cache": false
-    },
-    "typecheck": {
-      "dependsOn": ["^build"],
-      "cache": true
-    }
-  }
-}
-```
-
-### PNPM Workspace
-
-```yaml
-packages:
-  - "packages/*"
-  - "examples/*"
-```
-
-## 🎯 Decision Framework
-
-When making architectural decisions, prioritize in this order:
-
+Priority order:
 1. **Correctness** - Must work correctly
 2. **Type Safety** - Fully typed, no any
-3. **Simplicity** - Easiest to understand wins
-4. **Performance** - Fast enough for production
+3. **Simplicity** - Easiest to understand
+4. **Performance** - Production-ready
 5. **Size** - Smaller is better
 
-## 🚨 Critical Rules
+## File Locations
 
-### MUST Follow
-- ✅ ESM modules only
-- ✅ TypeScript strict mode
-- ✅ Zero runtime dependencies in core
-- ✅ Cross-runtime compatibility
-- ✅ Comprehensive tests
-- ✅ Property access with bracket notation when needed
+| Purpose | Location |
+|---------|----------|
+| Source code | `packages/*/src/` |
+| Tests | `packages/*/test/` |
+| Build output | `packages/*/dist/` |
+| Documentation | `website/docs/` |
+| Specifications | `specs/` |
+| Release scripts | `scripts/` |
 
-### MUST NOT Do
-- 🚫 CommonJS modules
-- 🚫 Any type (except when absolutely necessary)
-- 🚫 External dependencies in core
-- 🚫 Runtime-specific code
-- 🚫 Mutable state
-- 🚫 Missing tests
-- 🚫 Synchronous I/O
+## Troubleshooting
 
-## 🛠 Tooling Commands
-
+**Build issues:**
 ```bash
-# Development
-pnpm dev          # Start development mode
-pnpm build        # Build all packages
-pnpm test         # Run tests
-pnpm lint         # Run ESLint
-pnpm format       # Format with Prettier
-pnpm typecheck    # Check TypeScript types
-
-# Package Management
-pnpm add -D [package] -w              # Add dev dependency to root
-pnpm add [package] --filter @kysera/core  # Add to specific package
-pnpm update --interactive              # Interactive update
-pnpm audit                            # Security audit
-
-# Turborepo
-turbo build --filter=@kysera/core    # Build specific package
-turbo build --dry-run                 # Preview what will be built
-turbo daemon clean                    # Clean turbo cache
+turbo daemon clean          # Clear Turborepo cache
+pnpm install --force        # Force reinstall
 ```
 
-## 📊 Quality Metrics
-
-### Current Status
-- TypeScript: Strict mode enabled ✅
-- ESLint: Configured with strict rules ✅
-- Build: All packages building ✅
-- Module System: ESM-only ⚠️ (needs update)
-- Test Coverage: 0% ❌ (tests pending)
-- Cross-runtime: Not tested yet ❌
-
-### Target Metrics
-- Test Coverage: >95%
-- Mutation Score: >95%
-- Bundle Size: Within limits
-- Zero TypeScript errors
-- Zero ESLint errors
-- Works in Node, Bun, Deno
-
-## 🌟 Philosophy
-
-> "Perfection is achieved not when there is nothing more to add,
-> but when there is nothing left to take away."
-> — Antoine de Saint-Exupéry
-
-Every line of code should embody this philosophy. We're building a framework that will power critical systems - there is no room for compromise on quality, type safety, or reliability.
-
----
-
-**Last Updated**: 2025-09-30
-**Version**: 0.1.0
-**Status**: Active Development
+**Test database:**
+```bash
+pnpm docker:up              # Start PostgreSQL/MySQL
+pnpm docker:down            # Stop containers
+```
