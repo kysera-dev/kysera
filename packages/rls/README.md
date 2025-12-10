@@ -921,6 +921,7 @@ import {
   RLSError,
   RLSContextError,
   RLSPolicyViolation,
+  RLSPolicyEvaluationError,
   RLSSchemaError,
   RLSContextValidationError,
   RLSErrorCodes,
@@ -945,7 +946,7 @@ try {
 
 #### `RLSPolicyViolation`
 
-Thrown when a database operation is denied by RLS policies.
+Thrown when a database operation is denied by RLS policies (legitimate access denial).
 
 ```typescript
 try {
@@ -959,6 +960,30 @@ try {
       reason: error.reason, // 'User does not own this post'
       policyName: error.policyName, // 'ownership_policy'
     });
+  }
+}
+```
+
+#### `RLSPolicyEvaluationError`
+
+Thrown when a policy fails to evaluate due to an error in the policy code itself (bug in policy implementation). This is distinct from `RLSPolicyViolation`, which represents legitimate access denial.
+
+```typescript
+try {
+  // Policy throws an error during evaluation
+  await orm.posts.findAll();
+} catch (error) {
+  if (error instanceof RLSPolicyEvaluationError) {
+    console.error('Policy evaluation failed:', {
+      operation: error.operation, // 'read'
+      table: error.table, // 'posts'
+      policyName: error.policyName, // 'tenant_filter'
+      originalError: error.originalError, // The underlying error
+      message: error.message, // Error message with context
+    });
+
+    // Original stack trace is preserved for debugging
+    console.error('Stack trace:', error.stack);
   }
 }
 ```
@@ -1152,6 +1177,7 @@ export {
   RLSError,
   RLSContextError,
   RLSPolicyViolation,
+  RLSPolicyEvaluationError,
   RLSSchemaError,
   RLSContextValidationError,
   RLSErrorCodes,
