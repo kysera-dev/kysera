@@ -1,6 +1,6 @@
 {
   "name": "@kysera/rls",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Row-Level Security plugin for Kysera ORM - declarative policies, query transformation, native RLS support",
   "type": "module",
   "main": "./dist/index.js",
