@@ -9,12 +9,17 @@ Production-ready TypeScript ORM built on top of Kysely with minimal core, option
 npm install kysely pg
 
 # Install Kysera packages (optional, pick what you need)
-npm install @kysera/core           # Debug, health, pagination, errors
+npm install @kysera/core           # Errors, pagination, types, logger
 npm install @kysera/repository zod # Repository pattern with validation
+npm install @kysera/infra          # Health checks, retry, circuit breaker
+npm install @kysera/debug          # Query logging and profiling
+npm install @kysera/testing        # Test utilities and factories
+npm install @kysera/dal            # Functional Data Access Layer
 npm install @kysera/soft-delete    # Soft delete plugin
 npm install @kysera/audit          # Audit logging plugin
 npm install @kysera/timestamps     # Auto timestamps plugin
 npm install @kysera/migrations     # Migration system
+npm install @kysera/rls            # Row-Level Security
 ```
 
 ```typescript
@@ -52,8 +57,8 @@ const users = await db
 ## Core Philosophy
 
 ### 1. Minimal Core, Optional Everything
-- Core is just Kysely + debug utilities
-- Repository pattern is optional
+- Core contains only essentials: errors, pagination, types
+- Infrastructure (health, retry) in separate package
 - All features are opt-in plugins
 - Tree-shakeable ESM architecture
 
@@ -66,7 +71,7 @@ const users = await db
 ### 3. Smart Validation Strategy
 - Validate external inputs always
 - Trust database outputs (configurable)
-- Development vs production modes
+- Support for multiple validation libraries (Zod, Valibot, ArkType, Yup)
 - Performance-conscious approach
 
 ### 4. Functional Architecture
@@ -76,21 +81,38 @@ const users = await db
 - Dependency injection friendly
 
 ### 5. Production-First Design
-- Health checks built-in
+- Health checks and monitoring
 - Graceful shutdown support
-- Connection lifecycle management
+- Circuit breaker and retry patterns
 - Comprehensive error handling
 
 ## Packages
 
-| Package | Description | Size | Version |
-|---------|-------------|------|---------|
-| `@kysera/core` | Core utilities - debug, health, pagination, errors | ~24KB | 0.5.1 |
-| `@kysera/repository` | Repository pattern with smart validation | ~12KB | 0.5.1 |
-| `@kysera/soft-delete` | Soft delete plugin | ~4KB | 0.5.1 |
-| `@kysera/audit` | Audit logging plugin | ~8KB | 0.5.1 |
-| `@kysera/timestamps` | Auto timestamps plugin | ~4KB | 0.5.1 |
-| `@kysera/migrations` | Migration helpers with dry-run support | ~12KB | 0.5.1 |
+### Core Packages
+
+| Package | Description | Version |
+|---------|-------------|---------|
+| `@kysera/core` | Core utilities - errors, pagination, types, logger | 0.6.0 |
+| `@kysera/repository` | Repository pattern with smart validation | 0.6.0 |
+| `@kysera/dal` | Functional Data Access Layer - query composition | 0.6.0 |
+
+### Infrastructure
+
+| Package | Description | Version |
+|---------|-------------|---------|
+| `@kysera/infra` | Health checks, retry, circuit breaker, graceful shutdown | 0.6.0 |
+| `@kysera/debug` | Query logging, profiling, SQL formatting | 0.6.0 |
+| `@kysera/testing` | Test utilities - transaction isolation, factories, seeding | 0.6.0 |
+| `@kysera/migrations` | Migration system with dry-run support | 0.6.0 |
+
+### Plugins
+
+| Package | Description | Version |
+|---------|-------------|---------|
+| `@kysera/soft-delete` | Soft delete with auto-filtering | 0.6.0 |
+| `@kysera/audit` | Audit logging with bulk optimization | 0.6.0 |
+| `@kysera/timestamps` | Auto created_at/updated_at | 0.6.0 |
+| `@kysera/rls` | Row-Level Security policies | 0.6.0 |
 
 ## Development
 
@@ -120,17 +142,24 @@ pnpm dev
 ```
 kysera/
 ├── packages/
-│   ├── core/          # Core utilities
+│   ├── core/          # Core utilities (errors, pagination, types)
 │   ├── repository/    # Repository pattern
+│   ├── dal/           # Functional Data Access Layer
+│   ├── infra/         # Infrastructure (health, retry, shutdown)
+│   ├── debug/         # Query debugging and profiling
+│   ├── testing/       # Test utilities
+│   ├── migrations/    # Migration system
 │   ├── soft-delete/   # Soft delete plugin
-│   ├── audit/         # Audit plugin
+│   ├── audit/         # Audit logging plugin
 │   ├── timestamps/    # Timestamps plugin
-│   └── migrations/    # Migration helpers
+│   └── rls/           # Row-Level Security plugin
+├── apps/
+│   └── cli/           # Kysera CLI tool
 ├── examples/
 │   ├── blog-app/           # Blog application example
 │   ├── e-commerce/         # E-commerce with transactions
 │   └── multi-tenant-saas/  # Multi-tenant SaaS patterns
-├── docs/              # Documentation
+├── website/           # Documentation website
 └── turbo.json         # Turborepo configuration
 ```
 
@@ -175,10 +204,55 @@ try {
 Monitor database connection health:
 
 ```typescript
-import { checkDatabaseHealth } from '@kysera/core'
+import { checkDatabaseHealth, HealthMonitor } from '@kysera/infra'
 
+// Simple health check
 const health = await checkDatabaseHealth(db, pool)
-// { status: 'healthy', checks: { database: {...}, pool: {...} } }
+// { status: 'healthy', checks: [...], metrics: {...} }
+
+// Continuous monitoring
+const monitor = new HealthMonitor(db, { interval: 30000 })
+monitor.on('unhealthy', (result) => alertOps(result))
+monitor.start()
+```
+
+### Resilience Patterns
+
+Built-in retry and circuit breaker:
+
+```typescript
+import { withRetry, CircuitBreaker } from '@kysera/infra'
+
+// Retry with exponential backoff
+const result = await withRetry(
+  () => db.selectFrom('users').execute(),
+  { maxAttempts: 3, backoff: 'exponential' }
+)
+
+// Circuit breaker for external calls
+const breaker = new CircuitBreaker({ threshold: 5, resetTimeout: 60000 })
+const data = await breaker.execute(() => fetchExternalData())
+```
+
+### Query Debugging
+
+Profile and debug queries:
+
+```typescript
+import { withDebug, QueryProfiler } from '@kysera/debug'
+
+// Add debug capabilities
+const debugDb = withDebug(db, {
+  logQueries: true,
+  slowQueryThreshold: 100
+})
+
+// Profile queries
+const profiler = new QueryProfiler()
+profiler.start()
+// ... run queries ...
+const report = profiler.getReport()
+console.log(report.slowQueries)
 ```
 
 ### Pagination
@@ -195,6 +269,31 @@ const result = await paginate(query, { page: 1, limit: 20 })
 const result = await paginateCursor(query, {
   orderBy: [{ column: 'created_at', direction: 'desc' }],
   limit: 20
+})
+```
+
+### Functional DAL
+
+Query composition without classes:
+
+```typescript
+import { createQuery, withTransaction, compose } from '@kysera/dal'
+
+const getUserById = createQuery((ctx, id: number) =>
+  ctx.db.selectFrom('users').where('id', '=', id).executeTakeFirst()
+)
+
+const getUserWithPosts = compose(
+  getUserById,
+  async (ctx, user) => ({
+    ...user,
+    posts: await getPostsByUserId(ctx, user.id)
+  })
+)
+
+// Execute in transaction
+const result = await withTransaction(db, async (ctx) => {
+  return getUserWithPosts(ctx, 1)
 })
 ```
 
@@ -221,6 +320,28 @@ const userRepo = factory.create({
     update: UpdateUserSchema
   },
   validateDbResults: process.env.NODE_ENV === 'development'
+})
+```
+
+### Testing Utilities
+
+Isolated database testing:
+
+```typescript
+import { testInTransaction, createFactory } from '@kysera/testing'
+
+const userFactory = createFactory({
+  email: () => `user-${Date.now()}@test.com`,
+  name: 'Test User'
+})
+
+it('creates user', async () => {
+  await testInTransaction(db, async (trx) => {
+    const userData = userFactory({ name: 'Alice' })
+    const user = await trx.insertInto('users').values(userData).execute()
+    expect(user.name).toBe('Alice')
+  })
+  // Automatically rolled back!
 })
 ```
 
@@ -270,88 +391,92 @@ MIT
 
 ## Project Status
 
-**Current Version**: 0.5.1 (Stable)
-**Implementation Completion**: 100%
-**Test Coverage**: 554+ tests passing across 6 packages
-**Phase 4**: ✅ COMPLETED
+**Current Version**: 0.6.0 (Stable)
+**Total Packages**: 12
+**Test Coverage**: 2500+ tests passing
+**Phase 5**: ✅ COMPLETED
 
 ### Completed Features
 
-- [x] Core utilities package - Debug, health checks, pagination, errors
-- [x] Repository pattern package - Smart validation, type-safe operations
-- [x] Soft delete plugin - Method override pattern with auto-filtering
+- [x] Core utilities package - Errors, pagination, types, logger
+- [x] Repository pattern - Smart validation, type-safe operations
+- [x] Functional DAL - Query composition, context passing
+- [x] Infrastructure package - Health checks, retry, circuit breaker, shutdown
+- [x] Debug package - Query logging, profiling, SQL formatting
+- [x] Testing utilities - Transaction isolation, factories, seeding
+- [x] Soft delete plugin - Method override with auto-filtering
 - [x] Audit plugin - Transaction-aware logging with bulk optimization
-- [x] Timestamps plugin - Automatic created_at/updated_at management
-- [x] Migration system - Up/down migrations with dry-run support
+- [x] Timestamps plugin - Automatic created_at/updated_at
+- [x] RLS plugin - Row-Level Security policies
+- [x] Migration system - Up/down migrations with dry-run
+- [x] CLI tool - Full-featured command-line interface
 - [x] Multi-database support - PostgreSQL, MySQL, SQLite
-- [x] Testing utilities - Transaction-based testing helpers
-- [x] Plugin architecture - Extensible design with clear patterns
+- [x] Vertical Slice Architecture support
 
 ### Test Statistics
 
-| Package | Tests Passing | Status |
-|---------|--------------|--------|
-| @kysera/core | 363 | ✅ Production Ready |
-| @kysera/repository | 127 | ✅ Production Ready |
+| Package | Tests | Status |
+|---------|-------|--------|
+| @kysera/cli | 1400 | ✅ Production Ready |
+| @kysera/rls | 303 | ✅ Production Ready |
+| @kysera/repository | 200+ | ✅ Production Ready |
+| @kysera/testing | 117 | ✅ Production Ready |
+| @kysera/audit | 109 | ✅ Production Ready |
 | @kysera/migrations | 64 | ✅ Production Ready |
+| @kysera/infra | 50+ | ✅ Production Ready |
 | @kysera/soft-delete | 39+ | ✅ Production Ready |
-| @kysera/audit | 40+ | ✅ Production Ready |
+| @kysera/dal | 37 | ✅ Production Ready |
+| @kysera/debug | 30+ | ✅ Production Ready |
+| @kysera/core | 30+ | ✅ Production Ready |
 | @kysera/timestamps | 16+ | ✅ Production Ready |
-| **Total** | **554+** | **All Passing** |
+| **Total** | **2500+** | **All Passing** |
 
-### Package Sizes (Minified)
+### Architecture (v0.6.0)
 
-| Package | Size | Dependencies |
-|---------|------|--------------|
-| @kysera/core | ~24 KB | Zero runtime deps |
-| @kysera/repository | ~12 KB | @kysera/core |
-| @kysera/migrations | ~12 KB | @kysera/core |
-| @kysera/soft-delete | ~4 KB | @kysera/core |
-| @kysera/audit | ~8 KB | @kysera/core |
-| @kysera/timestamps | ~4 KB | @kysera/core |
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      @kysera/cli                            │
+├─────────────────────────────────────────────────────────────┤
+│  @kysera/dal  │  @kysera/repository  │  @kysera/migrations  │
+├───────────────┼──────────────────────┼──────────────────────┤
+│               │     @kysera/rls      │   @kysera/testing    │
+│               │  @kysera/soft-delete │                      │
+│               │    @kysera/audit     │                      │
+│               │  @kysera/timestamps  │                      │
+├───────────────┴──────────────────────┴──────────────────────┤
+│     @kysera/infra     │     @kysera/debug     │             │
+├───────────────────────┴───────────────────────┴─────────────┤
+│                       @kysera/core                          │
+├─────────────────────────────────────────────────────────────┤
+│                         Kysely                              │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ### Roadmap
 
-**Phase 1** (✅ COMPLETED):
-- Testing utilities
-- Cursor pagination optimization
-- Debug plugin SQL extraction
-- Version consistency fixes
+**Phase 1-4** (✅ COMPLETED):
+- Core utilities and repository pattern
+- Plugin architecture and multi-database support
+- Comprehensive documentation and examples
+- Test coverage and security improvements
 
-**Phase 2** (✅ COMPLETED):
-- Repository improvements (factory pattern, parallel bulk ops)
-- Plugin architecture review and documentation
-- Multi-database support (PostgreSQL, MySQL, SQLite)
-- Audit plugin optimization (10-100x performance improvement)
-- Comprehensive documentation
+**Phase 5** (✅ COMPLETED):
+- Vertical Slice Architecture support
+- Package separation (dal, debug, infra, testing)
+- Validation library abstraction (Zod, Valibot, ArkType, Yup)
+- CLI improvements and new commands
+- 2500+ tests across 12 packages
 
-**Phase 3** (✅ COMPLETED):
-- Minor fixes and polish
-- Performance optimizations
-- API documentation (TypeDoc)
-- Example applications (blog-app, e-commerce, multi-tenant-saas)
-- Production case studies
-
-**Phase 4** (✅ COMPLETED):
-- Comprehensive test coverage (554+ tests)
-- Security improvements
-- Zod 4.x migration
-- Plugin system enhancements
-- Migration system with dry-run support
-
-**Phase 5** (Next):
+**Phase 6** (Next):
 - Community feedback integration
 - Additional database adapters
 - Advanced caching strategies
 - Performance benchmarks publication
+- GraphQL integration exploration
 
 ### Quick Links
 
-- 📖 [Getting Started Guide](./docs/GETTING_STARTED.md) - 5-minute quick start
-- ✨ [Best Practices](./docs/BEST_PRACTICES.md) - Production-ready patterns
-- 📚 [Full Specification](./specs/spec.md) - Complete technical spec
-- 🔌 [Plugin Authoring Guide](./docs/PLUGIN_AUTHORING_GUIDE.md) - Create your own plugins
-- 🗺️ [Detailed Roadmap](./docs/RELEASE_SUMMARY.md) - Project progress and planning
+- 📖 [Documentation Website](./website) - Full documentation
 - 📝 [Development Principles](./CLAUDE.md) - Codebase philosophy
 
 ## Philosophy
