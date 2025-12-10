@@ -16,7 +16,7 @@ npm install @kysera/migrations
 
 ## Overview
 
-**Version:** 0.5.1
+**Version:** 0.6.0
 **Bundle Size:** ~12 KB (minified)
 **Dependencies:** @kysera/core
 
