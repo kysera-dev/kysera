@@ -3,23 +3,18 @@
  * Validates CREATE, UPDATE, DELETE operations against RLS policies
  */
 
-import type { Kysely } from 'kysely';
 import type { PolicyRegistry } from '../policy/registry.js';
 import type { PolicyEvaluationContext, Operation } from '../policy/types.js';
 import type { RLSContext } from '../context/types.js';
 import { rlsContext } from '../context/manager.js';
-import { RLSPolicyViolation } from '../errors.js';
+import { RLSPolicyViolation, RLSPolicyEvaluationError } from '../errors.js';
 
 /**
  * Mutation guard
  * Validates mutations (CREATE, UPDATE, DELETE) against allow/deny/validate policies
  */
 export class MutationGuard<DB = unknown> {
-  // executor is kept for future use with database-dependent policies
-  constructor(
-    private registry: PolicyRegistry<DB>,
-    _executor?: Kysely<DB>
-  ) {}
+  constructor(private registry: PolicyRegistry<DB>) {}
 
   /**
    * Check if CREATE operation is allowed
@@ -30,7 +25,7 @@ export class MutationGuard<DB = unknown> {
    *
    * @example
    * ```typescript
-   * const guard = new MutationGuard(registry, db);
+   * const guard = new MutationGuard(registry);
    * await guard.checkCreate('posts', { title: 'Hello', tenant_id: 1 });
    * ```
    */
@@ -51,7 +46,7 @@ export class MutationGuard<DB = unknown> {
    *
    * @example
    * ```typescript
-   * const guard = new MutationGuard(registry, db);
+   * const guard = new MutationGuard(registry);
    * const existingPost = await db.selectFrom('posts').where('id', '=', 1).selectAll().executeTakeFirst();
    * await guard.checkUpdate('posts', existingPost, { title: 'Updated' });
    * ```
@@ -73,7 +68,7 @@ export class MutationGuard<DB = unknown> {
    *
    * @example
    * ```typescript
-   * const guard = new MutationGuard(registry, db);
+   * const guard = new MutationGuard(registry);
    * const existingPost = await db.selectFrom('posts').where('id', '=', 1).selectAll().executeTakeFirst();
    * await guard.checkDelete('posts', existingPost);
    * ```
@@ -94,7 +89,7 @@ export class MutationGuard<DB = unknown> {
    *
    * @example
    * ```typescript
-   * const guard = new MutationGuard(registry, db);
+   * const guard = new MutationGuard(registry);
    * const post = await db.selectFrom('posts').where('id', '=', 1).selectAll().executeTakeFirst();
    * const canRead = await guard.checkRead('posts', post);
    * ```
@@ -107,7 +102,8 @@ export class MutationGuard<DB = unknown> {
       await this.checkMutation(table, 'read', row);
       return true;
     } catch (error) {
-      if (error instanceof RLSPolicyViolation) {
+      // Both policy violations and evaluation errors result in denial
+      if (error instanceof RLSPolicyViolation || error instanceof RLSPolicyEvaluationError) {
         return false;
       }
       throw error;
@@ -133,7 +129,8 @@ export class MutationGuard<DB = unknown> {
       await this.checkMutation(table, operation, row, data);
       return true;
     } catch (error) {
-      if (error instanceof RLSPolicyViolation) {
+      // Both policy violations and evaluation errors result in denial
+      if (error instanceof RLSPolicyViolation || error instanceof RLSPolicyEvaluationError) {
         return false;
       }
       throw error;
@@ -189,7 +186,7 @@ export class MutationGuard<DB = unknown> {
 
     // All validate policies must pass
     for (const validate of validates) {
-      const result = await this.evaluatePolicy(validate.evaluate, evalCtx);
+      const result = await this.evaluatePolicy(validate.evaluate, evalCtx, validate.name);
       if (!result) {
         return false;
       }
@@ -237,7 +234,7 @@ export class MutationGuard<DB = unknown> {
     const denies = this.registry.getDenies(table, operation);
     for (const deny of denies) {
       const evalCtx = this.createEvalContext(ctx, table, operation, row, data);
-      const result = await this.evaluatePolicy(deny.evaluate, evalCtx);
+      const result = await this.evaluatePolicy(deny.evaluate, evalCtx, deny.name);
 
       if (result) {
         throw new RLSPolicyViolation(
@@ -253,7 +250,7 @@ export class MutationGuard<DB = unknown> {
       const validates = this.registry.getValidates(table, operation);
       for (const validate of validates) {
         const evalCtx = this.createEvalContext(ctx, table, operation, row, data);
-        const result = await this.evaluatePolicy(validate.evaluate, evalCtx);
+        const result = await this.evaluatePolicy(validate.evaluate, evalCtx, validate.name);
 
         if (!result) {
           throw new RLSPolicyViolation(
@@ -283,7 +280,7 @@ export class MutationGuard<DB = unknown> {
 
       for (const allow of allows) {
         const evalCtx = this.createEvalContext(ctx, table, operation, row, data);
-        const result = await this.evaluatePolicy(allow.evaluate, evalCtx);
+        const result = await this.evaluatePolicy(allow.evaluate, evalCtx, allow.name);
 
         if (result) {
           allowed = true;
@@ -323,20 +320,31 @@ export class MutationGuard<DB = unknown> {
 
   /**
    * Evaluate a policy condition
+   *
+   * @param condition - Policy condition function
+   * @param evalCtx - Policy evaluation context
+   * @param policyName - Name of the policy being evaluated (for error reporting)
+   * @returns Boolean result of policy evaluation
+   * @throws RLSPolicyEvaluationError if the policy throws an error
    */
   private async evaluatePolicy(
     condition: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>,
-    evalCtx: PolicyEvaluationContext
+    evalCtx: PolicyEvaluationContext,
+    policyName?: string
   ): Promise<boolean> {
     try {
       const result = condition(evalCtx);
       return result instanceof Promise ? await result : result;
     } catch (error) {
-      // Policy evaluation errors are treated as denial
-      throw new RLSPolicyViolation(
+      // Distinguish between policy evaluation errors and policy violations
+      // RLSPolicyEvaluationError indicates a bug in the policy, not a legitimate denial
+      const originalError = error instanceof Error ? error : undefined;
+      throw new RLSPolicyEvaluationError(
         evalCtx.operation ?? 'unknown',
         evalCtx.table ?? 'unknown',
-        `Policy evaluation error: ${error instanceof Error ? error.message : 'Unknown error'}`
+        error instanceof Error ? error.message : 'Unknown error',
+        policyName,
+        originalError
       );
     }
   }
@@ -351,7 +359,7 @@ export class MutationGuard<DB = unknown> {
    *
    * @example
    * ```typescript
-   * const guard = new MutationGuard(registry, db);
+   * const guard = new MutationGuard(registry);
    * const allPosts = await db.selectFrom('posts').selectAll().execute();
    * const accessiblePosts = await guard.filterRows('posts', allPosts);
    * ```

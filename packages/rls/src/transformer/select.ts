@@ -4,6 +4,7 @@
  */
 
 import type { SelectQueryBuilder } from 'kysely';
+import { sql } from 'kysely';
 import type { PolicyRegistry } from '../policy/registry.js';
 import type { PolicyEvaluationContext } from '../policy/types.js';
 import type { RLSContext } from '../context/types.js';
@@ -108,6 +109,18 @@ export class SelectTransformer<DB = unknown> {
   /**
    * Apply filter conditions to query builder
    *
+   * NOTE ON TYPE CASTS:
+   * The `as any` casts in this method are intentional architectural boundaries.
+   * Kysely's type system is designed for static query building where column names
+   * are known at compile time. RLS policies work with dynamic column names at runtime.
+   *
+   * Type safety is maintained through:
+   * 1. Policy conditions are validated during schema registration
+   * 2. Column names come from policy definitions (developer-controlled)
+   * 3. Values are type-checked by the policy condition functions
+   *
+   * This is the same pattern used in @kysera/repository/table-operations.ts
+   *
    * @param qb - Query builder to modify
    * @param conditions - WHERE clause conditions
    * @param table - Table name (for qualified column names)
@@ -122,6 +135,7 @@ export class SelectTransformer<DB = unknown> {
 
     for (const [column, value] of Object.entries(conditions)) {
       // Use table-qualified column name to avoid ambiguity in joins
+      // Cast is necessary because Kysely expects compile-time known column names
       const qualifiedColumn = `${table}.${column}` as any;
 
       if (value === null) {
@@ -132,9 +146,10 @@ export class SelectTransformer<DB = unknown> {
         continue;
       } else if (Array.isArray(value)) {
         if (value.length === 0) {
-          // Empty array means no matches - add impossible condition
-          // This ensures the query returns no rows
-          result = result.where(qualifiedColumn, '=', '__RLS_NO_MATCH__' as any);
+          // Empty array means no matches - add impossible condition using SQL FALSE
+          // This ensures the query returns no rows without using magic strings
+          // that could potentially match actual data
+          result = result.where(sql`FALSE` as any);
         } else {
           // IN clause for array values
           result = result.where(qualifiedColumn, 'in', value as any);

@@ -327,14 +327,29 @@ await rlsContext.runAsync(
 ## Error Handling
 
 ```typescript
-import { RLSError, RLSPolicyViolation, RLSContextError } from '@kysera/rls'
+import {
+  RLSError,
+  RLSPolicyViolation,
+  RLSPolicyEvaluationError,
+  RLSContextError
+} from '@kysera/rls'
 
 try {
   await postRepo.delete(postId)
 } catch (error) {
   if (error instanceof RLSPolicyViolation) {
-    // User doesn't have permission
+    // User doesn't have permission (legitimate access denial)
     res.status(403).json({ error: 'Permission denied' })
+  }
+  if (error instanceof RLSPolicyEvaluationError) {
+    // Bug in policy code - should be investigated
+    logger.error('Policy evaluation error:', {
+      operation: error.operation,
+      table: error.table,
+      policyName: error.policyName,
+      originalError: error.originalError
+    })
+    res.status(500).json({ error: 'Internal server error' })
   }
   if (error instanceof RLSContextError) {
     // No RLS context set
@@ -342,6 +357,39 @@ try {
   }
 }
 ```
+
+### Error Types
+
+**`RLSPolicyViolation`**
+- Thrown when access is legitimately denied by a policy
+- User doesn't have permission for the operation
+- Should result in a 403 response
+
+**`RLSPolicyEvaluationError`**
+- Thrown when a policy condition throws an error during evaluation
+- Indicates a bug in the policy code itself
+- Preserves original stack trace for debugging
+- Should result in a 500 response and investigation
+
+**Example:**
+```typescript
+// A policy with a bug
+allow('read', ctx => {
+  return ctx.row.someField.value; // Throws if someField is undefined
+});
+
+// This will throw RLSPolicyEvaluationError, not RLSPolicyViolation
+// The error includes:
+// - operation: 'read'
+// - table: 'posts'
+// - policyName: (if available)
+// - originalError: The original TypeError
+```
+
+**`RLSContextError`**
+- Thrown when RLS context is missing
+- Operation requires authentication but no context was set
+- Should result in a 401 response
 
 ## How RLS Works
 

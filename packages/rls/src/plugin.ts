@@ -135,7 +135,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     /**
      * Initialize plugin - compile policies
      */
-    async onInit<TDB>(executor: Kysely<TDB>): Promise<void> {
+    async onInit<TDB>(_executor: Kysely<TDB>): Promise<void> {
       logger.info?.('[RLS] Initializing RLS plugin', {
         tables: Object.keys(schema).length,
         skipTables: skipTables.length,
@@ -148,7 +148,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
 
       // Create transformers
       selectTransformer = new SelectTransformer<DB>(registry);
-      mutationGuard = new MutationGuard<DB>(registry, executor as unknown as Kysely<DB>);
+      mutationGuard = new MutationGuard<DB>(registry);
 
       logger.info?.('[RLS] RLS plugin initialized successfully');
     },

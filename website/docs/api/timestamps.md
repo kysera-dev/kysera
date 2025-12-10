@@ -544,7 +544,7 @@ The timestamps plugin adds minimal overhead:
 | create | +0.1ms |
 | update | +0.1ms |
 | findRecentlyCreated | +0.2ms |
-| createMany | <1ms regardless of count |
+| createMany | &lt;1ms regardless of count |
 
 ## Known Limitations
 

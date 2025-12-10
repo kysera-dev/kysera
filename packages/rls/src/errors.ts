@@ -31,6 +31,8 @@ export const RLSErrorCodes = {
   RLS_SCHEMA_INVALID: 'RLS_SCHEMA_INVALID' as ErrorCode,
   /** RLS context validation failed */
   RLS_CONTEXT_INVALID: 'RLS_CONTEXT_INVALID' as ErrorCode,
+  /** RLS policy evaluation threw an error */
+  RLS_POLICY_EVALUATION_ERROR: 'RLS_POLICY_EVALUATION_ERROR' as ErrorCode,
 } as const;
 
 /**
@@ -222,6 +224,86 @@ export class RLSPolicyViolation extends RLSError {
     };
     if (this.policyName !== undefined) {
       json['policyName'] = this.policyName;
+    }
+    return json;
+  }
+}
+
+// ============================================================================
+// Policy Evaluation Errors
+// ============================================================================
+
+/**
+ * Error thrown when a policy condition throws an error during evaluation
+ *
+ * This error is distinct from RLSPolicyViolation - it indicates a bug in the
+ * policy condition function itself, not a legitimate access denial.
+ *
+ * @example
+ * ```typescript
+ * // A policy with a bug
+ * allow('read', ctx => {
+ *   return ctx.row.someField.value; // Throws if someField is undefined
+ * });
+ *
+ * // This will throw RLSPolicyEvaluationError, not RLSPolicyViolation
+ * ```
+ */
+export class RLSPolicyEvaluationError extends RLSError {
+  public readonly operation: string;
+  public readonly table: string;
+  public readonly policyName?: string;
+  public readonly originalError?: Error;
+
+  /**
+   * Creates a new policy evaluation error
+   *
+   * @param operation - Database operation being performed
+   * @param table - Table name where error occurred
+   * @param message - Error message from the policy
+   * @param policyName - Name of the policy that threw
+   * @param originalError - The original error thrown by the policy
+   */
+  constructor(
+    operation: string,
+    table: string,
+    message: string,
+    policyName?: string,
+    originalError?: Error
+  ) {
+    super(
+      `RLS policy evaluation error during ${operation} on ${table}: ${message}`,
+      RLSErrorCodes.RLS_POLICY_EVALUATION_ERROR
+    );
+    this.name = 'RLSPolicyEvaluationError';
+    this.operation = operation;
+    this.table = table;
+    if (policyName !== undefined) {
+      this.policyName = policyName;
+    }
+    if (originalError !== undefined) {
+      this.originalError = originalError;
+      // Preserve the original stack trace for debugging
+      if (originalError.stack) {
+        this.stack = `${this.stack}\n\nCaused by:\n${originalError.stack}`;
+      }
+    }
+  }
+
+  override toJSON(): Record<string, unknown> {
+    const json: Record<string, unknown> = {
+      ...super.toJSON(),
+      operation: this.operation,
+      table: this.table,
+    };
+    if (this.policyName !== undefined) {
+      json['policyName'] = this.policyName;
+    }
+    if (this.originalError !== undefined) {
+      json['originalError'] = {
+        name: this.originalError.name,
+        message: this.originalError.message,
+      };
     }
     return json;
   }

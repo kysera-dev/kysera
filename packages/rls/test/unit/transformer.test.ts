@@ -3,7 +3,7 @@ import { MutationGuard } from '../../src/transformer/mutation.js';
 import { PolicyRegistry } from '../../src/policy/registry.js';
 import { defineRLSSchema, allow, deny, filter } from '../../src/policy/index.js';
 import { rlsContext, createRLSContext } from '../../src/context/index.js';
-import { RLSPolicyViolation } from '../../src/errors.js';
+import { RLSPolicyViolation, RLSPolicyEvaluationError } from '../../src/errors.js';
 
 interface TestDB {
   resources: {
@@ -457,11 +457,12 @@ describe('MutationGuard', () => {
   });
 
   describe('error handling', () => {
-    it('should handle policy evaluation errors', async () => {
+    it('should throw RLSPolicyEvaluationError for policy evaluation errors', async () => {
       const schema = defineRLSSchema<TestDB>({
         resources: {
           policies: [
-            allow('read', () => {
+            // Use 'all' to cover all operations including delete
+            allow('all', () => {
               throw new Error('Policy error');
             }),
           ],
@@ -476,18 +477,18 @@ describe('MutationGuard', () => {
       });
 
       await rlsContext.runAsync(ctx, async () => {
-        // checkRead catches RLSPolicyViolation and returns false
-        // We need to use checkMutation directly or checkCreate/Update/Delete
+        // Policy evaluation errors now throw RLSPolicyEvaluationError
+        // This is distinct from RLSPolicyViolation (legitimate access denial)
         await expect(guard.checkDelete('resources', {
           id: 1,
           owner_id: 1,
           tenant_id: 't1',
           status: 'draft',
-        })).rejects.toThrow(RLSPolicyViolation);
+        })).rejects.toThrow(RLSPolicyEvaluationError);
       });
     });
 
-    it('should include error details in violation', async () => {
+    it('should include error details and original error in RLSPolicyEvaluationError', async () => {
       const schema = defineRLSSchema<TestDB>({
         resources: {
           policies: [
@@ -515,12 +516,45 @@ describe('MutationGuard', () => {
           });
           expect.fail('Should have thrown');
         } catch (error) {
-          expect(error).toBeInstanceOf(RLSPolicyViolation);
-          if (error instanceof RLSPolicyViolation) {
-            expect(error.message).toContain('Policy evaluation error');
+          expect(error).toBeInstanceOf(RLSPolicyEvaluationError);
+          if (error instanceof RLSPolicyEvaluationError) {
             expect(error.message).toContain('Custom policy error');
+            expect(error.operation).toBe('delete');
+            expect(error.table).toBe('resources');
+            expect(error.originalError).toBeInstanceOf(Error);
+            expect(error.originalError?.message).toBe('Custom policy error');
           }
         }
+      });
+    });
+
+    it('should catch RLSPolicyEvaluationError in checkRead and return false', async () => {
+      const schema = defineRLSSchema<TestDB>({
+        resources: {
+          policies: [
+            allow('read', () => {
+              throw new Error('Policy error');
+            }),
+          ],
+        },
+      });
+
+      const registry = new PolicyRegistry<TestDB>(schema);
+      const guard = new MutationGuard<TestDB>(registry);
+
+      const ctx = createRLSContext({
+        auth: { userId: 1, roles: [] },
+      });
+
+      await rlsContext.runAsync(ctx, async () => {
+        // checkRead should catch evaluation errors and return false
+        const canRead = await guard.checkRead('resources', {
+          id: 1,
+          owner_id: 1,
+          tenant_id: 't1',
+          status: 'draft',
+        });
+        expect(canRead).toBe(false);
       });
     });
   });

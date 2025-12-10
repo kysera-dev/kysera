@@ -75,6 +75,7 @@ export {
   RLSError,
   RLSContextError,
   RLSPolicyViolation,
+  RLSPolicyEvaluationError,
   RLSSchemaError,
   RLSContextValidationError,
   RLSErrorCodes,

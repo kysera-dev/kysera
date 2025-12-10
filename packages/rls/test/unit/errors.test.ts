@@ -16,6 +16,7 @@ describe('RLSErrorCodes', () => {
     expect(RLSErrorCodes.RLS_POLICY_INVALID).toBe('RLS_POLICY_INVALID');
     expect(RLSErrorCodes.RLS_SCHEMA_INVALID).toBe('RLS_SCHEMA_INVALID');
     expect(RLSErrorCodes.RLS_CONTEXT_INVALID).toBe('RLS_CONTEXT_INVALID');
+    expect(RLSErrorCodes.RLS_POLICY_EVALUATION_ERROR).toBe('RLS_POLICY_EVALUATION_ERROR');
   });
 
   it('should have unique error codes', () => {
@@ -24,9 +25,9 @@ describe('RLSErrorCodes', () => {
     expect(uniqueCodes.size).toBe(codes.length);
   });
 
-  it('should have exactly 5 error codes', () => {
+  it('should have exactly 6 error codes', () => {
     const codeKeys = Object.keys(RLSErrorCodes);
-    expect(codeKeys.length).toBe(5);
+    expect(codeKeys.length).toBe(6);
   });
 });
 

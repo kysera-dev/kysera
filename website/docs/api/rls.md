@@ -39,7 +39,12 @@ export { allow, deny, filter, validate } from './policies'
 export { rlsContext, createRLSContext, withRLSContext } from './context'
 
 // Errors
-export { RLSError, RLSPolicyViolation, RLSContextError } from './errors'
+export {
+  RLSError,
+  RLSPolicyViolation,
+  RLSPolicyEvaluationError,
+  RLSContextError
+} from './errors'
 
 // Types
 export type {
@@ -594,6 +599,7 @@ const rlsSchema = defineRLSSchema({
 import {
   RLSError,
   RLSPolicyViolation,
+  RLSPolicyEvaluationError,
   RLSContextError
 } from '@kysera/rls'
 
@@ -602,17 +608,149 @@ class RLSError extends Error {
   code: string
 }
 
-// Policy violation
+// Policy violation (legitimate access denial)
 class RLSPolicyViolation extends RLSError {
-  table: string
   operation: string
-  userId: string | number
+  table: string
   reason: string
+  policyName?: string
+}
+
+// Policy evaluation error (bug in policy code)
+class RLSPolicyEvaluationError extends RLSError {
+  operation: string
+  table: string
+  policyName?: string
+  originalError?: Error
 }
 
 // Missing context
 class RLSContextError extends RLSError {
   message: 'RLS context not set'
+}
+```
+
+### RLSPolicyViolation
+
+Thrown when access is legitimately denied by an RLS policy.
+
+**Properties:**
+- `operation` - The operation that was denied (read, create, update, delete)
+- `table` - The table where the violation occurred
+- `reason` - Human-readable reason for the denial
+- `policyName` - Name of the policy that denied access (optional)
+- `code` - Error code: `'RLS_POLICY_VIOLATION'`
+
+**When to use:**
+- User doesn't have permission for an operation
+- Policy condition evaluated to `false` (access denied)
+- Should result in HTTP 403 response
+
+**Example:**
+```typescript
+try {
+  await postRepo.delete(postId)
+} catch (error) {
+  if (error instanceof RLSPolicyViolation) {
+    console.error('Access denied:', {
+      operation: error.operation,    // 'delete'
+      table: error.table,             // 'posts'
+      reason: error.reason,           // 'User does not own this post'
+      policyName: error.policyName    // 'ownership_policy'
+    })
+    res.status(403).json({ error: 'Permission denied' })
+  }
+}
+```
+
+### RLSPolicyEvaluationError
+
+Thrown when a policy condition throws an error during evaluation. This is distinct from `RLSPolicyViolation` - it indicates a **bug in the policy code itself**, not a legitimate access denial.
+
+**Properties:**
+- `operation` - The operation being performed when the error occurred
+- `table` - The table where the error occurred
+- `policyName` - Name of the policy that threw (optional)
+- `originalError` - The original error thrown by the policy (optional)
+- `code` - Error code: `'RLS_POLICY_EVALUATION_ERROR'`
+- `stack` - Combined stack trace including the original error's stack
+
+**When thrown:**
+- Policy condition throws an unexpected error
+- Bug in policy code (e.g., accessing undefined property)
+- Type errors in policy logic
+
+**Why separate from RLSPolicyViolation:**
+- Helps distinguish between "access denied" (expected) and "policy bug" (unexpected)
+- Preserves original stack trace for debugging
+- Indicates need to fix policy code, not user permissions
+
+**Example:**
+```typescript
+// Policy with a bug
+allow('read', ctx => {
+  // Bug: someField might be undefined
+  return ctx.row.someField.value;
+});
+
+// When this policy runs:
+try {
+  await postRepo.findAll()
+} catch (error) {
+  if (error instanceof RLSPolicyEvaluationError) {
+    // This indicates a bug in the policy, not user permissions
+    logger.error('Policy bug detected:', {
+      operation: error.operation,        // 'read'
+      table: error.table,                 // 'posts'
+      policyName: error.policyName,       // 'read_policy'
+      originalError: error.originalError  // TypeError: Cannot read property 'value' of undefined
+    })
+
+    // Full stack trace including original error
+    console.error(error.stack)
+
+    res.status(500).json({ error: 'Internal server error' })
+  }
+}
+```
+
+**Best practices:**
+- Log these errors with full stack traces for debugging
+- Return HTTP 500 (not 403) since this is a server error
+- Fix the policy code to handle edge cases properly
+- Add null checks and proper error handling in policies
+
+**Example of fixing a policy:**
+```typescript
+// Before (buggy):
+allow('read', ctx => {
+  return ctx.row.someField.value;  // Can throw
+});
+
+// After (safe):
+allow('read', ctx => {
+  return ctx.row?.someField?.value ?? false;  // Safe navigation
+});
+```
+
+### RLSContextError
+
+Thrown when RLS context is missing but required for an operation.
+
+**When thrown:**
+- Operation executed outside of `rlsContext.runAsync()`
+- `requireContext: true` is set in plugin options
+- No authentication context available
+
+**Example:**
+```typescript
+try {
+  // Missing context
+  await postRepo.findAll()
+} catch (error) {
+  if (error instanceof RLSContextError) {
+    res.status(401).json({ error: 'Not authenticated' })
+  }
 }
 ```
 
@@ -623,12 +761,25 @@ try {
   await postRepo.delete(postId)
 } catch (error) {
   if (error instanceof RLSPolicyViolation) {
-    // User doesn't have permission
+    // User doesn't have permission (legitimate access denial)
     res.status(403).json({
       error: 'Permission denied',
       table: error.table,
-      operation: error.operation
+      operation: error.operation,
+      reason: error.reason
     })
+  }
+
+  if (error instanceof RLSPolicyEvaluationError) {
+    // Bug in policy code - should be investigated
+    logger.error('Policy evaluation error:', {
+      operation: error.operation,
+      table: error.table,
+      policyName: error.policyName,
+      originalError: error.originalError,
+      stack: error.stack
+    })
+    res.status(500).json({ error: 'Internal server error' })
   }
 
   if (error instanceof RLSContextError) {
