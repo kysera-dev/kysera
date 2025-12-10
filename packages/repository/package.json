@@ -1,6 +1,6 @@
 {
   "name": "@kysera/repository",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Repository pattern for Kysera ORM with smart validation",
   "type": "module",
   "main": "./dist/index.js",

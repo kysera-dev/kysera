@@ -1,6 +1,6 @@
 {
   "name": "@kysera/migrations",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Database migration management for Kysera ORM with dry-run support and flexible rollback capabilities",
   "type": "module",
   "main": "./dist/index.js",
