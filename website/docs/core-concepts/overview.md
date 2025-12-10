@@ -88,22 +88,21 @@ const users = await withRetry(() => db.selectFrom('users').execute())
 
 Choose your data access style:
 
-**Repository Pattern** - Structured CRUD with validation:
+**Repository Pattern** - Structured CRUD with validation and **plugin support**:
 
 ```typescript
-import { createRepositoryFactory } from '@kysera/repository'
+import { createRepositoryFactory, createORM } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
 
-const factory = createRepositoryFactory(db)
-const userRepo = factory.create({
-  tableName: 'users',
-  mapRow: (row) => row,
-  schemas: { create: CreateUserSchema, update: UpdateUserSchema }
-})
+const orm = await createORM(db, [softDeletePlugin()])
+const userRepo = orm.createRepository(createUserRepository)
 
+// Plugins work automatically
 const user = await userRepo.create({ email: 'test@example.com', name: 'Test' })
+await userRepo.softDelete(1)  // Plugin method
 ```
 
-**Functional DAL** - Type-inferred queries with context passing:
+**Functional DAL** - Type-inferred queries with context passing (no plugin support):
 
 ```typescript
 import { createQuery, withTransaction } from '@kysera/dal'
@@ -118,6 +117,12 @@ const result = await withTransaction(db, async (ctx) => {
   return getUserById(ctx, 1)
 })
 ```
+
+:::tip Choosing Between Repository and DAL
+- Use **Repository** when you need plugins (soft-delete, audit, timestamps, RLS)
+- Use **DAL** when you need maximum flexibility and type inference
+- See [Repository vs DAL Guide](/docs/guides/dal-vs-repository) for detailed comparison
+:::
 
 ### Layer 4: Plugins
 
@@ -201,6 +206,7 @@ const UserSchema = z.object({
 
 - [Architecture](/docs/core-concepts/architecture) - Deep dive into the architecture
 - [Repository Pattern](/docs/core-concepts/repository-pattern) - Learn about repositories
+- [Repository vs DAL](/docs/guides/dal-vs-repository) - Choose the right data access pattern
 - [Transactions](/docs/core-concepts/transactions) - Transaction handling
 - [Validation](/docs/core-concepts/validation) - Validation strategies
 - [Error Handling](/docs/core-concepts/error-handling) - Error types and parsing
