@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Kysely, SqliteDialect, type Generated } from 'kysely';
 import betterSqlite3 from 'better-sqlite3';
 import { auditPluginSQLite } from '../src/index.js';
-import { createORM, createRepositoryFactory } from '@kysera/repository';
+import { createORM, createRepositoryFactory, zodAdapter } from '@kysera/repository';
 import { z } from 'zod';
 
 interface TestDatabase {
@@ -50,10 +50,10 @@ describe('Minimal Audit Test', () => {
         tableName: 'users' as const,
         mapRow: (row: any) => row,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             email: z.string(),
             name: z.string(),
-          }),
+          })),
         },
       })
     );

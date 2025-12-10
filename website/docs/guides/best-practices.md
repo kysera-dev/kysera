@@ -27,8 +27,8 @@ const user = await userRepo.findByIdWithValidationAndNotifications(userId)
 ```typescript
 // Good: Factory pattern with DI
 const createRepos = createRepositoriesFactory({
-  users: createUserRepository,
-  posts: createPostRepository
+  users: (executor) => createUserRepository(executor),
+  posts: (executor) => createPostRepository(executor)
 })
 
 // Use in services
@@ -138,10 +138,17 @@ try {
   await userRepo.create({ email: 'test@test.com' })
 } catch (error) {
   if (error instanceof UniqueConstraintError) {
-    return res.status(409).json({ error: 'Email already exists' })
+    return res.status(409).json({
+      error: 'Email already exists',
+      constraint: error.constraint,
+      columns: error.columns
+    })
   }
   if (error instanceof ValidationError) {
-    return res.status(400).json({ error: 'Invalid input', details: error.errors })
+    return res.status(400).json({
+      error: 'Invalid input',
+      details: error.issues
+    })
   }
   throw error
 }
@@ -200,11 +207,11 @@ CREATE INDEX idx_posts_cursor ON posts (created_at DESC, id DESC);
 ### Order Plugins Correctly
 
 ```typescript
-// Execution order matters: timestamps → softDelete → audit
+// Execution order matters: plugins wrap each other like onions
 const orm = await createORM(db, [
-  auditPlugin(),      // 3. Captures everything
-  softDeletePlugin(), // 2. Filters queries
-  timestampsPlugin()  // 1. Modifies data (innermost)
+  timestampsPlugin(), // 1. Modifies data first (adds timestamps)
+  softDeletePlugin(), // 2. Filters queries (excludes soft-deleted)
+  auditPlugin()       // 3. Captures everything (outer layer)
 ])
 ```
 
@@ -237,7 +244,7 @@ for (const id of [1, 2]) {
 
 ```typescript
 const debugDb = withDebug(db, {
-  maxMetrics: 1000  // Circular buffer prevents leaks
+  maxMetrics: 1000  // Circular buffer prevents memory leaks (default: 1000)
 })
 ```
 

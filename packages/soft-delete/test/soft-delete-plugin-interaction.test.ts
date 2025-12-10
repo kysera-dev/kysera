@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDatabase, seedTestData } from './setup/database.js';
 import { softDeletePlugin } from '../src/index.js';
-import { createORM, createRepositoryFactory } from '@kysera/repository';
+import { createORM, createRepositoryFactory, zodAdapter } from '@kysera/repository';
 import type { Kysely } from 'kysely';
 import type { TestDatabase } from './setup/database.js';
 import type { Plugin, AnyQueryBuilder } from '@kysera/repository';
@@ -132,8 +132,8 @@ describe('Soft Delete Plugin - Plugin Interaction', () => {
           tableName: 'users' as keyof TestDatabase,
           mapRow: (row) => row as TestUser,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -162,8 +162,8 @@ describe('Soft Delete Plugin - Plugin Interaction', () => {
           tableName: 'users' as keyof TestDatabase,
           mapRow: (row) => row as TestUser,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -193,8 +193,8 @@ describe('Soft Delete Plugin - Plugin Interaction', () => {
           tableName: 'users' as keyof TestDatabase,
           mapRow: (row) => row as TestUser,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -221,8 +221,8 @@ describe('Soft Delete Plugin - Plugin Interaction', () => {
           tableName: 'users' as keyof TestDatabase,
           mapRow: (row) => row as TestUser,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -266,8 +266,8 @@ describe('Soft Delete Plugin - Plugin Interaction', () => {
           tableName: 'users' as keyof TestDatabase,
           mapRow: (row) => row as TestUser,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -290,8 +290,8 @@ describe('Soft Delete Plugin - Plugin Interaction', () => {
           tableName: 'users' as keyof TestDatabase,
           mapRow: (row) => row as TestUser,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -323,8 +323,8 @@ describe('Soft Delete Plugin - Plugin Interaction', () => {
           tableName: 'users' as keyof TestDatabase,
           mapRow: (row) => row as TestUser,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -336,8 +336,8 @@ describe('Soft Delete Plugin - Plugin Interaction', () => {
           tableName: 'posts' as keyof TestDatabase,
           mapRow: (row) => row as TestPost,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -400,8 +400,8 @@ describe('Soft Delete Plugin - Plugin Interaction', () => {
           tableName: 'users' as keyof TestDatabase,
           mapRow: (row) => row as TestUser,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -425,8 +425,8 @@ describe('Soft Delete Plugin - Plugin Interaction', () => {
           tableName: 'users' as keyof TestDatabase,
           mapRow: (row) => row as TestUser,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
 
@@ -463,7 +463,7 @@ describe('Soft Delete Plugin - Plugin Interaction', () => {
         return base.create({
           tableName: 'users' as keyof TestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as any;
 
@@ -472,7 +472,7 @@ describe('Soft Delete Plugin - Plugin Interaction', () => {
         return base.create({
           tableName: 'posts' as keyof TestDatabase,
           mapRow: (row) => row as TestPost,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as any;
 

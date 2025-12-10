@@ -12,14 +12,18 @@ Kysera follows a modular, layered architecture designed for flexibility, type sa
 
 ### 1. Minimal Core, Optional Everything
 
-The core package is intentionally minimal (~24KB):
+The core package is intentionally minimal (~8KB):
 
-- Debug utilities
-- Error handling
-- Health checks
-- Pagination helpers
-- Retry logic
-- Testing utilities
+- Error handling and error codes
+- Pagination helpers (offset and cursor-based)
+- Type definitions (Executor, Timestamps, etc.)
+- Logger interface
+
+Infrastructure utilities (health, retry, debug, testing) are separate opt-in packages:
+
+- `@kysera/infra` - Health checks, retry, circuit breaker, shutdown
+- `@kysera/debug` - Query logging, profiling, SQL formatting
+- `@kysera/testing` - Test utilities (transaction rollback, factories)
 
 Everything else (repository pattern, plugins) is optional and tree-shakeable.
 
@@ -100,21 +104,28 @@ All packages use the strictest TypeScript configuration:
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────────┐
-│                    @kysera/repository                          │
-│  ┌──────────────────────────────────────────────────────────┐ │
-│  │  Repository Factory  │  Validation  │  Plugin System     │ │
-│  └──────────────────────────────────────────────────────────┘ │
+│              Data Access Layer (choose your style)             │
+│  ┌─────────────────────────┐  ┌──────────────────────────────┐│
+│  │   @kysera/repository    │  │        @kysera/dal           ││
+│  │  Repository + Validation│  │   Functional + Type Infer    ││
+│  └─────────────────────────┘  └──────────────────────────────┘│
 └────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────────┐
-│                       @kysera/core                             │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐  │
-│  │  Debug   │ │  Errors  │ │  Health  │ │    Pagination    │  │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘  │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                       │
-│  │  Retry   │ │ Shutdown │ │ Testing  │                       │
-│  └──────────┘ └──────────┘ └──────────┘                       │
+│                Infrastructure Layer (opt-in)                   │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐ │
+│  │ @kysera/infra│  │@kysera/debug │  │   @kysera/testing    │ │
+│  │Health, Retry │  │ Logging, SQL │  │  Factories, Cleanup  │ │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘ │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────────┐
+│                  @kysera/core (minimal, ~8KB)                  │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐   │
+│  │    Errors    │ │  Pagination  │ │   Types + Logger     │   │
+│  └──────────────┘ └──────────────┘ └──────────────────────┘   │
 └────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -204,8 +215,12 @@ extendRepository(repo) {
 
 | Package | Size | Overhead |
 |---------|------|----------|
-| @kysera/core | ~24KB | Less than 0.2ms per query |
+| @kysera/core | ~8KB | Minimal |
 | @kysera/repository | ~12KB | Less than 0.3ms per query |
+| @kysera/dal | ~7KB | Less than 0.2ms per query |
+| @kysera/infra | ~12KB | Less than 0.2ms per query |
+| @kysera/debug | ~5KB | Less than 0.1ms per query |
+| @kysera/testing | ~6KB | Dev-only |
 | Plugins | 4-12KB each | Less than 0.1ms per query |
 
 ### Benchmarks

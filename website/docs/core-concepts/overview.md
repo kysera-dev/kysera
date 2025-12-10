@@ -12,14 +12,20 @@ Kysera is built on a layered architecture that allows you to use only what you n
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Layer 3: Plugins                                               │
+│  Layer 4: Plugins                                               │
 │  (@kysera/soft-delete, @kysera/audit, @kysera/timestamps, etc.) │
 ├─────────────────────────────────────────────────────────────────┤
-│  Layer 2: Repository Pattern (@kysera/repository)               │
-│  Optional - Provides structured data access with validation     │
+│  Layer 3: Data Access (choose your style)                       │
+│  @kysera/repository (CRUD + validation)                         │
+│  @kysera/dal (Functional queries + type inference)              │
 ├─────────────────────────────────────────────────────────────────┤
-│  Layer 1: Core Utilities (@kysera/core)                         │
-│  Debug, errors, health checks, pagination, retry, testing       │
+│  Layer 2: Infrastructure (opt-in)                               │
+│  @kysera/infra (health, retry, circuit breaker)                 │
+│  @kysera/debug (logging, profiling)                             │
+│  @kysera/testing (test utilities)                               │
+├─────────────────────────────────────────────────────────────────┤
+│  Layer 1: Core Utilities (@kysera/core ~8KB)                    │
+│  Errors, error codes, pagination, types, logger                 │
 ├─────────────────────────────────────────────────────────────────┤
 │  Layer 0: Kysely Foundation                                     │
 │  Direct SQL query builder - no wrapper required                 │
@@ -41,16 +47,10 @@ const users = await db.selectFrom('users').selectAll().execute()
 
 ### Layer 1: Core Utilities
 
-Add production utilities without changing your data access patterns:
+The minimal core package (~8KB) provides essential utilities:
 
 ```typescript
-import { withDebug, checkDatabaseHealth, parseDatabaseError } from '@kysera/core'
-
-// Debug wrapper for query logging
-const debugDb = withDebug(db, { logQuery: true, slowQueryThreshold: 100 })
-
-// Health checks for monitoring
-const health = await checkDatabaseHealth(db, pool)
+import { parseDatabaseError, UniqueConstraintError, paginate } from '@kysera/core'
 
 // Type-safe error handling
 try {
@@ -61,11 +61,34 @@ try {
     // Handle constraint violation
   }
 }
+
+// Pagination helpers
+const page = await paginate(db.selectFrom('users').selectAll(), { page: 1, limit: 20 })
 ```
 
-### Layer 2: Repository Pattern
+### Layer 2: Infrastructure (Opt-in)
 
-Optional structured data access with validation:
+Add production utilities from separate packages:
+
+```typescript
+import { withDebug } from '@kysera/debug'
+import { checkDatabaseHealth, withRetry } from '@kysera/infra'
+
+// Debug wrapper for query logging
+const debugDb = withDebug(db, { logQuery: true, slowQueryThreshold: 100 })
+
+// Health checks for monitoring
+const health = await checkDatabaseHealth(db, pool)
+
+// Retry with exponential backoff
+const users = await withRetry(() => db.selectFrom('users').execute())
+```
+
+### Layer 3: Data Access
+
+Choose your data access style:
+
+**Repository Pattern** - Structured CRUD with validation:
 
 ```typescript
 import { createRepositoryFactory } from '@kysera/repository'
@@ -80,7 +103,23 @@ const userRepo = factory.create({
 const user = await userRepo.create({ email: 'test@example.com', name: 'Test' })
 ```
 
-### Layer 3: Plugins
+**Functional DAL** - Type-inferred queries with context passing:
+
+```typescript
+import { createQuery, withTransaction } from '@kysera/dal'
+
+const getUserById = createQuery((ctx, id: number) =>
+  ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
+)
+
+// Use directly or in transactions
+const user = await getUserById(db, 1)
+const result = await withTransaction(db, async (ctx) => {
+  return getUserById(ctx, 1)
+})
+```
+
+### Layer 4: Plugins
 
 Extend repository functionality with plugins:
 

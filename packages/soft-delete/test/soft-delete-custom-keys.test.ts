@@ -3,7 +3,7 @@ import { Kysely, SqliteDialect, sql, type Generated } from 'kysely';
 import sqliteConstructor from 'better-sqlite3';
 import type { Database as SQLiteDatabase } from 'better-sqlite3';
 import { softDeletePlugin } from '../src/index.js';
-import { createORM, createRepositoryFactory } from '@kysera/repository';
+import { createORM, createRepositoryFactory, zodAdapter } from '@kysera/repository';
 import { z } from 'zod';
 
 // Custom database schema with various primary key types
@@ -195,8 +195,8 @@ describe('Soft Delete Plugin - Custom Primary Keys', () => {
           tableName: 'products' as keyof CustomKeyDatabase,
           mapRow: (row) => row as Product,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -227,8 +227,8 @@ describe('Soft Delete Plugin - Custom Primary Keys', () => {
           tableName: 'products' as keyof CustomKeyDatabase,
           mapRow: (row) => row as Product,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -256,8 +256,8 @@ describe('Soft Delete Plugin - Custom Primary Keys', () => {
           tableName: 'products' as keyof CustomKeyDatabase,
           mapRow: (row) => row as Product,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -286,8 +286,8 @@ describe('Soft Delete Plugin - Custom Primary Keys', () => {
           tableName: 'customers' as keyof CustomKeyDatabase,
           mapRow: (row) => row as Customer,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -322,8 +322,8 @@ describe('Soft Delete Plugin - Custom Primary Keys', () => {
           tableName: 'customers' as keyof CustomKeyDatabase,
           mapRow: (row) => row as Customer,
           schemas: {
-            create: z.any(),
-            update: z.any(),
+            create: zodAdapter(z.any()),
+            update: zodAdapter(z.any()),
           },
         });
       }) as any;
@@ -485,7 +485,7 @@ describe('Soft Delete Plugin - Custom Primary Keys', () => {
         return base.create({
           tableName: 'products' as keyof CustomKeyDatabase,
           mapRow: (row) => row as Product,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as any;
 

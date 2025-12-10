@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { z } from 'zod';
 import { createTestDatabase } from './setup/database.js';
-import { createRepositoryFactory } from '../src/repository.js';
+import { createRepositoryFactory, zodAdapter } from '../src/index.js';
 import type { Kysely, Selectable } from 'kysely';
 import type { TestDatabase } from './setup/database.js';
 
@@ -58,9 +58,9 @@ describe('Keyset-based Cursor Pagination', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          entity: UserSchema,
-          create: CreateUserSchema,
-          update: UpdateUserSchema,
+          entity: zodAdapter(UserSchema),
+          create: zodAdapter(CreateUserSchema),
+          update: zodAdapter(UpdateUserSchema),
         },
       });
 
@@ -141,7 +141,7 @@ describe('Keyset-based Cursor Pagination', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -205,7 +205,7 @@ describe('Keyset-based Cursor Pagination', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -267,7 +267,7 @@ describe('Keyset-based Cursor Pagination', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -334,7 +334,7 @@ describe('Keyset-based Cursor Pagination', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -389,7 +389,7 @@ describe('Keyset-based Cursor Pagination', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -415,7 +415,7 @@ describe('Keyset-based Cursor Pagination', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -444,7 +444,7 @@ describe('Keyset-based Cursor Pagination', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -486,7 +486,7 @@ describe('Keyset-based Cursor Pagination', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -515,7 +515,7 @@ describe('Keyset-based Cursor Pagination', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -564,7 +564,7 @@ describe('Keyset-based Cursor Pagination', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -612,7 +612,7 @@ describe('Keyset-based Cursor Pagination', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -652,7 +652,7 @@ describe('Keyset-based Cursor Pagination', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 

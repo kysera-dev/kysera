@@ -219,7 +219,7 @@ export function resolvePluginOrder(plugins: Plugin[]): Plugin[] {
   const result: Plugin[] = [];
   
   // Get all plugins with no dependencies
-  let available = plugins.filter(p => (inDegree.get(p.name) ?? 0) === 0);
+  const available = plugins.filter(p => (inDegree.get(p.name) ?? 0) === 0);
   
   while (available.length > 0) {
     // Sort available plugins by priority (higher first), then by name for stability

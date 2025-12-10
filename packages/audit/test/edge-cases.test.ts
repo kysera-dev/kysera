@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Kysely, SqliteDialect, type Generated, type Selectable } from 'kysely';
 import betterSqlite3 from 'better-sqlite3';
 import { auditPluginSQLite, auditPlugin } from '../src/index.js';
-import { createRepositoryFactory, createORM } from '@kysera/repository';
+import { createRepositoryFactory, createORM, zodAdapter } from '@kysera/repository';
 import { z } from 'zod';
 
 // ============================================================================
@@ -167,16 +167,16 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
         tableName: 'users' as const,
         mapRow: (row: any) => row as User,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             email: z.string(),
             name: z.string(),
             metadata: z.string().nullable().optional(),
-          }),
-          update: z.object({
+          })),
+          update: zodAdapter(z.object({
             email: z.string().optional(),
             name: z.string().optional(),
             metadata: z.string().nullable().optional(),
-          }),
+          })),
         },
       })
     );
@@ -186,18 +186,18 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
         tableName: 'products' as const,
         mapRow: (row: any) => row as Product,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             sku: z.string(),
             name: z.string(),
             price: z.number(),
             data: z.string().nullable().optional(),
-          }),
-          update: z.object({
+          })),
+          update: zodAdapter(z.object({
             sku: z.string().optional(),
             name: z.string().optional(),
             price: z.number().optional(),
             data: z.string().nullable().optional(),
-          }),
+          })),
         },
       })
     );
@@ -599,11 +599,11 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               metadata: z.string().nullable().optional(),
-            }),
+            })),
           },
         })
       );
@@ -640,11 +640,11 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               metadata: z.string().nullable().optional(),
-            }),
+            })),
           },
         })
       );
@@ -686,14 +686,14 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               metadata: z.string().nullable().optional(),
-            }),
-            update: z.object({
+            })),
+            update: zodAdapter(z.object({
               name: z.string().optional(),
-            }),
+            })),
           },
         })
       );
@@ -741,14 +741,14 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               metadata: z.string().nullable().optional(),
-            }),
-            update: z.object({
+            })),
+            update: zodAdapter(z.object({
               name: z.string().optional(),
-            }),
+            })),
           },
         })
       );
@@ -791,14 +791,14 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               metadata: z.string().nullable().optional(),
-            }),
-            update: z.object({
+            })),
+            update: zodAdapter(z.object({
               name: z.string().optional(),
-            }),
+            })),
           },
         })
       );
@@ -849,11 +849,11 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               metadata: z.string().nullable().optional(),
-            }),
+            })),
           },
         })
       );
@@ -863,12 +863,12 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
           tableName: 'products' as const,
           mapRow: (row: any) => row as Product,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               sku: z.string(),
               name: z.string(),
               price: z.number(),
               data: z.string().nullable().optional(),
-            }),
+            })),
           },
         })
       );
@@ -911,11 +911,11 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               metadata: z.string().nullable().optional(),
-            }),
+            })),
           },
         })
       );
@@ -925,12 +925,12 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
           tableName: 'products' as const,
           mapRow: (row: any) => row as Product,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               sku: z.string(),
               name: z.string(),
               price: z.number(),
               data: z.string().nullable().optional(),
-            }),
+            })),
           },
         })
       );
@@ -993,11 +993,11 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               metadata: z.string().nullable().optional(),
-            }),
+            })),
           },
         })
       );
@@ -1050,11 +1050,11 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               metadata: z.string().nullable().optional(),
-            }),
+            })),
           },
         })
       );
@@ -1170,11 +1170,11 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               metadata: z.string().nullable().optional(),
-            }),
+            })),
           },
         })
       );
@@ -1325,10 +1325,10 @@ describe('Audit Plugin - skipSystemOperations', () => {
         tableName: 'users' as const,
         mapRow: (row: any) => row,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             email: z.string(),
             name: z.string(),
-          }),
+          })),
         },
       })
     );
@@ -1379,17 +1379,17 @@ describe('Audit Plugin - Delete Return Value Check', () => {
         tableName: 'users' as const,
         mapRow: (row: any) => row,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             email: z.string(),
             name: z.string(),
-          }),
+          })),
         },
       })
     );
 
     // Try to delete non-existent entity
     await db.deleteFrom('audit_logs').execute();
-    
+
     try {
       await userRepo.delete(99999);
     } catch {

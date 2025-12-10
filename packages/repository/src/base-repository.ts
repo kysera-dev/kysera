@@ -1,9 +1,9 @@
 import type { Selectable, Transaction } from 'kysely';
-import type { z } from 'zod';
 import type { Executor } from './helpers.js';
 import type { PrimaryKeyColumn, PrimaryKeyTypeHint, PrimaryKeyInput, PrimaryKeyConfig } from './types.js';
 import { normalizePrimaryKeyConfig, getPrimaryKeyColumns } from './types.js';
 import { NotFoundError } from '@kysera/core';
+import type { ValidationSchema } from './validation-adapter.js';
 
 /**
  * Core repository interface
@@ -56,10 +56,35 @@ export interface RepositoryConfig<Table, Entity> {
   /** Primary key type hint. Default: 'number' */
   primaryKeyType?: PrimaryKeyTypeHint;
   mapRow: (row: Selectable<Table>) => Entity;
+  /**
+   * Validation schemas for entity, create, and update operations.
+   * Supports any ValidationSchema-compatible validator (Zod, Valibot, TypeBox, etc.)
+   *
+   * @example With Zod adapter
+   * ```typescript
+   * import { z } from 'zod';
+   * import { zodAdapter } from '@kysera/repository';
+   *
+   * schemas: {
+   *   entity: zodAdapter(UserSchema),
+   *   create: zodAdapter(CreateUserSchema),
+   *   update: zodAdapter(UpdateUserSchema),
+   * }
+   * ```
+   *
+   * @example With native adapter (no validation)
+   * ```typescript
+   * import { nativeAdapter } from '@kysera/repository';
+   *
+   * schemas: {
+   *   create: nativeAdapter<CreateUserInput>(),
+   * }
+   * ```
+   */
   schemas: {
-    entity?: z.ZodType<Entity>;
-    create: z.ZodType;
-    update?: z.ZodType;
+    entity?: ValidationSchema<Entity>;
+    create: ValidationSchema;
+    update?: ValidationSchema;
   };
   validateDbResults?: boolean;
   validationStrategy?: 'none' | 'strict';
@@ -108,8 +133,8 @@ function extractPrimaryKey<Entity, PK>(
   const columns = getPrimaryKeyColumns(pkConfig.columns);
   
   if (columns.length === 1) {
-    const column = columns[0]!;
-    return (entity as any)[column] as PK;
+    const column = columns[0] as string;
+    return (entity as Record<string, unknown>)[column] as PK;
   }
 
   // For composite keys, return an object
@@ -155,17 +180,17 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
   };
 
   // Helper to validate input
-  const validateInput = (input: unknown, schema: z.ZodType): unknown => {
+  const validateInput = (input: unknown, schema: ValidationSchema): unknown => {
     return validationStrategy === 'none' ? input : schema.parse(input);
   };
 
   // Get the appropriate update schema
-  const getUpdateSchema = (): z.ZodType => {
+  const getUpdateSchema = (): ValidationSchema => {
     if (schemas.update) return schemas.update;
 
-    // Try to create a partial schema from create schema if it's a ZodObject
+    // Try to create a partial schema from create schema if it supports it
     const createSchema = schemas.create;
-    if ('partial' in createSchema && typeof createSchema.partial === 'function') {
+    if (createSchema.partial) {
       return createSchema.partial();
     }
 

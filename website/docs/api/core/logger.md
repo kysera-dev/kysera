@@ -88,7 +88,8 @@ userLogger.error('User not found', { id: 123 })
 ### With Debug Module
 
 ```typescript
-import { withDebug } from '@kysera/core'
+import { withDebug } from '@kysera/debug'
+import { createPrefixedLogger } from '@kysera/core'
 
 const debugDb = withDebug(db, {
   logger: createPrefixedLogger('SQL')
@@ -98,7 +99,8 @@ const debugDb = withDebug(db, {
 ### With Health Monitor
 
 ```typescript
-import { HealthMonitor, createPrefixedLogger } from '@kysera/core'
+import { HealthMonitor } from '@kysera/infra'
+import { createPrefixedLogger } from '@kysera/core'
 
 const monitor = new HealthMonitor({
   interval: 30_000,

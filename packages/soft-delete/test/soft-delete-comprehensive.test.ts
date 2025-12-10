@@ -13,12 +13,12 @@
  * 6. Edge Cases and Error Handling
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Kysely, SqliteDialect, type Generated } from 'kysely';
 import sqliteConstructor from 'better-sqlite3';
 import type { Database as SQLiteDatabase } from 'better-sqlite3';
 import { softDeletePlugin, SoftDeleteOptionsSchema, type SoftDeleteRepository } from '../src/index.js';
-import { createORM, createRepositoryFactory, type Plugin, type AnyQueryBuilder } from '@kysera/repository';
+import { createORM, createRepositoryFactory, zodAdapter, type Plugin, type AnyQueryBuilder } from '@kysera/repository';
 import { z } from 'zod';
 
 // =============================================================================
@@ -236,7 +236,7 @@ describe('Soft Delete Plugin - Core Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -268,7 +268,7 @@ describe('Soft Delete Plugin - Core Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -284,7 +284,7 @@ describe('Soft Delete Plugin - Core Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -318,7 +318,7 @@ describe('Soft Delete Plugin - Core Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -352,7 +352,7 @@ describe('Soft Delete Plugin - Core Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -377,7 +377,7 @@ describe('Soft Delete Plugin - Core Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -395,7 +395,7 @@ describe('Soft Delete Plugin - Core Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -422,7 +422,7 @@ describe('Soft Delete Plugin - Core Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -439,7 +439,7 @@ describe('Soft Delete Plugin - Core Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -489,7 +489,7 @@ describe('Soft Delete Plugin - Query Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -519,7 +519,7 @@ describe('Soft Delete Plugin - Query Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -538,7 +538,7 @@ describe('Soft Delete Plugin - Query Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -567,7 +567,7 @@ describe('Soft Delete Plugin - Query Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -595,7 +595,7 @@ describe('Soft Delete Plugin - Query Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -614,7 +614,7 @@ describe('Soft Delete Plugin - Query Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -640,7 +640,7 @@ describe('Soft Delete Plugin - Query Methods', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -686,7 +686,7 @@ describe('Soft Delete Plugin - Bulk Operations', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -712,7 +712,7 @@ describe('Soft Delete Plugin - Bulk Operations', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -732,7 +732,7 @@ describe('Soft Delete Plugin - Bulk Operations', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -753,7 +753,7 @@ describe('Soft Delete Plugin - Bulk Operations', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -781,7 +781,7 @@ describe('Soft Delete Plugin - Bulk Operations', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -800,7 +800,7 @@ describe('Soft Delete Plugin - Bulk Operations', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -822,7 +822,7 @@ describe('Soft Delete Plugin - Bulk Operations', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -841,7 +841,7 @@ describe('Soft Delete Plugin - Bulk Operations', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -889,7 +889,7 @@ describe('Soft Delete Plugin - Configuration Options', () => {
         return base.create({
           tableName: 'posts' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestPost,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestPost, ComprehensiveTestDatabase>;
 
@@ -917,7 +917,7 @@ describe('Soft Delete Plugin - Configuration Options', () => {
         return base.create({
           tableName: 'comments' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestComment,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestComment, ComprehensiveTestDatabase>;
 
@@ -949,7 +949,7 @@ describe('Soft Delete Plugin - Configuration Options', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -962,12 +962,13 @@ describe('Soft Delete Plugin - Configuration Options', () => {
         return base.create({
           tableName: 'audit_logs' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as any,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
-      }) as any;
+      }) as unknown;
 
       // audit_logs is not in tables list, so no soft delete methods should be added
-      // Note: The method may exist but should not filter queries for audit_logs
+      // The method may exist but should not filter queries for audit_logs
+      expect(auditRepo).toBeDefined();
     });
 
     it('should not filter queries for non-whitelisted tables', async () => {
@@ -1079,7 +1080,7 @@ describe('Soft Delete Plugin - Integration with Other Plugins', () => {
         return {
           ...repo,
           getTimestamps: () => [...timestamps],
-          touchUpdatedAt: async (id: number) => {
+          touchUpdatedAt: async (_id: number) => {
             // Mock implementation
             return { updated_at: new Date().toISOString() };
           },
@@ -1123,7 +1124,7 @@ describe('Soft Delete Plugin - Integration with Other Plugins', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as any;
 
@@ -1152,7 +1153,7 @@ describe('Soft Delete Plugin - Integration with Other Plugins', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as any;
 
@@ -1187,7 +1188,7 @@ describe('Soft Delete Plugin - Integration with Other Plugins', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -1196,7 +1197,7 @@ describe('Soft Delete Plugin - Integration with Other Plugins', () => {
         return base.create({
           tableName: 'posts' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestPost,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestPost, ComprehensiveTestDatabase>;
 
@@ -1261,10 +1262,10 @@ describe('Soft Delete Plugin - Additional Edge Cases', () => {
       const plugin = softDeletePlugin();
 
       const notARepo = { someProperty: 'value' };
-      const result = plugin.extendRepository(notARepo);
+      const result = plugin.extendRepository?.(notARepo);
 
       expect(result).toEqual(notARepo);
-      expect((result as any).softDelete).toBeUndefined();
+      expect((result as Record<string, unknown>)?.['softDelete']).toBeUndefined();
     });
   });
 
@@ -1281,7 +1282,7 @@ describe('Soft Delete Plugin - Additional Edge Cases', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -1301,7 +1302,7 @@ describe('Soft Delete Plugin - Additional Edge Cases', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -1323,7 +1324,7 @@ describe('Soft Delete Plugin - Additional Edge Cases', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 
@@ -1348,7 +1349,7 @@ describe('Soft Delete Plugin - Additional Edge Cases', () => {
         return base.create({
           tableName: 'users' as keyof ComprehensiveTestDatabase,
           mapRow: (row) => row as TestUser,
-          schemas: { create: z.any(), update: z.any() },
+          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) },
         });
       }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>;
 

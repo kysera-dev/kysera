@@ -6,7 +6,50 @@ description: Validation utilities API reference
 
 # Validation
 
-Utilities for input and output validation.
+Utilities for input and output validation with support for multiple validation libraries.
+
+## Validation Adapters
+
+Kysera supports multiple validation libraries through adapters:
+
+```typescript
+import { zodAdapter, valibotAdapter, typeboxAdapter, nativeAdapter } from '@kysera/repository'
+
+// With Zod (default)
+const userRepo = factory.create({
+  schemas: {
+    create: zodAdapter(CreateUserSchema),
+    update: zodAdapter(UpdateUserSchema)
+  }
+})
+
+// With Valibot
+import * as v from 'valibot'
+const userRepo = factory.create({
+  schemas: {
+    create: valibotAdapter(v.object({ email: v.string(), name: v.string() }))
+  }
+})
+
+// With TypeBox
+import { Type } from '@sinclair/typebox'
+const userRepo = factory.create({
+  schemas: {
+    create: typeboxAdapter(Type.Object({ email: Type.String(), name: Type.String() }))
+  }
+})
+
+// Native TypeScript (no runtime validation)
+const userRepo = factory.create({
+  schemas: {
+    create: nativeAdapter<CreateUserInput>()
+  }
+})
+```
+
+:::info Auto-detection
+When using Zod schemas directly without an adapter, Kysera automatically wraps them for backward compatibility.
+:::
 
 ## getValidationMode
 

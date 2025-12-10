@@ -4,7 +4,7 @@ import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
-import { getMetrics } from '@kysera/core';
+import { getMetrics } from '@kysera/infra';
 
 export interface MetricsOptions {
   json?: boolean;

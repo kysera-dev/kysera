@@ -1,10 +1,36 @@
 ---
 sidebar_position: 3
-title: Health
-description: Health check utilities API reference
+title: Health (Moved)
+description: Health check utilities have been moved to @kysera/infra
 ---
 
 # Health Checks
+
+:::warning Module Moved
+Health monitoring utilities have been moved to **[@kysera/infra](/docs/api/infra)** for better separation of concerns and tree-shaking.
+
+```bash
+npm install @kysera/infra
+```
+
+```typescript
+// Before (deprecated)
+import { checkDatabaseHealth, HealthMonitor } from '@kysera/core';
+
+// After
+import { checkDatabaseHealth, HealthMonitor } from '@kysera/infra';
+```
+
+See the full documentation at **[@kysera/infra](/docs/api/infra)**.
+:::
+
+---
+
+## Legacy Documentation
+
+The following documentation is kept for reference. For current implementation, see [@kysera/infra](/docs/api/infra).
+
+---
 
 Database health monitoring and metrics collection.
 

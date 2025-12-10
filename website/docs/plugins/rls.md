@@ -58,16 +58,62 @@ await rlsContext.runAsync(
 
 ## Configuration
 
+### Plugin Options
+
 ```typescript
 interface RLSPluginOptions<DB = unknown> {
-  schema: RLSSchema<DB>
-  skipTables?: string[]           // Tables to exclude from RLS
-  bypassRoles?: string[]          // Roles that bypass RLS entirely
-  logger?: KyseraLogger
+  schema: RLSSchema<DB>           // RLS policy schema
+  skipTables?: string[]           // Tables to exclude from RLS entirely
+  bypassRoles?: string[]          // Roles that bypass RLS for all tables
+  logger?: KyseraLogger           // Logger instance for RLS operations
   requireContext?: boolean        // Require RLS context for all operations
-  auditDecisions?: boolean        // Log policy decisions
+  auditDecisions?: boolean        // Log policy decisions for debugging
   onViolation?: (violation: RLSPolicyViolation) => void  // Custom violation handler
 }
+```
+
+### Table Schema Options
+
+```typescript
+interface TableRLSConfig {
+  policies: PolicyDefinition[]    // List of policies for this table
+  defaultDeny?: boolean           // Deny access when no policy matches (default: true)
+  skipFor?: string[]              // Roles that bypass RLS for this table only
+}
+```
+
+### Bypass Options Comparison
+
+**Plugin-level bypass** (`skipTables`, `bypassRoles`):
+- Applies to **all tables** globally
+- Set at plugin initialization time
+- Useful for excluding system tables or super-admin roles
+
+**Table-level bypass** (`skipFor`):
+- Applies to **specific table** only
+- Set in the table's schema definition
+- Useful for table-specific admin access
+
+```typescript
+// Example: Using both levels
+const orm = await createORM(db, [
+  rlsPlugin({
+    schema: rlsSchema,
+    skipTables: ['migrations', 'system_config'],  // Global: Skip these tables entirely
+    bypassRoles: ['superadmin'],                  // Global: Superadmins bypass all RLS
+  })
+])
+
+const rlsSchema = defineRLSSchema<Database>({
+  users: {
+    policies: [...],
+    skipFor: ['hr_admin'],  // Table-specific: HR admins bypass RLS on users table only
+  },
+  posts: {
+    policies: [...],
+    skipFor: ['content_admin'],  // Content admins bypass RLS on posts table only
+  },
+})
 ```
 
 ## Policy Builders
@@ -118,7 +164,7 @@ Validate input data before operations:
 ```typescript
 // Users can only create posts for themselves
 validate('create', ctx =>
-  ctx.input?.author_id === ctx.auth.userId
+  ctx.data?.author_id === ctx.auth.userId
 )
 ```
 
@@ -143,6 +189,15 @@ const rlsSchema = defineRLSSchema<Database>({
         ctx.auth.roles?.includes('admin')
       ),
     ],
+  },
+
+  // Admin table with role-based bypass
+  audit_logs: {
+    policies: [
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+    ],
+    skipFor: ['admin', 'superuser'],  // Admins can see all audit logs
+    defaultDeny: true,
   },
 
   // No policies = full access
@@ -215,12 +270,14 @@ await rlsContext.runAsync(
 
 ```typescript
 interface PolicyEvaluationContext {
-  auth: RLSAuthContext
+  auth: RLSAuthContext              // Authentication context
   row?: Record<string, unknown>     // Current row (for update/delete)
-  input?: Record<string, unknown>   // Input data (for create/update)
-  operation: 'read' | 'create' | 'update' | 'delete'
-  table: string
-  timestamp: Date
+  data?: Record<string, unknown>    // Input data (for create/update)
+  request?: RLSRequestContext       // Request context (optional)
+  db?: Kysely<DB>                   // Database instance for complex policies
+  meta?: Record<string, unknown>    // Custom metadata
+  table?: string                    // Table name
+  operation?: string                // Operation being performed
 }
 ```
 
@@ -241,7 +298,7 @@ const tenantSchema = defineRLSSchema<Database>({
   users: {
     policies: [
       filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-      validate('create', ctx => ctx.input?.tenant_id === ctx.auth.tenantId),
+      validate('create', ctx => ctx.data?.tenant_id === ctx.auth.tenantId),
     ],
   },
   posts: {

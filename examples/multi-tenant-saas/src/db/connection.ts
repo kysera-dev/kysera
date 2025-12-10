@@ -1,6 +1,7 @@
 import { Kysely, PostgresDialect } from 'kysely'
 import { Pool } from 'pg'
-import { createGracefulShutdown, createMetricsPool, withDebug } from '@kysera/core'
+import { gracefulShutdown, createMetricsPool } from '@kysera/infra'
+import { withDebug } from '@kysera/debug'
 import type { Database } from './schema.js'
 
 // Create base pool
@@ -38,7 +39,7 @@ export const db: Kysely<Database> = debugDb
 // Setup graceful shutdown (for production use)
 export async function setupShutdownHandlers() {
   if (process.env['NODE_ENV'] === 'production') {
-    await createGracefulShutdown(baseDb, {
+    await gracefulShutdown(baseDb, {
       onShutdown: async () => {
         console.log('Closing database connections...')
       }

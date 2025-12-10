@@ -15,8 +15,21 @@ Get up and running with Kysera in 5 minutes.
 npm install kysely pg
 
 # Install Kysera packages (pick what you need)
-npm install @kysera/core           # Debug, health, pagination, errors
-npm install @kysera/repository zod # Repository pattern with validation
+npm install @kysera/core           # Errors, pagination, types, logger (~8KB)
+npm install @kysera/repository     # Repository pattern with validation adapters
+npm install @kysera/dal            # Functional DAL with type inference
+
+# Optional validation library (choose one or none)
+npm install zod                    # Popular schema validation
+# or: npm install valibot           # Lightweight alternative
+# or: npm install @sinclair/typebox # JSON Schema based
+
+# Infrastructure (opt-in)
+npm install @kysera/infra          # Health checks, retry, circuit breaker
+npm install @kysera/debug          # Query logging and profiling
+npm install @kysera/testing        # Test utilities (dev dependency)
+
+# Plugins
 npm install @kysera/soft-delete    # Soft delete plugin
 npm install @kysera/audit          # Audit logging plugin
 npm install @kysera/timestamps     # Auto timestamps plugin
@@ -219,7 +232,7 @@ await postRepo.update(post.id, { title: 'Updated Title' })
 ## Health Checks
 
 ```typescript
-import { checkDatabaseHealth, createMetricsPool } from '@kysera/core'
+import { checkDatabaseHealth, createMetricsPool } from '@kysera/infra'
 
 const pool = new Pool({ /* config */ })
 const metricsPool = createMetricsPool(pool)

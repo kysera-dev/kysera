@@ -7,7 +7,7 @@ import Database from 'better-sqlite3';
 import type { DatabaseConfig } from '../config/schema.js';
 import { CLIDatabaseError, ValidationError } from './errors.js';
 import { logger } from './logger.js';
-import { checkDatabaseHealth } from '@kysera/core';
+import { checkDatabaseHealth } from '@kysera/infra';
 
 export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite';
 

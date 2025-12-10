@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { z } from 'zod';
-import { createRepositoryFactory } from '../src/repository.js';
+import { createRepositoryFactory, zodAdapter } from '../src/index.js';
 import type { Kysely, Selectable, Generated } from 'kysely';
 import { SqliteDialect } from 'kysely';
 import SQLite from 'better-sqlite3';
@@ -180,7 +180,7 @@ describe('Custom Primary Key Support', () => {
     it('should work with default id column', async () => {
       const factory = createRepositoryFactory(db);
 
-      const userRepo = factory.create<'users', User, number>({
+      const userRepo = factory.create<'users', User>({
         tableName: 'users',
         // No primaryKey specified - defaults to 'id'
         mapRow: (row: Selectable<PrimaryKeyTestDatabase['users']>): User => ({
@@ -189,10 +189,10 @@ describe('Custom Primary Key Support', () => {
           name: row.name,
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             email: z.string().email(),
             name: z.string(),
-          }),
+          })),
         },
       });
 
@@ -237,11 +237,11 @@ describe('Custom Primary Key Support', () => {
           avatar_url: row.avatar_url,
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             user_id: z.string(),
             bio: z.string(),
             avatar_url: z.string().nullable().optional(),
-          }),
+          })),
         },
       });
 
@@ -297,11 +297,11 @@ describe('Custom Primary Key Support', () => {
           created_at: row.created_at,
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             uuid: z.string().uuid(),
             title: z.string(),
             content: z.string(),
-          }),
+          })),
         },
       });
 
@@ -355,14 +355,14 @@ describe('Custom Primary Key Support', () => {
           joined_at: row.joined_at,
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             tenant_id: z.string(),
             user_id: z.string(),
             role: z.string(),
-          }),
-          update: z.object({
+          })),
+          update: zodAdapter(z.object({
             role: z.string().optional(),
-          }),
+          })),
         },
       });
 
@@ -441,16 +441,16 @@ describe('Custom Primary Key Support', () => {
           price: row.price,
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             order_id: z.number(),
             product_id: z.number(),
             quantity: z.number().positive(),
             price: z.number().positive(),
-          }),
-          update: z.object({
+          })),
+          update: zodAdapter(z.object({
             quantity: z.number().positive().optional(),
             price: z.number().positive().optional(),
-          }),
+          })),
         },
       });
 
@@ -510,11 +510,11 @@ describe('Custom Primary Key Support', () => {
           avatar_url: row.avatar_url,
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             user_id: z.string(),
             bio: z.string(),
             avatar_url: z.string().nullable().optional(),
-          }),
+          })),
         },
       });
 
@@ -543,15 +543,15 @@ describe('Custom Primary Key Support', () => {
           avatar_url: row.avatar_url,
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             user_id: z.string(),
             bio: z.string(),
             avatar_url: z.string().nullable().optional(),
-          }),
-          update: z.object({
+          })),
+          update: zodAdapter(z.object({
             bio: z.string().optional(),
             avatar_url: z.string().nullable().optional(),
-          }),
+          })),
         },
       });
 
@@ -587,11 +587,11 @@ describe('Custom Primary Key Support', () => {
           avatar_url: row.avatar_url,
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             user_id: z.string(),
             bio: z.string(),
             avatar_url: z.string().nullable().optional(),
-          }),
+          })),
         },
       });
 
@@ -641,11 +641,11 @@ describe('Custom Primary Key Support', () => {
           avatar_url: row.avatar_url,
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             user_id: z.string(),
             bio: z.string(),
             avatar_url: z.string().nullable().optional(),
-          }),
+          })),
         },
       });
 
@@ -701,11 +701,11 @@ describe('Custom Primary Key Support', () => {
           avatar_url: row.avatar_url,
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             user_id: z.string(),
             bio: z.string(),
             avatar_url: z.string().nullable().optional(),
-          }),
+          })),
         },
       });
 
@@ -722,11 +722,11 @@ describe('Custom Primary Key Support', () => {
             avatar_url: row.avatar_url,
           }),
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               user_id: z.string(),
               bio: z.string(),
               avatar_url: z.string().nullable().optional(),
-            }),
+            })),
           },
         });
 
@@ -754,11 +754,11 @@ describe('Custom Primary Key Support', () => {
               avatar_url: row.avatar_url,
             }),
             schemas: {
-              create: z.object({
+              create: zodAdapter(z.object({
                 user_id: z.string(),
                 bio: z.string(),
                 avatar_url: z.string().nullable().optional(),
-              }),
+              })),
             },
           });
 
@@ -793,11 +793,11 @@ describe('Custom Primary Key Support', () => {
           avatar_url: row.avatar_url,
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             user_id: z.string(),
             bio: z.string(),
             avatar_url: z.string().nullable().optional(),
-          }),
+          })),
         },
       });
 
@@ -828,11 +828,11 @@ describe('Custom Primary Key Support', () => {
           avatar_url: row.avatar_url,
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             user_id: z.string(),
             bio: z.string(),
             avatar_url: z.string().nullable().optional(),
-          }),
+          })),
         },
       });
 
@@ -863,11 +863,11 @@ describe('Custom Primary Key Support', () => {
           joined_at: row.joined_at,
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             tenant_id: z.string(),
             user_id: z.string(),
             role: z.string(),
-          }),
+          })),
         },
       });
 

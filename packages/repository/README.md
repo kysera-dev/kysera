@@ -1,6 +1,6 @@
 # @kysera/repository
 
-> Type-safe repository pattern for Kysely with smart Zod validation, transaction dependency injection, and zero-config multi-database support.
+> Type-safe repository pattern for Kysely with validation-agnostic design, transaction dependency injection, and zero-config multi-database support.
 
 [![Version](https://img.shields.io/npm/v/@kysera/repository.svg)](https://www.npmjs.com/package/@kysera/repository)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -14,7 +14,7 @@
 | **Bundle Size** | ~12 KB (minified) |
 | **Test Coverage** | 127 tests passing |
 | **Dependencies** | @kysera/core (workspace) |
-| **Peer Dependencies** | kysely >=0.28.8, zod ^4.1.13 |
+| **Peer Dependencies** | kysely >=0.28.8, zod ^4.1.13 (optional) |
 | **Target Runtimes** | Node.js 20+, Bun 1.0+, Deno |
 | **Module System** | ESM only |
 | **Database Support** | PostgreSQL, MySQL, SQLite |
@@ -23,7 +23,8 @@
 
 - ✅ **Repository Pattern** - Clean separation of data access logic
 - ✅ **Type-Safe Factory** - Fully typed repository creation with inference
-- ✅ **Smart Validation** - Zod schemas with development/production modes
+- ✅ **Validation Agnostic** - Use Zod, Valibot, TypeBox, or no validation at all
+- ✅ **Smart Validation** - Development/production modes with environment control
 - ✅ **Transaction DI** - Dependency injection via `Executor<DB>` type
 - ✅ **Batch Operations** - `bulkCreate`, `bulkUpdate`, `bulkDelete` with validation
 - ✅ **Multi-Database** - PostgreSQL, MySQL, SQLite with unified API
@@ -34,25 +35,32 @@
 ## 📥 Installation
 
 ```bash
-# npm
+# npm (with Zod)
 npm install @kysera/repository @kysera/core kysely zod
 
-# pnpm
-pnpm add @kysera/repository @kysera/core kysely zod
+# pnpm (with Valibot)
+pnpm add @kysera/repository @kysera/core kysely valibot
 
-# bun
-bun add @kysera/repository @kysera/core kysely zod
+# bun (with TypeBox)
+bun add @kysera/repository @kysera/core kysely @sinclair/typebox
 
 # deno
 import * as repo from "npm:@kysera/repository"
+
+# No validation library (native adapter)
+npm install @kysera/repository @kysera/core kysely
 ```
 
+**Note:** Validation libraries (Zod, Valibot, TypeBox) are optional. You can use the native adapter for zero validation overhead.
+
 ## 🚀 Quick Start
+
+### With Zod (Most Common)
 
 ```typescript
 import { Kysely, PostgresDialect, Generated } from 'kysely'
 import { Pool } from 'pg'
-import { createRepositoryFactory } from '@kysera/repository'
+import { createRepositoryFactory, zodAdapter } from '@kysera/repository'
 import { z } from 'zod'
 
 // 1. Define database schema
@@ -104,8 +112,8 @@ const userRepo = factory.create<'users', User>({
     created_at: row.created_at
   }),
   schemas: {
-    create: CreateUserSchema,
-    update: UpdateUserSchema
+    create: zodAdapter(CreateUserSchema),
+    update: zodAdapter(UpdateUserSchema)
   }
 })
 
@@ -131,6 +139,96 @@ await db.transaction().execute(async (trx) => {
 })
 ```
 
+### With Valibot
+
+```typescript
+import { createRepositoryFactory, valibotAdapter } from '@kysera/repository'
+import * as v from 'valibot'
+
+const CreateUserSchema = v.object({
+  email: v.string([v.email()]),
+  name: v.string([v.minLength(1)])
+})
+
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: valibotAdapter(CreateUserSchema, v),
+    update: valibotAdapter(v.partial(CreateUserSchema), v)
+  }
+})
+```
+
+### With TypeBox
+
+```typescript
+import { createRepositoryFactory, typeboxAdapter } from '@kysera/repository'
+import { Type } from '@sinclair/typebox'
+import { Value } from '@sinclair/typebox/value'
+
+const CreateUserSchema = Type.Object({
+  email: Type.String({ format: 'email' }),
+  name: Type.String({ minLength: 1 })
+})
+
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: typeboxAdapter(CreateUserSchema, Value)
+  }
+})
+```
+
+### With Native Adapter (No Validation)
+
+```typescript
+import { createRepositoryFactory, nativeAdapter } from '@kysera/repository'
+
+// Zero validation overhead - just type casting
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: nativeAdapter<CreateUserInput>(),
+    update: nativeAdapter<UpdateUserInput>()
+  }
+})
+
+// Data passes through without runtime validation
+const user = await userRepo.create({
+  email: 'alice@example.com',
+  name: 'Alice'
+})
+```
+
+### Backward Compatibility (Auto-Detection)
+
+For backward compatibility, Zod schemas are automatically detected and wrapped:
+
+```typescript
+// Old way (still works!)
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: CreateUserSchema,  // Zod schema detected automatically
+    update: UpdateUserSchema
+  }
+})
+
+// New way (explicit, recommended)
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: zodAdapter(CreateUserSchema),
+    update: zodAdapter(UpdateUserSchema)
+  }
+})
+```
+
 ---
 
 ## 📚 Table of Contents
@@ -148,12 +246,20 @@ await db.transaction().execute(async (trx) => {
    - [Bulk Create](#bulk-create)
    - [Bulk Update](#bulk-update)
    - [Bulk Delete](#bulk-delete)
-4. [Validation](#-validation)
+4. [Validation Adapters](#-validation-adapters)
+   - [ValidationSchema Interface](#validationschema-interface)
+   - [Zod Adapter](#zod-adapter)
+   - [Valibot Adapter](#valibot-adapter)
+   - [TypeBox Adapter](#typebox-adapter)
+   - [Native Adapter](#native-adapter)
+   - [Custom Adapter](#custom-adapter)
+   - [Backward Compatibility](#backward-compatibility-1)
+5. [Validation](#-validation)
    - [Input Validation](#input-validation)
    - [Result Validation](#result-validation)
    - [Validation Strategies](#validation-strategies)
    - [Environment Variables](#environment-variables)
-5. [Transaction Support](#-transaction-support)
+6. [Transaction Support](#-transaction-support)
    - [Executor Pattern](#executor-pattern)
    - [withTransaction Method](#withtransaction-method)
    - [Repository Bundle Pattern](#repository-bundle-pattern)
@@ -242,11 +348,11 @@ interface RepositoryConfig<Table, Entity> {
   // Map database row to domain entity
   mapRow: (row: Selectable<Table>) => Entity
 
-  // Zod validation schemas
+  // ValidationSchema-compatible validators
   schemas: {
-    entity?: z.ZodType<Entity>      // Optional entity validation
-    create: z.ZodType               // Required for create operations
-    update?: z.ZodType              // Optional for update (defaults to create.partial())
+    entity?: ValidationSchema<Entity>      // Optional entity validation
+    create: ValidationSchema               // Required for create operations
+    update?: ValidationSchema              // Optional for update
   }
 
   // Validate database results (default: NODE_ENV === 'development')
@@ -259,19 +365,52 @@ interface RepositoryConfig<Table, Entity> {
 
 #### Configuration Examples
 
-**Minimal Configuration:**
+**Minimal Configuration (with Zod):**
 ```typescript
+import { zodAdapter } from '@kysera/repository'
+
 const userRepo = factory.create<'users', User>({
   tableName: 'users',
   mapRow: (row) => row as User,
   schemas: {
-    create: CreateUserSchema
+    create: zodAdapter(CreateUserSchema)
   }
 })
 ```
 
-**Full Configuration:**
+**With Valibot:**
 ```typescript
+import * as v from 'valibot'
+import { valibotAdapter } from '@kysera/repository'
+
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: valibotAdapter(CreateUserSchema, v),
+    update: valibotAdapter(v.partial(CreateUserSchema), v)
+  }
+})
+```
+
+**With Native Adapter (no validation):**
+```typescript
+import { nativeAdapter } from '@kysera/repository'
+
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: nativeAdapter<CreateUserInput>(),
+    update: nativeAdapter<UpdateUserInput>()
+  }
+})
+```
+
+**Full Configuration (with Zod):**
+```typescript
+import { zodAdapter } from '@kysera/repository'
+
 const userRepo = factory.create<'users', User>({
   tableName: 'users',
 
@@ -283,9 +422,9 @@ const userRepo = factory.create<'users', User>({
   }),
 
   schemas: {
-    entity: UserSchema,         // Validate results
-    create: CreateUserSchema,   // Validate create input
-    update: UpdateUserSchema    // Validate update input
+    entity: zodAdapter(UserSchema),         // Validate results
+    create: zodAdapter(CreateUserSchema),   // Validate create input
+    update: zodAdapter(UpdateUserSchema)    // Validate update input
   },
 
   validateDbResults: true,      // Always validate results
@@ -522,15 +661,362 @@ const result = await userRepo.bulkDelete([])
 
 ---
 
+## 🔌 Validation Adapters
+
+Kysera Repository uses a validation-agnostic design through the `ValidationSchema` interface. This allows you to use any validation library (Zod, Valibot, TypeBox) or no validation at all.
+
+### ValidationSchema Interface
+
+All adapters implement this unified interface:
+
+```typescript
+interface ValidationSchema<T = unknown> {
+  /**
+   * Parse and validate data.
+   * @throws ValidationError if validation fails
+   */
+  parse(data: unknown): T
+
+  /**
+   * Safe parse without throwing.
+   * Returns success/failure result with data or error.
+   */
+  safeParse(data: unknown): ValidationResult<T>
+
+  /**
+   * Optional: Returns a new schema that makes all fields optional.
+   */
+  partial?(): ValidationSchema<Partial<T>>
+}
+
+type ValidationResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: ValidationError }
+```
+
+### Zod Adapter
+
+The `zodAdapter` wraps Zod schemas to implement the `ValidationSchema` interface:
+
+```typescript
+import { z } from 'zod'
+import { zodAdapter } from '@kysera/repository'
+
+const UserSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  age: z.number().int().positive().optional()
+})
+
+const validator = zodAdapter(UserSchema)
+
+// Use validator
+const user = validator.parse({ name: 'Alice', email: 'alice@example.com' })
+
+// Safe parse
+const result = validator.safeParse({ name: 'Bob' })
+if (result.success) {
+  console.log(result.data)
+} else {
+  console.error(result.error)
+}
+
+// Partial schema
+const partialValidator = validator.partial?.()
+const updateData = partialValidator?.parse({ name: 'Bob' }) // Only name, email optional
+```
+
+**Automatic Zod Detection:**
+
+```typescript
+// Zod schemas are auto-detected (backward compatibility)
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: UserSchema,  // Automatically wrapped with zodAdapter
+    update: UserSchema.partial()
+  }
+})
+
+// Explicit is better (recommended)
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: zodAdapter(UserSchema),
+    update: zodAdapter(UserSchema.partial())
+  }
+})
+```
+
+### Valibot Adapter
+
+The `valibotAdapter` wraps Valibot schemas:
+
+```typescript
+import * as v from 'valibot'
+import { valibotAdapter } from '@kysera/repository'
+
+const UserSchema = v.object({
+  name: v.string([v.minLength(1)]),
+  email: v.string([v.email()]),
+  age: v.optional(v.number([v.integer(), v.minValue(1)]))
+})
+
+const validator = valibotAdapter(UserSchema, v)
+
+// Use validator
+const user = validator.parse({ name: 'Alice', email: 'alice@example.com' })
+
+// Safe parse
+const result = validator.safeParse({ name: 'Bob', email: 'bob@example.com' })
+if (result.success) {
+  console.log(result.data)
+}
+
+// Partial schema (if v.partial is available)
+const partialValidator = validator.partial?.()
+```
+
+**In Repository:**
+
+```typescript
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: valibotAdapter(UserSchema, v),
+    update: valibotAdapter(v.partial(UserSchema), v)
+  }
+})
+```
+
+### TypeBox Adapter
+
+The `typeboxAdapter` wraps TypeBox schemas:
+
+```typescript
+import { Type } from '@sinclair/typebox'
+import { Value } from '@sinclair/typebox/value'
+import { typeboxAdapter } from '@kysera/repository'
+
+const UserSchema = Type.Object({
+  name: Type.String({ minLength: 1 }),
+  email: Type.String({ format: 'email' }),
+  age: Type.Optional(Type.Integer({ minimum: 1 }))
+})
+
+const validator = typeboxAdapter(UserSchema, Value)
+
+// Use validator
+const user = validator.parse({ name: 'Alice', email: 'alice@example.com' })
+
+// Safe parse
+const result = validator.safeParse({ name: 'Bob', email: 'bob@example.com' })
+if (result.success) {
+  console.log(result.data)
+}
+```
+
+**In Repository:**
+
+```typescript
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: typeboxAdapter(UserSchema, Value)
+  }
+})
+```
+
+**Note:** TypeBox adapter doesn't support `partial()` automatically. Create a separate partial schema:
+
+```typescript
+const UpdateUserSchema = Type.Partial(UserSchema)
+
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: typeboxAdapter(UserSchema, Value),
+    update: typeboxAdapter(UpdateUserSchema, Value)
+  }
+})
+```
+
+### Native Adapter
+
+The `nativeAdapter` provides zero validation overhead by simply casting types:
+
+```typescript
+import { nativeAdapter } from '@kysera/repository'
+
+interface CreateUserInput {
+  name: string
+  email: string
+  age?: number
+}
+
+interface UpdateUserInput {
+  name?: string
+  email?: string
+  age?: number
+}
+
+const validator = nativeAdapter<CreateUserInput>()
+
+// No runtime validation - just type casting
+const user = validator.parse({ name: 'Alice', email: 'alice@example.com' })
+```
+
+**In Repository:**
+
+```typescript
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: nativeAdapter<CreateUserInput>(),
+    update: nativeAdapter<UpdateUserInput>()
+  }
+})
+
+// Data passes through without validation
+const user = await userRepo.create({
+  name: 'Alice',
+  email: 'alice@example.com'
+})
+```
+
+**Use Cases:**
+- High-performance systems where validation is done elsewhere
+- Trusted data sources (internal microservices)
+- Prototyping and development
+- When you want compile-time type safety without runtime overhead
+
+### Custom Adapter
+
+Create your own adapter from a validation function:
+
+```typescript
+import { customAdapter } from '@kysera/repository'
+
+const emailValidator = customAdapter<string>((data) => {
+  if (typeof data !== 'string') {
+    throw new Error('Must be a string')
+  }
+  if (!data.includes('@')) {
+    throw new Error('Invalid email format')
+  }
+  return data
+})
+
+// Use in validation
+const email = emailValidator.parse('alice@example.com') // 'alice@example.com'
+emailValidator.parse('invalid') // throws Error
+
+// Safe parse
+const result = emailValidator.safeParse('test@example.com')
+if (result.success) {
+  console.log(result.data)
+}
+```
+
+**Complex Example:**
+
+```typescript
+interface User {
+  name: string
+  email: string
+  age: number
+}
+
+const userValidator = customAdapter<User>((data) => {
+  if (typeof data !== 'object' || data === null) {
+    throw new Error('User must be an object')
+  }
+
+  const user = data as Record<string, unknown>
+
+  if (typeof user['name'] !== 'string' || user['name'].length === 0) {
+    throw new Error('Name must be a non-empty string')
+  }
+
+  if (typeof user['email'] !== 'string' || !user['email'].includes('@')) {
+    throw new Error('Email must be valid')
+  }
+
+  if (typeof user['age'] !== 'number' || user['age'] < 0) {
+    throw new Error('Age must be a positive number')
+  }
+
+  return {
+    name: user['name'],
+    email: user['email'],
+    age: user['age']
+  }
+})
+
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: userValidator
+  }
+})
+```
+
+### Backward Compatibility
+
+For seamless migration, Kysera automatically detects and wraps Zod schemas:
+
+```typescript
+import { z } from 'zod'
+import { normalizeSchema } from '@kysera/repository'
+
+const UserSchema = z.object({ name: z.string() })
+
+// Automatic detection and wrapping
+const validator = normalizeSchema(UserSchema)
+// Returns: zodAdapter(UserSchema)
+
+// Works transparently in repositories
+const userRepo = factory.create<'users', User>({
+  tableName: 'users',
+  mapRow: (row) => row as User,
+  schemas: {
+    create: UserSchema  // Automatically normalized to ValidationSchema
+  }
+})
+```
+
+**isValidationSchema Helper:**
+
+```typescript
+import { isValidationSchema } from '@kysera/repository'
+
+// Check if value implements ValidationSchema
+if (isValidationSchema(someSchema)) {
+  const result = someSchema.safeParse(data)
+}
+```
+
+---
+
 ## ✅ Validation
 
-Smart validation with Zod schemas, configurable per environment.
+Smart validation with configurable per environment modes.
 
 ### Input Validation
 
 Input validation **always** happens (cannot be disabled):
 
 ```typescript
+import { z } from 'zod'
+import { zodAdapter } from '@kysera/repository'
+
 const CreateUserSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(100),
@@ -541,7 +1027,7 @@ const userRepo = factory.create<'users', User>({
   tableName: 'users',
   mapRow: (row) => row as User,
   schemas: {
-    create: CreateUserSchema
+    create: zodAdapter(CreateUserSchema)
   }
 })
 
@@ -557,21 +1043,21 @@ await userRepo.create({
   email: 'not-an-email',
   name: 'Bob'
 })
-// Throws: ZodError with details
+// Throws: ValidationError with details
 
 // ❌ Name too long
 await userRepo.create({
   email: 'bob@example.com',
   name: 'B'.repeat(101)
 })
-// Throws: ZodError
+// Throws: ValidationError
 
 // ❌ Missing required field
 await userRepo.create({
   email: 'charlie@example.com'
   // name missing
 })
-// Throws: ZodError
+// Throws: ValidationError
 ```
 
 ### Result Validation
@@ -579,6 +1065,9 @@ await userRepo.create({
 Result validation is **optional** and controlled by environment:
 
 ```typescript
+import { z } from 'zod'
+import { zodAdapter } from '@kysera/repository'
+
 const UserSchema = z.object({
   id: z.number(),
   email: z.string().email(),
@@ -595,15 +1084,15 @@ const userRepo = factory.create<'users', User>({
     created_at: new Date(row.created_at)
   }),
   schemas: {
-    entity: UserSchema,  // Enable result validation
-    create: CreateUserSchema
+    entity: zodAdapter(UserSchema),  // Enable result validation
+    create: zodAdapter(CreateUserSchema)
   },
   validateDbResults: true  // Explicitly enable (default: NODE_ENV === 'development')
 })
 
 // Database results are validated against UserSchema
 const user = await userRepo.findById(1)
-// If database returns invalid data, throws ZodError
+// If database returns invalid data, throws ValidationError
 ```
 
 #### When to Use Result Validation
@@ -624,19 +1113,21 @@ const user = await userRepo.findById(1)
 Control validation behavior:
 
 ```typescript
+import { zodAdapter } from '@kysera/repository'
+
 // Strategy: 'strict' (default)
 // Throws on validation errors
 const strictRepo = factory.create<'users', User>({
   tableName: 'users',
   mapRow: (row) => row as User,
   schemas: {
-    create: CreateUserSchema
+    create: zodAdapter(CreateUserSchema)
   },
   validationStrategy: 'strict'
 })
 
 await strictRepo.create({ email: 'invalid' })
-// ❌ Throws ZodError
+// ❌ Throws ValidationError
 
 // Strategy: 'none'
 // Skips input validation (not recommended!)
@@ -644,7 +1135,7 @@ const unsafeRepo = factory.create<'users', User>({
   tableName: 'users',
   mapRow: (row) => row as User,
   schemas: {
-    create: CreateUserSchema
+    create: zodAdapter(CreateUserSchema)
   },
   validationStrategy: 'none'
 })
@@ -1427,6 +1918,175 @@ const repos = createRepos(db)
 
 ---
 
+### Validation Adapter Functions
+
+#### zodAdapter
+
+```typescript
+function zodAdapter<T>(schema: ZodLikeSchema<T>): ValidationSchema<T>
+```
+
+Wraps a Zod schema to implement the ValidationSchema interface.
+
+**Parameters:**
+- `schema: ZodLikeSchema<T>` - Zod schema with parse/safeParse methods
+
+**Returns:** ValidationSchema-compatible validator
+
+**Example:**
+```typescript
+import { z } from 'zod'
+import { zodAdapter } from '@kysera/repository'
+
+const UserSchema = z.object({ name: z.string() })
+const validator = zodAdapter(UserSchema)
+
+const user = validator.parse({ name: 'Alice' })
+```
+
+---
+
+#### valibotAdapter
+
+```typescript
+function valibotAdapter<T>(
+  schema: ValibotSchema<T>,
+  valibot: { parse, safeParse, partial? }
+): ValidationSchema<T>
+```
+
+Wraps a Valibot schema to implement the ValidationSchema interface.
+
+**Parameters:**
+- `schema: ValibotSchema<T>` - Valibot schema
+- `valibot` - Valibot module (import * as v from 'valibot')
+
+**Returns:** ValidationSchema-compatible validator
+
+**Example:**
+```typescript
+import * as v from 'valibot'
+import { valibotAdapter } from '@kysera/repository'
+
+const UserSchema = v.object({ name: v.string() })
+const validator = valibotAdapter(UserSchema, v)
+```
+
+---
+
+#### typeboxAdapter
+
+```typescript
+function typeboxAdapter<T>(
+  schema: TypeBoxSchema,
+  Value: { Check, Parse, Errors }
+): ValidationSchema<T>
+```
+
+Wraps a TypeBox schema to implement the ValidationSchema interface.
+
+**Parameters:**
+- `schema: TypeBoxSchema` - TypeBox TSchema
+- `Value` - TypeBox Value module from '@sinclair/typebox/value'
+
+**Returns:** ValidationSchema-compatible validator
+
+**Example:**
+```typescript
+import { Type } from '@sinclair/typebox'
+import { Value } from '@sinclair/typebox/value'
+import { typeboxAdapter } from '@kysera/repository'
+
+const UserSchema = Type.Object({ name: Type.String() })
+const validator = typeboxAdapter(UserSchema, Value)
+```
+
+---
+
+#### nativeAdapter
+
+```typescript
+function nativeAdapter<T>(): ValidationSchema<T>
+```
+
+Creates a passthrough adapter with no runtime validation (type casting only).
+
+**Returns:** ValidationSchema-compatible validator that performs no validation
+
+**Example:**
+```typescript
+import { nativeAdapter } from '@kysera/repository'
+
+interface User { name: string; email: string }
+const validator = nativeAdapter<User>()
+
+// No runtime validation, just type casting
+const user = validator.parse({ name: 'Alice', email: 'alice@example.com' })
+```
+
+---
+
+#### customAdapter
+
+```typescript
+function customAdapter<T>(
+  validateFn: (data: unknown) => T
+): ValidationSchema<T>
+```
+
+Creates a custom adapter from a validation function.
+
+**Parameters:**
+- `validateFn: (data: unknown) => T` - Function that validates and returns data, or throws
+
+**Returns:** ValidationSchema-compatible validator
+
+**Example:**
+```typescript
+import { customAdapter } from '@kysera/repository'
+
+const emailValidator = customAdapter<string>((data) => {
+  if (typeof data !== 'string' || !data.includes('@')) {
+    throw new Error('Invalid email')
+  }
+  return data
+})
+```
+
+---
+
+#### normalizeSchema
+
+```typescript
+function normalizeSchema<T>(
+  schema: ValidationSchema<T> | ZodLikeSchema<T>
+): ValidationSchema<T>
+```
+
+Automatically detects and wraps Zod schemas for backward compatibility.
+
+**Parameters:**
+- `schema` - ValidationSchema or Zod schema
+
+**Returns:** ValidationSchema (wraps Zod if needed)
+
+---
+
+#### isValidationSchema
+
+```typescript
+function isValidationSchema(value: unknown): value is ValidationSchema
+```
+
+Type guard to check if a value implements ValidationSchema interface.
+
+**Parameters:**
+- `value: unknown` - Value to check
+
+**Returns:** `true` if value is a ValidationSchema
+
+---
+
 ### Validation Functions
 
 #### getValidationMode
@@ -1458,12 +2118,15 @@ Determines if validation should be enabled.
 
 ```typescript
 function createValidator<T>(
-  schema: z.ZodType<T>,
+  schema: ValidationSchema<T>,
   options?: ValidationOptions
 ): Validator<T>
 ```
 
 Creates a validator wrapper with multiple validation methods.
+
+**Parameters:**
+- `schema: ValidationSchema<T>` - Any ValidationSchema-compatible validator
 
 **Returns:**
 ```typescript
@@ -1664,6 +2327,35 @@ await db.transaction().execute(async (trx) => {
 await userRepo.bulkUpdate(updates)
 // Updates execute in parallel (faster but not atomic)
 ```
+
+### 8. Choose the Right Validation Library
+
+```typescript
+// ✅ Zod: Best for most projects (rich features, great DX)
+import { zodAdapter } from '@kysera/repository'
+schemas: { create: zodAdapter(UserSchema) }
+
+// ✅ Valibot: Best for bundle size (smaller than Zod)
+import { valibotAdapter } from '@kysera/repository'
+schemas: { create: valibotAdapter(UserSchema, v) }
+
+// ✅ TypeBox: Best for JSON Schema compatibility
+import { typeboxAdapter } from '@kysera/repository'
+schemas: { create: typeboxAdapter(UserSchema, Value) }
+
+// ✅ Native: Best for maximum performance (trusted data)
+import { nativeAdapter } from '@kysera/repository'
+schemas: { create: nativeAdapter<CreateInput>() }
+```
+
+**Comparison:**
+
+| Library | Bundle Size | Features | DX | Use When |
+|---------|------------|----------|-----|----------|
+| **Zod** | ~10 KB | Rich | Excellent | Most projects |
+| **Valibot** | ~2 KB | Good | Good | Bundle size matters |
+| **TypeBox** | ~5 KB | JSON Schema | Good | Need JSON Schema |
+| **Native** | 0 KB | None | Basic | Trusted data sources |
 
 ---
 

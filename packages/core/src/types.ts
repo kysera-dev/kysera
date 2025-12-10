@@ -6,6 +6,21 @@ import type { Kysely, Transaction } from 'kysely';
 export type Executor<DB> = Kysely<DB> | Transaction<DB>;
 
 /**
+ * Query metrics data.
+ * Used by @kysera/debug and @kysera/infra for tracking query performance.
+ */
+export interface QueryMetrics {
+  /** SQL query string */
+  sql: string;
+  /** Query parameters */
+  params?: unknown[];
+  /** Query execution duration in milliseconds */
+  duration: number;
+  /** Timestamp when query was executed */
+  timestamp: number;
+}
+
+/**
  * Common database column types
  */
 export interface Timestamps {

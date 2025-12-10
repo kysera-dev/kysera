@@ -299,6 +299,18 @@ export interface PolicyEvaluationContext<
    * Can contain any additional context needed for policy evaluation
    */
   meta?: Record<string, unknown>;
+
+  /**
+   * Table name being accessed (optional)
+   * Available during mutation operations
+   */
+  table?: string;
+
+  /**
+   * Operation being performed (optional)
+   * E.g., 'create', 'update', 'delete'
+   */
+  operation?: string;
 }
 
 // ============================================================================

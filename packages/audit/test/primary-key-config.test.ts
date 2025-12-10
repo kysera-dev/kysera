@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Kysely, SqliteDialect, type Generated, type Selectable } from 'kysely';
 import betterSqlite3 from 'better-sqlite3';
 import { auditPluginSQLite, type AuditRepositoryExtensions } from '../src/index.js';
-import { createRepositoryFactory, createORM } from '@kysera/repository';
+import { createRepositoryFactory, createORM, zodAdapter } from '@kysera/repository';
 import { z } from 'zod';
 
 // Test database schema with standard 'id' column
@@ -116,10 +116,10 @@ describe('Audit Plugin - Primary Key Configuration', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
-            }),
+            })),
           },
         })
       );
@@ -153,10 +153,10 @@ describe('Audit Plugin - Primary Key Configuration', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
-            }),
+            })),
           },
         })
       );
@@ -215,10 +215,10 @@ describe('Audit Plugin - Primary Key Configuration', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
-            }),
+            })),
           },
         })
       );
@@ -278,10 +278,10 @@ describe('Audit Plugin - Primary Key Configuration', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
-            }),
+            })),
           },
         })
       ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;
@@ -315,10 +315,10 @@ describe('Audit Plugin - Primary Key Configuration', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
-            }),
+            })),
           },
         })
       );

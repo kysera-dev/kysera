@@ -12,19 +12,24 @@ Kysera uses a smart validation strategy that balances type safety with performan
 
 ### Input Validation (Always Enabled)
 
-All external inputs are validated using Zod schemas:
+All external inputs are validated using validation adapters:
 
 ```typescript
+import { z } from 'zod'
+import { createRepositoryFactory, zodAdapter } from '@kysera/repository'
+
 const CreateUserSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(100)
 })
 
+const factory = createRepositoryFactory(db)
 const userRepo = factory.create({
   tableName: 'users',
+  mapRow: (row) => row,
   schemas: {
-    create: CreateUserSchema,        // Always validated
-    update: CreateUserSchema.partial() // Always validated
+    create: zodAdapter(CreateUserSchema),        // Always validated
+    update: zodAdapter(CreateUserSchema.partial()) // Always validated
   }
 })
 
@@ -40,10 +45,22 @@ await userRepo.create({
 Database results can optionally be validated:
 
 ```typescript
+import { zodAdapter } from '@kysera/repository'
+
+const UserSchema = z.object({
+  id: z.number(),
+  email: z.string().email(),
+  name: z.string(),
+  created_at: z.date(),
+  updated_at: z.date().nullable()
+})
+
 const userRepo = factory.create({
   tableName: 'users',
+  mapRow: (row) => row,
   schemas: {
-    entity: UserSchema  // Optional - validates DB results
+    entity: zodAdapter(UserSchema),  // Optional - validates DB results
+    create: zodAdapter(CreateUserSchema)
   },
   validateDbResults: process.env.NODE_ENV === 'development'
 })
@@ -130,26 +147,28 @@ const UpdateUserSchema = z.object({
 
 ```typescript
 import { createValidator } from '@kysera/repository'
+import { zodAdapter } from '@kysera/repository'
 
-const userValidator = createValidator(UserSchema, {
+const userValidator = createValidator(zodAdapter(UserSchema), {
   mode: 'development'
 })
 
 // Different validation methods
-const user = userValidator.validate(data)           // Throws on error
-const user = userValidator.validateSafe(data)       // Returns null on error
-const isValid = userValidator.isValid(data)         // Returns boolean
-const user = userValidator.validateConditional(data) // Uses mode
+const user = userValidator.validate(data)             // Throws on error
+const user = userValidator.validateSafe(data)         // Returns null on error
+const isValid = userValidator.isValid(data)           // Returns boolean
+const user = userValidator.validateConditional(data)  // Validates based on mode
 ```
 
 ### Safe Parsing
 
 ```typescript
 import { safeParse } from '@kysera/repository'
+import { zodAdapter } from '@kysera/repository'
 
-const result = safeParse(UserSchema, data, {
-  logErrors: true,
-  throwOnError: false
+const result = safeParse(zodAdapter(UserSchema), data, {
+  throwOnError: false,
+  logErrors: true
 })
 
 if (result) {

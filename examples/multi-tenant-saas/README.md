@@ -2,12 +2,14 @@
 
 A comprehensive multi-tenant SaaS application demonstrating Kysera's tenant isolation patterns:
 
-- **Tenant Isolation**: Complete data separation between organizations
-- **Row-Level Security**: Automatic tenant_id filtering
-- **Tenant Context**: Request-scoped tenant identification
-- **Audit Logging**: Track all changes per tenant
-- **Timestamps**: Automatic created_at/updated_at
-- **Validation**: Tenant-specific data validation
+- **Tenant Isolation**: Complete data separation between organizations ✅
+- **Manual Tenant Filtering**: Explicit tenant_id filtering in repositories ✅
+- **Tenant Context**: Request-scoped tenant identification ✅
+- **User Repository**: Tenant-scoped user management with validation ✅
+- **Database Schema**: Multi-table schema with tenant isolation ✅
+- **Cross-Runtime**: Works on Node.js, Bun, and Deno ✅
+
+**Note**: This example demonstrates the core tenant isolation pattern. Additional features like projects/tasks repositories, audit logging, and automatic timestamps are defined in the schema but not yet fully implemented in repository code.
 
 ## Architecture
 
@@ -30,7 +32,7 @@ This example uses **discriminator column** approach with `tenant_id`:
                ▼
 ┌─────────────────────────────────────┐
 │   Tenant-Scoped Repositories        │
-│  (Automatic tenant_id injection)    │
+│  (Manual tenant_id injection)       │
 └──────────────┬──────────────────────┘
                │
                ▼
@@ -42,6 +44,8 @@ This example uses **discriminator column** approach with `tenant_id`:
 
 ### Database Schema
 
+The schema defines tables for a complete multi-tenant system. Currently, the user repository is fully implemented:
+
 ```typescript
 // Global table (not scoped)
 tenants {
@@ -49,10 +53,10 @@ tenants {
 }
 
 // Tenant-scoped tables (all have tenant_id)
-users { id, tenant_id, email, name, role }
-projects { id, tenant_id, name, description, status }
-tasks { id, tenant_id, project_id, title, status, assigned_to }
-audit_logs { id, tenant_id, table_name, entity_id, operation }
+users { id, tenant_id, email, name, role }           // ✅ Repository implemented
+projects { id, tenant_id, name, description, status } // Schema defined
+tasks { id, tenant_id, project_id, title, status, assigned_to } // Schema defined
+audit_logs { id, tenant_id, table_name, entity_id, operation } // Schema defined
 ```
 
 ## Features Demonstrated
@@ -76,18 +80,18 @@ const tenantContext = new TenantContext()
 tenantContext.setTenantId(tenantId)
 ```
 
-### 2. Tenant-Scoped Repositories
+### 2. Tenant-Scoped Repository
 
-Automatically filter by tenant_id:
+Manually filter by tenant_id in repository methods:
 
 ```typescript
-const repos = createTenantRepositories(db, tenantContext)
+const userRepo = createUserRepository(db, tenantContext)
 
-// This query is automatically filtered: WHERE tenant_id = 1
-const users = await repos.users.findAll()
+// Repository manually adds WHERE tenant_id = 1 to all queries
+const users = await userRepo.findAll()
 
-// Tenant_id is automatically injected
-const user = await repos.users.create({
+// Repository manually injects tenant_id from context
+const user = await userRepo.create({
   email: 'john@acme.com',
   name: 'John Doe'
 })
@@ -99,41 +103,47 @@ const user = await repos.users.create({
 Tenant isolation is enforced at repository level:
 
 ```typescript
-tenantContext.setTenantId(1) // Tenant 'Acme Corp'
+const tenant1Context = new TenantContext()
+tenant1Context.setTenantId(1) // Tenant 'Acme Corp'
+const tenant1UserRepo = createUserRepository(db, tenant1Context)
 
 // User from Tenant 1
-const user = await repos.users.findById(100)
+const user = await tenant1UserRepo.findById(100)
 
-tenantContext.setTenantId(2) // Switch to Tenant 'Beta Inc'
+const tenant2Context = new TenantContext()
+tenant2Context.setTenantId(2) // Tenant 'Beta Inc'
+const tenant2UserRepo = createUserRepository(db, tenant2Context)
 
 // Same ID, different tenant -> returns null (not found)
-const sameUser = await repos.users.findById(100) // null
+const sameUser = await tenant2UserRepo.findById(100) // null
 ```
 
-### 4. Audit Logging Per Tenant
+### 4. Data Validation
 
-Track all changes scoped to tenant:
+Each repository enforces schema validation:
 
 ```typescript
-// Audit logs automatically include tenant_id
-const user = await repos.users.create({ email, name })
+const userRepo = createUserRepository(db, tenantContext)
 
-// Audit log created:
-{
-  tenant_id: 1,
-  table_name: 'users',
-  entity_id: '123',
-  operation: 'INSERT',
-  new_values: { email, name }
+// Valid user creation
+const user = await userRepo.create({
+  email: 'valid@example.com',
+  name: 'John Doe',
+  role: 'member'
+})
+
+// Invalid data throws validation error
+try {
+  await userRepo.create({
+    email: 'invalid-email', // Invalid email format
+    name: '' // Empty name
+  })
+} catch (error) {
+  console.error('Validation failed:', error)
 }
-
-// Query audit logs for current tenant only
-const logs = await db
-  .selectFrom('audit_logs')
-  .where('tenant_id', '=', tenantContext.getTenantId())
-  .selectAll()
-  .execute()
 ```
+
+**Note**: Audit logging is defined in the schema but not yet implemented in this example. See `/Users/taaliman/projects/luxquant/kysera-dev/kysera/packages/audit` for the audit package.
 
 ## Setup
 
@@ -147,6 +157,10 @@ createdb multitenant_saas
 
 # Set environment variables
 export DATABASE_URL="postgresql://localhost/multitenant_saas"
+
+# Note: Migration script not yet implemented
+# You'll need to create the tables manually or use a migration tool
+# See src/db/schema.ts for the schema definition
 
 # Build
 pnpm build
@@ -162,13 +176,14 @@ pnpm start
 ```
 
 This will:
-1. Create two tenants (Acme Corp, Beta Inc)
-2. Create users for each tenant
-3. Create projects and tasks
-4. Demonstrate tenant isolation
-5. Show cross-tenant protection
-6. Display audit logs per tenant
-7. Clean up
+1. Check database health
+2. Create tenant contexts for two tenants
+3. Create users for each tenant
+4. Demonstrate tenant isolation (users are scoped to their tenant)
+5. Show cross-tenant protection (tenant 2 cannot access tenant 1's users)
+6. Test update operations within tenant scope
+7. Search users by email within tenant scope
+8. Clean up and close database connection
 
 ## Code Examples
 
@@ -192,52 +207,52 @@ const tenant = await db
 
 ```typescript
 // Set tenant context
+const tenantContext = new TenantContext()
 tenantContext.setTenantId(tenant.id)
 
-// Create repositories for this tenant
-const repos = createTenantRepositories(db, tenantContext)
+// Create user repository for this tenant
+const userRepo = createUserRepository(db, tenantContext)
 
-// All operations are automatically scoped
-const user = await repos.users.create({
+// All operations are manually scoped to the tenant by the repository
+const user = await userRepo.create({
   email: 'john@acme.com',
   name: 'John Doe',
   role: 'owner'
 })
 
-const project = await repos.projects.create({
-  name: 'Website Redesign',
-  description: 'Redesign company website',
-  status: 'active'
+// Update user (only within same tenant)
+const updatedUser = await userRepo.update(user.id, {
+  name: 'John Doe (Updated)'
 })
 
-const task = await repos.tasks.create({
-  project_id: project.id,
-  title: 'Design mockups',
-  status: 'todo',
-  assigned_to: user.id
-})
+// Find user by email (only within same tenant)
+const foundUser = await userRepo.findByEmail('john@acme.com')
+
+// Get all users (only for current tenant)
+const allUsers = await userRepo.findAll()
 ```
 
 ### Querying Across Tenants (Admin)
 
 ```typescript
-// Get all tenants (admin operation)
+// Get all tenants (admin operation, not scoped)
 const allTenants = await db
   .selectFrom('tenants')
   .selectAll()
   .execute()
 
 for (const tenant of allTenants) {
+  // Create a context for each tenant
+  const tenantContext = new TenantContext()
   tenantContext.setTenantId(tenant.id)
-  const repos = createTenantRepositories(db, tenantContext)
 
-  const userCount = await db
-    .selectFrom('users')
-    .where('tenant_id', '=', tenant.id)
-    .select(({ fn }) => fn.countAll().as('count'))
-    .executeTakeFirst()
+  // Create repository scoped to this tenant
+  const userRepo = createUserRepository(db, tenantContext)
 
-  console.log(`${tenant.name}: ${userCount?.count} users`)
+  // Get users for this tenant
+  const users = await userRepo.findAll()
+
+  console.log(`${tenant.name}: ${users.length} user(s)`)
 }
 ```
 
@@ -291,8 +306,8 @@ app.use(async (req, res, next) => {
     req.tenantContext = new TenantContext()
     req.tenantContext.setTenantId(tenantId)
 
-    // Create tenant-scoped repositories
-    req.repos = createTenantRepositories(db, req.tenantContext)
+    // Create tenant-scoped user repository
+    req.userRepo = createUserRepository(db, req.tenantContext)
 
     next()
   } catch (error) {
@@ -306,13 +321,15 @@ app.use(async (req, res, next) => {
 ```sql
 -- Critical indexes for multi-tenant queries
 CREATE INDEX idx_users_tenant_id ON users(tenant_id);
+CREATE INDEX idx_users_tenant_email ON users(tenant_id, email);
+
+-- If implementing projects and tasks:
 CREATE INDEX idx_projects_tenant_id ON projects(tenant_id);
 CREATE INDEX idx_tasks_tenant_id ON tasks(tenant_id);
 CREATE INDEX idx_tasks_tenant_project ON tasks(tenant_id, project_id);
 CREATE INDEX idx_audit_logs_tenant_id ON audit_logs(tenant_id);
 
 -- Composite indexes for common queries
-CREATE INDEX idx_users_tenant_email ON users(tenant_id, email);
 CREATE INDEX idx_projects_tenant_status ON projects(tenant_id, status);
 CREATE INDEX idx_tasks_tenant_status ON tasks(tenant_id, status);
 ```
@@ -379,26 +396,74 @@ const limits = tenantConfig.resource_limits
 multi-tenant-saas/
 ├── src/
 │   ├── db/
-│   │   ├── schema.ts           # Database schema
-│   │   └── connection.ts       # DB connection
+│   │   ├── schema.ts           # Database schema (TypeScript types)
+│   │   └── connection.ts       # DB connection setup
 │   ├── middleware/
 │   │   └── tenant-context.ts   # Tenant context management
 │   ├── repositories/
-│   │   └── tenant-scoped.factory.ts  # Tenant-scoped repositories
+│   │   └── user.repository.ts  # Tenant-scoped user repository ✅
 │   └── index.ts                # Example runner
 ├── package.json
 ├── tsconfig.json
 └── README.md
 ```
 
+**Note**: The schema defines tables for projects, tasks, and audit_logs, but repositories for these are not yet implemented. This example focuses on demonstrating the tenant isolation pattern with the user repository.
+
 ## Key Takeaways
 
-1. **Tenant Isolation**: Enforced at repository level
-2. **Context Management**: Request-scoped tenant identification
-3. **Automatic Filtering**: Repository methods inject tenant_id
-4. **Audit Trail**: Complete history per tenant
-5. **Security**: Multiple layers of protection
-6. **Scalability**: Pattern supports millions of tenants
+1. **Tenant Isolation**: Enforced at repository level through manual tenant_id filtering
+2. **Context Management**: Request-scoped tenant identification via TenantContext
+3. **Manual Filtering**: Repositories explicitly add WHERE tenant_id clauses to all queries
+4. **Validation**: Zod schemas ensure data integrity for each tenant
+5. **Security**: Cross-tenant data access is prevented at the repository layer
+6. **Scalability**: Pattern supports millions of tenants with proper indexing
+7. **Type Safety**: Full TypeScript support with Kysely's type-safe query builder
+
+## Implementation Status
+
+✅ **Fully Implemented:**
+- Tenant context management (`TenantContext`)
+- User repository with tenant isolation
+- Cross-tenant protection
+- Zod validation for user data
+- Database health checks
+
+📋 **Schema Defined (Not Yet Implemented):**
+- Projects repository
+- Tasks repository
+- Audit logging repository
+- Migration scripts
+
+## Extending This Example
+
+To add more repositories, follow the pattern in `user.repository.ts`:
+
+1. Create a repository file (e.g., `project.repository.ts`)
+2. Accept `executor` and `tenantContext` parameters
+3. Add `WHERE tenant_id = getTenantId()` to all queries
+4. Auto-inject `tenant_id` in create/insert operations
+5. Add Zod schemas for validation
+
+Example:
+```typescript
+export function createProjectRepository(
+  executor: Executor<Database>,
+  tenantContext: TenantContext
+) {
+  const getTenantId = () => tenantContext.getTenantId()
+
+  return {
+    async findAll() {
+      return executor
+        .selectFrom('projects')
+        .selectAll()
+        .where('tenant_id', '=', getTenantId()) // Key: tenant filter
+        .execute()
+    }
+  }
+}
+```
 
 ## Learn More
 

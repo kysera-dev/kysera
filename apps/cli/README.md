@@ -145,23 +145,60 @@ kysera --config <TAB>
 
 ## 📚 Command Overview
 
-| Command | Description |
-|---------|-------------|
-| `init` | Initialize a new Kysera project |
-| `migrate` | Database migration management |
-| `generate` | Code generation utilities |
-| `db` | Database management tools |
-| `health` | Health monitoring and metrics |
-| `audit` | Audit logging and history |
-| `query` | Query analysis and utilities |
-| `test` | Test environment management |
-| `plugin` | Plugin management |
-| `debug` | Debug and diagnostic tools |
-| `repository` | Repository pattern utilities |
+| Command | Description | Aliases |
+|---------|-------------|---------|
+| `init` | Initialize a new Kysera project | |
+| `migrate` | Database migration management | |
+| `generate` | Code generation utilities | `g` |
+| `db` | Database management tools | |
+| `health` | Health monitoring and metrics | |
+| `audit` | Audit logging and history | |
+| `query` | Query analysis and utilities | |
+| `test` | Test environment management | |
+| `plugin` | Plugin management | |
+| `debug` | Debug and diagnostic tools | |
+| `repository` | Repository pattern utilities | |
+| `hello` | Test command to verify CLI setup | |
+| `stats` | Show CLI performance statistics | |
+
+### Command Aliases
+
+Some commands support short aliases for faster typing:
+
+```bash
+# Generate command has 'g' alias
+kysera g model User
+kysera generate model User  # equivalent
+
+# Both commands do the same thing
+kysera g repository Post
+kysera generate repository Post  # equivalent
+```
 
 ## ⚙️ Configuration
 
-Create `kysera.config.ts` in your project root:
+### Configuration Files
+
+Kysera CLI uses [cosmiconfig](https://github.com/davidtheclark/cosmiconfig) for flexible configuration loading. The CLI will automatically search for configuration in the following locations (in order of priority):
+
+1. `kysera.config.ts` (recommended for TypeScript projects)
+2. `kysera.config.js`
+3. `kysera.config.mjs`
+4. `kysera.config.cjs`
+5. `kysera.config.json`
+6. `.kyserarc.ts`
+7. `.kyserarc.js`
+8. `.kyserarc.json`
+
+You can also specify a custom config file using the `--config` flag:
+
+```bash
+kysera migrate up --config ./custom-config.ts
+```
+
+### TypeScript Configuration
+
+Create `kysera.config.ts` in your project root (recommended):
 
 ```typescript
 import { defineConfig } from '@kysera/cli'
@@ -197,18 +234,122 @@ export default defineConfig({
 })
 ```
 
+### JSON Configuration
+
+For simpler projects, you can use `kysera.config.json`:
+
+```json
+{
+  "database": {
+    "dialect": "postgres",
+    "host": "localhost",
+    "port": 5432,
+    "database": "myapp"
+  },
+  "migrations": {
+    "directory": "./migrations"
+  }
+}
+```
+
 ## 🎯 Global Options
 
 All commands support these global options:
 
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--verbose` | Enable detailed output with debug information | `false` |
+| `-q, --quiet` | Suppress non-essential output | `false` |
+| `--dry-run` | Preview changes without executing | `false` |
+| `--config <path>` | Path to custom configuration file | Auto-detect |
+| `--json` | Output results as JSON | `false` |
+| `--no-color` | Disable colored output | `false` |
+| `--env <environment>` | Set environment (development/production/test) | `development` |
+| `--stats` | Show performance statistics after command execution | `false` |
+
+### Examples
+
 ```bash
--v, --verbose        # Detailed output
--q, --quiet         # Minimal output
---dry-run          # Preview without executing
---config <path>    # Custom config file
---json            # JSON output
---no-color       # Disable colors
+# Verbose output with debug information
+kysera migrate up --verbose
+
+# Quiet mode - minimal output
+kysera generate model User --quiet
+
+# Preview changes without executing
+kysera db reset --dry-run
+
+# Use custom config file
+kysera migrate up --config ./config/db.ts
+
+# JSON output for scripting
+kysera health check --json
+
+# Disable colors for CI/CD
+kysera test setup --no-color
+
+# Set environment
+kysera migrate up --env production
+
+# Show performance stats
+kysera generate crud Post --stats
 ```
+
+## 🛠 Built-in Utility Commands
+
+### Hello Command
+
+Test command to verify CLI setup and configuration:
+
+```bash
+# Basic hello
+kysera hello
+# Output: Hello, World! 👋
+
+# With custom name
+kysera hello --name John
+# Output: Hello, John! 👋
+
+# With verbose output
+kysera hello --verbose
+# Output:
+# Hello, World! 👋
+# CLI is working correctly!
+```
+
+### Stats Command
+
+Show CLI performance statistics including command load times, cache hit rates, and usage patterns:
+
+```bash
+kysera stats
+```
+
+Example output:
+
+```
+CLI Performance Statistics
+────────────────────────────────────────────────────────────
+Command Load Times:
+  migrate: 45ms (used 23 times)
+  generate: 38ms (used 15 times)
+  health: 12ms (used 8 times)
+
+Cache Hit Rate: 85%
+
+Most Used Commands:
+  1. migrate
+  2. generate
+  3. health
+────────────────────────────────────────────────────────────
+Startup time: 124ms
+```
+
+The stats command helps you:
+- Identify frequently used commands (which are preloaded for faster startup)
+- Monitor cache efficiency
+- Track command load times
+- Optimize CLI performance
 
 ## 🧪 Testing Support
 

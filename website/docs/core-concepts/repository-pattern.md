@@ -248,18 +248,31 @@ const userRepo = factory.create({
 Repositories work seamlessly with transactions:
 
 ```typescript
-// Method 1: Using withTransaction
-const user = await userRepo.withTransaction(trx).create({ ... })
-
-// Method 2: Using repository bundles
+// Method 1: Using repository bundles (RECOMMENDED)
 await db.transaction().execute(async (trx) => {
   const repos = createRepos(trx)
   // All repos use the same transaction
+  const user = await repos.users.create({ ... })
+  await repos.posts.create({ user_id: user.id, ... })
 })
 
-// Method 3: Using transaction method
+// Method 2: Using withTransaction for single repository
+await db.transaction().execute(async (trx) => {
+  const txUserRepo = userRepo.withTransaction(trx)
+  const user = await txUserRepo.create({ ... })
+})
+
+// Method 3: Using transaction method (starts transaction automatically)
 await userRepo.transaction(async (trx) => {
-  // Operations within transaction
+  // Create transactional repository instances
+  const txUserRepo = userRepo.withTransaction(trx)
+  const txPostRepo = postRepo.withTransaction(trx)
+
+  const user = await txUserRepo.create({ ... })
+  await txPostRepo.create({ user_id: user.id, ... })
+
+  // Return value becomes the result of transaction()
+  return user
 })
 ```
 

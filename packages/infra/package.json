@@ -1,0 +1,91 @@
+{
+  "name": "@kysera/infra",
+  "version": "0.5.1",
+  "description": "Infrastructure utilities for Kysera ORM - health checks, retry, circuit breaker, graceful shutdown",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./health": {
+      "types": "./dist/health/index.d.ts",
+      "import": "./dist/health/index.js"
+    },
+    "./resilience": {
+      "types": "./dist/resilience/index.d.ts",
+      "import": "./dist/resilience/index.js"
+    },
+    "./pool": {
+      "types": "./dist/pool/index.d.ts",
+      "import": "./dist/pool/index.js"
+    },
+    "./shutdown": {
+      "types": "./dist/shutdown.d.ts",
+      "import": "./dist/shutdown.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "peerDependencies": {
+    "kysely": ">=0.28.8"
+  },
+  "dependencies": {
+    "@kysera/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "@vitest/coverage-v8": "^4.0.15",
+    "better-sqlite3": "^12.5.0",
+    "kysely": "^0.28.8",
+    "mysql2": "^3.15.3",
+    "pg": "^8.16.3",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  },
+  "keywords": [
+    "kysely",
+    "orm",
+    "database",
+    "health",
+    "retry",
+    "circuit-breaker",
+    "resilience",
+    "infrastructure"
+  ],
+  "author": "Kysera Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kysera-dev/kysera.git",
+    "directory": "packages/infra"
+  },
+  "bugs": {
+    "url": "https://github.com/kysera-dev/kysera/issues"
+  },
+  "homepage": "https://github.com/kysera-dev/kysera#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.0.0",
+    "bun": ">=1.0.0"
+  }
+}

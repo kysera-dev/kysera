@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { z } from 'zod';
 import { createTestDatabase } from './setup/database.js';
-import { createRepositoryFactory, createRepositoriesFactory, type Executor } from '../src/index.js';
+import { createRepositoryFactory, createRepositoriesFactory, zodAdapter, type Executor } from '../src/index.js';
 import type { Kysely } from 'kysely';
 import type { TestDatabase } from './setup/database.js';
 
@@ -88,9 +88,9 @@ describe('Repository Helpers', () => {
             deleted_at: row.deleted_at,
           }),
           schemas: {
-            entity: UserSchema,
-            create: CreateUserSchema,
-            update: UpdateUserSchema,
+            entity: zodAdapter(UserSchema),
+            create: zodAdapter(CreateUserSchema),
+            update: zodAdapter(UpdateUserSchema),
           },
         });
       };
@@ -107,9 +107,9 @@ describe('Repository Helpers', () => {
             created_at: row.created_at,
           }),
           schemas: {
-            entity: PostSchema,
-            create: CreatePostSchema,
-            update: UpdatePostSchema,
+            entity: zodAdapter(PostSchema),
+            create: zodAdapter(CreatePostSchema),
+            update: zodAdapter(UpdatePostSchema),
           },
         });
       };
@@ -140,9 +140,9 @@ describe('Repository Helpers', () => {
             deleted_at: row.deleted_at,
           }),
           schemas: {
-            entity: UserSchema,
-            create: CreateUserSchema,
-            update: UpdateUserSchema,
+            entity: zodAdapter(UserSchema),
+            create: zodAdapter(CreateUserSchema),
+            update: zodAdapter(UpdateUserSchema),
           },
         });
       };
@@ -181,9 +181,9 @@ describe('Repository Helpers', () => {
             deleted_at: row.deleted_at,
           }),
           schemas: {
-            entity: UserSchema,
-            create: CreateUserSchema,
-            update: UpdateUserSchema,
+            entity: zodAdapter(UserSchema),
+            create: zodAdapter(CreateUserSchema),
+            update: zodAdapter(UpdateUserSchema),
           },
         });
       };
@@ -200,9 +200,9 @@ describe('Repository Helpers', () => {
             created_at: row.created_at,
           }),
           schemas: {
-            entity: PostSchema,
-            create: CreatePostSchema,
-            update: UpdatePostSchema,
+            entity: zodAdapter(PostSchema),
+            create: zodAdapter(CreatePostSchema),
+            update: zodAdapter(UpdatePostSchema),
           },
         });
       };
@@ -254,9 +254,9 @@ describe('Repository Helpers', () => {
             deleted_at: row.deleted_at,
           }),
           schemas: {
-            entity: UserSchema,
-            create: CreateUserSchema,
-            update: UpdateUserSchema,
+            entity: zodAdapter(UserSchema),
+            create: zodAdapter(CreateUserSchema),
+            update: zodAdapter(UpdateUserSchema),
           },
         });
       };
@@ -300,9 +300,9 @@ describe('Repository Helpers', () => {
             deleted_at: row.deleted_at,
           }),
           schemas: {
-            entity: UserSchema,
-            create: CreateUserSchema,
-            update: UpdateUserSchema,
+            entity: zodAdapter(UserSchema),
+            create: zodAdapter(CreateUserSchema),
+            update: zodAdapter(UpdateUserSchema),
           },
         });
       };
@@ -348,9 +348,9 @@ describe('Repository Helpers', () => {
             deleted_at: row.deleted_at,
           }),
           schemas: {
-            entity: UserSchema,
-            create: CreateUserSchema,
-            update: UpdateUserSchema,
+            entity: zodAdapter(UserSchema),
+            create: zodAdapter(CreateUserSchema),
+            update: zodAdapter(UpdateUserSchema),
           },
         });
       };
@@ -367,9 +367,9 @@ describe('Repository Helpers', () => {
             created_at: row.created_at,
           }),
           schemas: {
-            entity: PostSchema,
-            create: CreatePostSchema,
-            update: UpdatePostSchema,
+            entity: zodAdapter(PostSchema),
+            create: zodAdapter(CreatePostSchema),
+            update: zodAdapter(UpdatePostSchema),
           },
         });
       };

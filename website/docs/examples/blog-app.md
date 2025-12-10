@@ -19,227 +19,355 @@ A foundational example demonstrating core Kysera patterns for a blog platform.
 
 ## Database Schema
 
-```sql
-CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  email VARCHAR(255) NOT NULL UNIQUE,
-  name VARCHAR(100) NOT NULL,
-  deleted_at TIMESTAMP,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+The blog-app uses TypeScript types for schema definition (not SQL CREATE TABLE statements):
 
-CREATE TABLE posts (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  title VARCHAR(255) NOT NULL,
-  content TEXT,
-  status VARCHAR(20) NOT NULL DEFAULT 'draft',
-  deleted_at TIMESTAMP,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+```typescript
+interface Database {
+  users: {
+    id: Generated<number>
+    email: string
+    name: string
+    created_at: Generated<Date>
+    deleted_at: Date | null
+  }
+  posts: {
+    id: Generated<number>
+    user_id: number
+    title: string
+    content: string
+    published: boolean  // Note: boolean, not status enum
+    created_at: Generated<Date>
+    updated_at: Date | null
+    deleted_at: Date | null
+  }
+  comments: {
+    id: Generated<number>
+    post_id: number
+    user_id: number
+    content: string
+    created_at: Generated<Date>
+    deleted_at: Date | null
+  }
+}
+```
 
-CREATE TABLE comments (
-  id SERIAL PRIMARY KEY,
-  post_id INTEGER NOT NULL REFERENCES posts(id),
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  content TEXT NOT NULL,
-  deleted_at TIMESTAMP,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+## Database Connection
+
+The example uses `@kysera/infra` and `@kysera/debug` for production-ready database setup:
+
+```typescript
+import { Kysely, PostgresDialect } from 'kysely'
+import { Pool } from 'pg'
+import { gracefulShutdown, createMetricsPool } from '@kysera/infra'
+import { withDebug } from '@kysera/debug'
+import type { Database } from './schema.js'
+
+// Create base pool
+const basePool = new Pool({
+  connectionString: process.env['DATABASE_URL'] || 'postgresql://localhost/blog_example',
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+})
+
+// Wrap pool with metrics (for health checks)
+export const pool = createMetricsPool(basePool)
+
+// Create Kysely instance
+const baseDb = new Kysely<Database>({
+  dialect: new PostgresDialect({ pool: basePool }),
+  log: process.env['NODE_ENV'] === 'development'
+    ? ['query', 'error']
+    : ['error']
+})
+
+// Add debug wrapper in development
+export const db = withDebug(baseDb, {
+  logQuery: process.env['NODE_ENV'] === 'development',
+  logParams: false,
+  slowQueryThreshold: 100,
+  onSlowQuery: (sql, duration) => {
+    console.warn(`Slow query (${duration}ms):`, sql)
+  }
+})
 ```
 
 ## Repository Implementation
 
+This example demonstrates **hand-rolled repositories** with explicit Kysely queries rather than using factory functions:
+
 ### User Repository
 
 ```typescript
-import { createRepositoryFactory, Executor } from '@kysera/repository'
+import type { Selectable } from 'kysely'
 import { z } from 'zod'
+import type { Executor } from '@kysera/core'
+import type { Database, UsersTable } from '../db/schema.js'
 
-const CreateUserSchema = z.object({
+// Domain types
+export type User = Selectable<UsersTable>
+
+// Validation schemas
+export const UserSchema = z.object({
+  id: z.number(),
   email: z.string().email(),
-  name: z.string().min(1).max(100)
+  name: z.string().min(1).max(100),
+  created_at: z.date(),
+  deleted_at: z.date().nullable(),
 })
 
-const UpdateUserSchema = CreateUserSchema.partial()
+export const CreateUserSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1).max(100),
+})
 
+export const UpdateUserSchema = CreateUserSchema.partial()
+
+// Mapper function
+function mapUserRow(row: Selectable<UsersTable>): User {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    created_at: row.created_at,
+    deleted_at: row.deleted_at
+  }
+}
+
+// Repository function
 export function createUserRepository(executor: Executor<Database>) {
-  const factory = createRepositoryFactory(executor)
+  const validateDbResults = process.env['NODE_ENV'] === 'development'
 
-  return factory.create({
-    tableName: 'users' as const,
-    mapRow: (row) => ({
-      id: row.id,
-      email: row.email,
-      name: row.name,
-      createdAt: row.created_at,
-      deletedAt: row.deleted_at
-    }),
-    schemas: {
-      create: CreateUserSchema,
-      update: UpdateUserSchema
+  return {
+    async findById(id: number): Promise<User | null> {
+      const row = await executor
+        .selectFrom('users')
+        .selectAll()
+        .where('id', '=', id)
+        .where('deleted_at', 'is', null)  // Manual soft-delete filtering
+        .executeTakeFirst()
+
+      if (!row) return null
+
+      const user = mapUserRow(row)
+      return validateDbResults ? UserSchema.parse(user) : user
+    },
+
+    async findByEmail(email: string): Promise<User | null> {
+      const row = await executor
+        .selectFrom('users')
+        .selectAll()
+        .where('email', '=', email)
+        .where('deleted_at', 'is', null)
+        .executeTakeFirst()
+
+      if (!row) return null
+
+      const user = mapUserRow(row)
+      return validateDbResults ? UserSchema.parse(user) : user
+    },
+
+    async findAll(): Promise<User[]> {
+      const rows = await executor
+        .selectFrom('users')
+        .selectAll()
+        .where('deleted_at', 'is', null)
+        .orderBy('created_at', 'desc')
+        .execute()
+
+      const users = rows.map(mapUserRow)
+      return validateDbResults
+        ? users.map(u => UserSchema.parse(u))
+        : users
+    },
+
+    async create(input: unknown): Promise<User> {
+      const validated = CreateUserSchema.parse(input)
+
+      const row = await executor
+        .insertInto('users')
+        .values({
+          ...validated,
+          deleted_at: null,
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow()
+
+      const user = mapUserRow(row)
+      return validateDbResults ? UserSchema.parse(user) : user
+    },
+
+    async update(id: number, input: unknown): Promise<User> {
+      const validated = UpdateUserSchema.parse(input)
+
+      const row = await executor
+        .updateTable('users')
+        .set(validated)
+        .where('id', '=', id)
+        .where('deleted_at', 'is', null)
+        .returningAll()
+        .executeTakeFirstOrThrow()
+
+      const user = mapUserRow(row)
+      return validateDbResults ? UserSchema.parse(user) : user
+    },
+
+    async softDelete(id: number): Promise<void> {
+      await executor
+        .updateTable('users')
+        .set({ deleted_at: new Date() })
+        .where('id', '=', id)
+        .execute()
+    },
+
+    async restore(id: number): Promise<void> {
+      await executor
+        .updateTable('users')
+        .set({ deleted_at: null })
+        .where('id', '=', id)
+        .execute()
     }
-  })
+  }
 }
 ```
 
-### Post Repository
+## CLI Usage
+
+The blog-app is a **CLI demonstration** showing various Kysera features:
 
 ```typescript
-const CreatePostSchema = z.object({
-  user_id: z.number(),
-  title: z.string().min(1).max(255),
-  content: z.string().optional(),
-  status: z.enum(['draft', 'published']).default('draft')
-})
+import { db, pool } from './db/connection.js'
+import { createUserRepository } from './repositories/user.repository.js'
+import { paginate } from '@kysera/core'
+import { checkDatabaseHealth } from '@kysera/infra'
 
-export function createPostRepository(executor: Executor<Database>) {
-  const factory = createRepositoryFactory(executor)
+async function main() {
+  console.log('🚀 Blog App Example - Kysera ORM')
 
-  return factory.create({
-    tableName: 'posts' as const,
-    mapRow: (row) => ({
-      id: row.id,
-      userId: row.user_id,
-      title: row.title,
-      content: row.content,
-      status: row.status,
-      createdAt: row.created_at
-    }),
-    schemas: {
-      create: CreatePostSchema,
-      update: CreatePostSchema.partial()
-    }
+  // Check database health
+  const health = await checkDatabaseHealth(db, pool)
+  console.log('Database health:', health)
+
+  // Create repository instance
+  const userRepo = createUserRepository(db)
+
+  // Create user
+  console.log('\n📝 Creating user...')
+  const user = await userRepo.create({
+    email: 'john@example.com',
+    name: 'John Doe'
   })
-}
-```
+  console.log('Created user:', user)
 
-## Using with Plugins
+  // Find by email
+  console.log('\n🔍 Finding user by email...')
+  const foundUser = await userRepo.findByEmail('john@example.com')
+  console.log('Found user:', foundUser)
 
-```typescript
-import { createORM } from '@kysera/repository'
-import { softDeletePlugin } from '@kysera/soft-delete'
-import { timestampsPlugin } from '@kysera/timestamps'
-
-const orm = await createORM(db, [
-  softDeletePlugin({ deletedAtColumn: 'deleted_at' }),
-  timestampsPlugin()
-])
-
-const userRepo = orm.createRepository(createUserRepository)
-const postRepo = orm.createRepository(createPostRepository)
-
-// Soft delete
-await userRepo.softDelete(userId)
-
-// Find only active users
-const activeUsers = await userRepo.findAll()
-
-// Find with deleted
-const allUsers = await userRepo.findAllWithDeleted()
-
-// Restore
-await userRepo.restore(userId)
-```
-
-## API Routes
-
-```typescript
-import express from 'express'
-
-const app = express()
-app.use(express.json())
-
-// Create user
-app.post('/users', async (req, res) => {
-  try {
-    const user = await userRepo.create(req.body)
-    res.status(201).json(user)
-  } catch (error) {
-    if (error instanceof UniqueConstraintError) {
-      return res.status(409).json({ error: 'Email already exists' })
-    }
-    throw error
-  }
-})
-
-// Get user posts
-app.get('/users/:id/posts', async (req, res) => {
-  const userId = parseInt(req.params.id)
-  const posts = await postRepo.find({ where: { user_id: userId } })
-  res.json(posts)
-})
-
-// Create post with user validation
-app.post('/posts', async (req, res) => {
-  const user = await userRepo.findById(req.body.user_id)
-  if (!user) {
-    return res.status(400).json({ error: 'User not found' })
-  }
-
-  const post = await postRepo.create(req.body)
-  res.status(201).json(post)
-})
-
-// Pagination
-app.get('/posts', async (req, res) => {
-  const page = parseInt(req.query.page) || 1
-  const limit = parseInt(req.query.limit) || 20
-
-  const result = await paginate(
-    db.selectFrom('posts')
-      .where('status', '=', 'published')
-      .selectAll(),
-    { page, limit }
-  )
-
-  res.json(result)
-})
-```
-
-## Transaction Example
-
-```typescript
-// Create user with initial post
-app.post('/users/with-post', async (req, res) => {
-  const { user: userData, post: postData } = req.body
-
-  const result = await db.transaction().execute(async (trx) => {
-    const repos = createRepositories(trx)
-
-    const user = await repos.users.create(userData)
-    const post = await repos.posts.create({
-      ...postData,
-      user_id: user.id
+  // Update user
+  console.log('\n✏️ Updating user...')
+  if (foundUser) {
+    const updated = await userRepo.update(foundUser.id, {
+      name: 'John Updated'
     })
+    console.log('Updated user:', updated)
+  }
 
-    return { user, post }
-  })
+  // Pagination
+  console.log('\n📋 Listing users with pagination...')
+  const query = db
+    .selectFrom('users')
+    .selectAll()
+    .where('deleted_at', 'is', null)
+    .orderBy('created_at', 'desc')
 
-  res.status(201).json(result)
+  const paginatedUsers = await paginate(query, { page: 1, limit: 10 })
+  console.log('Paginated users:', paginatedUsers)
+
+  // Soft delete and restore
+  console.log('\n🗑️ Soft deleting user...')
+  if (foundUser) {
+    await userRepo.softDelete(foundUser.id)
+    console.log('User soft deleted')
+
+    const deletedUser = await userRepo.findById(foundUser.id)
+    console.log('User after soft delete:', deletedUser) // Should be null
+
+    console.log('\n♻️ Restoring user...')
+    await userRepo.restore(foundUser.id)
+    const restoredUser = await userRepo.findById(foundUser.id)
+    console.log('Restored user:', restoredUser)
+  }
+
+  await db.destroy()
+  console.log('\n✅ Example completed!')
+}
+
+main().catch(error => {
+  console.error('Error:', error)
+  process.exit(1)
 })
 ```
 
-## Health Check Endpoint
+## Key Patterns Demonstrated
 
-```typescript
-import { checkDatabaseHealth, createMetricsPool } from '@kysera/core'
+1. **Hand-rolled repositories** - Direct Kysely queries without wrapper abstractions
+2. **Factory pattern** - `createUserRepository(executor)` for easy dependency injection
+3. **Manual soft delete** - Explicit `deleted_at` filtering in queries
+4. **Zod validation** - Type-safe input/output validation with `.parse()`
+5. **Mapper functions** - Separate data mapping from database rows to domain types
+6. **Environment-aware validation** - Development-only database result validation
+7. **Pagination** - Built-in offset pagination with `paginate()` from `@kysera/core`
+8. **Health checks** - Production-ready monitoring with `checkDatabaseHealth()` from `@kysera/infra`
+9. **Debug instrumentation** - Query logging and performance tracking with `@kysera/debug`
+10. **Graceful shutdown** - Proper connection cleanup with `@kysera/infra`
 
-const metricsPool = createMetricsPool(pool)
+## Running the Example
 
-app.get('/health', async (req, res) => {
-  const health = await checkDatabaseHealth(db, metricsPool)
+```bash
+# Install dependencies
+pnpm install
 
-  const statusCode = health.status === 'unhealthy' ? 503 : 200
-  res.status(statusCode).json(health)
-})
+# Set up PostgreSQL database
+createdb blog_example
+export DATABASE_URL="postgresql://localhost/blog_example"
+
+# Build the example
+pnpm build
+
+# Run the CLI demonstration
+pnpm start
 ```
 
-## Key Patterns
+The example will:
+1. Check database health
+2. Create a user
+3. Find user by email
+4. Update user
+5. List users with pagination
+6. Soft delete and restore user
 
-1. **Repository per entity** - Clean separation of data access
-2. **Factory pattern** - Easy DI and transaction support
-3. **Zod validation** - Type-safe input validation
-4. **Soft delete** - Safe deletion with restore
-5. **Pagination** - Efficient data loading
-6. **Health checks** - Production monitoring
+## Project Structure
+
+```
+blog-app/
+├── src/
+│   ├── db/
+│   │   ├── connection.ts    # Database connection with metrics
+│   │   ├── schema.ts        # TypeScript schema definitions
+│   │   ├── migrations.ts    # Migration functions
+│   │   └── migrate.ts       # Migration runner
+│   ├── repositories/
+│   │   └── user.repository.ts  # User repository implementation
+│   └── index.ts             # Main CLI runner
+├── package.json
+└── tsconfig.json
+```
+
+## What's Different from Other ORMs?
+
+- **No magic** - Explicit Kysely queries, not auto-generated methods
+- **Type-safe** - Full TypeScript inference without decorators
+- **Manual control** - You write the queries, Kysera provides utilities
+- **Lightweight** - No runtime overhead, just type-safe helpers
+- **Flexible** - Use as much or as little as you need

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { z } from 'zod';
 import { createTestDatabase, seedTestData } from './setup/database.js';
-import { createRepositoryFactory } from '../src/repository.js';
+import { createRepositoryFactory, zodAdapter } from '../src/index.js';
 import type { Kysely, Selectable } from 'kysely';
 import type { TestDatabase } from './setup/database.js';
 
@@ -62,9 +62,9 @@ describe('Repository Pattern', () => {
           deleted_at: row.deleted_at,
         }),
         schemas: {
-          entity: UserSchema,
-          create: CreateUserSchema,
-          update: UpdateUserSchema,
+          entity: zodAdapter(UserSchema),
+          create: zodAdapter(CreateUserSchema),
+          update: zodAdapter(UpdateUserSchema),
         },
       });
 
@@ -112,7 +112,7 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -146,8 +146,8 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema,
-          update: UpdateUserSchema,
+          create: zodAdapter(CreateUserSchema),
+          update: zodAdapter(UpdateUserSchema),
         },
       });
 
@@ -178,7 +178,7 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -206,8 +206,8 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          entity: UserSchema,
-          create: CreateUserSchema,
+          entity: zodAdapter(UserSchema),
+          create: zodAdapter(CreateUserSchema),
         },
         validateDbResults: true, // Explicitly enable
       });
@@ -234,8 +234,8 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          entity: UserSchema,
-          create: CreateUserSchema,
+          entity: zodAdapter(UserSchema),
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -274,7 +274,7 @@ describe('Repository Pattern', () => {
           isDeleted: row.deleted_at !== null,
         }),
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -321,12 +321,12 @@ describe('Repository Pattern', () => {
           },
         }),
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             user_id: z.number(),
             title: z.string(),
             content: z.string(),
             published: z.number().optional(), // SQLite uses 0/1 for boolean
-          }),
+          })),
         },
       });
 
@@ -351,7 +351,7 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -361,7 +361,7 @@ describe('Repository Pattern', () => {
           tableName: 'users',
           mapRow: (row) => row as User,
           schemas: {
-            create: CreateUserSchema,
+            create: zodAdapter(CreateUserSchema),
           },
         });
 
@@ -392,7 +392,7 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -403,7 +403,7 @@ describe('Repository Pattern', () => {
             tableName: 'users',
             mapRow: (row) => row as User,
             schemas: {
-              create: CreateUserSchema,
+              create: zodAdapter(CreateUserSchema),
             },
           });
 
@@ -435,7 +435,7 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -460,7 +460,7 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -488,7 +488,7 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -509,8 +509,8 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema,
-          update: UpdateUserSchema,
+          create: zodAdapter(CreateUserSchema),
+          update: zodAdapter(UpdateUserSchema),
         },
       });
 
@@ -536,7 +536,7 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -561,7 +561,7 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema,
+          create: zodAdapter(CreateUserSchema),
         },
       });
 
@@ -590,8 +590,8 @@ describe('Repository Pattern', () => {
         tableName: 'users',
         mapRow: (row) => row as User,
         schemas: {
-          create: CreateUserSchema,
-          update: UpdateUserSchema,
+          create: zodAdapter(CreateUserSchema),
+          update: zodAdapter(UpdateUserSchema),
         },
       });
 
@@ -609,8 +609,8 @@ describe('Repository Pattern', () => {
             tableName: 'users',
             mapRow: (row) => row as User,
             schemas: {
-              create: CreateUserSchema,
-              update: UpdateUserSchema,
+              create: zodAdapter(CreateUserSchema),
+              update: zodAdapter(UpdateUserSchema),
             },
           });
 

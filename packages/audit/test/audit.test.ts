@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Kysely, SqliteDialect, type Generated, type Selectable } from 'kysely';
 import betterSqlite3 from 'better-sqlite3';
 import { auditPluginSQLite } from '../src/index.js';
-import { createRepositoryFactory, createORM } from '@kysera/repository';
+import { createRepositoryFactory, createORM, zodAdapter } from '@kysera/repository';
 import { z } from 'zod';
 
 // Test database schema
@@ -102,10 +102,10 @@ describe('Audit Plugin', () => {
         tableName: 'users' as const,
         mapRow: (row: any) => row as User,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             email: z.string(),
             name: z.string(),
-          }),
+          })),
         },
       })
     );
@@ -400,10 +400,10 @@ describe('Audit Plugin', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
-            }),
+            })),
           },
         })
       );
@@ -438,10 +438,10 @@ describe('Audit Plugin', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
-            }),
+            })),
           },
         })
       );
@@ -473,10 +473,10 @@ describe('Audit Plugin', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
-            }),
+            })),
           },
         })
       );
@@ -486,11 +486,11 @@ describe('Audit Plugin', () => {
           tableName: 'posts' as const,
           mapRow: (row: any) => row as Post,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               user_id: z.number(),
               title: z.string(),
               content: z.string(),
-            }),
+            })),
           },
         })
       );
@@ -528,10 +528,10 @@ describe('Audit Plugin', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
-            }),
+            })),
           },
         })
       );

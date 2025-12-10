@@ -14,7 +14,7 @@
 | **Bundle Size** | ~4 KB (minified) |
 | **Test Coverage** | 39+ tests passing |
 | **Dependencies** | @kysera/core (workspace) |
-| **Peer Dependencies** | kysely >=0.28.8, @kysera/repository, zod ^4.1.13 |
+| **Peer Dependencies** | kysely >=0.28.8, @kysera/repository, zod ^4.1.13 (optional) |
 | **Target Runtimes** | Node.js 20+, Bun 1.0+, Deno |
 | **Module System** | ESM only |
 | **Database Support** | PostgreSQL, MySQL, SQLite |
@@ -381,7 +381,7 @@ The plugin extends repositories with these methods:
 Mark a record as deleted by setting `deleted_at` timestamp.
 
 ```typescript
-async softDelete(id: number): Promise<T>
+async softDelete(id: number | string): Promise<T>
 ```
 
 **Example:**
@@ -413,7 +413,7 @@ console.log(directQuery)  // Record exists with deleted_at set
 Restore a soft-deleted record by setting `deleted_at` to `null`.
 
 ```typescript
-async restore(id: number): Promise<T>
+async restore(id: number | string): Promise<T>
 ```
 
 **Example:**
@@ -443,7 +443,7 @@ const users = await userRepo.findAll()
 Permanently delete a record from the database (bypasses soft delete).
 
 ```typescript
-async hardDelete(id: number): Promise<void>
+async hardDelete(id: number | string): Promise<void>
 ```
 
 **Example:**
@@ -529,7 +529,7 @@ console.log(deleted[0].deleted_at)  // Not null
 Find a specific record including if soft-deleted.
 
 ```typescript
-async findWithDeleted(id: number): Promise<T | null>
+async findWithDeleted(id: number | string): Promise<T | null>
 ```
 
 **Example:**
@@ -840,12 +840,12 @@ The plugin is fully type-safe with TypeScript.
 
 ```typescript
 interface SoftDeleteRepository<T> extends Repository<T> {
-  softDelete(id: number): Promise<T>
-  restore(id: number): Promise<T>
-  hardDelete(id: number): Promise<void>
+  softDelete(id: number | string): Promise<T>
+  restore(id: number | string): Promise<T>
+  hardDelete(id: number | string): Promise<void>
   findAllWithDeleted(): Promise<T[]>
   findDeleted(): Promise<T[]>
-  findWithDeleted(id: number): Promise<T | null>
+  findWithDeleted(id: number | string): Promise<T | null>
 }
 
 // Type-safe usage
@@ -896,6 +896,7 @@ interface SoftDeleteOptions {
   includeDeleted?: boolean    // Default: false
   tables?: string[]           // Default: undefined (all tables)
   primaryKeyColumn?: string   // Default: 'id'
+  logger?: KyseraLogger       // Default: silentLogger (no output)
 }
 ```
 
@@ -919,7 +920,7 @@ const plugin = softDeletePlugin({
 Soft delete a record by ID.
 
 **Parameters:**
-- `id: number` - Record ID
+- `id: number | string` - Record ID
 
 **Returns:** `Promise<T>` - The soft-deleted record
 
@@ -932,7 +933,7 @@ Soft delete a record by ID.
 Restore a soft-deleted record.
 
 **Parameters:**
-- `id: number` - Record ID
+- `id: number | string` - Record ID
 
 **Returns:** `Promise<T>` - The restored record
 
@@ -943,7 +944,7 @@ Restore a soft-deleted record.
 Permanently delete a record.
 
 **Parameters:**
-- `id: number` - Record ID
+- `id: number | string` - Record ID
 
 **Returns:** `Promise<void>`
 
@@ -970,7 +971,7 @@ Find only soft-deleted records.
 Find a record by ID including if soft-deleted.
 
 **Parameters:**
-- `id: number` - Record ID
+- `id: number | string` - Record ID
 
 **Returns:** `Promise<T | null>`
 

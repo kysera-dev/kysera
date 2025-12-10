@@ -11,64 +11,84 @@ Advanced patterns for production e-commerce systems with complex transactions.
 ## Features
 
 - Complex ACID transactions
-- Inventory management with pessimistic locking
+- Inventory management with optimistic locking
 - Shopping cart operations
 - Order lifecycle (state machine)
 - Stock validation
-- Audit trail
+- Repository pattern with Zod validation
 
 ## Database Schema
 
-```sql
-CREATE TABLE products (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  price DECIMAL(10, 2) NOT NULL,
-  stock INTEGER NOT NULL DEFAULT 0,
-  active BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+```typescript
+// TypeScript schema types (from examples/e-commerce/src/db/schema.ts)
 
-CREATE TABLE cart_items (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL,
-  product_id INTEGER NOT NULL REFERENCES products(id),
-  quantity INTEGER NOT NULL DEFAULT 1,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(user_id, product_id)
-);
+export interface CategoriesTable {
+  id: Generated<number>
+  name: string
+  slug: string
+  parent_id: number | null
+  created_at: Generated<Date>
+}
 
-CREATE TABLE orders (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL,
-  status VARCHAR(20) NOT NULL DEFAULT 'pending',
-  total DECIMAL(10, 2) NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+export interface ProductsTable {
+  id: Generated<number>
+  category_id: number
+  name: string
+  description: string
+  price: number
+  stock: number
+  is_active: Generated<boolean>
+  created_at: Generated<Date>
+  updated_at: Date | null
+}
 
-CREATE TABLE order_items (
-  id SERIAL PRIMARY KEY,
-  order_id INTEGER NOT NULL REFERENCES orders(id),
-  product_id INTEGER NOT NULL REFERENCES products(id),
-  quantity INTEGER NOT NULL,
-  price DECIMAL(10, 2) NOT NULL
-);
+export interface CartItemsTable {
+  id: Generated<number>
+  user_id: number
+  product_id: number
+  quantity: number
+  created_at: Generated<Date>
+}
 
-CREATE TABLE inventory_movements (
-  id SERIAL PRIMARY KEY,
-  product_id INTEGER NOT NULL REFERENCES products(id),
-  quantity INTEGER NOT NULL,
-  reason VARCHAR(50) NOT NULL,
-  order_id INTEGER REFERENCES orders(id),
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
+
+export interface OrdersTable {
+  id: Generated<number>
+  user_id: number
+  status: OrderStatus
+  total_amount: number
+  created_at: Generated<Date>
+  updated_at: Date | null
+}
+
+export interface OrderItemsTable {
+  id: Generated<number>
+  order_id: number
+  product_id: number
+  quantity: number
+  price: number
+  created_at: Generated<Date>
+}
+
+export interface InventoryMovementsTable {
+  id: Generated<number>
+  product_id: number
+  quantity_change: number  // Note: actual field name is quantity_change
+  reason: string
+  created_at: Generated<Date>
+}
 ```
 
 ## Order State Machine
 
-```typescript
-type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
+The order repository implements a state machine for order status transitions:
 
+```typescript
+// From examples/e-commerce/src/repositories/order.repository.ts
+
+export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
+
+// State machine for order status transitions
 const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   pending: ['processing', 'cancelled'],
   processing: ['shipped', 'cancelled'],
@@ -79,33 +99,269 @@ const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 
 export class InvalidStatusTransitionError extends Error {
   constructor(from: OrderStatus, to: OrderStatus) {
-    super(`Cannot transition from ${from} to ${to}`)
-  }
-}
-
-function validateTransition(from: OrderStatus, to: OrderStatus): void {
-  if (!VALID_TRANSITIONS[from].includes(to)) {
-    throw new InvalidStatusTransitionError(from, to)
+    super(`Invalid status transition from ${from} to ${to}`)
+    this.name = 'InvalidStatusTransitionError'
   }
 }
 ```
 
 ## Checkout Transaction
 
-The most critical operation - must be atomic:
+The most critical operation - must be atomic. This example uses optimistic locking to prevent overselling. Here's the actual implementation from the example:
 
 ```typescript
-interface CheckoutResult {
-  order: Order
-  items: OrderItem[]
+// From examples/e-commerce/src/index.ts (lines 88-122)
+
+const order = await db.transaction().execute(async (trx) => {
+  const transactionalProductRepo = createProductRepository(trx)
+  const transactionalCartRepo = createCartRepository(trx)
+  const transactionalOrderRepo = createOrderRepository(trx)
+
+  // Get cart items
+  const cartItems = await transactionalCartRepo.getCartWithProducts(userId)
+
+  if (cartItems.length === 0) {
+    throw new Error('Cart is empty')
+  }
+
+  // Calculate total
+  const total = cartItems.reduce((sum, item) => sum + item.subtotal, 0)
+
+  // Create order
+  const newOrder = await transactionalOrderRepo.create({
+    user_id: userId,
+    total_amount: total,
+    status: 'pending'
+  })
+
+  // Decrease stock for each product
+  for (const item of cartItems) {
+    await transactionalProductRepo.decreaseStock(item.product_id, item.quantity)
+  }
+
+  // Clear cart
+  await transactionalCartRepo.clear(userId)
+
+  return newOrder
+})
+```
+
+### Stock Management with Optimistic Locking
+
+The `decreaseStock` method uses optimistic locking to prevent race conditions. This is the actual implementation:
+
+```typescript
+// From examples/e-commerce/src/repositories/product.repository.ts (lines 162-180)
+
+/**
+ * Decrease stock with optimistic locking to prevent overselling
+ * This uses a WHERE clause to ensure stock doesn't go negative
+ */
+async decreaseStock(productId: number, quantity: number): Promise<Product> {
+  const result = await executor
+    .updateTable('products')
+    .set({
+      stock: sql`stock - ${quantity}`,
+      updated_at: new Date()
+    })
+    .where('id', '=', productId)
+    .where('stock', '>=', quantity)  // Prevents negative stock
+    .returningAll()
+    .executeTakeFirst()
+
+  if (!result) {
+    throw new InsufficientStockError(productId)
+  }
+
+  const product = mapProductRow(result)
+  return validateDbResults ? ProductSchema.parse(product) : product
+}
+```
+
+**Key Points:**
+- **No explicit locking** (`forUpdate()`) is used - this is optimistic locking
+- The `WHERE stock >= quantity` clause ensures atomicity
+- If stock is insufficient, the UPDATE affects 0 rows
+- The method throws `InsufficientStockError` when stock is insufficient
+- Database-level constraint prevents overselling
+- Simpler and often more performant than pessimistic locking
+
+## Update Order Status
+
+The order repository provides state machine validation for status transitions:
+
+```typescript
+// From examples/e-commerce/src/repositories/order.repository.ts (lines 142-160)
+
+/**
+ * Validate state transitions using state machine
+ */
+isValidTransition(from: OrderStatus, to: OrderStatus): boolean {
+  return VALID_TRANSITIONS[from]?.includes(to) ?? false
 }
 
-async function checkout(
-  db: Kysely<Database>,
-  userId: number
-): Promise<CheckoutResult> {
+/**
+ * Update order status with state machine validation
+ */
+async updateStatus(orderId: number, newStatus: OrderStatus): Promise<Order> {
+  const order = await this.findById(orderId)
+  if (!order) {
+    throw new Error(`Order ${orderId} not found`)
+  }
+
+  if (!this.isValidTransition(order.status, newStatus)) {
+    throw new InvalidStatusTransitionError(order.status, newStatus)
+  }
+
+  return await this.update(orderId, { status: newStatus })
+}
+```
+
+**Usage from the example:**
+
+```typescript
+// From examples/e-commerce/src/index.ts (lines 130-151)
+
+// Valid transitions
+console.log('Processing order...')
+const processingOrder = await orderRepo.updateStatus(order.id, 'processing')
+console.log(`Order status: ${processingOrder.status}`)
+
+console.log('Shipping order...')
+const shippedOrder = await orderRepo.updateStatus(order.id, 'shipped')
+console.log(`Order status: ${shippedOrder.status}`)
+
+console.log('Delivering order...')
+const deliveredOrder = await orderRepo.updateStatus(order.id, 'delivered')
+console.log(`Order status: ${deliveredOrder.status}`)
+
+// Try invalid transition (should fail)
+try {
+  await orderRepo.updateStatus(order.id, 'pending')  // delivered → pending ❌
+  console.log('ERROR: Should have failed!')
+} catch (error) {
+  console.log(`✓ Correctly rejected invalid transition: ${(error as Error).message}`)
+}
+```
+
+## Shopping Cart Operations
+
+The cart repository handles adding, updating, and managing cart items. Here are the key methods:
+
+### Add Item to Cart
+
+```typescript
+// From examples/e-commerce/src/repositories/cart.repository.ts (lines 92-125)
+
+async addItem(input: unknown): Promise<CartItem> {
+  const validated = AddToCartSchema.parse(input)
+
+  // Check if item already exists in cart
+  const existing = await executor
+    .selectFrom('cart_items')
+    .selectAll()
+    .where('user_id', '=', validated.user_id)
+    .where('product_id', '=', validated.product_id)
+    .executeTakeFirst()
+
+  if (existing) {
+    // Update quantity if item already exists
+    const row = await executor
+      .updateTable('cart_items')
+      .set({ quantity: sql`quantity + ${validated.quantity}` })
+      .where('id', '=', existing.id)
+      .returningAll()
+      .executeTakeFirstOrThrow()
+
+    const item = mapCartItemRow(row)
+    return validateDbResults ? CartItemSchema.parse(item) : item
+  }
+
+  // Insert new item
+  const row = await executor
+    .insertInto('cart_items')
+    .values(validated)
+    .returningAll()
+    .executeTakeFirstOrThrow()
+
+  const item = mapCartItemRow(row)
+  return validateDbResults ? CartItemSchema.parse(item) : item
+}
+```
+
+### Get Cart with Product Details
+
+Note: The cart items don't store price - prices are fetched via JOIN with products table:
+
+```typescript
+// From examples/e-commerce/src/repositories/cart.repository.ts (lines 72-90)
+
+export interface CartItemWithProduct {
+  id: number
+  user_id: number
+  product_id: number
+  product_name: string
+  price: number           // From products table, not cart_items
+  quantity: number
+  subtotal: number        // Calculated as price * quantity
+  created_at: Date
+}
+
+/**
+ * Get cart with product details and calculated subtotals
+ */
+async getCartWithProducts(userId: number): Promise<CartItemWithProduct[]> {
+  const rows = await executor
+    .selectFrom('cart_items')
+    .innerJoin('products', 'products.id', 'cart_items.product_id')
+    .select([
+      'cart_items.id',
+      'cart_items.user_id',
+      'cart_items.product_id',
+      'products.name as product_name',
+      'products.price',
+      'cart_items.quantity',
+      sql<number>`products.price * cart_items.quantity`.as('subtotal'),
+      'cart_items.created_at'
+    ])
+    .where('cart_items.user_id', '=', userId)
+    .execute()
+
+  return rows as CartItemWithProduct[]
+}
+```
+
+**Key Points:**
+- Cart items only store `product_id` and `quantity`
+- Prices are always fetched from the products table via JOIN
+- Subtotals are calculated at query time: `products.price * cart_items.quantity`
+- This ensures cart always reflects current product prices
+
+## Key Patterns Demonstrated
+
+This example demonstrates the following production-ready patterns:
+
+1. **Optimistic Locking** - `WHERE stock >= quantity` prevents overselling without explicit locks
+2. **Repository Pattern** - Clean separation of data access logic with Zod validation
+3. **State Machine** - Explicit valid transitions for order lifecycle with validation
+4. **Atomic Transactions** - All-or-nothing checkout process using Kysely transactions
+5. **Type Safety** - Full TypeScript types with runtime validation via Zod
+6. **Price Consistency** - Cart prices are always fetched via JOIN, never stored
+7. **Error Handling** - Custom error types like `InsufficientStockError` and `InvalidStatusTransitionError`
+
+## Additional Patterns to Consider
+
+The example includes the `inventory_movements` table in the schema but doesn't currently use it. For production systems, you may want to consider these additional patterns:
+
+### Pessimistic Locking with `forUpdate()`
+
+**Note: The current example does NOT use pessimistic locking.** However, for high-contention scenarios where optimistic locking leads to frequent retries, you could implement:
+
+```typescript
+// ⚠️ This is NOT in the example - it's an alternative approach
+async function checkoutWithPessimisticLocking(userId: number): Promise<Order> {
   return db.transaction().execute(async (trx) => {
-    // 1. Get cart items with product info (with lock)
+    // Lock cart items and products to prevent concurrent modifications
     const cartItems = await trx
       .selectFrom('cart_items')
       .innerJoin('products', 'products.id', 'cart_items.product_id')
@@ -118,183 +374,78 @@ async function checkout(
         'products.price',
         'products.stock'
       ])
-      .forUpdate()  // Lock rows
+      .forUpdate()  // ⚠️ Locks selected rows
       .execute()
 
-    if (cartItems.length === 0) {
-      throw new Error('Cart is empty')
-    }
-
-    // 2. Validate stock
-    for (const item of cartItems) {
-      if (item.stock < item.quantity) {
-        throw new Error(`Insufficient stock for ${item.name}`)
-      }
-    }
-
-    // 3. Calculate total
-    const total = cartItems.reduce(
-      (sum, item) => sum + (item.price * item.quantity),
-      0
-    )
-
-    // 4. Create order
-    const order = await trx
-      .insertInto('orders')
-      .values({
-        user_id: userId,
-        status: 'pending',
-        total
-      })
-      .returningAll()
-      .executeTakeFirstOrThrow()
-
-    // 5. Create order items
-    const orderItems = await trx
-      .insertInto('order_items')
-      .values(cartItems.map(item => ({
-        order_id: order.id,
-        product_id: item.product_id,
-        quantity: item.quantity,
-        price: item.price
-      })))
-      .returningAll()
-      .execute()
-
-    // 6. Decrease stock
-    for (const item of cartItems) {
-      const result = await trx
-        .updateTable('products')
-        .set({ stock: sql`stock - ${item.quantity}` })
-        .where('id', '=', item.product_id)
-        .where('stock', '>=', item.quantity)  // Double-check
-        .returningAll()
-        .executeTakeFirst()
-
-      if (!result) {
-        throw new Error(`Stock changed for ${item.name}`)
-      }
-
-      // 7. Record inventory movement
-      await trx
-        .insertInto('inventory_movements')
-        .values({
-          product_id: item.product_id,
-          quantity: -item.quantity,
-          reason: 'sale',
-          order_id: order.id
-        })
-        .execute()
-    }
-
-    // 8. Clear cart
-    await trx
-      .deleteFrom('cart_items')
-      .where('user_id', '=', userId)
-      .execute()
-
-    return { order, items: orderItems }
+    // ... rest of checkout logic
   })
 }
 ```
 
-## Update Order Status
+**Trade-offs:**
+- ✅ Guarantees no concurrent modifications
+- ✅ No retry logic needed
+- ❌ Can cause lock contention under high load
+- ❌ May impact throughput
+- ❌ Risk of deadlocks if not careful
+
+### Inventory Movement Tracking
+
+**Note: The example defines `inventory_movements` table but doesn't use it yet.** For audit trails and inventory reconciliation, you would add:
 
 ```typescript
-async function updateOrderStatus(
-  db: Kysely<Database>,
-  orderId: number,
-  newStatus: OrderStatus,
-  userId: number
-): Promise<Order> {
-  return db.transaction().execute(async (trx) => {
-    // Get current order with lock
-    const order = await trx
-      .selectFrom('orders')
-      .where('id', '=', orderId)
-      .where('user_id', '=', userId)  // Security check
-      .selectAll()
-      .forUpdate()
-      .executeTakeFirst()
-
-    if (!order) {
-      throw new NotFoundError('Order not found')
-    }
-
-    // Validate transition
-    validateTransition(order.status as OrderStatus, newStatus)
-
-    // Update status
-    const updated = await trx
-      .updateTable('orders')
-      .set({ status: newStatus })
-      .where('id', '=', orderId)
-      .returningAll()
-      .executeTakeFirstOrThrow()
-
-    return updated
+// Track every stock change
+await trx
+  .insertInto('inventory_movements')
+  .values({
+    product_id: item.product_id,
+    quantity_change: -item.quantity,  // Negative for sales
+    reason: 'sale'
   })
-}
+  .execute()
 ```
 
-## Cancel Order (Restore Stock)
+This would provide a complete audit trail of all inventory changes for reconciliation and debugging.
 
-```typescript
-async function cancelOrder(
-  db: Kysely<Database>,
-  orderId: number
-): Promise<void> {
-  await db.transaction().execute(async (trx) => {
-    // Get order and items
-    const order = await trx
-      .selectFrom('orders')
-      .where('id', '=', orderId)
-      .selectAll()
-      .forUpdate()
-      .executeTakeFirstOrThrow()
+## Running the Example
 
-    validateTransition(order.status as OrderStatus, 'cancelled')
+To run this example:
 
-    const items = await trx
-      .selectFrom('order_items')
-      .where('order_id', '=', orderId)
-      .selectAll()
-      .execute()
-
-    // Restore stock
-    for (const item of items) {
-      await trx
-        .updateTable('products')
-        .set({ stock: sql`stock + ${item.quantity}` })
-        .where('id', '=', item.product_id)
-        .execute()
-
-      await trx
-        .insertInto('inventory_movements')
-        .values({
-          product_id: item.product_id,
-          quantity: item.quantity,
-          reason: 'order_cancelled',
-          order_id: orderId
-        })
-        .execute()
-    }
-
-    // Update order
-    await trx
-      .updateTable('orders')
-      .set({ status: 'cancelled' })
-      .where('id', '=', orderId)
-      .execute()
-  })
-}
+```bash
+cd examples/e-commerce
+pnpm install
+pnpm dev
 ```
 
-## Key Patterns
+## Dependencies
 
-1. **Pessimistic Locking** - `forUpdate()` prevents race conditions
-2. **Stock Validation** - Double-check in UPDATE WHERE clause
-3. **State Machine** - Explicit valid transitions
-4. **Inventory Audit** - Track all stock changes
-5. **Atomic Checkout** - All-or-nothing order creation
-6. **Security Checks** - User ownership validation
+This example uses the following packages:
+
+**Kysera packages (actively used):**
+- `@kysera/core` - Core types, `Executor` type, and error handling
+- `@kysera/infra` - Health checks via `checkDatabaseHealth()`
+
+**Kysera packages (listed but not currently used):**
+- `@kysera/repository` - Not used (example uses custom repository pattern)
+- `@kysera/audit` - Not used yet (planned)
+- `@kysera/timestamps` - Not used yet (planned)
+- `@kysera/debug` - Not used yet (planned)
+
+**Other dependencies:**
+- `kysely` - SQL query builder
+- `pg` - PostgreSQL driver
+- `zod` - Runtime validation
+
+## Repository Structure
+
+```
+examples/e-commerce/src/
+├── db/
+│   ├── schema.ts          # TypeScript schema types
+│   └── connection.ts       # Database connection
+├── repositories/
+│   ├── product.repository.ts   # Product CRUD + stock management
+│   ├── cart.repository.ts      # Shopping cart operations
+│   └── order.repository.ts     # Order management + state machine
+└── index.ts               # Main example demonstrating all features
+```

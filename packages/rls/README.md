@@ -622,13 +622,15 @@ Create an RLS context object with validation.
 import { createRLSContext } from '@kysera/rls';
 
 const ctx = createRLSContext({
-  userId: 123,
-  roles: ['user', 'editor'],
-  tenantId: 'acme-corp',
-  // Optional fields
-  organizationIds: ['org-1'],
-  permissions: ['posts:read', 'posts:write'],
-  isSystem: false,
+  auth: {
+    userId: 123,
+    roles: ['user', 'editor'],
+    tenantId: 'acme-corp',
+    organizationIds: ['org-1'],
+    permissions: ['posts:read', 'posts:write'],
+    isSystem: false,
+  },
+  timestamp: new Date(),
 });
 
 // Use with runAsync
@@ -832,12 +834,9 @@ Generate PostgreSQL `CREATE POLICY` statements from your RLS schema.
 import { PostgresRLSGenerator } from '@kysera/rls/native';
 
 const generator = new PostgresRLSGenerator(rlsSchema, {
-  contextFunctions: {
-    // Define SQL functions to access context
-    userId: 'current_setting(\'app.user_id\')::integer',
-    tenantId: 'current_setting(\'app.tenant_id\')::uuid',
-    roles: 'current_setting(\'app.roles\')::text[]',
-  },
+  force: true,           // Force RLS on table owners
+  schemaName: 'public',  // Schema name (default: public)
+  policyPrefix: 'rls_',  // Prefix for generated policy names
 });
 
 // Generate policies for a table
@@ -847,14 +846,15 @@ console.log(sql);
 /*
 Output:
 ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE posts FORCE ROW LEVEL SECURITY;
 
-CREATE POLICY tenant_isolation ON posts
+CREATE POLICY rls_tenant_isolation ON posts
   FOR ALL
-  USING (tenant_id = current_setting('app.tenant_id')::uuid);
+  USING (tenant_id = current_user_tenant_id());
 
-CREATE POLICY author_access ON posts
+CREATE POLICY rls_author_access ON posts
   FOR UPDATE
-  USING (author_id = current_setting('app.user_id')::integer);
+  USING (author_id = current_user_id());
 */
 ```
 
@@ -866,10 +866,9 @@ Generate migration files for PostgreSQL RLS policies.
 import { RLSMigrationGenerator } from '@kysera/rls/native';
 
 const migrationGen = new RLSMigrationGenerator(rlsSchema, {
-  contextFunctions: {
-    userId: 'current_setting(\'app.user_id\')::integer',
-    tenantId: 'current_setting(\'app.tenant_id\')::uuid',
-  },
+  force: true,           // Force RLS on table owners
+  schemaName: 'public',  // Schema name (default: public)
+  policyPrefix: 'rls_',  // Prefix for generated policy names
   migrationPath: './migrations',
   timestamp: true,
 });
@@ -1146,6 +1145,7 @@ export {
   withRLSContext,
   withRLSContextAsync,
 } from '@kysera/rls';
+export type { RLSContext } from '@kysera/rls';
 
 // Errors
 export {

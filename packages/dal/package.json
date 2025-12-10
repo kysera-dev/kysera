@@ -1,0 +1,69 @@
+{
+  "name": "@kysera/dal",
+  "version": "0.5.1",
+  "description": "Functional Data Access Layer for Kysera ORM - query functions, context passing, composition",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "peerDependencies": {
+    "kysely": ">=0.28.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.10.1",
+    "@vitest/coverage-v8": "^4.0.15",
+    "better-sqlite3": "^12.5.0",
+    "kysely": "^0.28.8",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  },
+  "keywords": [
+    "kysely",
+    "orm",
+    "database",
+    "dal",
+    "data-access-layer",
+    "functional",
+    "typescript",
+    "composition"
+  ],
+  "author": "Kysera Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kysera-dev/kysera.git",
+    "directory": "packages/dal"
+  },
+  "bugs": {
+    "url": "https://github.com/kysera-dev/kysera/issues"
+  },
+  "homepage": "https://github.com/kysera-dev/kysera#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.0.0",
+    "bun": ">=1.0.0"
+  }
+}

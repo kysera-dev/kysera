@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Kysely, SqliteDialect, sql } from 'kysely';
+import { Kysely, SqliteDialect } from 'kysely';
 import Database from 'better-sqlite3';
 import {
   MigrationRunner,
@@ -72,9 +72,10 @@ describe('Transaction Support', () => {
               .execute();
 
             // Insert some data
-            await db
-              .insertInto('transactional_table' as any)
-              .values({ id: 1, name: 'test' } as any)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (db as any)
+              .insertInto('transactional_table')
+              .values({ id: 1, name: 'test' })
               .execute();
           },
           async (db) => {

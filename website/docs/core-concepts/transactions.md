@@ -104,9 +104,16 @@ await db.transaction().execute(async (trx) => {
 
 ```typescript
 await userRepo.transaction(async (trx) => {
+  // Create transactional repository instances
+  const txUserRepo = userRepo.withTransaction(trx)
+  const txPostRepo = postRepo.withTransaction(trx)
+
   // Operations within transaction
-  const user = await userRepo.withTransaction(trx).create({ ... })
-  await postRepo.withTransaction(trx).create({ user_id: user.id, ... })
+  const user = await txUserRepo.create({ ... })
+  await txPostRepo.create({ user_id: user.id, ... })
+
+  // Return value becomes the result of transaction()
+  return user
 })
 ```
 
@@ -225,7 +232,7 @@ Available levels:
 Use transaction rollback for fast, isolated tests:
 
 ```typescript
-import { testInTransaction } from '@kysera/core'
+import { testInTransaction } from '@kysera/testing'
 
 describe('User Repository', () => {
   it('should create user', async () => {

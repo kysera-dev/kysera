@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDatabase, seedTestData } from './setup/database.js';
 import { softDeletePlugin } from '../src/index.js';
-import { createORM, createRepositoryFactory } from '@kysera/repository';
+import { createORM, createRepositoryFactory, zodAdapter } from '@kysera/repository';
 import type { Kysely } from 'kysely';
 import type { TestDatabase } from './setup/database.js';
 import { z } from 'zod';
@@ -55,8 +55,8 @@ describe('Soft Delete Plugin - Repository Extension', () => {
         tableName: 'users' as keyof TestDatabase,
         mapRow: (row) => row as TestUser,
         schemas: {
-          create: z.any(),
-          update: z.any(),
+          create: zodAdapter(z.any()),
+          update: zodAdapter(z.any()),
         },
       });
     }) as SoftDeleteRepository;
@@ -78,8 +78,8 @@ describe('Soft Delete Plugin - Repository Extension', () => {
         tableName: 'users' as keyof TestDatabase,
         mapRow: (row) => row as TestUser,
         schemas: {
-          create: z.any(),
-          update: z.any(),
+          create: zodAdapter(z.any()),
+          update: zodAdapter(z.any()),
         },
       });
     }) as SoftDeleteRepository;
@@ -115,8 +115,8 @@ describe('Soft Delete Plugin - Repository Extension', () => {
         tableName: 'users' as keyof TestDatabase,
         mapRow: (row) => row as TestUser,
         schemas: {
-          create: z.any(),
-          update: z.any(),
+          create: zodAdapter(z.any()),
+          update: zodAdapter(z.any()),
         },
       });
     }) as SoftDeleteRepository;
@@ -154,7 +154,7 @@ describe('Soft Delete Plugin - Repository Extension', () => {
         tableName: 'users' as keyof TestDatabase,
         mapRow: (row) => row as TestUser,
         schemas: {
-          create: z.any(),
+          create: zodAdapter(z.any()),
         },
       });
     }) as SoftDeleteRepository;
@@ -185,7 +185,7 @@ describe('Soft Delete Plugin - Repository Extension', () => {
         tableName: 'users' as keyof TestDatabase,
         mapRow: (row) => row as TestUser,
         schemas: {
-          create: z.any(),
+          create: zodAdapter(z.any()),
         },
       });
     }) as SoftDeleteRepository;
@@ -217,7 +217,7 @@ describe('Soft Delete Plugin - Repository Extension', () => {
         tableName: 'users' as keyof TestDatabase,
         mapRow: (row) => row as TestUser,
         schemas: {
-          create: z.any(),
+          create: zodAdapter(z.any()),
         },
       });
     }) as SoftDeleteRepository;

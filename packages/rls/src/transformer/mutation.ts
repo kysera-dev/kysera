@@ -15,9 +15,10 @@ import { RLSPolicyViolation } from '../errors.js';
  * Validates mutations (CREATE, UPDATE, DELETE) against allow/deny/validate policies
  */
 export class MutationGuard<DB = unknown> {
+  // executor is kept for future use with database-dependent policies
   constructor(
     private registry: PolicyRegistry<DB>,
-    private executor?: Kysely<DB>
+    _executor?: Kysely<DB>
   ) {}
 
   /**
@@ -316,7 +317,7 @@ export class MutationGuard<DB = unknown> {
       data,
       table,
       operation,
-      metadata: ctx.meta,
+      ...(ctx.meta !== undefined && { meta: ctx.meta as Record<string, unknown> }),
     };
   }
 
@@ -333,8 +334,8 @@ export class MutationGuard<DB = unknown> {
     } catch (error) {
       // Policy evaluation errors are treated as denial
       throw new RLSPolicyViolation(
-        evalCtx.operation,
-        evalCtx.table,
+        evalCtx.operation ?? 'unknown',
+        evalCtx.table ?? 'unknown',
         `Policy evaluation error: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }

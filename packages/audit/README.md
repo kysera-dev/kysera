@@ -258,6 +258,12 @@ export interface AuditOptions {
    * @returns Metadata object or null
    */
   metadata?: () => Record<string, unknown>
+
+  /**
+   * Logger for audit operations
+   * @default consoleLogger from @kysera/core
+   */
+  logger?: KyseraLogger
 }
 ```
 
@@ -1730,6 +1736,13 @@ export interface AuditFilters {
   endDate?: Date | string
 }
 ```
+
+### Exported Types
+
+The following types are exported for TypeScript users:
+
+- `AuditOptionsSchema` - Zod schema for validating audit options
+- `AuditFilters` - Interface extending AuditPaginationOptions for filtering audit logs
 
 ### Extended Repository Methods
 

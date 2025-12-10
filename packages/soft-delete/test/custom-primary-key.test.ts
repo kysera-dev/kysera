@@ -3,7 +3,7 @@ import { Kysely, SqliteDialect, type Generated } from 'kysely';
 import sqliteConstructor from 'better-sqlite3';
 import type { Database as SQLiteDatabase } from 'better-sqlite3';
 import { softDeletePlugin, type SoftDeleteRepository } from '../src/index.js';
-import { createORM, createRepositoryFactory } from '@kysera/repository';
+import { createORM, createRepositoryFactory, zodAdapter } from '@kysera/repository';
 import { z } from 'zod';
 
 // Database schema with custom primary key columns
@@ -103,17 +103,17 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
           tableName: 'products',
           mapRow: (row) => row as Product,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               name: z.string(),
               price: z.number(),
-            }),
-            update: z
+            })),
+            update: zodAdapter(z
               .object({
                 name: z.string().optional(),
                 price: z.number().optional(),
                 deleted_at: z.string().nullable().optional(),
               })
-              .optional(),
+              .optional()),
           },
         });
       }) as SoftDeleteRepository<Product, CustomPKDatabase>;
@@ -148,17 +148,17 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
           tableName: 'products',
           mapRow: (row) => row as Product,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               name: z.string(),
               price: z.number(),
-            }),
-            update: z
+            })),
+            update: zodAdapter(z
               .object({
                 name: z.string().optional(),
                 price: z.number().optional(),
                 deleted_at: z.string().nullable().optional(),
               })
-              .optional(),
+              .optional()),
           },
         });
       }) as SoftDeleteRepository<Product, CustomPKDatabase>;
@@ -193,17 +193,17 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
           tableName: 'products',
           mapRow: (row) => row as Product,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               name: z.string(),
               price: z.number(),
-            }),
-            update: z
+            })),
+            update: zodAdapter(z
               .object({
                 name: z.string().optional(),
                 price: z.number().optional(),
                 deleted_at: z.string().nullable().optional(),
               })
-              .optional(),
+              .optional()),
           },
         });
       }) as SoftDeleteRepository<Product, CustomPKDatabase>;
@@ -237,17 +237,17 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
           tableName: 'products',
           mapRow: (row) => row as Product,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               name: z.string(),
               price: z.number(),
-            }),
-            update: z
+            })),
+            update: zodAdapter(z
               .object({
                 name: z.string().optional(),
                 price: z.number().optional(),
                 deleted_at: z.string().nullable().optional(),
               })
-              .optional(),
+              .optional()),
           },
         });
       }) as SoftDeleteRepository<Product, CustomPKDatabase>;
@@ -328,17 +328,17 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
           tableName: 'products',
           mapRow: (row) => row as Product,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               name: z.string(),
               price: z.number(),
-            }),
-            update: z
+            })),
+            update: zodAdapter(z
               .object({
                 name: z.string().optional(),
                 price: z.number().optional(),
                 deleted_at: z.string().nullable().optional(),
               })
-              .optional(),
+              .optional()),
           },
         });
       }) as SoftDeleteRepository<Product, CustomPKDatabase>;
@@ -373,17 +373,17 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
           tableName: 'products',
           mapRow: (row) => row as Product,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               name: z.string(),
               price: z.number(),
-            }),
-            update: z
+            })),
+            update: zodAdapter(z
               .object({
                 name: z.string().optional(),
                 price: z.number().optional(),
                 deleted_at: z.string().nullable().optional(),
               })
-              .optional(),
+              .optional()),
           },
         });
       }) as SoftDeleteRepository<Product, CustomPKDatabase>;
@@ -419,17 +419,17 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
           tableName: 'products',
           mapRow: (row) => row as Product,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               name: z.string(),
               price: z.number(),
-            }),
-            update: z
+            })),
+            update: zodAdapter(z
               .object({
                 name: z.string().optional(),
                 price: z.number().optional(),
                 deleted_at: z.string().nullable().optional(),
               })
-              .optional(),
+              .optional()),
           },
         });
       }) as SoftDeleteRepository<Product, CustomPKDatabase>;
@@ -475,15 +475,15 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
           tableName: 'items',
           mapRow: (row: any) => row as ItemType,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               name: z.string(),
-            }),
-            update: z
+            })),
+            update: zodAdapter(z
               .object({
                 name: z.string().optional(),
                 deleted_at: z.string().nullable().optional(),
               })
-              .optional(),
+              .optional()),
           },
         });
       }) as SoftDeleteRepository<ItemType, any>;
@@ -518,17 +518,17 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
           tableName: 'products',
           mapRow: (row) => row as Product,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               name: z.string(),
               price: z.number(),
-            }),
-            update: z
+            })),
+            update: zodAdapter(z
               .object({
                 name: z.string().optional(),
                 price: z.number().optional(),
                 deleted_at: z.string().nullable().optional(),
               })
-              .optional(),
+              .optional()),
           },
         });
       }) as SoftDeleteRepository<Product, CustomPKDatabase>;
@@ -549,17 +549,17 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
           tableName: 'products',
           mapRow: (row) => row as Product,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               name: z.string(),
               price: z.number(),
-            }),
-            update: z
+            })),
+            update: zodAdapter(z
               .object({
                 name: z.string().optional(),
                 price: z.number().optional(),
                 deleted_at: z.string().nullable().optional(),
               })
-              .optional(),
+              .optional()),
           },
         });
       }) as SoftDeleteRepository<Product, CustomPKDatabase>;

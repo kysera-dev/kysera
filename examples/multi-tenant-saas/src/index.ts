@@ -1,7 +1,7 @@
 import { db, pool } from './db/connection.js'
 import { TenantContext } from './middleware/tenant-context.js'
 import { createUserRepository } from './repositories/user.repository.js'
-import { checkDatabaseHealth } from '@kysera/core'
+import { checkDatabaseHealth } from '@kysera/infra'
 
 /**
  * Multi-Tenant SaaS Example

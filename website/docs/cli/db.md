@@ -10,6 +10,16 @@ Database management utilities.
 
 ## Commands
 
+| Command | Description |
+|---------|-------------|
+| `seed` | Run database seeders |
+| `reset` | Truncate all tables |
+| `tables` | List database tables |
+| `dump` | Export database schema and data |
+| `restore` | Restore database from dump |
+| `introspect` | Analyze database schema |
+| `console` | Interactive database console |
+
 ### seed
 
 Run database seeders.

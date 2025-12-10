@@ -1,10 +1,36 @@
 ---
 sidebar_position: 5
-title: Retry
-description: Retry logic and circuit breaker API reference
+title: Retry (Moved)
+description: Retry logic has been moved to @kysera/infra
 ---
 
 # Retry Logic
+
+:::warning Module Moved
+Retry utilities and Circuit Breaker have been moved to **[@kysera/infra](/docs/api/infra)** for better separation of concerns and tree-shaking.
+
+```bash
+npm install @kysera/infra
+```
+
+```typescript
+// Before (deprecated)
+import { withRetry, CircuitBreaker, isTransientError } from '@kysera/core';
+
+// After
+import { withRetry, CircuitBreaker, isTransientError } from '@kysera/infra';
+```
+
+See the full documentation at **[@kysera/infra](/docs/api/infra)**.
+:::
+
+---
+
+## Legacy Documentation
+
+The following documentation is kept for reference. For current implementation, see [@kysera/infra](/docs/api/infra).
+
+---
 
 Retry operations with exponential backoff and circuit breaker pattern.
 

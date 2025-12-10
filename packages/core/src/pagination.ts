@@ -57,7 +57,7 @@ function decodeCursor(cursor: string): Record<string, any> {
       const column = Buffer.from(columnB64, 'base64').toString();
       const value = JSON.parse(Buffer.from(valueB64, 'base64').toString());
       return { [column]: value };
-    } catch (error) {
+    } catch (_error) {
       // Single-column decoding failed, fall through to multi-column format
       // This is expected when cursor format is ambiguous
     }

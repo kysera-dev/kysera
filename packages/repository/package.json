@@ -29,6 +29,11 @@
     "kysely": ">=0.28.8",
     "zod": "^4.1.13"
   },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
+  },
   "dependencies": {
     "@kysera/core": "workspace:*"
   },

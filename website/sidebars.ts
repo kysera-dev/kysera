@@ -74,11 +74,8 @@ const sidebars: SidebarsConfig = {
       items: [
         'api/core',
         'api/core/errors',
-        'api/core/debug',
-        'api/core/health',
         'api/core/pagination',
-        'api/core/retry',
-        'api/core/testing',
+        'api/core/logger',
       ],
     },
     {
@@ -90,6 +87,38 @@ const sidebars: SidebarsConfig = {
         'api/repository/factory',
         'api/repository/validation',
         'api/repository/types',
+      ],
+    },
+    {
+      type: 'category',
+      label: '@kysera/dal',
+      collapsed: false,
+      items: [
+        'api/dal',
+      ],
+    },
+    {
+      type: 'category',
+      label: '@kysera/infra',
+      collapsed: true,
+      items: [
+        'api/infra',
+      ],
+    },
+    {
+      type: 'category',
+      label: '@kysera/debug',
+      collapsed: true,
+      items: [
+        'api/debug',
+      ],
+    },
+    {
+      type: 'category',
+      label: '@kysera/testing',
+      collapsed: true,
+      items: [
+        'api/testing',
       ],
     },
     {
@@ -118,6 +147,11 @@ const sidebars: SidebarsConfig = {
         'cli/db',
         'cli/health',
         'cli/test',
+        'cli/debug',
+        'cli/query',
+        'cli/repository',
+        'cli/plugin',
+        'cli/audit',
       ],
     },
     {

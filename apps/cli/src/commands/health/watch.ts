@@ -5,7 +5,7 @@ import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
-import { performHealthCheck } from '@kysera/core';
+import { performHealthCheck } from '@kysera/infra';
 
 export interface WatchOptions {
   interval?: number;
