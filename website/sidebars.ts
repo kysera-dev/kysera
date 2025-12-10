@@ -69,64 +69,90 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: '@kysera/core',
+      label: 'Core Packages',
       collapsed: false,
       items: [
-        'api/core',
-        'api/core/errors',
-        'api/core/pagination',
-        'api/core/logger',
+        {
+          type: 'category',
+          label: '@kysera/core',
+          collapsed: false,
+          items: [
+            'api/core',
+            'api/core/errors',
+            'api/core/pagination',
+            'api/core/logger',
+          ],
+        },
+        {
+          type: 'category',
+          label: '@kysera/repository',
+          collapsed: false,
+          items: [
+            'api/repository',
+            'api/repository/factory',
+            'api/repository/validation',
+            'api/repository/types',
+          ],
+        },
+        {
+          type: 'doc',
+          id: 'api/dal',
+          label: '@kysera/dal',
+        },
       ],
     },
     {
       type: 'category',
-      label: '@kysera/repository',
+      label: 'Infrastructure',
       collapsed: false,
       items: [
-        'api/repository',
-        'api/repository/factory',
-        'api/repository/validation',
-        'api/repository/types',
+        {
+          type: 'doc',
+          id: 'api/infra',
+          label: '@kysera/infra',
+        },
+        {
+          type: 'doc',
+          id: 'api/debug',
+          label: '@kysera/debug',
+        },
+        {
+          type: 'doc',
+          id: 'api/testing',
+          label: '@kysera/testing',
+        },
+        {
+          type: 'doc',
+          id: 'api/migrations',
+          label: '@kysera/migrations',
+        },
       ],
     },
     {
       type: 'category',
-      label: '@kysera/dal',
+      label: 'Plugins',
       collapsed: false,
       items: [
-        'api/dal',
-      ],
-    },
-    {
-      type: 'category',
-      label: '@kysera/infra',
-      collapsed: true,
-      items: [
-        'api/infra',
-      ],
-    },
-    {
-      type: 'category',
-      label: '@kysera/debug',
-      collapsed: true,
-      items: [
-        'api/debug',
-      ],
-    },
-    {
-      type: 'category',
-      label: '@kysera/testing',
-      collapsed: true,
-      items: [
-        'api/testing',
-      ],
-    },
-    {
-      type: 'category',
-      label: '@kysera/migrations',
-      collapsed: true,
-      items: [
-        'api/migrations',
+        {
+          type: 'doc',
+          id: 'api/soft-delete',
+          label: '@kysera/soft-delete',
+        },
+        {
+          type: 'doc',
+          id: 'api/timestamps',
+          label: '@kysera/timestamps',
+        },
+        {
+          type: 'doc',
+          id: 'api/audit',
+          label: '@kysera/audit',
+        },
+        {
+          type: 'doc',
+          id: 'api/rls',
+          label: '@kysera/rls',
+        },
       ],
     },
   ],
