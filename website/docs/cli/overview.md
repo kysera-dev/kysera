@@ -171,6 +171,23 @@ kysera plugin disable <name>   # Disable a plugin
 kysera plugin config <name>    # Configure plugin
 ```
 
+### hello
+
+Test command to verify CLI setup and configuration.
+
+```bash
+kysera hello                   # Basic greeting
+kysera hello --name John       # Custom greeting
+```
+
+### stats
+
+Show CLI performance statistics including command load times, cache hit rates, and usage patterns.
+
+```bash
+kysera stats                   # Display performance stats
+```
+
 ## Configuration
 
 Create `kysera.config.ts` in your project root:

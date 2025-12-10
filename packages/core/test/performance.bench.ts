@@ -1,7 +1,7 @@
 import { describe, bench } from 'vitest';
 import { Kysely, SqliteDialect } from 'kysely';
 import Database from 'better-sqlite3';
-import { paginateCursor, withDebug } from '../src/index.js';
+import { paginateCursor } from '../src/index.js';
 
 describe('Performance Benchmarks', () => {
   describe('Cursor Encoding', () => {
@@ -22,12 +22,13 @@ describe('Performance Benchmarks', () => {
       const orderBy = [{ column: 'id' as const, direction: 'asc' as const }];
 
       // Old approach: always use JSON
+      type ColumnKey = 'id';
       const cursorObj = orderBy.reduce(
         (acc, { column }) => {
           acc[column] = data[column];
           return acc;
         },
-        {} as Record<string, any>
+        {} as Record<ColumnKey, number>
       );
 
       void Buffer.from(JSON.stringify(cursorObj)).toString('base64');
@@ -41,60 +42,21 @@ describe('Performance Benchmarks', () => {
         { column: 'id' as const, direction: 'asc' as const },
       ];
 
+      type ColumnKey = 'score' | 'created_at' | 'id';
       const cursorObj = orderBy.reduce(
         (acc, { column }) => {
           acc[column] = data[column];
           return acc;
         },
-        {} as Record<string, any>
+        {} as Record<ColumnKey, number | string>
       );
 
       void Buffer.from(JSON.stringify(cursorObj)).toString('base64');
     });
   });
 
-  describe('Debug Plugin Memory Management', () => {
-    const database = new Database(':memory:');
-    const db = new Kysely({
-      dialect: new SqliteDialect({ database }),
-    });
-
-    // Create test table
-    database.exec(`
-      CREATE TABLE users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL
-      )
-    `);
-
-    bench('debug plugin with circular buffer (maxMetrics: 100)', async () => {
-      const debugDb = withDebug(db, {
-        logQuery: false,
-        maxMetrics: 100,
-      });
-
-      // Execute queries (metrics will be limited to 100)
-      for (let i = 0; i < 10; i++) {
-        await (debugDb as any).selectFrom('users').selectAll().execute();
-      }
-
-      void debugDb.getMetrics().length;
-    });
-
-    bench('debug plugin with large circular buffer (maxMetrics: 1000)', async () => {
-      const debugDb = withDebug(db, {
-        logQuery: false,
-        maxMetrics: 1000,
-      });
-
-      // Execute queries (metrics will be limited to 1000)
-      for (let i = 0; i < 10; i++) {
-        await (debugDb as any).selectFrom('users').selectAll().execute();
-      }
-
-      void debugDb.getMetrics().length;
-    });
-  });
+  // Debug Plugin benchmarks moved to @kysera/debug package
+  // to avoid circular dependency with @kysera/core
 
   describe('Pagination Query Performance', () => {
     const database = new Database(':memory:');

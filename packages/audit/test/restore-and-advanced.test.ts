@@ -12,7 +12,7 @@ import {
   type ParsedAuditLogEntry,
   type AuditOptions,
 } from '../src/index.js';
-import { createRepositoryFactory, createORM } from '@kysera/repository';
+import { createRepositoryFactory, createORM, zodAdapter } from '@kysera/repository';
 import { z } from 'zod';
 
 // ============================================================================
@@ -163,11 +163,11 @@ describe('Audit Plugin - restoreFromAudit', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               status: z.string().optional(),
-            }),
+            })),
           },
         })
       ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;
@@ -240,11 +240,11 @@ describe('Audit Plugin - restoreFromAudit', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               status: z.string().optional(),
-            }),
+            })),
           },
         })
       ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;
@@ -297,15 +297,15 @@ describe('Audit Plugin - restoreFromAudit', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               status: z.string().optional(),
-            }),
-            update: z.object({
+            })),
+            update: zodAdapter(z.object({
               name: z.string().optional(),
               status: z.string().optional(),
-            }),
+            })),
           },
         })
       ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;
@@ -376,14 +376,14 @@ describe('Audit Plugin - restoreFromAudit', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               status: z.string().optional(),
-            }),
-            update: z.object({
+            })),
+            update: zodAdapter(z.object({
               name: z.string().optional(),
-            }),
+            })),
           },
         })
       ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;
@@ -431,11 +431,11 @@ describe('Audit Plugin - restoreFromAudit', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
               status: z.string().optional(),
-            }),
+            })),
           },
         })
       ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;
@@ -475,10 +475,10 @@ describe('Audit Plugin - restoreFromAudit', () => {
           tableName: 'users' as const,
           mapRow: (row: any) => row as User,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string(),
               name: z.string(),
-            }),
+            })),
           },
         })
       ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;
@@ -535,11 +535,11 @@ describe('Audit Plugin - UUID/String Primary Keys', () => {
         tableName: 'uuid_entities' as const,
         mapRow: (row: any) => row as UuidEntity,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             uuid: z.string(),
             name: z.string(),
             data: z.string().nullable().optional(),
-          }),
+          })),
         },
       })
     ) as ReturnType<typeof factory.create<'uuid_entities', UuidEntity>> &
@@ -606,11 +606,11 @@ describe('Audit Plugin - UUID/String Primary Keys', () => {
         tableName: 'uuid_entities' as const,
         mapRow: (row: any) => row as UuidEntity,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             uuid: z.string(),
             name: z.string(),
             data: z.string().nullable().optional(),
-          }),
+          })),
         },
       })
     ) as ReturnType<typeof factory.create<'uuid_entities', UuidEntity>> &
@@ -652,11 +652,11 @@ describe('Audit Plugin - UUID/String Primary Keys', () => {
         tableName: 'uuid_entities' as const,
         mapRow: (row: any) => row as UuidEntity,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             uuid: z.string(),
             name: z.string(),
             data: z.string().nullable().optional(),
-          }),
+          })),
         },
       })
     ) as ReturnType<typeof factory.create<'uuid_entities', UuidEntity>> &
@@ -728,14 +728,14 @@ describe('Audit Plugin - getAuditLogs Alias', () => {
         tableName: 'users' as const,
         mapRow: (row: any) => row as User,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             email: z.string(),
             name: z.string(),
             status: z.string().optional(),
-          }),
-          update: z.object({
+          })),
+          update: zodAdapter(z.object({
             name: z.string().optional(),
-          }),
+          })),
         },
       })
     ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;
@@ -983,11 +983,11 @@ describe('Audit Plugin - getTableAuditLogs Filters', () => {
         tableName: 'users' as const,
         mapRow: (row: any) => row as User,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             email: z.string(),
             name: z.string(),
             status: z.string().optional(),
-          }),
+          })),
         },
       })
     ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;
@@ -1031,11 +1031,11 @@ describe('Audit Plugin - getTableAuditLogs Filters', () => {
         tableName: 'users' as const,
         mapRow: (row: any) => row as User,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             email: z.string(),
             name: z.string(),
             status: z.string().optional(),
-          }),
+          })),
         },
       })
     ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;
@@ -1078,11 +1078,11 @@ describe('Audit Plugin - getTableAuditLogs Filters', () => {
         tableName: 'users' as const,
         mapRow: (row: any) => row as User,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             email: z.string(),
             name: z.string(),
             status: z.string().optional(),
-          }),
+          })),
         },
       })
     ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;
@@ -1125,14 +1125,14 @@ describe('Audit Plugin - getTableAuditLogs Filters', () => {
         tableName: 'users' as const,
         mapRow: (row: any) => row as User,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             email: z.string(),
             name: z.string(),
             status: z.string().optional(),
-          }),
-          update: z.object({
+          })),
+          update: zodAdapter(z.object({
             name: z.string().optional(),
-          }),
+          })),
         },
       })
     ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;

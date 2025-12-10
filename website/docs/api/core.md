@@ -6,7 +6,7 @@ description: Core utilities package API reference
 
 # @kysera/core
 
-Production-ready core utilities for database operations with Kysely.
+Minimal core utilities for database operations with Kysely.
 
 ## Installation
 
@@ -17,7 +17,7 @@ npm install @kysera/core
 ## Overview
 
 **Version:** 0.5.1
-**Bundle Size:** ~24 KB (minified)
+**Bundle Size:** ~8 KB (minified)
 **Dependencies:** None (peer: kysely >=0.28.8)
 **Database Support:** PostgreSQL, MySQL, SQLite
 
@@ -28,16 +28,21 @@ npm install @kysera/core
 export * from './errors'
 export * from './error-codes'
 
-// Utilities
-export * from './debug'
-export * from './health'
+// Pagination
 export * from './pagination'
-export * from './retry'
-export * from './shutdown'
-export * from './testing'
+
+// Types and Logger
 export * from './types'
 export * from './logger'
 ```
+
+:::info Modules Moved to Separate Packages
+The following modules have been moved to dedicated packages for better tree-shaking and separation of concerns:
+
+- **Debug utilities** → [`@kysera/debug`](/docs/api/debug)
+- **Health checks, retry, circuit breaker, shutdown** → [`@kysera/infra`](/docs/api/infra)
+- **Testing utilities** → [`@kysera/testing`](/docs/api/testing)
+:::
 
 ## Modules
 
@@ -54,31 +59,6 @@ if (error instanceof UniqueConstraintError) {
 }
 ```
 
-### [Debug](/docs/api/core/debug)
-
-Query debugging, logging, and profiling.
-
-```typescript
-import { withDebug } from '@kysera/core'
-
-const debugDb = withDebug(db, {
-  logQuery: true,
-  slowQueryThreshold: 100,
-  onSlowQuery: (sql, duration) => console.warn(`Slow: ${sql}`)
-})
-```
-
-### [Health](/docs/api/core/health)
-
-Database health checks and monitoring.
-
-```typescript
-import { checkDatabaseHealth, createMetricsPool } from '@kysera/core'
-
-const health = await checkDatabaseHealth(db, metricsPool)
-// { status: 'healthy', checks: {...}, timestamp: Date }
-```
-
 ### [Pagination](/docs/api/core/pagination)
 
 Offset and cursor-based pagination.
@@ -93,32 +73,6 @@ const page = await paginate(query, { page: 1, limit: 20 })
 const result = await paginateCursor(query, {
   orderBy: [{ column: 'created_at', direction: 'desc' }],
   limit: 20
-})
-```
-
-### [Retry](/docs/api/core/retry)
-
-Retry logic with exponential backoff and circuit breaker.
-
-```typescript
-import { withRetry, CircuitBreaker } from '@kysera/core'
-
-const result = await withRetry(() => operation(), {
-  maxAttempts: 3,
-  delayMs: 1000,
-  backoff: true
-})
-```
-
-### [Testing](/docs/api/core/testing)
-
-Testing utilities for transaction-based tests.
-
-```typescript
-import { testInTransaction, createFactory } from '@kysera/core'
-
-await testInTransaction(db, async (trx) => {
-  // Test code - auto rolls back
 })
 ```
 
@@ -167,4 +121,18 @@ interface KyseraLogger {
   warn(message: string, ...args: unknown[]): void
   error(message: string, ...args: unknown[]): void
 }
+```
+
+## Migration Guide
+
+If you're upgrading from an earlier version where these utilities were in `@kysera/core`:
+
+```typescript
+// Before (deprecated)
+import { checkDatabaseHealth, withRetry, testInTransaction } from '@kysera/core'
+
+// After
+import { checkDatabaseHealth, withRetry, CircuitBreaker } from '@kysera/infra'
+import { testInTransaction, createFactory } from '@kysera/testing'
+import { withDebug, QueryProfiler } from '@kysera/debug'
 ```

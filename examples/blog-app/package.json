@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@kysera/core": "workspace:*",
+    "@kysera/debug": "workspace:*",
+    "@kysera/infra": "workspace:*",
     "@kysera/repository": "workspace:*",
     "@kysera/soft-delete": "workspace:*",
     "kysely": "^0.28.8",

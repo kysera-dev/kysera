@@ -3,7 +3,7 @@ import { prism, spinner } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
-import { performHealthCheck, type HealthCheckResult } from '@kysera/core';
+import { performHealthCheck, type HealthCheckResult } from '@kysera/infra';
 
 export interface CheckOptions {
   json?: boolean;

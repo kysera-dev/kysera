@@ -1,6 +1,6 @@
-import type { z } from 'zod';
 import type { KyseraLogger } from '@kysera/core';
 import { consoleLogger } from '@kysera/core';
+import type { ValidationSchema } from './validation-adapter.js';
 
 /**
  * Validation utilities for repositories
@@ -98,10 +98,11 @@ export function shouldValidate(options?: ValidationOptions): boolean {
 }
 
 /**
- * Safe parse with error logging
+ * Safe parse with error logging.
+ * Works with any ValidationSchema-compatible validator.
  */
 export function safeParse<T>(
-  schema: z.ZodType<T>,
+  schema: ValidationSchema<T>,
   data: unknown,
   options?: {
     throwOnError?: boolean;
@@ -110,24 +111,44 @@ export function safeParse<T>(
   }
 ): T | null {
   const logger = options?.logger ?? consoleLogger;
-  try {
-    return schema.parse(data);
-  } catch (error) {
-    if (options?.logErrors) {
-      logger.error('Validation error:', error);
-    }
-    if (options?.throwOnError) {
-      throw error;
-    }
-    return null;
+  const result = schema.safeParse(data);
+
+  if (result.success) {
+    return result.data;
   }
+
+  if (options?.logErrors) {
+    logger.error('Validation error:', result.error);
+  }
+
+  if (options?.throwOnError) {
+    throw new Error(result.error.message);
+  }
+
+  return null;
 }
 
 /**
- * Create a validation wrapper
+ * Create a validation wrapper.
+ * Works with any ValidationSchema-compatible validator.
+ *
+ * @example
+ * ```typescript
+ * import { z } from 'zod';
+ * import { zodAdapter, createValidator } from '@kysera/repository';
+ *
+ * const UserSchema = z.object({ name: z.string(), age: z.number() });
+ * const validator = createValidator(zodAdapter(UserSchema));
+ *
+ * // Various validation methods
+ * const user = validator.validate({ name: 'John', age: 30 }); // throws on error
+ * const userOrNull = validator.validateSafe({ name: 'John', age: 30 }); // returns null on error
+ * const isValid = validator.isValid({ name: 'John', age: 30 }); // returns boolean
+ * const userConditional = validator.validateConditional({ name: 'John', age: 30 }); // validates based on options/env
+ * ```
  */
 export function createValidator<T>(
-  schema: z.ZodType<T>,
+  schema: ValidationSchema<T>,
   options?: ValidationOptions
 ): {
   validate: (data: unknown) => T;

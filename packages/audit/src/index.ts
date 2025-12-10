@@ -9,6 +9,62 @@ import { z } from 'zod';
 // ============================================================================
 
 /**
+ * Interface for Kysely query builder with dynamic table access
+ * This allows runtime table name selection while maintaining some type safety
+ */
+interface DynamicQueryBuilder {
+  selectFrom: (table: string) => DynamicSelectQueryBuilder;
+  insertInto: (table: string) => DynamicInsertQueryBuilder;
+  schema: DynamicSchemaBuilder;
+}
+
+/**
+ * Interface for Kysely select query builder with dynamic operations
+ */
+interface DynamicSelectQueryBuilder {
+  selectAll: () => DynamicSelectQueryBuilder;
+  select: (column: string) => DynamicSelectQueryBuilder;
+  where: (column: string, operator: string, value: unknown) => DynamicSelectQueryBuilder;
+  orderBy: (column: string, direction: 'asc' | 'desc') => DynamicSelectQueryBuilder;
+  limit: (count: number) => DynamicSelectQueryBuilder;
+  offset: (count: number) => DynamicSelectQueryBuilder;
+  execute: () => Promise<unknown[]>;
+  executeTakeFirst: () => Promise<unknown | undefined>;
+}
+
+/**
+ * Interface for Kysely insert query builder with dynamic operations
+ */
+interface DynamicInsertQueryBuilder {
+  values: (values: Record<string, unknown>) => DynamicInsertQueryBuilder;
+  execute: () => Promise<unknown>;
+}
+
+/**
+ * Interface for Kysely schema builder with dynamic operations
+ */
+interface DynamicSchemaBuilder {
+  createTable: (tableName: string) => DynamicCreateTableBuilder;
+}
+
+/**
+ * Interface for Kysely create table builder with dynamic operations
+ */
+interface DynamicCreateTableBuilder {
+  addColumn: (name: string, type: string, callback?: (col: DynamicColumnBuilder) => DynamicColumnBuilder) => DynamicCreateTableBuilder;
+  execute: () => Promise<void>;
+}
+
+/**
+ * Interface for Kysely column builder with dynamic operations
+ */
+interface DynamicColumnBuilder {
+  primaryKey: () => DynamicColumnBuilder;
+  autoIncrement: () => DynamicColumnBuilder;
+  notNull: () => DynamicColumnBuilder;
+}
+
+/**
  * Audit timestamp can be a Date or a string
  */
 export type AuditTimestamp = Date | string;
@@ -224,17 +280,24 @@ export interface AuditRepositoryExtensions<T = unknown> {
 
 /**
  * Base repository interface for type checking
+ * Uses generic T to represent the entity type
  */
-interface BaseRepositoryLike {
+interface BaseRepositoryLike<T = unknown> {
   tableName?: string;
-  executor?: unknown;
-  create?: (data: unknown) => Promise<unknown>;
-  update?: (id: number | string, data: unknown) => Promise<unknown>;
+  executor?: Kysely<unknown>;
+  create?: (data: Partial<T>) => Promise<T>;
+  update?: (id: number | string, data: Partial<T>) => Promise<T>;
   delete?: (id: number | string) => Promise<boolean>;
-  bulkCreate?: (data: unknown[]) => Promise<unknown[]>;
-  bulkUpdate?: (updates: { id: number | string; data: unknown }[]) => Promise<unknown[]>;
+  bulkCreate?: (data: Partial<T>[]) => Promise<T[]>;
+  bulkUpdate?: (updates: { id: number | string; data: Partial<T> }[]) => Promise<T[]>;
   bulkDelete?: (ids: (number | string)[]) => Promise<number>;
 }
+
+/**
+ * Extended repository with audit methods
+ * Internal type that combines repository methods with audit extensions
+ */
+interface ExtendedRepositoryInternal<T = unknown> extends BaseRepositoryLike<T>, AuditRepositoryExtensions<T> {}
 
 // ============================================================================
 // Helper Functions
@@ -246,24 +309,23 @@ interface BaseRepositoryLike {
 async function checkAuditTableExists<DB>(executor: Kysely<DB>, auditTable: string): Promise<boolean> {
   try {
     // Try to query the table structure
-    // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
-    await // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Kysely query builder chaining
-    (executor as any)
+    // Cast to DynamicQueryBuilder for runtime table access
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
+    await dynamicExecutor
       .selectFrom(auditTable)
-
       .select('id')
-
       .limit(0)
-
       .execute();
     // If we get here, table exists
     return true;
   } catch (error) {
     // Table doesn't exist or query failed - expected behavior for table existence check
-    consoleLogger.debug?.('Audit table check failed', {
-      auditTable,
-      error: error instanceof Error ? error.message : String(error)
-    });
+    if (typeof consoleLogger.debug === 'function') {
+      consoleLogger.debug('Audit table check failed', {
+        auditTable,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
     return false;
   }
 }
@@ -272,29 +334,19 @@ async function checkAuditTableExists<DB>(executor: Kysely<DB>, auditTable: strin
  * Create audit table schema
  */
 async function createAuditTable<DB>(executor: Kysely<DB>, auditTable: string): Promise<void> {
-  // Kysely schema builder requires `any` cast for dynamic table creation with runtime column types
-  await // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Kysely schema builder chaining
-  (executor.schema as any)
+  // Cast to DynamicSchemaBuilder for dynamic table creation with runtime column types
+  const dynamicSchema = executor.schema as unknown as DynamicSchemaBuilder;
+  await dynamicSchema
     .createTable(auditTable)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Column builder callback
-    .addColumn('id', 'integer', (col: any) => col.primaryKey().autoIncrement())
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Column builder callback
-    .addColumn('table_name', 'text', (col: any) => col.notNull())
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Column builder callback
-    .addColumn('entity_id', 'text', (col: any) => col.notNull())
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Column builder callback
-    .addColumn('operation', 'text', (col: any) => col.notNull())
-
+    .addColumn('id', 'integer', (col: DynamicColumnBuilder) => col.primaryKey().autoIncrement())
+    .addColumn('table_name', 'text', (col: DynamicColumnBuilder) => col.notNull())
+    .addColumn('entity_id', 'text', (col: DynamicColumnBuilder) => col.notNull())
+    .addColumn('operation', 'text', (col: DynamicColumnBuilder) => col.notNull())
     .addColumn('old_values', 'text')
-
     .addColumn('new_values', 'text')
-
     .addColumn('changed_by', 'text')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Column builder callback
-    .addColumn('changed_at', 'text', (col: any) => col.notNull())
-
+    .addColumn('changed_at', 'text', (col: DynamicColumnBuilder) => col.notNull())
     .addColumn('metadata', 'text')
-
     .execute();
 }
 
@@ -322,7 +374,7 @@ function safeParseJSON<T>(
   try {
     return JSON.parse(value) as T;
   } catch (error) {
-    logger.warn('Failed to parse JSON in audit log:', value?.substring(0, 100), error);
+    logger.warn('Failed to parse JSON in audit log:', value.substring(0, 100), error);
     return defaultValue;
   }
 }
@@ -337,9 +389,11 @@ function serializeAuditValues(values: unknown): string | null {
     return JSON.stringify(values);
   } catch (error) {
     // Safe conversion for non-JSON values (e.g., circular references)
-    consoleLogger.debug?.('Failed to stringify audit values', {
-      error: error instanceof Error ? error.message : String(error)
-    });
+    if (typeof consoleLogger.debug === 'function') {
+      consoleLogger.debug('Failed to stringify audit values', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
     if (typeof values === 'object') {
       // For objects that can't be stringified, use toString()
       return '[Object]';
@@ -366,11 +420,10 @@ async function createAuditLogEntry<DB>(
   // If user provides custom getTimestamp, respect it but they need to ensure proper format
   const timestamp = options.getTimestamp ? getAuditTimestamp(options) : sql`CURRENT_TIMESTAMP`;
 
-  // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
-  await // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Kysely query builder chaining
-  (executor as any)
+  // Cast to DynamicQueryBuilder for runtime table access
+  const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
+  await dynamicExecutor
     .insertInto(auditTable)
-
     .values({
       table_name: entityType,
       entity_id: String(entityId),
@@ -381,7 +434,6 @@ async function createAuditLogEntry<DB>(
       changed_at: timestamp,
       metadata: options.metadata ? JSON.stringify(options.metadata()) : null,
     })
-
     .execute();
 }
 
@@ -390,8 +442,7 @@ async function createAuditLogEntry<DB>(
  */
 function isRepositoryLike(obj: unknown): obj is BaseRepositoryLike {
   if (!obj || typeof obj !== 'object') return false;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Type narrowing requires `any` cast after typeof check
-  const repo = obj as any;
+  const repo = obj as Record<string, unknown>;
   return 'tableName' in repo && 'executor' in repo;
 }
 
@@ -399,31 +450,29 @@ function isRepositoryLike(obj: unknown): obj is BaseRepositoryLike {
  * Helper function to fetch an entity by ID
  */
 async function fetchEntityById(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type parameter needed for Kysely
-  executor: Kysely<any>,
+  executor: Kysely<unknown>,
   tableName: string,
   id: number | string,
   primaryKeyColumn: string
 ): Promise<unknown> {
   try {
-    // Kysely requires dynamic table access via `any` cast since tableName is a runtime string
-    const entity = await // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Kysely query builder chaining
-    (executor as any)
+    // Cast to DynamicQueryBuilder for runtime table access
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
+    const entity = await dynamicExecutor
       .selectFrom(tableName)
-
       .selectAll()
-
       .where(primaryKeyColumn, '=', id)
-
       .executeTakeFirst();
-    return entity;
+    return entity ?? null;
   } catch (error) {
     // Entity not found or query failed - expected when capturing old values for audit
-    consoleLogger.debug?.('Failed to fetch entity for audit', {
-      tableName,
-      id,
-      error: error instanceof Error ? error.message : String(error)
-    });
+    if (typeof consoleLogger.debug === 'function') {
+      consoleLogger.debug('Failed to fetch entity for audit', {
+        tableName,
+        id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
     return null;
   }
 }
@@ -446,8 +495,7 @@ async function fetchEntityById(
  * ```
  */
 async function fetchEntitiesByIds(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type parameter needed for Kysely
-  executor: Kysely<any>,
+  executor: Kysely<unknown>,
   tableName: string,
   ids: (number | string)[],
   primaryKeyColumn: string
@@ -460,34 +508,34 @@ async function fetchEntitiesByIds(
 
   try {
     // Fetch all entities in a single query
-    // Kysely requires dynamic table access via `any` cast since tableName is a runtime string
-    const entities =
-      await // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Kysely query builder chaining
-      (executor as any)
-        .selectFrom(tableName)
-
-        .selectAll()
-
-        .where(primaryKeyColumn, 'in', ids)
-
-        .execute();
+    // Cast to DynamicQueryBuilder for runtime table access
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
+    const entities = await dynamicExecutor
+      .selectFrom(tableName)
+      .selectAll()
+      .where(primaryKeyColumn, 'in', ids)
+      .execute();
 
     // Build map for O(1) lookups
-    for (const entity of entities) {
-      const id = (entity as Record<string, unknown>)[primaryKeyColumn];
-      if (id !== undefined) {
-        entityMap.set(id as number | string, entity);
+    if (Array.isArray(entities)) {
+      for (const entity of entities) {
+        const id = (entity as Record<string, unknown>)[primaryKeyColumn];
+        if (id !== undefined) {
+          entityMap.set(id as number | string, entity);
+        }
       }
     }
 
     return entityMap;
   } catch (error) {
     // Bulk fetch failed - return empty map, audit will continue with null old values
-    consoleLogger.warn?.('Failed to bulk fetch entities for audit', {
-      tableName,
-      count: ids.length,
-      error: error instanceof Error ? error.message : String(error)
-    });
+    if (typeof consoleLogger.warn === 'function') {
+      consoleLogger.warn('Failed to bulk fetch entities for audit', {
+        tableName,
+        count: ids.length,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
     return entityMap;
   }
 }
@@ -511,11 +559,9 @@ function extractPrimaryKey(entity: unknown, primaryKeyColumn: string): string | 
 /**
  * Wrap the create method with audit logging
  */
-function wrapCreateMethod(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
-  baseRepo: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
-  executor: Kysely<any>,
+function wrapCreateMethod<T = unknown>(
+  baseRepo: BaseRepositoryLike<T>,
+  executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
   primaryKeyColumn: string,
@@ -527,7 +573,7 @@ function wrapCreateMethod(
 
   const originalCreate = baseRepo.create.bind(baseRepo);
 
-  baseRepo.create = async function (input: unknown) {
+  baseRepo.create = async function (input: Partial<T>): Promise<T> {
     const result = await originalCreate(input);
 
     if (!skipSystemOperations) {
@@ -551,11 +597,9 @@ function wrapCreateMethod(
 /**
  * Wrap the update method with audit logging
  */
-function wrapUpdateMethod(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
-  baseRepo: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
-  executor: Kysely<any>,
+function wrapUpdateMethod<T = unknown>(
+  baseRepo: BaseRepositoryLike<T>,
+  executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
   primaryKeyColumn: string,
@@ -567,7 +611,7 @@ function wrapUpdateMethod(
   if (!baseRepo.update) return;
 
   const originalUpdate = baseRepo.update.bind(baseRepo);
-  baseRepo.update = async function (id: number | string, input: unknown) {
+  baseRepo.update = async function (id: number | string, input: Partial<T>): Promise<T> {
     // Fetch old values if needed
     let oldValues: unknown = null;
     if (captureOldValues) {
@@ -596,11 +640,9 @@ function wrapUpdateMethod(
 /**
  * Wrap the delete method with audit logging
  */
-function wrapDeleteMethod(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
-  baseRepo: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
-  executor: Kysely<any>,
+function wrapDeleteMethod<T = unknown>(
+  baseRepo: BaseRepositoryLike<T>,
+  executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
   primaryKeyColumn: string,
@@ -611,7 +653,7 @@ function wrapDeleteMethod(
   if (!baseRepo.delete) return;
 
   const originalDelete = baseRepo.delete.bind(baseRepo);
-  baseRepo.delete = async function (id: number | string) {
+  baseRepo.delete = async function (id: number | string): Promise<boolean> {
     // Fetch old values before deletion
     let oldValues: unknown = null;
     if (captureOldValues) {
@@ -631,11 +673,9 @@ function wrapDeleteMethod(
 /**
  * Wrap the bulkCreate method with audit logging
  */
-function wrapBulkCreateMethod(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
-  baseRepo: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
-  executor: Kysely<any>,
+function wrapBulkCreateMethod<T = unknown>(
+  baseRepo: BaseRepositoryLike<T>,
+  executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
   primaryKeyColumn: string,
@@ -646,7 +686,7 @@ function wrapBulkCreateMethod(
   if (!baseRepo.bulkCreate) return;
 
   const originalBulkCreate = baseRepo.bulkCreate.bind(baseRepo);
-  baseRepo.bulkCreate = async function (inputs: unknown[]) {
+  baseRepo.bulkCreate = async function (inputs: Partial<T>[]): Promise<T[]> {
     const results = await originalBulkCreate(inputs);
 
     if (!skipSystemOperations && Array.isArray(results)) {
@@ -672,11 +712,9 @@ function wrapBulkCreateMethod(
 /**
  * Wrap the bulkUpdate method with audit logging
  */
-function wrapBulkUpdateMethod(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
-  baseRepo: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
-  executor: Kysely<any>,
+function wrapBulkUpdateMethod<T = unknown>(
+  baseRepo: BaseRepositoryLike<T>,
+  executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
   primaryKeyColumn: string,
@@ -688,7 +726,7 @@ function wrapBulkUpdateMethod(
   if (!baseRepo.bulkUpdate) return;
 
   const originalBulkUpdate = baseRepo.bulkUpdate.bind(baseRepo);
-  baseRepo.bulkUpdate = async function (updates: { id: number | string; data: unknown }[]) {
+  baseRepo.bulkUpdate = async function (updates: { id: number | string; data: Partial<T> }[]): Promise<T[]> {
     // Fetch old values before update if needed
     // Use bulk fetch to avoid N+1 queries (performance optimization)
     const oldValuesMap = new Map<number | string, unknown>();
@@ -727,11 +765,9 @@ function wrapBulkUpdateMethod(
 /**
  * Wrap the bulkDelete method with audit logging
  */
-function wrapBulkDeleteMethod(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
-  baseRepo: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
-  executor: Kysely<any>,
+function wrapBulkDeleteMethod<T = unknown>(
+  baseRepo: BaseRepositoryLike<T>,
+  executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
   primaryKeyColumn: string,
@@ -742,7 +778,7 @@ function wrapBulkDeleteMethod(
   if (!baseRepo.bulkDelete) return;
 
   const originalBulkDelete = baseRepo.bulkDelete.bind(baseRepo);
-  baseRepo.bulkDelete = async function (ids: (number | string)[]) {
+  baseRepo.bulkDelete = async function (ids: (number | string)[]): Promise<number> {
     // Fetch old values before deletion if needed
     // Use bulk fetch to avoid N+1 queries (performance optimization)
     const oldValuesMap = new Map<number | string, unknown>();
@@ -776,76 +812,42 @@ function wrapBulkDeleteMethod(
 }
 
 /**
- * Add audit query methods to repository
+ * Helper function to parse audit log entries
  */
-function addAuditQueryMethods(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
-  extendedRepo: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
-  baseRepo: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
-  executor: Kysely<any>,
-  auditTable: string,
-  tableName: string,
+function parseAuditLogEntries(logs: unknown[], logger: KyseraLogger): ParsedAuditLogEntry[] {
+  if (!Array.isArray(logs)) {
+    return [];
+  }
+
+  return logs.map((log: unknown) => {
+    const auditLog = log as AuditLogEntry;
+    return {
+      ...auditLog,
+      old_values: safeParseJSON<Record<string, unknown>>(auditLog.old_values, null, logger),
+      new_values: safeParseJSON<Record<string, unknown>>(auditLog.new_values, null, logger),
+      metadata: safeParseJSON<Record<string, unknown>>(auditLog.metadata, null, logger),
+    };
+  }) as ParsedAuditLogEntry[];
+}
+
+/**
+ * Add restore functionality to repository
+ */
+function addRestoreMethod<T = unknown>(
+  extendedRepo: ExtendedRepositoryInternal<T>,
+  baseRepo: BaseRepositoryLike<T>,
   primaryKeyColumn: string,
   logger: KyseraLogger
 ): void {
-  // Get audit history for a specific entity (returns parsed entries)
-  extendedRepo.getAuditHistory = async function (
-    entityId: number | string,
-    options?: AuditPaginationOptions
-  ): Promise<ParsedAuditLogEntry[]> {
-    // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let query = (executor as any)
-      .selectFrom(auditTable)
-      .selectAll()
-      .where('table_name', '=', tableName)
-      .where('entity_id', '=', String(entityId))
-      .orderBy('changed_at', 'desc');
-
-    // Apply pagination if provided
-    if (options?.limit !== undefined) {
-      query = query.limit(options.limit);
-    }
-    if (options?.offset !== undefined) {
-      query = query.offset(options.offset);
-    }
-
-    const logs = await query.execute();
-
-    return logs.map((log: AuditLogEntry) => ({
-      ...log,
-      old_values: safeParseJSON<Record<string, unknown>>(log.old_values, null, logger),
-      new_values: safeParseJSON<Record<string, unknown>>(log.new_values, null, logger),
-      metadata: safeParseJSON<Record<string, unknown>>(log.metadata, null, logger),
-    })) as ParsedAuditLogEntry[];
-  };
-
-  // Alias for backwards compatibility
-  extendedRepo.getAuditLogs = extendedRepo.getAuditHistory;
-
-  // Get a specific audit log entry
-  extendedRepo.getAuditLog = async function (auditId: number): Promise<AuditLogEntry | null> {
-    // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const log = await (executor as any).selectFrom(auditTable).selectAll().where('id', '=', auditId).executeTakeFirst();
-
-    return log as AuditLogEntry | null;
-  };
-
   // Restore entity from audit log
-  extendedRepo.restoreFromAudit = async function (auditId: number): Promise<unknown> {
+  extendedRepo.restoreFromAudit = async function (auditId: number): Promise<T> {
     const log = await extendedRepo.getAuditLog(auditId);
     if (!log) {
       throw new NotFoundError('AuditLog', { id: auditId });
     }
 
     // For DELETE operations, restore using old_values (the entity before deletion)
-    // For UPDATE operations, restore using old_values (revert the update)
-    // INSERT operations cannot be restored (the entity already exists)
     if (log.operation === 'DELETE') {
-      // DELETE: Re-create the deleted entity using old_values
       if (!log.old_values) {
         throw new BadRequestError(
           `Cannot restore from DELETE audit log ${String(auditId)}: old_values not captured. ` +
@@ -858,10 +860,15 @@ function addAuditQueryMethods(
         throw new BadRequestError(`Failed to parse old_values from audit log ${String(auditId)}`);
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- Checked above for existence
-      return await baseRepo.create!(parsedValues);
-    } else if (log.operation === 'UPDATE') {
-      // UPDATE: Revert to old_values (the state before the update)
+      if (!baseRepo.create) {
+        throw new BadRequestError('Repository does not support create operation');
+      }
+
+      return await baseRepo.create(parsedValues as Partial<T>);
+    }
+
+    // For UPDATE operations, restore using old_values (revert the update)
+    if (log.operation === 'UPDATE') {
       if (!log.old_values) {
         throw new BadRequestError(
           `Cannot revert UPDATE from audit log ${String(auditId)}: old_values not captured. ` +
@@ -879,21 +886,81 @@ function addAuditQueryMethods(
         throw new BadRequestError(`Primary key '${primaryKeyColumn}' not found in audit log old_values`);
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- Checked above for existence
-      return await baseRepo.update!(entityId, parsedValues);
-    } else {
-      throw new BadRequestError(
-        `Cannot restore from ${log.operation} operation. ` +
-          `Only DELETE (re-creates entity) and UPDATE (reverts to old values) operations can be restored.`
-      );
+      if (!baseRepo.update) {
+        throw new BadRequestError('Repository does not support update operation');
+      }
+
+      return await baseRepo.update(entityId as number | string, parsedValues as Partial<T>);
     }
+
+    // INSERT operations cannot be restored (the entity already exists)
+    throw new BadRequestError(
+      `Cannot restore from ${log.operation} operation. ` +
+        `Only DELETE (re-creates entity) and UPDATE (reverts to old values) operations can be restored.`
+    );
+  };
+}
+
+/**
+ * Add audit query methods to repository
+ */
+function addAuditQueryMethods<T = unknown>(
+  extendedRepo: ExtendedRepositoryInternal<T>,
+  baseRepo: BaseRepositoryLike<T>,
+  executor: Kysely<unknown>,
+  auditTable: string,
+  tableName: string,
+  primaryKeyColumn: string,
+  logger: KyseraLogger
+): void {
+  // Get audit history for a specific entity (returns parsed entries)
+  extendedRepo.getAuditHistory = async function (
+    entityId: number | string,
+    options?: AuditPaginationOptions
+  ): Promise<ParsedAuditLogEntry[]> {
+    // Cast to DynamicQueryBuilder for runtime table access
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
+    let query = dynamicExecutor
+      .selectFrom(auditTable)
+      .selectAll()
+      .where('table_name', '=', tableName)
+      .where('entity_id', '=', String(entityId))
+      .orderBy('changed_at', 'desc');
+
+    // Apply pagination if provided
+    if (options?.limit !== undefined) {
+      query = query.limit(options.limit);
+    }
+    if (options?.offset !== undefined) {
+      query = query.offset(options.offset);
+    }
+
+    const logs = await query.execute();
+    return parseAuditLogEntries(logs, logger);
+  };
+
+  // Alias for backwards compatibility
+  extendedRepo.getAuditLogs = async function (
+    entityId: number | string,
+    options?: AuditPaginationOptions
+  ): Promise<ParsedAuditLogEntry[]> {
+    return await extendedRepo.getAuditHistory(entityId, options);
+  };
+
+  // Get a specific audit log entry
+  extendedRepo.getAuditLog = async function (auditId: number): Promise<AuditLogEntry | null> {
+    // Cast to DynamicQueryBuilder for runtime table access
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
+    const log = await dynamicExecutor.selectFrom(auditTable).selectAll().where('id', '=', auditId).executeTakeFirst();
+
+    return (log as AuditLogEntry | undefined) ?? null;
   };
 
   // Get audit logs for entire table with optional filters and pagination
   extendedRepo.getTableAuditLogs = async function (filters?: AuditFilters): Promise<ParsedAuditLogEntry[]> {
-    // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let query = (executor as any).selectFrom(auditTable).selectAll().where('table_name', '=', tableName);
+    // Cast to DynamicQueryBuilder for runtime table access
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
+    let query = dynamicExecutor.selectFrom(auditTable).selectAll().where('table_name', '=', tableName);
 
     // Apply filters
     if (filters?.operation) {
@@ -903,30 +970,18 @@ function addAuditQueryMethods(
       query = query.where('changed_by', '=', filters.userId);
     }
     if (filters?.startDate) {
-      // Format date as 'YYYY-MM-DD HH:MM:SS' which works for string comparison
-      // across all databases (SQLite, MySQL, PostgreSQL)
       const startDate = typeof filters.startDate === 'string' ? new Date(filters.startDate) : filters.startDate;
-      const formattedStart = startDate
-        .toISOString()
-        .replace('T', ' ')
-        .replace(/\.\d{3}Z$/, '');
+      const formattedStart = startDate.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
       query = query.where('changed_at', '>=', formattedStart);
     }
     if (filters?.endDate) {
-      // Format date as 'YYYY-MM-DD HH:MM:SS' which works for string comparison
-      // across all databases (SQLite, MySQL, PostgreSQL)
       const endDate = typeof filters.endDate === 'string' ? new Date(filters.endDate) : filters.endDate;
-      const formattedEnd = endDate
-        .toISOString()
-        .replace('T', ' ')
-        .replace(/\.\d{3}Z$/, '');
+      const formattedEnd = endDate.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
       query = query.where('changed_at', '<=', formattedEnd);
     }
 
-    // Apply ordering
     query = query.orderBy('changed_at', 'desc');
 
-    // Apply pagination if provided
     if (filters?.limit !== undefined) {
       query = query.limit(filters.limit);
     }
@@ -935,13 +990,7 @@ function addAuditQueryMethods(
     }
 
     const logs = await query.execute();
-
-    return logs.map((log: AuditLogEntry) => ({
-      ...log,
-      old_values: safeParseJSON<Record<string, unknown>>(log.old_values, null, logger),
-      new_values: safeParseJSON<Record<string, unknown>>(log.new_values, null, logger),
-      metadata: safeParseJSON<Record<string, unknown>>(log.metadata, null, logger),
-    })) as ParsedAuditLogEntry[];
+    return parseAuditLogEntries(logs, logger);
   };
 
   // Get all changes made by a specific user for this table
@@ -949,9 +998,9 @@ function addAuditQueryMethods(
     userId: string,
     options?: AuditPaginationOptions
   ): Promise<ParsedAuditLogEntry[]> {
-    // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let query = (executor as any)
+    // Cast to DynamicQueryBuilder for runtime table access
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
+    let query = dynamicExecutor
       .selectFrom(auditTable)
       .selectAll()
       .where('table_name', '=', tableName)
@@ -967,14 +1016,11 @@ function addAuditQueryMethods(
     }
 
     const logs = await query.execute();
-
-    return logs.map((log: AuditLogEntry) => ({
-      ...log,
-      old_values: safeParseJSON<Record<string, unknown>>(log.old_values, null, logger),
-      new_values: safeParseJSON<Record<string, unknown>>(log.new_values, null, logger),
-      metadata: safeParseJSON<Record<string, unknown>>(log.metadata, null, logger),
-    })) as ParsedAuditLogEntry[];
+    return parseAuditLogEntries(logs, logger);
   };
+
+  // Add restore functionality
+  addRestoreMethod(extendedRepo, baseRepo, primaryKeyColumn, logger);
 }
 
 // ============================================================================
@@ -1131,12 +1177,13 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         return repo;
       }
 
-      const baseRepo = repo;
+      const baseRepo = repo as BaseRepositoryLike;
+      const tableName = baseRepo.tableName ?? '';
+      const executor = baseRepo.executor as Kysely<unknown> | undefined;
 
-      const typedRepo = repo;
-      const tableName = typedRepo.tableName ?? '';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
-      const executor = typedRepo.executor as Kysely<any>;
+      if (!executor) {
+        return repo;
+      }
 
       // Check if this table should be audited
       const { tables, excludeTables } = options;
@@ -1151,9 +1198,8 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         return repo;
       }
 
-      // Wrap all CRUD methods with audit logging
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
-      const mutableRepo = typedRepo as any;
+      // Cast to mutable repository for wrapping methods
+      const mutableRepo = baseRepo as BaseRepositoryLike;
 
       wrapCreateMethod(
         mutableRepo,
@@ -1219,9 +1265,10 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
       );
 
       // Add audit query methods
-      addAuditQueryMethods(mutableRepo, mutableRepo, executor, auditTable, tableName, primaryKeyColumn, logger);
+      const extendedRepo = mutableRepo as ExtendedRepositoryInternal;
+      addAuditQueryMethods(extendedRepo, mutableRepo, executor, auditTable, tableName, primaryKeyColumn, logger);
 
-      return baseRepo;
+      return repo;
     },
   };
 }

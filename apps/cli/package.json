@@ -83,6 +83,9 @@
     "@kysera/rls": "workspace:*",
     "@kysera/soft-delete": "workspace:*",
     "@kysera/timestamps": "workspace:*",
+    "@kysera/infra": "workspace:*",
+    "@kysera/debug": "workspace:*",
+    "@kysera/testing": "workspace:*",
     "@xec-sh/kit": "^0.8.3"
   },
   "devDependencies": {

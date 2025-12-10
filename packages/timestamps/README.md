@@ -680,8 +680,12 @@ console.log(empty.length)  // 0
 **Example: Bulk Status Change**
 
 ```typescript
-// Find inactive users
-const inactive = await userRepo.findUpdatedBefore(thirtyDaysAgo)
+// Find users that haven't been updated recently
+const thirtyDaysAgo = new Date()
+thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+const active = await userRepo.findUpdatedAfter(thirtyDaysAgo)
+const allUsers = await userRepo.findAll()
+const inactive = allUsers.filter(u => !active.some(a => a.id === u.id))
 const ids = inactive.map(u => u.id)
 
 // Mark all as inactive in one operation

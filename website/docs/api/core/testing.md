@@ -1,10 +1,36 @@
 ---
 sidebar_position: 6
-title: Testing
-description: Testing utilities API reference
+title: Testing (Moved)
+description: Testing utilities have been moved to @kysera/testing
 ---
 
 # Testing Utilities
+
+:::warning Module Moved
+Testing utilities have been moved to **[@kysera/testing](/docs/api/testing)** as a dedicated dev-only package.
+
+```bash
+npm install --save-dev @kysera/testing
+```
+
+```typescript
+// Before (deprecated)
+import { testInTransaction, createFactory, cleanDatabase } from '@kysera/core';
+
+// After
+import { testInTransaction, createFactory, cleanDatabase } from '@kysera/testing';
+```
+
+See the full documentation at **[@kysera/testing](/docs/api/testing)**.
+:::
+
+---
+
+## Legacy Documentation
+
+The following documentation is kept for reference. For current implementation, see [@kysera/testing](/docs/api/testing).
+
+---
 
 Utilities for testing database operations with automatic cleanup.
 

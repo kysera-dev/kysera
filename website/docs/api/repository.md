@@ -6,12 +6,18 @@ description: Repository pattern package API reference
 
 # @kysera/repository
 
-Type-safe repository pattern implementation with Zod validation.
+Type-safe repository pattern implementation with validation-agnostic design. Supports Zod, Valibot, TypeBox, or native TypeScript validation.
 
 ## Installation
 
 ```bash
-npm install @kysera/repository zod
+npm install @kysera/repository
+
+# Optional: Install your preferred validation library
+npm install zod           # Popular schema validation
+# or: npm install valibot   # Lightweight alternative
+# or: npm install @sinclair/typebox  # JSON Schema based
+# or: none - use native TypeScript validation
 ```
 
 ## Overview
@@ -19,7 +25,7 @@ npm install @kysera/repository zod
 **Version:** 0.5.1
 **Bundle Size:** ~12 KB (minified)
 **Dependencies:** @kysera/core
-**Peer Dependencies:** kysely >=0.28.8, zod ^4.x
+**Peer Dependencies:** kysely >=0.28.8, zod ^4.x (optional)
 
 ## Core Exports
 
@@ -254,6 +260,199 @@ const userRepo = orm.createRepository((executor) => {
 // Repository has plugin methods
 await userRepo.softDelete(userId)
 ```
+
+## withPlugins
+
+Simplified helper function for creating repositories with plugins. This is a convenience wrapper around `createORM` for single repository scenarios.
+
+```typescript
+async function withPlugins<DB, T extends object>(
+  factory: (executor: Kysely<DB>) => T,
+  executor: Kysely<DB>,
+  plugins: Plugin[]
+): Promise<T>
+```
+
+### Basic Example
+
+```typescript
+import { withPlugins } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+// Define your repository factory
+const createUserRepo = (executor: Kysely<DB>) => {
+  const factory = createRepositoryFactory(executor)
+  return factory.create({
+    tableName: 'users',
+    mapRow: (row) => ({
+      id: row.id,
+      email: row.email,
+      name: row.name
+    }),
+    schemas: {
+      create: z.object({
+        email: z.string().email(),
+        name: z.string()
+      })
+    }
+  })
+}
+
+// Create repository with soft delete plugin
+const userRepo = await withPlugins(
+  createUserRepo,
+  db,
+  [softDeletePlugin({ deletedAtColumn: 'deleted_at' })]
+)
+
+// Use extended methods from plugin
+await userRepo.softDelete(1)
+await userRepo.restore(2)
+await userRepo.findAllWithDeleted()
+```
+
+### Multiple Plugins
+
+```typescript
+import { withPlugins } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+const loggingPlugin: Plugin = {
+  name: 'logging',
+  version: '1.0.0',
+  interceptQuery: (qb, context) => {
+    console.log(`Query: ${context.operation} on ${context.table}`)
+    return qb
+  }
+}
+
+const userRepo = await withPlugins(
+  createUserRepo,
+  db,
+  [
+    softDeletePlugin(),
+    loggingPlugin
+  ]
+)
+
+// All operations are logged and soft-delete-aware
+await userRepo.findAll() // Logs "Query: select on users"
+```
+
+### Custom Plugin Example
+
+```typescript
+import { withPlugins, type Plugin } from '@kysera/repository'
+
+// Custom plugin that adds tenant filtering
+const tenantPlugin = (tenantId: string): Plugin => ({
+  name: 'tenant-filter',
+  version: '1.0.0',
+  interceptQuery: (qb, context) => {
+    // Only apply to SELECT queries
+    if (context.operation === 'select' && !context.metadata['skipTenant']) {
+      return qb.where('tenant_id', '=', tenantId)
+    }
+    return qb
+  },
+  extendRepository: (repo: any) => ({
+    ...repo,
+    // Add method to query across all tenants
+    findAllTenants: async () => {
+      const executor = repo.executor
+      return await executor
+        .selectFrom(repo.tableName)
+        .selectAll()
+        .execute()
+    }
+  })
+})
+
+const userRepo = await withPlugins(
+  createUserRepo,
+  db,
+  [tenantPlugin('tenant-123')]
+)
+
+// Automatically filtered by tenant
+const users = await userRepo.findAll()
+
+// Query across all tenants
+const allUsers = await userRepo.findAllTenants()
+```
+
+### Transaction Support with Plugins
+
+```typescript
+// Create repositories factory
+const createRepositories = (executor: Kysely<DB>) => ({
+  users: createUserRepo(executor),
+  posts: createPostRepo(executor)
+})
+
+// Apply plugins to all repositories in transaction
+await db.transaction().execute(async (trx) => {
+  const orm = await createORM(trx, [
+    softDeletePlugin({ deletedAtColumn: 'deleted_at' })
+  ])
+
+  const repos = {
+    users: orm.createRepository(() => createUserRepo(trx)),
+    posts: orm.createRepository(() => createPostRepo(trx))
+  }
+
+  // All operations use transaction executor
+  await repos.users.softDelete(userId)
+  await repos.posts.softDeleteMany([1, 2, 3])
+
+  // Transaction commits or rolls back atomically
+})
+```
+
+### Plugin Priority and Dependencies
+
+```typescript
+const pluginA: Plugin = {
+  name: 'plugin-a',
+  version: '1.0.0',
+  priority: 10, // Higher priority runs first
+  interceptQuery: (qb, context) => {
+    context.metadata['pluginA'] = true
+    return qb
+  }
+}
+
+const pluginB: Plugin = {
+  name: 'plugin-b',
+  version: '1.0.0',
+  dependencies: ['plugin-a'], // Requires plugin-a to be loaded
+  priority: 5,
+  interceptQuery: (qb, context) => {
+    // plugin-a has already run
+    console.assert(context.metadata['pluginA'] === true)
+    return qb
+  }
+}
+
+// Plugins are automatically ordered by dependencies and priority
+const userRepo = await withPlugins(
+  createUserRepo,
+  db,
+  [pluginB, pluginA] // Order doesn't matter - automatically resolved
+)
+```
+
+### When to Use
+
+**Use `withPlugins()` when:**
+- Creating a single repository with plugins
+- You want simpler syntax than `createORM`
+- You don't need to share the ORM instance
+
+**Use `createORM()` when:**
+- Creating multiple repositories with shared plugins
+- You need access to `applyPlugins` function
+- You want to initialize plugins once and reuse
 
 ## Primary Key Types
 

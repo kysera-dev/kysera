@@ -107,6 +107,12 @@ importers:
       '@kysera/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@kysera/debug':
+        specifier: workspace:*
+        version: link:../../packages/debug
+      '@kysera/infra':
+        specifier: workspace:*
+        version: link:../../packages/infra
       '@kysera/migrations':
         specifier: workspace:*
         version: link:../../packages/migrations
@@ -119,6 +125,9 @@ importers:
       '@kysera/soft-delete':
         specifier: workspace:*
         version: link:../../packages/soft-delete
+      '@kysera/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
       '@kysera/timestamps':
         specifier: workspace:*
         version: link:../../packages/timestamps
@@ -201,6 +210,12 @@ importers:
       '@kysera/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@kysera/debug':
+        specifier: workspace:*
+        version: link:../../packages/debug
+      '@kysera/infra':
+        specifier: workspace:*
+        version: link:../../packages/infra
       '@kysera/repository':
         specifier: workspace:*
         version: link:../../packages/repository
@@ -241,6 +256,12 @@ importers:
       '@kysera/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@kysera/debug':
+        specifier: workspace:*
+        version: link:../../packages/debug
+      '@kysera/infra':
+        specifier: workspace:*
+        version: link:../../packages/infra
       '@kysera/repository':
         specifier: workspace:*
         version: link:../../packages/repository
@@ -278,6 +299,12 @@ importers:
       '@kysera/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@kysera/debug':
+        specifier: workspace:*
+        version: link:../../packages/debug
+      '@kysera/infra':
+        specifier: workspace:*
+        version: link:../../packages/infra
       '@kysera/repository':
         specifier: workspace:*
         version: link:../../packages/repository
@@ -345,6 +372,101 @@ importers:
         version: 4.1.13
 
   packages/core:
+    devDependencies:
+      '@kysera/debug':
+        specifier: workspace:*
+        version: link:../debug
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.10.1
+      '@types/pg':
+        specifier: ^8.15.6
+        version: 8.15.6
+      '@vitest/coverage-v8':
+        specifier: ^4.0.15
+        version: 4.0.15(vitest@4.0.15(@opentelemetry/api@1.9.0)(@types/node@24.10.1)(jiti@2.6.1)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.1))
+      better-sqlite3:
+        specifier: ^12.5.0
+        version: 12.5.0
+      kysely:
+        specifier: ^0.28.8
+        version: 0.28.8
+      mysql2:
+        specifier: ^3.15.3
+        version: 3.15.3
+      pg:
+        specifier: ^8.16.3
+        version: 8.16.3
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.1)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.15
+        version: 4.0.15(@opentelemetry/api@1.9.0)(@types/node@24.10.1)(jiti@2.6.1)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.1)
+
+  packages/dal:
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.10.1
+      '@vitest/coverage-v8':
+        specifier: ^4.0.15
+        version: 4.0.15(vitest@4.0.15(@opentelemetry/api@1.9.0)(@types/node@24.10.1)(jiti@2.6.1)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.1))
+      better-sqlite3:
+        specifier: ^12.5.0
+        version: 12.5.0
+      kysely:
+        specifier: ^0.28.8
+        version: 0.28.8
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.1)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.15
+        version: 4.0.15(@opentelemetry/api@1.9.0)(@types/node@24.10.1)(jiti@2.6.1)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.1)
+
+  packages/debug:
+    dependencies:
+      '@kysera/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.10.1
+      '@vitest/coverage-v8':
+        specifier: ^4.0.15
+        version: 4.0.15(vitest@4.0.15(@opentelemetry/api@1.9.0)(@types/node@24.10.1)(jiti@2.6.1)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.1))
+      kysely:
+        specifier: ^0.28.8
+        version: 0.28.8
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.1)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.15
+        version: 4.0.15(@opentelemetry/api@1.9.0)(@types/node@24.10.1)(jiti@2.6.1)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.1)
+
+  packages/infra:
+    dependencies:
+      '@kysera/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.13
@@ -542,6 +664,33 @@ importers:
       zod:
         specifier: ^4.1.13
         version: 4.1.13
+
+  packages/testing:
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.10.1
+      '@vitest/coverage-v8':
+        specifier: ^4.0.15
+        version: 4.0.15(vitest@4.0.15(@opentelemetry/api@1.9.0)(@types/node@24.10.1)(jiti@2.6.1)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.1))
+      better-sqlite3:
+        specifier: ^12.5.0
+        version: 12.5.0
+      kysely:
+        specifier: ^0.28.8
+        version: 0.28.8
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.1)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.15
+        version: 4.0.15(@opentelemetry/api@1.9.0)(@types/node@24.10.1)(jiti@2.6.1)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.1)
 
   packages/timestamps:
     dependencies:
@@ -5345,9 +5494,6 @@ packages:
 
   lunr@2.3.9:
     resolution: {integrity: sha512-zTU3DaZaF3Rt9rhN3uBMGQD3dD2/vFQqnvZCDv4dl5iOzq2IZQqTxu90r4E5J+nP70J3ilqVCrbho2eWaeW8Ow==}
-
-  magic-string@0.30.19:
-    resolution: {integrity: sha512-2N21sPY9Ws53PZvsEpVtNuSW+ScYbQdp4b9qUaL+9QkHUrGFKo56Lg9Emg5s9V/qrtNBmiR01sYhUOwu3H+VOw==}
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -12827,7 +12973,7 @@ snapshots:
 
   fix-dts-default-cjs-exports@1.0.1:
     dependencies:
-      magic-string: 0.30.19
+      magic-string: 0.30.21
       mlly: 1.8.0
       rollup: 4.52.3
 
@@ -13788,10 +13934,6 @@ snapshots:
   lru.min@1.1.2: {}
 
   lunr@2.3.9: {}
-
-  magic-string@0.30.19:
-    dependencies:
-      '@jridgewell/sourcemap-codec': 1.5.5
 
   magic-string@0.30.21:
     dependencies:

@@ -1,11 +1,30 @@
-// Core utilities for Kysera ORM
+/**
+ * @kysera/core - Core utilities for Kysera ORM
+ *
+ * Minimal core package containing essential utilities:
+ * - Error handling (DatabaseError, error codes)
+ * - Pagination (offset and cursor-based)
+ * - Types (Executor, Timestamps, etc.)
+ * - Logger interface
+ *
+ * **Related packages:**
+ * - `@kysera/infra` - Health checks, retry, circuit breaker, shutdown
+ * - `@kysera/testing` - Testing utilities (testInTransaction, factories)
+ * - `@kysera/debug` - Query logging, profiling, SQL formatting
+ * - `@kysera/dal` - Functional Data Access Layer
+ *
+ * @module @kysera/core
+ */
+
+// Error handling
 export * from './errors.js';
 export * from './error-codes.js';
-export * from './debug.js';
-export * from './health.js';
+
+// Pagination
 export * from './pagination.js';
-export * from './shutdown.js';
-export * from './retry.js';
+
+// Types
 export * from './types.js';
-export * from './testing.js';
+
+// Logger
 export * from './logger.js';

@@ -44,20 +44,24 @@ import { MigrationRunnerOptionsSchema } from './schemas.js';
 
 /**
  * Migration interface - the core building block
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export interface Migration {
+export interface Migration<DB = unknown> {
   /** Unique migration name (e.g., '001_create_users') */
   name: string;
   /** Migration up function - creates/modifies schema */
-  up: (db: Kysely<any>) => Promise<void>;
+  up: (db: Kysely<DB>) => Promise<void>;
   /** Optional migration down function - reverts changes */
-  down?: (db: Kysely<any>) => Promise<void>;
+  down?: (db: Kysely<DB>) => Promise<void>;
 }
 
 /**
  * Migration with metadata for enhanced logging and tracking
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export interface MigrationWithMeta extends Migration {
+export interface MigrationWithMeta<DB = unknown> extends Migration<DB> {
   /** Human-readable description shown during migration */
   description?: string;
   /** Whether this is a breaking change - shows warning before execution */
@@ -103,10 +107,12 @@ export interface MigrationRunnerOptions {
 
 /**
  * Object-based migration definition for Level 2 DX
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export interface MigrationDefinition {
-  up: (db: Kysely<any>) => Promise<void>;
-  down?: (db: Kysely<any>) => Promise<void>;
+export interface MigrationDefinition<DB = unknown> {
+  up: (db: Kysely<DB>) => Promise<void>;
+  down?: (db: Kysely<DB>) => Promise<void>;
   description?: string;
   breaking?: boolean;
   estimatedDuration?: number;
@@ -115,8 +121,10 @@ export interface MigrationDefinition {
 
 /**
  * Migration definitions map for defineMigrations()
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export type MigrationDefinitions = Record<string, MigrationDefinition>;
+export type MigrationDefinitions<DB = unknown> = Record<string, MigrationDefinition<DB>>;
 
 /**
  * Result of a migration run
@@ -183,8 +191,9 @@ export class MigrationError extends DatabaseError {
 /**
  * Setup migrations table in database
  * Idempotent - safe to run multiple times
+ * Uses Kysely<unknown> as migrations work with any database schema
  */
-export async function setupMigrations(db: Kysely<any>): Promise<void> {
+export async function setupMigrations(db: Kysely<unknown>): Promise<void> {
   await db.schema
     .createTable('migrations')
     .ifNotExists()
@@ -199,8 +208,9 @@ export async function setupMigrations(db: Kysely<any>): Promise<void> {
 
 /**
  * Check if migration has metadata
+ * Type guard to narrow Migration<DB> to MigrationWithMeta<DB>
  */
-function hasMeta(migration: Migration): migration is MigrationWithMeta {
+function hasMeta<DB>(migration: Migration<DB>): migration is MigrationWithMeta<DB> {
   return 'description' in migration || 'breaking' in migration || 'tags' in migration;
 }
 
@@ -218,7 +228,7 @@ function formatError(error: unknown): string {
  * Validate migrations for duplicate names
  * @throws {BadRequestError} When duplicate migration names are found
  */
-function validateMigrations(migrations: Migration[]): void {
+function validateMigrations<DB>(migrations: Migration<DB>[]): void {
   const names = new Set<string>();
   for (const migration of migrations) {
     if (names.has(migration.name)) {
@@ -234,14 +244,16 @@ function validateMigrations(migrations: Migration[]): void {
 
 /**
  * Migration runner with state tracking and metadata support
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export class MigrationRunner {
+export class MigrationRunner<DB = unknown> {
   private logger: KyseraLogger;
   private options: Required<Omit<MigrationRunnerOptions, 'logger'>> & { logger: KyseraLogger };
 
   constructor(
-    private db: Kysely<any>,
-    private migrations: Migration[],
+    private db: Kysely<DB>,
+    private migrations: Migration<DB>[],
     options: MigrationRunnerOptions = {}
   ) {
     // Validate and apply defaults using Zod schema
@@ -265,45 +277,55 @@ export class MigrationRunner {
 
   /**
    * Get list of executed migrations from database
+   * Note: Uses type assertions for migrations table as it's not part of the user schema
    */
   async getExecutedMigrations(): Promise<string[]> {
-    await setupMigrations(this.db);
-    const rows = await this.db
-      .selectFrom('migrations' as any)
-      .select('name' as any)
-      .orderBy('executed_at' as any, 'asc')
-      .execute();
+    // Cast to any for migrations table operations - it's internal and not part of user schema
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await setupMigrations(this.db as any);
 
-    return rows.map((r: any) => r.name);
+    // The migrations table is internal and not part of the generic DB schema
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = await (this.db as any)
+      .selectFrom('migrations')
+      .select('name')
+      .orderBy('executed_at', 'asc')
+      .execute() as Array<{ name: string }>;
+
+    return rows.map((r) => r.name);
   }
 
   /**
    * Mark a migration as executed
+   * Note: Uses type assertions for migrations table as it's not part of the user schema
    */
   async markAsExecuted(name: string): Promise<void> {
-    await this.db
-      .insertInto('migrations' as any)
-      .values({ name } as any)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (this.db as any)
+      .insertInto('migrations')
+      .values({ name })
       .execute();
   }
 
   /**
    * Mark a migration as rolled back (remove from executed list)
+   * Note: Uses type assertions for migrations table as it's not part of the user schema
    */
   async markAsRolledBack(name: string): Promise<void> {
-    await this.db
-      .deleteFrom('migrations' as any)
-      .where('name' as any, '=', name)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (this.db as any)
+      .deleteFrom('migrations')
+      .where('name', '=', name)
       .execute();
   }
 
   /**
    * Log migration metadata if available
    */
-  private logMigrationMeta(migration: Migration): void {
+  private logMigrationMeta(migration: Migration<DB>): void {
     if (!this.options.verbose || !hasMeta(migration)) return;
 
-    const meta = migration as MigrationWithMeta;
+    const meta = migration;
 
     if (meta.description) {
       this.logger.info(`  Description: ${meta.description}`);
@@ -327,7 +349,7 @@ export class MigrationRunner {
    * Execute a single migration with optional transaction wrapping
    */
   private async executeMigration(
-    migration: Migration,
+    migration: Migration<DB>,
     operation: 'up' | 'down'
   ): Promise<void> {
     const fn = operation === 'up' ? migration.up : migration.down;
@@ -355,7 +377,8 @@ export class MigrationRunner {
       dryRun: this.options.dryRun,
     };
 
-    await setupMigrations(this.db);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await setupMigrations(this.db as any);
     const executed = await this.getExecutedMigrations();
 
     const pending = this.migrations.filter((m) => !executed.includes(m.name));
@@ -428,7 +451,8 @@ export class MigrationRunner {
       dryRun: this.options.dryRun,
     };
 
-    await setupMigrations(this.db);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await setupMigrations(this.db as any);
     const executed = await this.getExecutedMigrations();
 
     if (executed.length === 0) {
@@ -499,7 +523,8 @@ export class MigrationRunner {
    * Show migration status
    */
   async status(): Promise<MigrationStatus> {
-    await setupMigrations(this.db);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await setupMigrations(this.db as any);
     const executed = await this.getExecutedMigrations();
     const pending = this.migrations.filter((m) => !executed.includes(m.name)).map((m) => m.name);
 
@@ -545,7 +570,8 @@ export class MigrationRunner {
   async reset(): Promise<MigrationResult> {
     const startTime = Date.now();
 
-    await setupMigrations(this.db);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await setupMigrations(this.db as any);
     const executed = await this.getExecutedMigrations();
 
     if (executed.length === 0) {
@@ -599,7 +625,8 @@ export class MigrationRunner {
       dryRun: this.options.dryRun,
     };
 
-    await setupMigrations(this.db);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await setupMigrations(this.db as any);
     const executed = await this.getExecutedMigrations();
 
     const targetIndex = this.migrations.findIndex((m) => m.name === targetName);
@@ -663,24 +690,28 @@ export class MigrationRunner {
 /**
  * Create a migration runner instance
  * Options are validated using Zod schema
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export function createMigrationRunner(
-  db: Kysely<any>,
-  migrations: Migration[],
+export function createMigrationRunner<DB = unknown>(
+  db: Kysely<DB>,
+  migrations: Migration<DB>[],
   options?: MigrationRunnerOptions
-): MigrationRunner {
+): MigrationRunner<DB> {
   return new MigrationRunner(db, migrations, options);
 }
 
 /**
  * Helper to create a simple migration
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export function createMigration(
+export function createMigration<DB = unknown>(
   name: string,
-  up: (db: Kysely<any>) => Promise<void>,
-  down?: (db: Kysely<any>) => Promise<void>
-): Migration {
-  const migration: Migration = { name, up };
+  up: (db: Kysely<DB>) => Promise<void>,
+  down?: (db: Kysely<DB>) => Promise<void>
+): Migration<DB> {
+  const migration: Migration<DB> = { name, up };
   if (down !== undefined) {
     migration.down = down;
   }
@@ -689,19 +720,21 @@ export function createMigration(
 
 /**
  * Helper to create a migration with metadata
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export function createMigrationWithMeta(
+export function createMigrationWithMeta<DB = unknown>(
   name: string,
   options: {
-    up: (db: Kysely<any>) => Promise<void>;
-    down?: (db: Kysely<any>) => Promise<void>;
+    up: (db: Kysely<DB>) => Promise<void>;
+    down?: (db: Kysely<DB>) => Promise<void>;
     description?: string;
     breaking?: boolean;
     estimatedDuration?: number;
     tags?: string[];
   }
-): MigrationWithMeta {
-  const migration: MigrationWithMeta = {
+): MigrationWithMeta<DB> {
+  const migration: MigrationWithMeta<DB> = {
     name,
     up: options.up,
   };
@@ -729,10 +762,12 @@ export function createMigrationWithMeta(
 
 /**
  * Define migrations using an object-based syntax for cleaner code
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export function defineMigrations(definitions: MigrationDefinitions): MigrationWithMeta[] {
+export function defineMigrations<DB = unknown>(definitions: MigrationDefinitions<DB>): MigrationWithMeta<DB>[] {
   return Object.entries(definitions).map(([name, def]) => {
-    const migration: MigrationWithMeta = {
+    const migration: MigrationWithMeta<DB> = {
       name,
       up: def.up,
     };
@@ -757,10 +792,12 @@ export function defineMigrations(definitions: MigrationDefinitions): MigrationWi
 
 /**
  * Run all pending migrations - one-liner convenience function
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export async function runMigrations(
-  db: Kysely<any>,
-  migrations: Migration[],
+export async function runMigrations<DB = unknown>(
+  db: Kysely<DB>,
+  migrations: Migration<DB>[],
   options?: MigrationRunnerOptions
 ): Promise<MigrationResult> {
   const runner = new MigrationRunner(db, migrations, options);
@@ -769,10 +806,12 @@ export async function runMigrations(
 
 /**
  * Rollback migrations - one-liner convenience function
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export async function rollbackMigrations(
-  db: Kysely<any>,
-  migrations: Migration[],
+export async function rollbackMigrations<DB = unknown>(
+  db: Kysely<DB>,
+  migrations: Migration<DB>[],
   steps = 1,
   options?: MigrationRunnerOptions
 ): Promise<MigrationResult> {
@@ -782,10 +821,12 @@ export async function rollbackMigrations(
 
 /**
  * Get migration status - one-liner convenience function
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export async function getMigrationStatus(
-  db: Kysely<any>,
-  migrations: Migration[],
+export async function getMigrationStatus<DB = unknown>(
+  db: Kysely<DB>,
+  migrations: Migration<DB>[],
   options?: Pick<MigrationRunnerOptions, 'logger' | 'verbose'>
 ): Promise<MigrationStatus> {
   const runner = new MigrationRunner(db, migrations, options);
@@ -799,39 +840,45 @@ export async function getMigrationStatus(
 /**
  * Migration plugin interface - consistent with @kysera/repository Plugin
  * Provides lifecycle hooks for migration execution
+ * Generic DB type allows type-safe plugins when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export interface MigrationPlugin {
+export interface MigrationPlugin<DB = unknown> {
   /** Plugin name */
   name: string;
   /** Plugin version */
   version: string;
   /** Called once when the runner is initialized (consistent with repository Plugin.onInit) */
-  onInit?(runner: MigrationRunner): Promise<void> | void;
+  onInit?(runner: MigrationRunner<DB>): Promise<void> | void;
   /** Called before migration execution */
-  beforeMigration?(migration: Migration, operation: 'up' | 'down'): Promise<void> | void;
+  beforeMigration?(migration: Migration<DB>, operation: 'up' | 'down'): Promise<void> | void;
   /** Called after successful migration execution */
-  afterMigration?(migration: Migration, operation: 'up' | 'down', duration: number): Promise<void> | void;
+  afterMigration?(migration: Migration<DB>, operation: 'up' | 'down', duration: number): Promise<void> | void;
   /** Called on migration error (unknown type for consistency with repository Plugin.onError) */
-  onMigrationError?(migration: Migration, operation: 'up' | 'down', error: unknown): Promise<void> | void;
+  onMigrationError?(migration: Migration<DB>, operation: 'up' | 'down', error: unknown): Promise<void> | void;
 }
 
 /**
  * Extended migration runner options with plugin support
+ * Generic DB type allows type-safe plugins when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export interface MigrationRunnerWithPluginsOptions extends MigrationRunnerOptions {
+export interface MigrationRunnerWithPluginsOptions<DB = unknown> extends MigrationRunnerOptions {
   /** Plugins to apply */
-  plugins?: MigrationPlugin[];
+  plugins?: MigrationPlugin<DB>[];
 }
 
 /**
  * Create a migration runner with plugin support
  * Async factory to properly initialize plugins (consistent with @kysera/repository createORM)
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export async function createMigrationRunnerWithPlugins(
-  db: Kysely<any>,
-  migrations: Migration[],
-  options?: MigrationRunnerWithPluginsOptions
-): Promise<MigrationRunnerWithPlugins> {
+export async function createMigrationRunnerWithPlugins<DB = unknown>(
+  db: Kysely<DB>,
+  migrations: Migration<DB>[],
+  options?: MigrationRunnerWithPluginsOptions<DB>
+): Promise<MigrationRunnerWithPlugins<DB>> {
   const runner = new MigrationRunnerWithPlugins(db, migrations, options);
 
   // Initialize plugins (consistent with repository Plugin.onInit pattern)
@@ -851,14 +898,16 @@ export async function createMigrationRunnerWithPlugins(
 
 /**
  * Extended migration runner with plugin support
+ * Generic DB type allows type-safe migrations when schema is known,
+ * defaults to unknown for maximum flexibility
  */
-export class MigrationRunnerWithPlugins extends MigrationRunner {
-  private plugins: MigrationPlugin[];
+export class MigrationRunnerWithPlugins<DB = unknown> extends MigrationRunner<DB> {
+  private plugins: MigrationPlugin<DB>[];
 
   constructor(
-    db: Kysely<any>,
-    migrations: Migration[],
-    options: MigrationRunnerWithPluginsOptions = {}
+    db: Kysely<DB>,
+    migrations: Migration<DB>[],
+    options: MigrationRunnerWithPluginsOptions<DB> = {}
   ) {
     super(db, migrations, options);
     this.plugins = options.plugins ?? [];
@@ -868,7 +917,7 @@ export class MigrationRunnerWithPlugins extends MigrationRunner {
    * Execute plugin hooks before migration
    * Can be called by consumers extending this class
    */
-  protected async runBeforeHooks(migration: Migration, operation: 'up' | 'down'): Promise<void> {
+  protected async runBeforeHooks(migration: Migration<DB>, operation: 'up' | 'down'): Promise<void> {
     for (const plugin of this.plugins) {
       if (plugin.beforeMigration) {
         await plugin.beforeMigration(migration, operation);
@@ -881,7 +930,7 @@ export class MigrationRunnerWithPlugins extends MigrationRunner {
    * Can be called by consumers extending this class
    */
   protected async runAfterHooks(
-    migration: Migration,
+    migration: Migration<DB>,
     operation: 'up' | 'down',
     duration: number
   ): Promise<void> {
@@ -897,7 +946,7 @@ export class MigrationRunnerWithPlugins extends MigrationRunner {
    * Can be called by consumers extending this class
    */
   protected async runErrorHooks(
-    migration: Migration,
+    migration: Migration<DB>,
     operation: 'up' | 'down',
     error: unknown
   ): Promise<void> {
@@ -911,7 +960,7 @@ export class MigrationRunnerWithPlugins extends MigrationRunner {
   /**
    * Get the list of registered plugins
    */
-  getPlugins(): MigrationPlugin[] {
+  getPlugins(): MigrationPlugin<DB>[] {
     return [...this.plugins];
   }
 }
@@ -922,10 +971,11 @@ export class MigrationRunnerWithPlugins extends MigrationRunner {
 
 /**
  * Logging plugin - logs migration events with timing
+ * Works with any DB type (generic plugin)
  */
-export function createLoggingPlugin(
+export function createLoggingPlugin<DB = unknown>(
   logger: KyseraLogger = silentLogger
-): MigrationPlugin {
+): MigrationPlugin<DB> {
   return {
     name: '@kysera/migrations/logging',
     version: '0.5.1',
@@ -944,8 +994,9 @@ export function createLoggingPlugin(
 
 /**
  * Metrics plugin - collects migration metrics
+ * Works with any DB type (generic plugin)
  */
-export function createMetricsPlugin(): MigrationPlugin & {
+export function createMetricsPlugin<DB = unknown>(): MigrationPlugin<DB> & {
   getMetrics(): { migrations: Array<{ name: string; operation: string; duration: number; success: boolean }> };
 } {
   const metrics: Array<{ name: string; operation: string; duration: number; success: boolean }> = [];

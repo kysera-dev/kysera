@@ -1,6 +1,7 @@
 import { db, pool } from './db/connection.js'
 import { createUserRepository } from './repositories/user.repository.js'
-import { checkDatabaseHealth, paginate } from '@kysera/core'
+import { paginate } from '@kysera/core'
+import { checkDatabaseHealth } from '@kysera/infra'
 
 async function main() {
   console.log('🚀 Blog App Example - Kysera ORM')

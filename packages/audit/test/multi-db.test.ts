@@ -7,7 +7,7 @@ import {
   initializeSchema,
   clearDatabase,
 } from './utils/multi-db.js';
-import { createRepositoryFactory, createORM } from '@kysera/repository';
+import { createRepositoryFactory, createORM, zodAdapter } from '@kysera/repository';
 import { auditPlugin, type ParsedAuditLogEntry } from '../src/index.js';
 import { z } from 'zod';
 
@@ -69,14 +69,14 @@ describe.each(getDatabaseTypes())('Audit Plugin Multi-Database Tests (%s)', (dbT
         tableName: 'users' as const,
         mapRow: (row: any) => row as User,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             email: z.string(),
             name: z.string().nullable(),
-          }),
-          update: z.object({
+          })),
+          update: zodAdapter(z.object({
             email: z.string().optional(),
             name: z.string().nullable().optional(),
-          }),
+          })),
         },
       })
     );
@@ -92,18 +92,18 @@ describe.each(getDatabaseTypes())('Audit Plugin Multi-Database Tests (%s)', (dbT
         tableName: 'posts' as const,
         mapRow: (row: any) => row as Post,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             user_id: z.number(),
             title: z.string(),
             content: z.string().nullable(),
             published: booleanSchema,
-          }),
-          update: z.object({
+          })),
+          update: zodAdapter(z.object({
             user_id: z.number().optional(),
             title: z.string().optional(),
             content: z.string().nullable().optional(),
             published: booleanSchema.optional(),
-          }),
+          })),
         },
       })
     );

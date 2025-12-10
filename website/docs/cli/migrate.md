@@ -159,12 +159,39 @@ Rollback all migrations and clear table.
 kysera migrate reset
 ```
 
+**Options:**
+```
+--force                   Skip confirmation prompt
+-c, --config <path>       Path to configuration file
+-v, --verbose             Show detailed output
+```
+
 ### fresh
 
-Reset and re-run all migrations.
+Drop all tables and re-run all migrations.
 
 ```bash
 kysera migrate fresh
+```
+
+**Options:**
+```
+--seed                    Run seeds after migration
+--force                   Skip confirmation prompt
+-c, --config <path>       Path to configuration file
+-v, --verbose             Show detailed output
+```
+
+**Examples:**
+```bash
+# Fresh migration (requires confirmation)
+kysera migrate fresh
+
+# Fresh migration with seeds
+kysera migrate fresh --seed
+
+# Skip confirmation
+kysera migrate fresh --force
 ```
 
 ## Migration File Structure

@@ -225,7 +225,7 @@ interface MigrationResult {
 ```typescript
 interface MigrationRunnerOptions {
   dryRun?: boolean          // Preview only (default: false)
-  logger?: (msg: string) => void  // Custom logger
+  logger?: KyseraLogger     // Logger instance from @kysera/core (default: silentLogger)
   useTransactions?: boolean // Wrap in transactions (default: false)
   stopOnError?: boolean     // Stop on first error (default: true)
   verbose?: boolean         // Show metadata (default: true)

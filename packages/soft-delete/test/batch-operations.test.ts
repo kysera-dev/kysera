@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDatabase, seedTestData } from './setup/database.js';
 import { softDeletePlugin, type SoftDeleteRepository } from '../src/index.js';
-import { createORM, createRepositoryFactory } from '@kysera/repository';
+import { createORM, createRepositoryFactory, zodAdapter } from '@kysera/repository';
 import type { Kysely } from 'kysely';
 import type { TestDatabase } from './setup/database.js';
 import { z } from 'zod';
@@ -36,15 +36,15 @@ describe('Soft Delete Plugin - Batch Operations', () => {
         tableName: 'users',
         mapRow: (row) => row as TestUser,
         schemas: {
-          create: z.object({
+          create: zodAdapter(z.object({
             email: z.string().email(),
             name: z.string(),
-          }),
-          update: z.object({
+          })),
+          update: zodAdapter(z.object({
             email: z.string().email().optional(),
             name: z.string().optional(),
             deleted_at: z.string().nullable().optional(),
-          }),
+          })),
         },
       });
     }) as SoftDeleteRepository<TestUser, TestDatabase>;
@@ -359,15 +359,15 @@ describe('Soft Delete Plugin - Batch Operations', () => {
           tableName: 'users',
           mapRow: (row) => row as TestUser,
           schemas: {
-            create: z.object({
+            create: zodAdapter(z.object({
               email: z.string().email(),
               name: z.string(),
-            }),
-            update: z.object({
+            })),
+            update: zodAdapter(z.object({
               email: z.string().email().optional(),
               name: z.string().optional(),
               deleted_at: z.string().nullable().optional(),
-            }),
+            })),
           },
         });
       }) as SoftDeleteRepository<TestUser, TestDatabase>;

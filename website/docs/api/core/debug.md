@@ -1,10 +1,36 @@
 ---
 sidebar_position: 2
-title: Debug
-description: Debug utilities API reference
+title: Debug (Moved)
+description: Debug utilities have been moved to @kysera/debug
 ---
 
 # Debug Utilities
+
+:::warning Module Moved
+Debug utilities have been moved to **[@kysera/debug](/docs/api/debug)** for better separation of concerns and tree-shaking.
+
+```bash
+npm install @kysera/debug
+```
+
+```typescript
+// Before (deprecated)
+import { withDebug, QueryProfiler, formatSQL } from '@kysera/core';
+
+// After
+import { withDebug, QueryProfiler, formatSQL } from '@kysera/debug';
+```
+
+See the full documentation at **[@kysera/debug](/docs/api/debug)**.
+:::
+
+---
+
+## Legacy Documentation
+
+The following documentation is kept for reference. For current implementation, see [@kysera/debug](/docs/api/debug).
+
+---
 
 Query debugging, logging, and performance profiling.
 

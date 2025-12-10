@@ -1,10 +1,10 @@
 import type { Selectable, Transaction } from 'kysely';
-import type { z } from 'zod';
 import { createBaseRepository, type BaseRepository, type RepositoryConfig } from './base-repository.js';
 import { createTableOperations } from './table-operations.js';
 import type { Executor } from './helpers.js';
 import type { PrimaryKeyColumn, PrimaryKeyTypeHint } from './types.js';
 import { normalizePrimaryKeyConfig } from './types.js';
+import { nativeAdapter, type ValidationSchema } from './validation-adapter.js';
 
 /**
  * Extended repository interface that includes database and table information
@@ -17,7 +17,37 @@ export interface Repository<Entity, DB, PK = number> extends BaseRepository<DB, 
 }
 
 /**
- * Create a repository factory with proper type safety
+ * Create a repository factory with proper type safety.
+ * Supports any ValidationSchema-compatible validator (Zod, Valibot, TypeBox, etc.)
+ *
+ * @example With Zod adapter
+ * ```typescript
+ * import { z } from 'zod';
+ * import { createRepositoryFactory, zodAdapter } from '@kysera/repository';
+ *
+ * const factory = createRepositoryFactory(db);
+ * const userRepo = factory.create({
+ *   tableName: 'users',
+ *   mapRow: (row) => row,
+ *   schemas: {
+ *     create: zodAdapter(z.object({ name: z.string(), email: z.string() })),
+ *   },
+ * });
+ * ```
+ *
+ * @example With native adapter (no validation)
+ * ```typescript
+ * import { createRepositoryFactory, nativeAdapter } from '@kysera/repository';
+ *
+ * const factory = createRepositoryFactory(db);
+ * const userRepo = factory.create({
+ *   tableName: 'users',
+ *   mapRow: (row) => row,
+ *   schemas: {
+ *     create: nativeAdapter<CreateUserInput>(),
+ *   },
+ * });
+ * ```
  */
 export function createRepositoryFactory<DB>(executor: Executor<DB>): {
   executor: Executor<DB>;
@@ -29,9 +59,9 @@ export function createRepositoryFactory<DB>(executor: Executor<DB>): {
     primaryKeyType?: PrimaryKeyTypeHint;
     mapRow: (row: Selectable<DB[TableName]>) => Entity;
     schemas: {
-      entity?: z.ZodType<Entity>;
-      create: z.ZodType;
-      update?: z.ZodType;
+      entity?: ValidationSchema<Entity>;
+      create: ValidationSchema;
+      update?: ValidationSchema;
     };
     validateDbResults?: boolean;
     validationStrategy?: 'none' | 'strict';
@@ -46,9 +76,9 @@ export function createRepositoryFactory<DB>(executor: Executor<DB>): {
       primaryKeyType?: PrimaryKeyTypeHint;
       mapRow: (row: Selectable<DB[TableName]>) => Entity;
       schemas: {
-        entity?: z.ZodType<Entity>;
-        create: z.ZodType;
-        update?: z.ZodType;
+        entity?: ValidationSchema<Entity>;
+        create: ValidationSchema;
+        update?: ValidationSchema;
       };
       validateDbResults?: boolean;
       validationStrategy?: 'none' | 'strict';
@@ -85,7 +115,8 @@ export function createRepositoryFactory<DB>(executor: Executor<DB>): {
 }
 
 /**
- * Simple repository without factory (for plugins)
+ * Simple repository without factory (for plugins).
+ * Uses nativeAdapter (no validation) by default.
  */
 export function createSimpleRepository<DB, TableName extends keyof DB & string, Entity, PK = number>(
   executor: Executor<DB>,
@@ -103,8 +134,8 @@ export function createSimpleRepository<DB, TableName extends keyof DB & string, 
     tableName,
     mapRow,
     schemas: {
-      create: { parse: (v: unknown) => v } as z.ZodType,
-      update: { parse: (v: unknown) => v } as z.ZodType,
+      create: nativeAdapter(),
+      update: nativeAdapter(),
     },
     validateDbResults: false,
   };
@@ -113,7 +144,7 @@ export function createSimpleRepository<DB, TableName extends keyof DB & string, 
   if (options?.primaryKey !== undefined) {
     config.primaryKey = options.primaryKey;
   }
-  
+
   // Only add primaryKeyType if defined
   if (options?.primaryKeyType !== undefined) {
     config.primaryKeyType = options.primaryKeyType;

@@ -1,7 +1,7 @@
 import type { Selectable, InsertQueryBuilder, SelectQueryBuilder, DeleteQueryBuilder } from 'kysely';
 import type { TableOperations } from './base-repository.js';
 import type { Executor } from './helpers.js';
-import type { PrimaryKeyConfig, PrimaryKeyInput, CompositeKeyValue } from './types.js';
+import type { PrimaryKeyConfig, PrimaryKeyInput, CompositeKeyValue, PrimaryKeyValue } from './types.js';
 import { getPrimaryKeyColumns, normalizePrimaryKeyInput, isCompositeKey } from './types.js';
 import { DatabaseError } from '@kysera/core';
 
@@ -45,7 +45,7 @@ function isMySQL<DB>(db: Executor<DB>): boolean {
     }
 
     return false;
-  } catch (error) {
+  } catch (_error) {
     // Expected failure when accessing internal Kysely properties - default to false
     // This is an expected code path when adapter detection is not possible
     return false;
@@ -115,10 +115,10 @@ function buildWherePrimaryKeyIn<DB, TableName extends keyof DB>(
 
   if (columns.length === 1) {
     // Simple case: single column primary key
-    const column = columns[0]!;
+    const column = columns[0] as string;
     const values = keyValues.map((kv) => {
       if (typeof kv === 'object') {
-        return (kv as CompositeKeyValue)[column];
+        return (kv as Record<string, unknown>)[column];
       }
       return kv;
     });
@@ -171,10 +171,10 @@ function buildDeleteWherePrimaryKeyIn<DB, TableName extends keyof DB>(
 
   if (columns.length === 1) {
     // Simple case: single column primary key
-    const column = columns[0]!;
+    const column = columns[0] as string;
     const values = keyValues.map((kv) => {
       if (typeof kv === 'object') {
-        return (kv as CompositeKeyValue)[column];
+        return (kv as Record<string, unknown>)[column];
       }
       return kv;
     });
@@ -236,13 +236,13 @@ function extractPrimaryKeyFromRow<T>(
   const columns = getPrimaryKeyColumns(pkConfig.columns);
   
   if (columns.length === 1) {
-    const column = columns[0]!;
-    return (row as any)[column];
+    const column = columns[0] as string;
+    return (row as Record<string, unknown>)[column] as PrimaryKeyInput;
   }
 
   const result: CompositeKeyValue = {};
   for (const column of columns) {
-    result[column] = (row as any)[column];
+    result[column] = (row as Record<string, unknown>)[column] as PrimaryKeyValue;
   }
   return result;
 }

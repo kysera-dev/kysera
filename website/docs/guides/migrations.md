@@ -170,7 +170,7 @@ import { createMigrationRunner, runMigrations } from '@kysera/migrations'
 
 // Full control
 const runner = createMigrationRunner(db, migrations)
-await runner.up()
+const result = await runner.up()
 const status = await runner.status()
 await runner.down(1)
 
@@ -290,7 +290,8 @@ export async function down(db: Kysely<any>) {
 
 ```typescript
 const runner = createMigrationRunner(db, migrations, {
-  useTransactions: true
+  useTransactions: true,
+  logger: console  // Optional: enable logging
 })
 ```
 
@@ -298,11 +299,15 @@ const runner = createMigrationRunner(db, migrations, {
 
 ```typescript
 it('should migrate up and down', async () => {
-  await runner.up()
-  expect((await runner.status()).pending).toHaveLength(0)
+  const result = await runner.up()
+  expect(result.executed.length).toBeGreaterThan(0)
+
+  const status = await runner.status()
+  expect(status.pending).toHaveLength(0)
 
   await runner.reset()
-  expect((await runner.status()).pending).toHaveLength(migrations.length)
+  const statusAfterReset = await runner.status()
+  expect(statusAfterReset.pending).toHaveLength(migrations.length)
 })
 ```
 

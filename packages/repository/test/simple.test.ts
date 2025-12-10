@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { createTestDatabase } from './setup/database.js';
-import { createRepositoryFactory } from '../src/repository.js';
+import { createRepositoryFactory, zodAdapter } from '../src/index.js';
 
 const CreateUserSchema = z.object({
   email: z.string().email(),
@@ -30,7 +30,7 @@ describe('Simple Test', () => {
       tableName: 'users',
       mapRow: (row) => row,
       schemas: {
-        create: CreateUserSchema,
+        create: zodAdapter(CreateUserSchema),
       },
     });
 

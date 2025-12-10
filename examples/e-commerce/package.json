@@ -15,6 +15,8 @@
     "@kysera/repository": "workspace:*",
     "@kysera/audit": "workspace:*",
     "@kysera/timestamps": "workspace:*",
+    "@kysera/infra": "workspace:*",
+    "@kysera/debug": "workspace:*",
     "kysely": "^0.28.8",
     "pg": "^8.16.3",
     "zod": "^4.1.13"

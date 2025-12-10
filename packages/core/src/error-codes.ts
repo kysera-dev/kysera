@@ -245,7 +245,8 @@ export function isValidErrorCode(code: string): code is ErrorCode {
  * @returns The category prefix (e.g., 'DB', 'VALIDATION', 'MIGRATION')
  */
 export function getErrorCategory(code: string): string {
-  const match = code.match(/^([A-Z]+)_/);
+  const categoryRegex = /^([A-Z]+)_/;
+  const match = categoryRegex.exec(code);
   return match?.[1] ?? 'UNKNOWN';
 }
 
@@ -298,6 +299,6 @@ export const LegacyCodeMapping: Record<string, ErrorCode> = {
  * @param legacyCode - The legacy error code
  * @returns The unified error code, or the original code if no mapping exists
  */
-export function mapLegacyCode(legacyCode: string): ErrorCode | string {
+export function mapLegacyCode(legacyCode: string): string {
   return LegacyCodeMapping[legacyCode] ?? legacyCode;
 }

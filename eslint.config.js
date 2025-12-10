@@ -12,7 +12,9 @@ export default tseslint.config(
       '**/dist/**',
       '**/node_modules/**',
       '**/.turbo/**',
-      '**/coverage/**'
+      '**/coverage/**',
+      '**/examples/**',
+      '**/src/eslint/**'
     ]
   },
   {
@@ -151,6 +153,8 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-definitions': 'off',
       '@typescript-eslint/dot-notation': 'off',
       '@typescript-eslint/await-thenable': 'off',
+      '@typescript-eslint/restrict-plus-operands': 'off',
+      '@typescript-eslint/only-throw-error': 'off',
       'prefer-const': 'off',
       'no-case-declarations': 'off',
       'complexity': ['error', 100], // Higher for test utils
@@ -221,7 +225,8 @@ export default tseslint.config(
   {
     files: ['packages/repository/src/**/*.ts'],
     rules: {
-      'max-lines-per-function': ['error', 250], // Repository helpers can be longer
+      'max-lines-per-function': ['error', 350], // Repository helpers can be longer
+      'max-depth': ['error', 6], // Allow deeper nesting for complex logic
       '@typescript-eslint/no-explicit-any': 'off', // Repository needs any for generic DB types
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
@@ -237,7 +242,8 @@ export default tseslint.config(
       '@typescript-eslint/prefer-function-type': 'off',
       '@typescript-eslint/no-unnecessary-type-parameters': 'off',
       '@typescript-eslint/consistent-type-definitions': 'off',
-      '@typescript-eslint/consistent-indexed-object-style': 'off'
+      '@typescript-eslint/consistent-indexed-object-style': 'off',
+      '@typescript-eslint/naming-convention': 'off' // TypeBox uses PascalCase
     }
   }
 );

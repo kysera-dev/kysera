@@ -8,8 +8,8 @@ import {
   initializeSchema,
   seedDatabase,
   clearDatabase,
-} from '../core/test/utils/multi-db.js';
-import { createRepositoryFactory } from '../src/repository.js';
+} from '../../core/test/utils/multi-db.js';
+import { createRepositoryFactory, zodAdapter } from '../src/index.js';
 import { parseDatabaseError } from '@kysera/core';
 
 // Test schemas
@@ -85,8 +85,8 @@ describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', (dbTyp
     userRepository = factory.create({
       tableName: 'users' as const,
       schemas: {
-        create: UserCreateSchema,
-        update: UserUpdateSchema,
+        create: zodAdapter(UserCreateSchema),
+        update: zodAdapter(UserUpdateSchema),
       },
       mapRow: (row: any) => row as User,
     });
@@ -97,8 +97,8 @@ describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', (dbTyp
     postRepository = factory.create({
       tableName: 'posts' as const,
       schemas: {
-        create: PostCreateSchema,
-        update: PostUpdateSchema,
+        create: zodAdapter(PostCreateSchema),
+        update: zodAdapter(PostUpdateSchema),
       },
       mapRow: (row: any) => {
         // Convert SQLite integers back to booleans for the entity
@@ -396,8 +396,8 @@ describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', (dbTyp
       const noValidationRepo = createRepositoryFactory(db).create({
         tableName: 'users' as const,
         schemas: {
-          create: UserCreateSchema,
-          update: UserUpdateSchema,
+          create: zodAdapter(UserCreateSchema),
+          update: zodAdapter(UserUpdateSchema),
         },
         mapRow: (row: any) => row as User,
         validationStrategy: 'none',

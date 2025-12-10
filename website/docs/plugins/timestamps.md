@@ -51,10 +51,39 @@ interface TimestampsOptions {
   excludeTables?: string[]         // Blacklist tables
   getTimestamp?: () => Date | string | number
   dateFormat?: 'iso' | 'unix' | 'date'  // Default: 'iso'
-  primaryKeyColumn?: string        // Default: 'id'
+  primaryKeyColumn?: string        // Default: 'id' (only affects touch() method)
   logger?: KyseraLogger
 }
 ```
+
+### Important Limitation
+
+:::warning Primary Key Column Limitation
+
+The `primaryKeyColumn` option **only affects the `touch()` method**. The following methods currently hardcode the column name as `'id'`:
+
+- `updateMany(ids, input)` - Uses hardcoded `'id'` for WHERE clause
+- `touchMany(ids)` - Uses hardcoded `'id'` for WHERE clause
+
+**Workaround**: If your table uses a different primary key column (e.g., `user_id`, `uuid`), you should:
+- Use `touch(id)` for single record updates (respects `primaryKeyColumn`)
+- Avoid `updateMany()` and `touchMany()` for tables with non-standard primary keys
+- Manually construct queries for batch operations on such tables
+
+This limitation will be addressed in a future version.
+
+:::
+
+### Methods and Primary Key Column Support
+
+| Method | Respects `primaryKeyColumn`? | Notes |
+|--------|------------------------------|-------|
+| `create()` | N/A | No ID-based filtering |
+| `update()` | N/A | No ID-based filtering |
+| `touch(id)` | ✅ Yes | Uses configured primary key |
+| `updateMany(ids)` | ❌ No | Hardcoded to `'id'` |
+| `touchMany(ids)` | ❌ No | Hardcoded to `'id'` |
+| `createMany()` | N/A | No ID-based filtering |
 
 ### Configuration Examples
 
@@ -79,6 +108,11 @@ timestampsPlugin({
 // Custom timestamp source
 timestampsPlugin({
   getTimestamp: () => new Date().toISOString()
+})
+
+// Custom primary key (only affects touch() method)
+timestampsPlugin({
+  primaryKeyColumn: 'user_id'  // touch() will use user_id, but updateMany/touchMany still use 'id'
 })
 ```
 
@@ -163,6 +197,10 @@ console.log(`User last active: ${user.updated_at}`)
 
 ### Batch Operations
 
+:::warning
+Note: `updateMany()` and `touchMany()` currently require tables to have a primary key column named `'id'`. See [Primary Key Column Limitation](#important-limitation) for details.
+:::
+
 ```typescript
 // Create many with automatic timestamps
 const posts = await postRepo.createMany([
@@ -171,11 +209,16 @@ const posts = await postRepo.createMany([
   { title: 'Post 3', content: '...' }
 ])
 
-// Update many
+// Update many (requires primary key named 'id')
 await postRepo.updateMany([1, 2, 3], { status: 'published' })
 
-// Touch many (update only timestamps)
+// Touch many (requires primary key named 'id')
 await postRepo.touchMany([1, 2, 3, 4, 5])
+
+// For tables with custom primary keys, use touch() in a loop:
+for (const userId of userIds) {
+  await userRepo.touch(userId)  // Respects primaryKeyColumn configuration
+}
 ```
 
 ### Bypassing Timestamps

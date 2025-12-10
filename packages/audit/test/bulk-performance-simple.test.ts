@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Kysely, SqliteDialect, type Generated } from 'kysely';
 import betterSqlite3 from 'better-sqlite3';
 import { auditPluginSQLite } from '../src/index.js';
-import { createORM, createRepositoryFactory } from '@kysera/repository';
+import { createORM, createRepositoryFactory, zodAdapter } from '@kysera/repository';
 import { z } from 'zod';
 
 /**
@@ -101,8 +101,8 @@ describe('Audit Plugin - Bulk Operation Optimization', () => {
         tableName: 'users' as const,
         mapRow: (row: any) => row,
         schemas: {
-          create: userCreateSchema,
-          update: userUpdateSchema,
+          create: zodAdapter(userCreateSchema),
+          update: zodAdapter(userUpdateSchema),
         },
       })
     );
@@ -251,8 +251,8 @@ describe('Audit Plugin - Bulk Operation Optimization', () => {
               tableName: 'users' as const,
               mapRow: (row: any) => row,
               schemas: {
-                create: userCreateSchema,
-                update: userUpdateSchema,
+                create: zodAdapter(userCreateSchema),
+                update: zodAdapter(userUpdateSchema),
               },
             })
           );
@@ -293,8 +293,8 @@ describe('Audit Plugin - Bulk Operation Optimization', () => {
             tableName: 'users' as const,
             mapRow: (row: any) => row,
             schemas: {
-              create: userCreateSchema,
-              update: userUpdateSchema,
+              create: zodAdapter(userCreateSchema),
+              update: zodAdapter(userUpdateSchema),
             },
           })
         );

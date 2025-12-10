@@ -12,9 +12,10 @@ description: Production-ready TypeScript ORM built on Kysely with zero compromis
 
 Kysera is a lightweight, modular ORM layer that builds upon [Kysely](https://kysely.dev) - the type-safe SQL query builder. It provides:
 
-- **Repository Pattern** with smart validation
+- **Repository Pattern** with validation-agnostic design (Zod, Valibot, TypeBox, or native)
+- **Functional DAL** for type-inferred queries and context-based transactions
 - **Plugin System** for extensibility (soft delete, audit, timestamps, RLS)
-- **Production Utilities** (health checks, graceful shutdown, retry logic)
+- **Infrastructure Utilities** (health checks, retry, circuit breaker) as opt-in packages
 - **Zero External Dependencies** in core packages
 - **Full TypeScript** with strict mode support
 
@@ -25,7 +26,8 @@ Kysera is a lightweight, modular ORM layer that builds upon [Kysely](https://kys
 ### Core Principles
 
 1. **Minimal Core, Optional Everything**
-   - Core is just Kysely + debug utilities (~24KB)
+   - Core contains only essential utilities (~8KB): errors, pagination, types, logger
+   - Infrastructure (health, retry, shutdown) is a separate opt-in package
    - Repository pattern is optional
    - All features are opt-in plugins
    - Tree-shakeable ESM architecture
@@ -36,31 +38,44 @@ Kysera is a lightweight, modular ORM layer that builds upon [Kysely](https://kys
    - Transaction boundaries are clear
    - No automatic behaviors
 
-3. **Smart Validation Strategy**
-   - Always validate external inputs
-   - Trust database outputs (configurable)
-   - Development vs production modes
-   - Performance-conscious approach
+3. **Validation-Agnostic Design**
+   - Use any validation library: Zod, Valibot, TypeBox, or none
+   - ValidationSchema adapter interface for library independence
+   - Backward compatible with existing Zod schemas
 
-4. **Functional Architecture**
-   - Functions over classes
-   - No `this` context issues
-   - Composable patterns
-   - Dependency injection friendly
+4. **Dual API Approach**
+   - **Repository Pattern**: CRUD operations with validation for structured access
+   - **Functional DAL**: Type-inferred queries with context passing for complex operations
 
 5. **Production-First Design**
-   - Health checks built-in
+   - Health checks via @kysera/infra (opt-in)
    - Graceful shutdown support
-   - Connection lifecycle management
+   - Circuit breaker and retry logic
    - Comprehensive error handling
 
 ## Package Overview
 
+### Core Packages
+
 | Package | Description | Size |
 |---------|-------------|------|
-| [@kysera/core](/docs/api/core) | Debug utilities, error handling, health checks, pagination | ~22KB |
-| [@kysera/repository](/docs/api/repository) | Repository pattern with Zod validation | ~12KB |
+| [@kysera/core](/docs/api/core) | Error handling, pagination, types, logger | ~8KB |
+| [@kysera/repository](/docs/api/repository) | Repository pattern with validation adapters | ~12KB |
+| [@kysera/dal](/docs/api/dal) | Functional Data Access Layer | ~7KB |
+
+### Infrastructure Packages (Opt-in)
+
+| Package | Description | Size |
+|---------|-------------|------|
+| [@kysera/infra](/docs/api/infra) | Health checks, retry, circuit breaker, shutdown | ~12KB |
+| [@kysera/debug](/docs/api/debug) | Query logging, profiling, SQL formatting | ~5KB |
+| [@kysera/testing](/docs/api/testing) | Test utilities (transaction rollback, factories) | ~6KB |
 | [@kysera/migrations](/docs/api/migrations) | Migration system with dry-run support | ~11KB |
+
+### Plugins
+
+| Package | Description | Size |
+|---------|-------------|------|
 | [@kysera/soft-delete](/docs/plugins/soft-delete) | Soft delete plugin | ~4KB |
 | [@kysera/audit](/docs/plugins/audit) | Audit logging plugin | ~11KB |
 | [@kysera/timestamps](/docs/plugins/timestamps) | Automatic timestamps plugin | ~4KB |
@@ -69,11 +84,13 @@ Kysera is a lightweight, modular ORM layer that builds upon [Kysely](https://kys
 ## Architecture
 
 ```
-Layer 3: Plugins (@kysera/soft-delete, @kysera/audit, @kysera/timestamps, @kysera/rls)
+Layer 4: Plugins (@kysera/soft-delete, @kysera/audit, @kysera/timestamps, @kysera/rls)
          ↓
-Layer 2: Repository Pattern (@kysera/repository - optional)
+Layer 3: Data Access (@kysera/repository OR @kysera/dal - choose your style)
          ↓
-Layer 1: Core Utilities (@kysera/core)
+Layer 2: Infrastructure (@kysera/infra, @kysera/debug, @kysera/testing - opt-in)
+         ↓
+Layer 1: Core Utilities (@kysera/core - minimal)
          ↓
 Layer 0: Kysely Foundation (Direct usage, no wrapper)
 ```
@@ -120,7 +137,7 @@ const users = await userRepo.findAll()
 - **Node.js** 20+ or **Bun** 1.0+ or **Deno**
 - **TypeScript** 5.0+ (recommended)
 - **Kysely** 0.28.8+
-- **Zod** 4.x (for @kysera/repository)
+- **Validation library** (optional): Zod 4.x, Valibot, TypeBox, or none
 
 ## Database Support
 

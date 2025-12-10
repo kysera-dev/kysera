@@ -13,7 +13,7 @@ Strategies and utilities for testing Kysera applications.
 The fastest approach - each test runs in a transaction that automatically rolls back.
 
 ```typescript
-import { testInTransaction } from '@kysera/core'
+import { testInTransaction } from '@kysera/testing'
 
 describe('User Repository', () => {
   it('should create user', async () => {
@@ -50,7 +50,7 @@ describe('User Repository', () => {
 Create consistent test data with factories:
 
 ```typescript
-import { createFactory } from '@kysera/core'
+import { createFactory } from '@kysera/testing'
 
 const userFactory = createFactory({
   email: (i) => `user${i}@example.com`,
@@ -78,10 +78,19 @@ class UserService {
   constructor(private repos = createRepos(db)) {}
 
   async createUserWithProfile(data: CreateUserInput) {
+    // Use repository's transaction method
     return this.repos.users.transaction(async (trx) => {
-      const repos = createRepos(trx)
-      const user = await repos.users.create(data)
-      await repos.profiles.create({ userId: user.id })
+      const user = await trx
+        .insertInto('users')
+        .values(data)
+        .returningAll()
+        .executeTakeFirstOrThrow()
+
+      await trx
+        .insertInto('profiles')
+        .values({ userId: user.id })
+        .execute()
+
       return user
     })
   }
@@ -134,23 +143,42 @@ it('should rollback on error', async () => {
 
 ## Testing Plugins
 
-Test plugin behavior:
+Test plugin behavior with soft delete:
 
 ```typescript
+import { createORM, createRepositoryFactory, nativeAdapter } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
 describe('Soft Delete Plugin', () => {
   it('should soft delete user', async () => {
     await testInTransaction(db, async (trx) => {
+      // Create ORM with soft delete plugin
       const orm = await createORM(trx, [softDeletePlugin()])
-      const userRepo = orm.createRepository(createUserRepo)
 
-      const user = await userRepo.create({ ... })
+      // Create repository using ORM's createRepository
+      const userRepo = orm.createRepository((executor) => {
+        const factory = createRepositoryFactory(executor)
+        return factory.create({
+          tableName: 'users',
+          mapRow: (row) => row,
+          schemas: {
+            create: nativeAdapter(),
+          },
+        })
+      })
+
+      // Create and soft delete user
+      const user = await userRepo.create({
+        email: 'test@example.com',
+        name: 'Test User'
+      })
       await userRepo.softDelete(user.id)
 
       // Should not find with regular query
       const found = await userRepo.findById(user.id)
       expect(found).toBeNull()
 
-      // Should find with includeDeleted
+      // Should find with findWithDeleted
       const foundDeleted = await userRepo.findWithDeleted(user.id)
       expect(foundDeleted).toBeDefined()
       expect(foundDeleted?.deleted_at).toBeDefined()
@@ -190,9 +218,28 @@ afterAll(async () => {
 Test with real database:
 
 ```typescript
+import { seedDatabase, cleanDatabase } from '@kysera/testing'
+
 describe('Integration', () => {
   beforeAll(async () => {
-    await seedDatabase(db, seedTestData)
+    // seedDatabase takes a function, not raw data
+    await seedDatabase(db, async (trx) => {
+      await trx
+        .insertInto('users')
+        .values([
+          { email: 'alice@example.com', name: 'Alice', status: 'active' },
+          { email: 'bob@example.com', name: 'Bob', status: 'active' },
+        ])
+        .execute()
+
+      await trx
+        .insertInto('posts')
+        .values([
+          { user_id: 1, title: 'Post 1' },
+          { user_id: 2, title: 'Post 2' },
+        ])
+        .execute()
+    })
   })
 
   afterAll(async () => {

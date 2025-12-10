@@ -6,81 +6,119 @@ description: Multi-tenant architecture patterns
 
 # Multi-Tenant SaaS
 
-Enterprise multi-tenant architecture with automatic tenant isolation.
+Enterprise multi-tenant architecture demonstrating manual tenant isolation patterns.
 
-## Features
+> **Note**: This is a CLI demonstration example showing the foundational pattern of tenant isolation using manual filtering. It implements:
+> - ✅ TenantContext for storing current tenant ID
+> - ✅ Manual tenant filtering in user repository (`.where('tenant_id', '=', getTenantId())`)
+> - ✅ Complete CRUD operations with tenant isolation
+> - ❌ Does NOT use @kysera/rls plugin (shown as alternative pattern below)
+> - ❌ Does NOT implement audit logging (schema only)
+> - ❌ Only users repository implemented (projects/tasks are schema-only)
+>
+> The Express middleware examples shown below are recommended patterns for integrating this into web applications.
 
-- Tenant isolation (discriminator column)
-- Automatic tenant filtering
-- Request-scoped context management
-- Cross-tenant protection
-- Per-tenant audit logging
-- Subdomain extraction
+## What This Example Demonstrates
+
+This example shows the **foundational pattern** for tenant isolation:
+
+- **Discriminator Column Pattern** - Using `tenant_id` column for row-level isolation
+- **Manual Tenant Filtering** - Explicit `.where('tenant_id', '=', getTenantId())` in all queries
+- **TenantContext Management** - Simple class for storing current tenant ID
+- **Cross-Tenant Protection** - Preventing access to other tenants' data
+- **Type-Safe Repositories** - Full TypeScript support with Kysely
+
+This is the most transparent and educational approach. For production applications, consider using the `@kysera/rls` plugin (shown below) which automates the filtering.
 
 ## Database Schema
 
-```sql
-CREATE TABLE tenants (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  subdomain VARCHAR(100) NOT NULL UNIQUE,
-  plan VARCHAR(20) NOT NULL DEFAULT 'free',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+The actual implementation uses this TypeScript schema (see `src/db/schema.ts`):
 
-CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  tenant_id INTEGER NOT NULL REFERENCES tenants(id),
-  email VARCHAR(255) NOT NULL,
-  name VARCHAR(100) NOT NULL,
-  role VARCHAR(20) NOT NULL DEFAULT 'member',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(tenant_id, email)
-);
+```typescript
+interface Database {
+  tenants: {
+    id: Generated<number>
+    name: string
+    slug: string  // unique identifier (e.g., 'acme-corp')
+    plan: 'free' | 'pro' | 'enterprise'
+    max_users: number
+    created_at: Generated<Date>
+    updated_at: Generated<Date>
+  }
 
-CREATE TABLE projects (
-  id SERIAL PRIMARY KEY,
-  tenant_id INTEGER NOT NULL REFERENCES tenants(id),
-  name VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+  users: {
+    id: Generated<number>
+    tenant_id: number
+    email: string
+    name: string
+    role: 'owner' | 'admin' | 'member'
+    created_at: Generated<Date>
+    updated_at: Generated<Date>
+  }
 
-CREATE TABLE audit_logs (
-  id SERIAL PRIMARY KEY,
-  tenant_id INTEGER NOT NULL REFERENCES tenants(id),
-  table_name VARCHAR(100) NOT NULL,
-  entity_id VARCHAR(100) NOT NULL,
-  operation VARCHAR(20) NOT NULL,
-  old_values JSONB,
-  new_values JSONB,
-  user_id INTEGER,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+  projects: {
+    id: Generated<number>
+    tenant_id: number
+    name: string
+    description: string | null
+    status: 'active' | 'archived'
+    created_at: Generated<Date>
+    updated_at: Generated<Date>
+  }
 
--- Indexes for tenant filtering
-CREATE INDEX idx_users_tenant ON users(tenant_id);
-CREATE INDEX idx_projects_tenant ON projects(tenant_id);
-CREATE INDEX idx_audit_tenant ON audit_logs(tenant_id);
+  tasks: {
+    id: Generated<number>
+    tenant_id: number
+    project_id: number
+    title: string
+    description: string | null
+    status: 'todo' | 'in_progress' | 'done'
+    assigned_to: number | null
+    created_at: Generated<Date>
+    updated_at: Generated<Date>
+  }
+
+  audit_logs: {
+    id: Generated<number>
+    tenant_id: number
+    table_name: string
+    entity_id: string
+    operation: 'INSERT' | 'UPDATE' | 'DELETE'
+    old_values: string | null  // Note: string, not JSONB
+    new_values: string | null  // Note: string, not JSONB
+    user_id: number | null
+    created_at: Generated<Date>
+  }
+}
 ```
+
+**Implementation Status**:
+- ✅ Users repository - Fully implemented with tenant isolation
+- 📋 Projects, tasks, audit_logs - Schema defined but repositories not yet implemented
 
 ## Tenant Context
 
 ### Context Manager
 
+The actual implementation (see `src/middleware/tenant-context.ts`):
+
 ```typescript
-// tenant-context.ts
 export class TenantContext {
   private tenantId: number | null = null
 
-  setTenantId(id: number): void {
-    this.tenantId = id
+  setTenantId(tenantId: number): void {
+    this.tenantId = tenantId
   }
 
   getTenantId(): number {
     if (this.tenantId === null) {
-      throw new Error('Tenant context not initialized')
+      throw new Error('Tenant context not set. Call setTenantId() first.')
     }
     return this.tenantId
+  }
+
+  hasTenant(): boolean {
+    return this.tenantId !== null
   }
 
   clear(): void {
@@ -88,13 +126,20 @@ export class TenantContext {
   }
 }
 
-export const tenantContext = new TenantContext()
+// Usage in CLI example:
+const tenant1Context = new TenantContext()
+tenant1Context.setTenantId(1)
+
+const tenant2Context = new TenantContext()
+tenant2Context.setTenantId(2)
 ```
 
-### Request Middleware
+### Request Middleware (Recommended for Web Apps)
+
+> **Note**: The actual example is a CLI application. The following Express middleware is a recommended pattern for production web applications.
 
 ```typescript
-// middleware/tenant.ts
+// Recommended pattern for Express applications
 import { Request, Response, NextFunction } from 'express'
 
 export async function tenantMiddleware(
@@ -112,7 +157,7 @@ export async function tenantMiddleware(
   // Look up tenant
   const tenant = await db
     .selectFrom('tenants')
-    .where('subdomain', '=', subdomain)
+    .where('slug', '=', subdomain)  // Note: uses 'slug', not 'subdomain'
     .selectAll()
     .executeTakeFirst()
 
@@ -120,8 +165,9 @@ export async function tenantMiddleware(
     return res.status(404).json({ error: 'Tenant not found' })
   }
 
-  // Set context
-  tenantContext.setTenantId(tenant.id)
+  // Create tenant context for this request
+  req.tenantContext = new TenantContext()
+  req.tenantContext.setTenantId(tenant.id)
   req.tenant = tenant
 
   next()
@@ -131,7 +177,7 @@ function extractSubdomain(hostname: string): string | null {
   // acme.app.com → acme
   const parts = hostname.split('.')
   if (parts.length >= 3) {
-    return parts[0]
+    return parts[0] ?? null
   }
   return null
 }
@@ -139,86 +185,113 @@ function extractSubdomain(hostname: string): string | null {
 
 ## Tenant-Scoped Repository
 
+The actual implementation (see `src/repositories/user.repository.ts`):
+
 ```typescript
-// repositories/user.repository.ts
 export function createUserRepository(
   executor: Executor<Database>,
-  getTenantId: () => number
+  tenantContext: TenantContext
 ) {
+  const validateDbResults = process.env['NODE_ENV'] === 'development'
+  const getTenantId = () => tenantContext.getTenantId()
+
   return {
     async findById(id: number): Promise<User | null> {
       const row = await executor
         .selectFrom('users')
-        .where('id', '=', id)
-        .where('tenant_id', '=', getTenantId())  // Automatic filter!
         .selectAll()
+        .where('id', '=', id)
+        .where('tenant_id', '=', getTenantId())  // Tenant filter
         .executeTakeFirst()
 
-      return row ? mapUserRow(row) : null
+      if (!row) return null
+
+      const user = mapUserRow(row)
+      return validateDbResults ? UserSchema.parse(user) : user
+    },
+
+    async findByEmail(email: string): Promise<User | null> {
+      const row = await executor
+        .selectFrom('users')
+        .selectAll()
+        .where('email', '=', email)
+        .where('tenant_id', '=', getTenantId())  // Tenant filter
+        .executeTakeFirst()
+
+      if (!row) return null
+
+      const user = mapUserRow(row)
+      return validateDbResults ? UserSchema.parse(user) : user
     },
 
     async findAll(): Promise<User[]> {
       const rows = await executor
         .selectFrom('users')
-        .where('tenant_id', '=', getTenantId())  // Automatic filter!
         .selectAll()
+        .where('tenant_id', '=', getTenantId())  // Tenant filter
+        .orderBy('created_at', 'desc')
         .execute()
 
-      return rows.map(mapUserRow)
+      const users = rows.map(mapUserRow)
+      return validateDbResults ? users.map(u => UserSchema.parse(u)) : users
     },
 
-    async create(input: CreateUserInput): Promise<User> {
+    async create(input: unknown): Promise<User> {
       const validated = CreateUserSchema.parse(input)
 
       const row = await executor
         .insertInto('users')
         .values({
           ...validated,
-          tenant_id: getTenantId(),  // Auto-inject!
-          role: validated.role || 'member'
+          tenant_id: getTenantId(),  // Auto-inject tenant_id
+          role: validated.role || 'member',
         })
         .returningAll()
         .executeTakeFirstOrThrow()
 
-      return mapUserRow(row)
+      const user = mapUserRow(row)
+      return validateDbResults ? UserSchema.parse(user) : user
     },
 
-    async update(id: number, input: UpdateUserInput): Promise<User> {
+    async update(id: number, input: unknown): Promise<User> {
       const validated = UpdateUserSchema.parse(input)
 
       const row = await executor
         .updateTable('users')
-        .set(validated)
+        .set({
+          ...validated,
+          updated_at: new Date()
+        })
         .where('id', '=', id)
         .where('tenant_id', '=', getTenantId())  // Security!
         .returningAll()
-        .executeTakeFirst()
+        .executeTakeFirstOrThrow()
 
-      if (!row) {
-        throw new NotFoundError('User not found')
-      }
-
-      return mapUserRow(row)
+      const user = mapUserRow(row)
+      return validateDbResults ? UserSchema.parse(user) : user
     },
 
     async delete(id: number): Promise<void> {
-      const result = await executor
+      await executor
         .deleteFrom('users')
         .where('id', '=', id)
         .where('tenant_id', '=', getTenantId())  // Security!
-        .executeTakeFirst()
-
-      if (result.numDeletedRows === 0n) {
-        throw new NotFoundError('User not found')
-      }
+        .execute()
     }
   }
 }
 ```
 
-## Using RLS Plugin
+**Key Points**:
+- Takes `TenantContext` instance, not a function
+- All queries include `WHERE tenant_id = getTenantId()`
+- Creates automatically inject `tenant_id`
+- Updates/deletes verify `tenant_id` for security
+- Validation is optional based on environment
 
-Alternative approach using the RLS plugin:
+## Alternative Pattern: Using @kysera/rls Plugin
+
+> **Important**: The actual example implementation in `examples/multi-tenant-saas` does NOT use the `@kysera/rls` plugin. It demonstrates the foundational pattern using manual tenant filtering in repositories (as shown above). This section shows an alternative approach using the RLS plugin, which is recommended for production applications as it provides automatic filtering and reduces the risk of accidentally omitting tenant filters.
 
 ```typescript
 import { rlsPlugin, defineRLSSchema, filter, rlsContext } from '@kysera/rls'
@@ -269,7 +342,9 @@ app.get('/users', async (req, res) => {
 })
 ```
 
-## Per-Tenant Audit
+## Alternative Pattern: Using @kysera/audit Plugin
+
+> **Important**: The actual example in `examples/multi-tenant-saas` does NOT implement audit logging functionality. While the schema includes an `audit_logs` table structure (with `string` columns for old_values/new_values, not JSONB), there is no repository implementation or plugin configured for it. This section demonstrates how you could add audit logging using the `@kysera/audit` package in your own application.
 
 ```typescript
 import { auditPlugin } from '@kysera/audit'
@@ -287,14 +362,16 @@ const orm = await createORM(db, [audit])
 // All changes logged with tenant context
 ```
 
+**Note**: If you implement audit logging in your application, remember that the example's audit_logs schema uses `string` columns for old_values/new_values. You would need to JSON.stringify your data before storing it, or modify the schema to use JSONB if your database supports it.
+
 ## Key Patterns
 
-1. **Discriminator Column** - `tenant_id` on every table
-2. **Automatic Injection** - Tenant ID added to all queries
-3. **Request Scoping** - Context per HTTP request
-4. **No Cross-Tenant Access** - WHERE clause on every query
-5. **Subdomain Routing** - Tenant from URL
-6. **Audit Per Tenant** - Track changes with tenant context
+1. **Discriminator Column** - `tenant_id` on every tenant-scoped table
+2. **Manual Filtering** - Explicit `WHERE tenant_id = getTenantId()` in repositories
+3. **Automatic Injection** - `tenant_id` added to inserts via `getTenantId()`
+4. **Context Management** - `TenantContext` class for storing current tenant
+5. **No Cross-Tenant Access** - WHERE clause enforced in all repository methods
+6. **Type Safety** - Full TypeScript support with Kysely
 
 ## Security Considerations
 

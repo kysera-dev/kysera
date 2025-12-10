@@ -23,10 +23,10 @@ export const consoleLogger: KyseraLogger = {
  * No-op logger for silent operation.
  */
 export const silentLogger: KyseraLogger = {
-  debug: () => {},
-  info: () => {},
-  warn: () => {},
-  error: () => {},
+  debug: () => { /* intentionally empty */ },
+  info: () => { /* intentionally empty */ },
+  warn: () => { /* intentionally empty */ },
+  error: () => { /* intentionally empty */ },
 };
 
 /**

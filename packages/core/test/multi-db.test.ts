@@ -128,67 +128,7 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', (dbType) => {
     });
   });
 
-  describe('Health Checks', () => {
-    it('should check database health', async () => {
-      // Import checkDatabaseHealth from health module
-      const { checkDatabaseHealth } = await import('../src/health.js');
-      const health = await checkDatabaseHealth(db as any);
-      expect(health.status).toBe('healthy');
-      expect(health.metrics?.checkLatency).toBeGreaterThanOrEqual(0);
-      expect(health.metrics?.checkLatency).toBeLessThan(100);
-    });
-
-    it('should detect connection issues', async () => {
-      if (dbType === 'sqlite') {
-        // SQLite always works, skip this test
-        return;
-      }
-
-      // Import checkDatabaseHealth from health module
-      const { checkDatabaseHealth } = await import('../src/health.js');
-
-      // Create a database with wrong credentials
-      let badDb: Kysely<any>;
-      if (dbType === 'postgres') {
-        const { PostgresDialect } = await import('kysely');
-        const { Pool } = await import('pg');
-        badDb = new Kysely({
-          dialect: new PostgresDialect({
-            pool: new Pool({
-              host: 'localhost',
-              port: 5432,
-              user: 'wrong_user',
-              password: 'wrong_password',
-              database: 'wrong_db',
-            }),
-          }),
-        });
-      } else {
-        // MySQL
-        const { MysqlDialect } = await import('kysely');
-        const { createPool } = await import('mysql2');
-        badDb = new Kysely({
-          dialect: new MysqlDialect({
-            pool: createPool({
-              host: 'localhost',
-              port: 3306,
-              user: 'wrong_user',
-              password: 'wrong_password',
-              database: 'wrong_db',
-            }),
-          }),
-        });
-      }
-
-      try {
-        // Try to check health with bad credentials
-        const health = await checkDatabaseHealth(badDb).catch(() => ({ status: 'unhealthy' }));
-        expect(health.status).toBe('unhealthy');
-      } finally {
-        await badDb.destroy();
-      }
-    });
-  });
+  // Health Checks tests moved to @kysera/infra package
 
   describe('Pagination', () => {
     it('should paginate with offset', async () => {
@@ -361,44 +301,7 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', (dbType) => {
     });
   });
 
-  describe('Debug Plugin', () => {
-    it('should log queries', async () => {
-      const { withDebug } = await import('../src/debug.js');
-      const logs: string[] = [];
-
-      // Create a KyseraLogger-compatible object
-      const testLogger = {
-        debug: (msg: string) => logs.push(msg),
-        info: (msg: string) => logs.push(msg),
-        warn: (msg: string) => logs.push(msg),
-        error: (msg: string) => logs.push(msg),
-      };
-
-      const debugDb = withDebug(db, {
-        logger: testLogger,
-        logQuery: true,
-      });
-
-      await debugDb.selectFrom('users').selectAll().where('email', '=', 'alice@example.com').execute();
-
-      expect(logs.length).toBeGreaterThan(0);
-      // Debug plugin currently uses simplified SQL extraction
-      expect(logs[0]!.toLowerCase()).toContain('select * from');
-    });
-
-    it('should measure query performance', async () => {
-      const { withDebug } = await import('../src/debug.js');
-
-      const debugDb = withDebug(db, {
-        logQuery: true,
-        slowQueryThreshold: 0,
-      });
-
-      const result = await debugDb.selectFrom('posts').selectAll().execute();
-
-      expect(result).toBeDefined();
-    });
-  });
+  // Debug Plugin tests moved to @kysera/debug package
 
   describe('Batch Operations', () => {
     it('should handle bulk inserts', async () => {

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createTestDatabase, seedTestData } from './setup/database.js';
-import { createORM, withPlugins, type Plugin } from '../src/plugin.js';
-import { createRepositoryFactory } from '../src/repository.js';
+import { createORM, withPlugins, type Plugin, createRepositoryFactory } from '../src/index.js';
 import type { Kysely } from 'kysely';
 import type { TestDatabase } from './setup/database.js';
 

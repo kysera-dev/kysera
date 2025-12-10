@@ -4,7 +4,7 @@ import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
-import { CircuitBreakerState } from '@kysera/core';
+import { type CircuitBreakerState } from '@kysera/infra';
 
 export interface CircuitBreakerOptions {
   action?: 'status' | 'reset' | 'open' | 'close';
