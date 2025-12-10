@@ -1,0 +1,101 @@
+/**
+ * Kysera documentation theme
+ * Built on Infima CSS framework
+ */
+
+/* Light theme colors - Teal/Cyan accent */
+:root {
+  --ifm-color-primary: #0d9488;
+  --ifm-color-primary-dark: #0b8278;
+  --ifm-color-primary-darker: #0a7a71;
+  --ifm-color-primary-darkest: #08655d;
+  --ifm-color-primary-light: #0fa698;
+  --ifm-color-primary-lighter: #10ae9f;
+  --ifm-color-primary-lightest: #14c9b8;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  --ifm-heading-font-weight: 600;
+}
+
+/* Dark theme colors */
+[data-theme='dark'] {
+  --ifm-color-primary: #2dd4bf;
+  --ifm-color-primary-dark: #1fc9b4;
+  --ifm-color-primary-darker: #1dbfab;
+  --ifm-color-primary-darkest: #189e8d;
+  --ifm-color-primary-light: #4bdcc8;
+  --ifm-color-primary-lighter: #55deca;
+  --ifm-color-primary-lightest: #7ae5d6;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  --ifm-background-color: #1a1a2e;
+  --ifm-background-surface-color: #16162a;
+}
+
+/* Code blocks */
+.prism-code {
+  font-size: 0.9rem;
+}
+
+/* Navbar */
+.navbar {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.navbar__logo {
+  height: 32px;
+}
+
+/* Sidebar */
+.menu__link {
+  font-size: 0.9rem;
+}
+
+/* Admonitions */
+.admonition {
+  border-radius: 8px;
+}
+
+/* Tables */
+table {
+  display: table;
+  width: 100%;
+}
+
+th {
+  background: var(--ifm-background-surface-color);
+}
+
+/* API reference styling */
+.api-method {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  background: var(--ifm-background-surface-color);
+  margin-bottom: 1rem;
+}
+
+/* Footer */
+.footer {
+  background: var(--ifm-background-surface-color);
+}
+
+.footer__title {
+  color: var(--ifm-color-primary);
+}
+
+/* Responsive improvements */
+@media screen and (max-width: 996px) {
+  .markdown h1:first-child {
+    font-size: 1.8rem;
+  }
+}
+
+/* Print styles */
+@media print {
+  .navbar,
+  .footer,
+  .pagination-nav,
+  .theme-doc-toc-mobile {
+    display: none !important;
+  }
+}
