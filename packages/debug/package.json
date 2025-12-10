@@ -1,6 +1,6 @@
 {
   "name": "@kysera/debug",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Debug utilities for Kysera ORM - query logging, profiling, SQL formatting",
   "type": "module",
   "main": "./dist/index.js",

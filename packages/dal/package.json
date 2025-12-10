@@ -1,6 +1,6 @@
 {
   "name": "@kysera/dal",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Functional Data Access Layer for Kysera ORM - query functions, context passing, composition",
   "type": "module",
   "main": "./dist/index.js",
