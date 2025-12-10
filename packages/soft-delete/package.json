@@ -1,6 +1,6 @@
 {
   "name": "@kysera/soft-delete",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Soft delete plugin for Kysera ORM",
   "type": "module",
   "main": "./dist/index.js",

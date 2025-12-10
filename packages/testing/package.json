@@ -1,6 +1,6 @@
 {
   "name": "@kysera/testing",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Testing utilities for Kysera ORM - transaction isolation, factories, seeding",
   "type": "module",
   "main": "./dist/index.js",

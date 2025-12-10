@@ -1,6 +1,6 @@
 {
   "name": "@kysera/core",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Core utilities for Kysera ORM - errors, pagination, types, logger",
   "type": "module",
   "main": "./dist/index.js",
