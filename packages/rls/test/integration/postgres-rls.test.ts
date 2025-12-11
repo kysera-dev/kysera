@@ -90,9 +90,9 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
       },
     });
 
-    it('should filter users by tenant_id in PostgreSQL', async function () {
+    it('should filter users by tenant_id in PostgreSQL', async (ctx) => {
       if (!postgresAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -114,9 +114,9 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
       expect(result.every((u) => u.tenant_id === 1)).toBe(true);
     });
 
-    it('should enforce tenant isolation for posts', async function () {
+    it('should enforce tenant isolation for posts', async (ctx) => {
       if (!postgresAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -139,9 +139,9 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
       expect(result[0]!.tenant_id).toBe(2);
     });
 
-    it('should handle complex queries with JOINs', async function () {
+    it('should handle complex queries with JOINs', async (ctx) => {
       if (!postgresAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -170,9 +170,9 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
   });
 
   describe('PostgreSQL-Specific Features', () => {
-    it('should handle PostgreSQL JSONB operations', async function () {
+    it('should handle PostgreSQL JSONB operations', async (ctx) => {
       if (!postgresAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -181,9 +181,9 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
       expect(result.rows[0]!.now).toBeInstanceOf(Date);
     });
 
-    it('should handle transactions with RLS context', async function () {
+    it('should handle transactions with RLS context', async (ctx) => {
       if (!postgresAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -242,9 +242,9 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
       expect(posts.length).toBe(1);
     });
 
-    it('should handle concurrent contexts correctly', async function () {
+    it('should handle concurrent contexts correctly', async (ctx) => {
       if (!postgresAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -338,9 +338,9 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
   });
 
   describe('Performance with Large Datasets', () => {
-    it('should handle queries with many rows efficiently', async function () {
+    it('should handle queries with many rows efficiently', async (ctx) => {
       if (!postgresAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -391,9 +391,9 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
   });
 
   describe('Error Handling', () => {
-    it('should handle database errors gracefully', async function () {
+    it('should handle database errors gracefully', async (ctx) => {
       if (!postgresAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -401,9 +401,9 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
       await expect(sql`SELECT * FROM non_existent_table`.execute(db)).rejects.toThrow();
     });
 
-    it('should maintain context after query errors', async function () {
+    it('should maintain context after query errors', async (testCtx) => {
       if (!postgresAvailable) {
-        this.skip?.();
+        testCtx.skip();
         return;
       }
 

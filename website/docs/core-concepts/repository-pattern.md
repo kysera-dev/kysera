@@ -10,12 +10,13 @@ Kysera's repository pattern provides a clean abstraction over database operation
 
 ## Creating Repositories
 
-### Using Repository Factory
+### Using ORM with Plugins
 
-The recommended way to create repositories:
+The recommended way to create repositories in v0.7:
 
 ```typescript
-import { createRepositoryFactory } from '@kysera/repository'
+import { createORM } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
 import { z } from 'zod'
 
 // Define validation schemas
@@ -26,10 +27,67 @@ const CreateUserSchema = z.object({
 
 const UpdateUserSchema = CreateUserSchema.partial()
 
+// Create ORM with plugins
+const orm = await createORM(db, [softDeletePlugin()])
+
+// Define repository factory function
+const createUserRepository = (executor, applyPlugins) => ({
+  tableName: 'users',
+  executor,
+
+  async findById(id) {
+    return executor
+      .selectFrom('users')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst()
+  },
+
+  async create(data) {
+    const validated = CreateUserSchema.parse(data)
+    return executor
+      .insertInto('users')
+      .values(validated)
+      .returningAll()
+      .executeTakeFirstOrThrow()
+  },
+
+  async update(id, data) {
+    const validated = UpdateUserSchema.parse(data)
+    return executor
+      .updateTable('users')
+      .set(validated)
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow()
+  },
+
+  // ... other methods
+})
+
+// Create repository with plugin support
+const userRepo = orm.createRepository(createUserRepository)
+
+// Use repository methods (plugins automatically applied)
+const user = await userRepo.findById(1)
+
+// Plugin extension methods also available
+await userRepo.softDelete(1)
+await userRepo.restore(1)
+```
+
+### Alternative: Using Repository Factory (No Plugins)
+
+For simpler use cases without plugins:
+
+```typescript
+import { createRepositoryFactory } from '@kysera/repository'
+import { z } from 'zod'
+
 // Create factory
 const factory = createRepositoryFactory(db)
 
-// Create repository
+// Create repository (no plugin support)
 const userRepo = factory.create({
   tableName: 'users',
   mapRow: (row) => ({
@@ -58,7 +116,8 @@ interface RepositoryConfig<Table, Entity> {
     create: z.ZodType                      // Required
     update?: z.ZodType                     // Optional
   }
-  validateDbResults?: boolean              // Default: NODE_ENV === 'development'
+  // Validation controlled via KYSERA_VALIDATION_MODE environment variable
+  // or NODE_ENV fallback - see Validation guide
 }
 ```
 
@@ -158,7 +217,39 @@ const result = await userRepo.paginateCursor({
 
 ## Repository Bundles
 
-Create all repositories at once for transaction support:
+### With ORM and Plugins
+
+Create multiple repositories with shared plugins:
+
+```typescript
+import { createORM } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+// Create ORM with plugins
+const orm = await createORM(db, [softDeletePlugin()])
+
+// Create all repositories
+const userRepo = orm.createRepository(createUserRepository)
+const postRepo = orm.createRepository(createPostRepository)
+const commentRepo = orm.createRepository(createCommentRepository)
+
+// Use repositories (plugins automatically applied)
+const user = await userRepo.findById(1)
+
+// Transaction with orm.transaction() - plugins preserved
+await orm.transaction(async (ctx) => {
+  const user = await userRepo.create({ ... })
+
+  // Can also use DAL queries in same transaction
+  const stats = await getAnalytics(ctx, user.id)
+
+  return { user, stats }
+})
+```
+
+### Without Plugins (Factory Pattern)
+
+For simpler use cases without plugins:
 
 ```typescript
 import { createRepositoriesFactory } from '@kysera/repository'
@@ -246,6 +337,31 @@ const userRepo = factory.create({
 ## Transaction Support
 
 Repositories work seamlessly with transactions:
+
+### With ORM (Recommended for v0.7+)
+
+```typescript
+import { createORM } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+const orm = await createORM(db, [softDeletePlugin()])
+const userRepo = orm.createRepository(createUserRepository)
+const postRepo = orm.createRepository(createPostRepository)
+
+// Use orm.transaction() - plugins preserved automatically
+await orm.transaction(async (ctx) => {
+  // All repos use the same transaction
+  const user = await userRepo.create({ ... })
+  await postRepo.create({ user_id: user.id, ... })
+
+  // Can also use DAL queries in same transaction
+  const stats = await getDashboardStats(ctx, user.id)
+
+  return { user, stats }
+})
+```
+
+### Without ORM (Repository Factory)
 
 ```typescript
 // Method 1: Using repository bundles (RECOMMENDED)

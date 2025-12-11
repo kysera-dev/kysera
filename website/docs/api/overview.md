@@ -8,6 +8,37 @@ description: API reference overview for all Kysera packages
 
 Complete API documentation for all Kysera packages.
 
+:::tip Unified Execution Layer (v0.7+)
+Kysera now features a **Unified Execution Layer** powered by `@kysera/executor`. This foundation package enables plugins to work seamlessly with both Repository and DAL patterns through query interception. [Learn more about the architecture](#architecture-overview).
+:::
+
+## Architecture Overview
+
+Kysera follows a layered architecture with `@kysera/executor` as the foundation:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Application Layer (Repository / DAL Patterns)      │
+│  - @kysera/repository: ORM with validation          │
+│  - @kysera/dal: Functional query composition        │
+├─────────────────────────────────────────────────────┤
+│  Plugin Layer (Query Interceptors & Extensions)     │
+│  - @kysera/soft-delete, @kysera/rls, etc.          │
+├─────────────────────────────────────────────────────┤
+│  Unified Execution Layer                            │
+│  - @kysera/executor: Plugin-aware Kysely wrapper    │
+├─────────────────────────────────────────────────────┤
+│  Kysely Query Builder (peer dependency)             │
+└─────────────────────────────────────────────────────┘
+```
+
+**Key Concepts:**
+
+- **@kysera/executor** wraps Kysely instances with plugin interception capabilities
+- **Plugins** work with BOTH Repository and DAL patterns through the executor
+- **Query interceptors** (e.g., soft-delete filters, RLS policies) apply automatically to all queries
+- **Repository extensions** (e.g., `repo.softDelete()`, `repo.restore()`) work only with Repository pattern
+
 ## Package Index
 
 ### Core Packages
@@ -15,6 +46,7 @@ Complete API documentation for all Kysera packages.
 | Package | Description | Bundle Size |
 |---------|-------------|-------------|
 | [@kysera/core](/docs/api/core) | Core utilities - errors, pagination, logger, types | ~8 KB |
+| [@kysera/executor](/docs/api/executor) | **Foundation**: Unified plugin execution layer | ~8 KB |
 | [@kysera/repository](/docs/api/repository) | Repository pattern with validation | ~12 KB |
 | [@kysera/dal](/docs/api/dal) | Functional Data Access Layer | ~7 KB |
 
@@ -50,9 +82,79 @@ Core utilities including error handling, pagination, and logging.
 import { parseDatabaseError, paginate, consoleLogger } from '@kysera/core'
 ```
 
+## Package Dependencies
+
+Understanding the dependency hierarchy helps you choose the right packages:
+
+```
+@kysera/executor (foundation - 0 dependencies)
+    │
+    ├──> @kysera/dal (depends on executor)
+    │       └──> Used for: Functional queries with plugin support
+    │
+    ├──> @kysera/repository (depends on executor + dal)
+    │       └──> Used for: ORM pattern with validation and plugin methods
+    │
+    └──> Plugin packages (use executor's Plugin interface)
+            ├──> @kysera/soft-delete (query interceptor + repository extensions)
+            ├──> @kysera/rls (query interceptor + repository extensions)
+            ├──> @kysera/timestamps (repository extensions only)
+            └──> @kysera/audit (repository extensions only)
+
+@kysera/core (standalone - 0 dependencies)
+    └──> Used by: All packages for errors, pagination, logging
+```
+
+**Plugin Capabilities:**
+
+| Plugin Feature | Works with Repository | Works with DAL |
+|----------------|----------------------|----------------|
+| Query Interceptors (`interceptQuery`) | ✅ Yes | ✅ Yes (via executor) |
+| Repository Extensions (`extendRepository`) | ✅ Yes | ❌ No |
+
+**Examples:**
+- `@kysera/soft-delete`: Automatic filtering works in both; `repo.softDelete()` method only in Repository
+- `@kysera/rls`: RLS policies work in both; validation methods only in Repository
+- `@kysera/timestamps`: Repository only (no query interception needed)
+- `@kysera/audit`: Repository only (no query interception needed)
+
+## @kysera/executor
+
+**Foundation package** - Unified plugin execution layer enabling plugins to work with both Repository and DAL patterns. [Full Documentation →](/docs/api/executor)
+
+```typescript
+import { createExecutor, isKyseraExecutor, getPlugins, getRawDb } from '@kysera/executor'
+```
+
+**Core Concept:** Wraps Kysely instances with plugin interception, allowing automatic query modification (filtering, policies) before execution while maintaining full type safety.
+
+**Key Features:**
+- Zero overhead when no interceptor plugins are registered
+- Automatic plugin validation (conflicts, dependencies, circular deps)
+- Transaction propagation - plugins automatically work in transactions
+- Plugin priority and dependency resolution
+- `getRawDb()` for bypassing interceptors when needed
+
+**Quick Example:**
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+const executor = await createExecutor(db, [softDeletePlugin()])
+
+// Automatic soft-delete filtering
+const users = await executor.selectFrom('users').selectAll().execute()
+
+// Works in transactions
+await executor.transaction().execute(async (trx) => {
+  // Plugins automatically applied
+  const user = await trx.selectFrom('users').where('id', '=', 1).executeTakeFirst()
+})
+```
+
 ## @kysera/repository
 
-Type-safe repository pattern implementation.
+Type-safe repository pattern implementation with full plugin support. [Full Documentation →](/docs/api/repository)
 
 | Module | Description |
 |--------|-------------|
@@ -64,13 +166,17 @@ Type-safe repository pattern implementation.
 import { createRepositoryFactory, createORM, withPlugins } from '@kysera/repository'
 ```
 
+**Plugin Integration:** Uses `@kysera/executor` internally, supporting both query interceptors (`interceptQuery`) and repository extensions (`extendRepository`).
+
 ## @kysera/dal
 
-Functional Data Access Layer for composable queries.
+Functional Data Access Layer for composable queries with query interceptor support via `KyseraExecutor`. [Full Documentation →](/docs/api/dal)
 
 ```typescript
-import { createQuery, withTransaction, compose, parallel } from '@kysera/dal'
+import { createQuery, withTransaction, createContext, compose, parallel } from '@kysera/dal'
 ```
+
+**Plugin Integration:** Works with `@kysera/executor` to support query interceptor plugins (soft-delete, RLS, etc.). Repository extension plugins are not available in DAL.
 
 ## @kysera/infra
 
@@ -219,22 +325,45 @@ const userRepo = factory.create({
 })
 ```
 
-### Using Multiple Plugins
+### Using Plugins (Unified Approach)
+
+With the Unified Execution Layer, create an executor with plugins that work across both Repository and DAL:
 
 ```typescript
+import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { timestampsPlugin } from '@kysera/timestamps'
 import { auditPlugin } from '@kysera/audit'
+import { rlsPlugin } from '@kysera/rls'
 
-const orm = await createORM(db, [
-  timestampsPlugin(),           // Auto timestamps
-  softDeletePlugin(),           // Soft delete
-  auditPlugin({                 // Audit logging
+// Create executor with query interceptor plugins
+const executor = await createExecutor(db, [
+  rlsPlugin({ schema: rlsSchema }),    // RLS policies (query interceptor)
+  softDeletePlugin()                    // Soft-delete filter (query interceptor)
+])
+
+// Repository pattern: Gets both query interceptors + extension methods
+const orm = await createORM(executor, [
+  timestampsPlugin(),                   // Repository extension only
+  auditPlugin({                         // Repository extension only
     getUserId: () => currentUser?.id
   })
 ])
+
+// DAL pattern: Gets query interceptors only
+import { createQuery } from '@kysera/dal'
+const getUsers = createQuery((ctx) =>
+  ctx.db.selectFrom('users').selectAll().execute()
+)
+// RLS and soft-delete filters automatically applied!
+const users = await getUsers(executor)
 ```
+
+**Key Points:**
+- **Query interceptor plugins** (soft-delete, RLS) → Add to executor
+- **Repository extension plugins** (timestamps, audit) → Add to ORM
+- Both patterns share the same query interceptors for consistent behavior
 
 ### Error Handling
 
@@ -298,9 +427,40 @@ const result = await paginateCursor(
 // { items: [...], nextCursor: {...}, hasMore: true }
 ```
 
-### Transactions
+### Transactions with Plugins
+
+Plugins automatically propagate through transactions:
 
 ```typescript
+import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { createORM } from '@kysera/repository'
+import { withTransaction, createQuery } from '@kysera/dal'
+
+// Create executor with plugins
+const executor = await createExecutor(db, [softDeletePlugin()])
+
+// Repository pattern - plugins in transactions
+const orm = await createORM(executor, [])
+await orm.transaction(async (ctx) => {
+  const userRepo = orm.createRepository(createUserRepository)
+  const user = await userRepo.create({ email: 'new@example.com', name: 'New User' })
+  // Soft-delete filter applied within transaction
+  const activeUsers = await userRepo.findAll()
+})
+
+// DAL pattern - plugins in transactions
+const getUsers = createQuery((ctx) =>
+  ctx.db.selectFrom('users').selectAll().execute()
+)
+
+await withTransaction(executor, async (ctx) => {
+  // Soft-delete filter automatically applied
+  const users = await getUsers(ctx)
+  // Both operations commit or roll back together
+})
+
+// Repository factory pattern
 import { createRepositoriesFactory } from '@kysera/repository'
 
 const createRepos = createRepositoriesFactory({
@@ -308,13 +468,11 @@ const createRepos = createRepositoriesFactory({
   posts: (executor) => createPostRepository(executor)
 })
 
-await db.transaction().execute(async (trx) => {
+await executor.transaction().execute(async (trx) => {
   const repos = createRepos(trx)
-
+  // All queries inherit plugins from executor
   const user = await repos.users.create({ email: 'new@example.com', name: 'New User' })
   await repos.posts.create({ title: 'First Post', userId: user.id })
-
-  // Both operations commit or roll back together
 })
 ```
 
@@ -322,17 +480,18 @@ await db.transaction().execute(async (trx) => {
 
 | Package | Version | Kysely | Node.js | Bun | Deno |
 |---------|---------|--------|---------|-----|------|
-| @kysera/core | 0.6.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/repository | 0.6.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/dal | 0.6.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/infra | 0.6.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/debug | 0.6.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/testing | 0.6.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/migrations | 0.6.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/soft-delete | 0.6.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/timestamps | 0.6.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/audit | 0.6.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/rls | 0.6.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| @kysera/core | 0.6.1 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| @kysera/executor | 0.7.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| @kysera/repository | 0.7.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| @kysera/dal | 0.7.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| @kysera/infra | 0.6.1 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| @kysera/debug | 0.6.1 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| @kysera/testing | 0.6.1 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| @kysera/migrations | 0.6.1 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| @kysera/soft-delete | 0.7.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| @kysera/timestamps | 0.6.1 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| @kysera/audit | 0.6.1 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| @kysera/rls | 0.7.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
 
 ## Database Support
 

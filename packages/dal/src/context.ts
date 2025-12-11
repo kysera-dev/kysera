@@ -5,24 +5,32 @@
  */
 
 import type { Kysely, Transaction } from 'kysely';
+import type { KyseraExecutor, KyseraTransaction } from '@kysera/executor';
+import { isKyseraExecutor, getPlugins, wrapTransaction } from '@kysera/executor';
 import type { DbContext, TransactionOptions } from './types.js';
 
 /**
- * Create a database context from a Kysely instance.
+ * Create a database context from any database instance.
  *
- * @param db - Kysely database or transaction instance
+ * Supports raw Kysely instances and plugin-aware KyseraExecutor.
+ * When using KyseraExecutor, plugins are automatically available in context.
+ *
+ * @param db - Kysely, KyseraExecutor, or transaction instance
  * @returns Database context
  *
  * @example
  * ```typescript
  * import { createContext } from '@kysera/dal';
+ * import { createExecutor } from '@kysera/executor';
  *
- * const ctx = createContext(db);
- * const user = await findUserById(ctx, 1);
+ * const executor = await createExecutor(db, [softDeletePlugin()]);
+ * const ctx = createContext(executor);
+ * const user = await findUserById(ctx, 1); // soft-delete filter applied
  * ```
  */
-export function createContext<DB>(db: Kysely<DB> | Transaction<DB>): DbContext<DB> {
-  // Check if it's a transaction by looking for transaction-specific properties
+export function createContext<DB>(
+  db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>
+): DbContext<DB> {
   const isTransaction = 'isTransaction' in db && db.isTransaction;
 
   return {
@@ -34,12 +42,12 @@ export function createContext<DB>(db: Kysely<DB> | Transaction<DB>): DbContext<D
 /**
  * Execute a function within a transaction.
  *
- * If already in a transaction, reuses the existing transaction.
- * Otherwise, creates a new transaction.
+ * If the database is a KyseraExecutor, plugins are automatically propagated
+ * to the transaction context. Otherwise, creates a standard Kysely transaction.
  *
- * @param db - Kysely database instance
+ * @param db - Database instance (Kysely or KyseraExecutor)
  * @param fn - Function to execute within transaction
- * @param options - Transaction options
+ * @param options - Transaction options (isolation level not supported in Kysely API)
  * @returns Result of the function
  *
  * @example Basic usage
@@ -53,42 +61,33 @@ export function createContext<DB>(db: Kysely<DB> | Transaction<DB>): DbContext<D
  * });
  * ```
  *
- * @example With isolation level
+ * @example With KyseraExecutor (plugins propagated)
  * ```typescript
+ * import { createExecutor } from '@kysera/executor';
  * import { withTransaction } from '@kysera/dal';
  *
- * const result = await withTransaction(
- *   db,
- *   async (ctx) => {
- *     // Critical operation requiring serializable isolation
- *     return processPayment(ctx, paymentData);
- *   },
- *   { isolationLevel: 'serializable' }
- * );
+ * const executor = await createExecutor(db, [softDeletePlugin()]);
+ *
+ * const result = await withTransaction(executor, async (ctx) => {
+ *   // All queries in transaction have soft-delete filter applied
+ *   const users = await getUsers(ctx);
+ *   return users;
+ * });
  * ```
  */
 export async function withTransaction<DB, T>(
-  db: Kysely<DB>,
+  db: Kysely<DB> | KyseraExecutor<DB>,
   fn: (ctx: DbContext<DB>) => Promise<T>,
-  options: TransactionOptions = {}
+  _options: TransactionOptions = {}
 ): Promise<T> {
-  return await db.transaction().execute(async (trx) => {
-    // Set isolation level if specified
-    // Note: Isolation level must be set at the connection/dialect level in Kysely,
-    // or you can use database-specific SQL before starting the transaction.
-    // This is a limitation of Kysely's Transaction API which doesn't expose raw().
-    if (options.isolationLevel) {
-      // Isolation level setting is not directly supported on Transaction in Kysely.
-      // Users should configure isolation at the pool/connection level instead.
-      // See: https://kysely.dev/docs/recipes/transactions
-      console.warn(
-        `[@kysera/dal] Isolation level '${options.isolationLevel}' specified but not applied. ` +
-          'Configure isolation at the database pool level for your dialect.'
-      );
-    }
+  return await db.transaction().execute(async (trx: Transaction<DB>) => {
+    // Wrap transaction with plugins if using KyseraExecutor
+    const wrappedTrx = isKyseraExecutor(db)
+      ? wrapTransaction(trx, getPlugins(db))
+      : trx;
 
     const ctx: DbContext<DB> = {
-      db: trx,
+      db: wrappedTrx,
       isTransaction: true,
     };
 
@@ -100,8 +99,9 @@ export async function withTransaction<DB, T>(
  * Execute a function with a database context.
  *
  * Creates a context without a transaction.
+ * Supports both Kysely and KyseraExecutor instances.
  *
- * @param db - Kysely database instance
+ * @param db - Database instance (Kysely or KyseraExecutor)
  * @param fn - Function to execute
  * @returns Result of the function
  *
@@ -115,7 +115,7 @@ export async function withTransaction<DB, T>(
  * ```
  */
 export async function withContext<DB, T>(
-  db: Kysely<DB>,
+  db: Kysely<DB> | KyseraExecutor<DB>,
   fn: (ctx: DbContext<DB>) => Promise<T>
 ): Promise<T> {
   const ctx = createContext(db);

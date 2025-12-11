@@ -63,12 +63,8 @@ type ValidationMode = 'always' | 'never' | 'development' | 'production'
 
 ### Environment Variables
 
-Checked in order of priority:
-
-1. `KYSERA_VALIDATION_MODE` - Recommended
-2. `KYSERA_VALIDATE` - Backward compatibility
-3. `VALIDATE_DB_RESULTS` - Legacy
-4. `NODE_ENV` - Default behavior
+1. `KYSERA_VALIDATION_MODE` - Set to `'always'`, `'never'`, `'development'`, or `'production'`
+2. `NODE_ENV` - Used as fallback when `KYSERA_VALIDATION_MODE` is not set
 
 ### Example
 
@@ -218,8 +214,8 @@ await userRepo.create({ email: 'invalid' })  // Throws!
 const userRepo = factory.create({
   schemas: {
     entity: UserSchema  // For output validation
-  },
-  validateDbResults: process.env.NODE_ENV === 'development'
+  }
+  // Controlled via KYSERA_VALIDATION_MODE or NODE_ENV
 })
 ```
 

@@ -240,8 +240,6 @@ interface Plugin {
 
   onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
   interceptQuery?<QB>(qb: QB, context: QueryBuilderContext): QB
-  afterQuery?(context: QueryContext, result: unknown): Promise<unknown> | unknown
-  onError?(context: QueryContext, error: unknown): Promise<void> | void
   extendRepository?<T>(repo: T): T
 }
 
@@ -249,11 +247,6 @@ interface QueryBuilderContext {
   operation: 'select' | 'insert' | 'update' | 'delete'
   table: string
   metadata: Record<string, unknown>
-}
-
-interface QueryContext extends QueryBuilderContext {
-  sql: string
-  params: unknown[]  // Required, compiled query parameters
 }
 ```
 

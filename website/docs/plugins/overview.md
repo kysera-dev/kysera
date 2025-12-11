@@ -50,33 +50,29 @@ await userRepo.findRecentlyCreated()        // From timestamps
 
 ## Plugin Architecture
 
-Plugins can extend repositories in three ways:
+Kysera's plugin system is built on **@kysera/executor**, which provides a unified execution layer for both Repository and DAL patterns. Plugins are validated, sorted by dependencies and priority, and can extend functionality in multiple ways:
 
 ### 1. Query Interception
 
-Modify queries before execution:
+Modify query builders before execution. Works in **both Repository and DAL patterns**:
 
 ```typescript
 interceptQuery(qb, context) {
   if (context.operation === 'select') {
+    // Automatically filter soft-deleted records
     return qb.where('deleted_at', 'is', null)
   }
   return qb
 }
 ```
 
-### 2. Result Transformation
+**Intercepted operations:**
+- `selectFrom` → `'select'`
+- `insertInto` → `'insert'`
+- `updateTable` → `'update'`
+- `deleteFrom` → `'delete'`
 
-Process results after query execution:
-
-```typescript
-afterQuery(context, result) {
-  // Transform or validate result
-  return result
-}
-```
-
-### 3. Repository Extension
+### 2. Repository Extension (Repository only)
 
 Add new methods to repositories:
 
@@ -90,43 +86,65 @@ extendRepository(repo) {
 }
 ```
 
+### How It Works
+
+1. **createORM** uses **createExecutor** internally
+2. **Executor** wraps Kysely with a Proxy that intercepts query-building methods
+3. **Plugins** are validated for dependencies, conflicts, and circular references
+4. **Plugin order** is resolved via topological sort with priority
+5. **Query interception** applies plugins to `selectFrom`, `insertInto`, `updateTable`, `deleteFrom`
+6. **Transaction wrapping** preserves plugin behavior in transactions
+
 ## Plugin Interface
 
 ```typescript
 interface Plugin {
-  name: string
-  version: string
-  dependencies?: string[]      // Plugins this depends on (must be loaded first)
-  priority?: number            // Higher = runs first (default: 0)
-  conflictsWith?: string[]     // Incompatible plugins
+  /** Unique plugin name (e.g., '@kysera/soft-delete') */
+  readonly name: string
 
-  // Lifecycle - called once during createORM
+  /** Plugin version (semantic versioning) */
+  readonly version: string
+
+  /** Plugins this depends on (must be loaded first) */
+  readonly dependencies?: readonly string[]
+
+  /** Higher priority = runs first (default: 0) */
+  readonly priority?: number
+
+  /** Incompatible plugins */
+  readonly conflictsWith?: readonly string[]
+
+  /**
+   * Lifecycle: Called once when plugin is initialized
+   * Use for setup, validation, or checking database schema
+   */
   onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
 
-  // Query interception - modify QueryBuilder before execution
-  interceptQuery?<QB extends AnyQueryBuilder>(
-    qb: QB,
-    context: QueryBuilderContext
-  ): QB
+  /**
+   * Query interception: Modify query builder before execution
+   * Works in both Repository and DAL patterns
+   * Applied to: selectFrom, insertInto, updateTable, deleteFrom
+   */
+  interceptQuery?<QB>(qb: QB, context: QueryBuilderContext): QB
 
-  // Result handling (defined but not currently used in execution chain)
-  afterQuery?(context: QueryContext, result: unknown): Promise<unknown> | unknown
-  onError?(context: QueryContext, error: unknown): Promise<void> | void
-
-  // Repository extension - add/wrap methods after creation
+  /**
+   * Repository extensions: Add methods to repositories
+   * Repository pattern only (not available in DAL)
+   */
   extendRepository?<T extends object>(repo: T): T
 }
 
 interface QueryBuilderContext {
-  operation: 'select' | 'insert' | 'update' | 'delete'
-  table: string
-  metadata: Record<string, unknown>  // Shared across plugin chain
+  /** Type of operation: 'select' | 'insert' | 'update' | 'delete' */
+  readonly operation: 'select' | 'insert' | 'update' | 'delete'
+
+  /** Table name being queried */
+  readonly table: string
+
+  /** Metadata shared across plugin chain */
+  readonly metadata: Record<string, unknown>
 }
 ```
-
-:::info Note on afterQuery and onError
-The `afterQuery` and `onError` hooks are defined in the interface but are not currently integrated into the execution chain. They are reserved for future use.
-:::
 
 ## Plugin Order
 
@@ -159,24 +177,30 @@ const orm = await createORM(db, [
 
 ## Plugin Validation
 
-Kysera validates plugins for:
-- Missing dependencies
-- Circular dependencies
-- Conflicting plugins
-- Duplicate names
+The **@kysera/executor** package validates plugins during initialization to ensure correctness:
+
+**Validation checks:**
+- ✅ No duplicate plugin names
+- ✅ All dependencies are present
+- ✅ No circular dependencies (detected via DFS)
+- ✅ No conflicting plugins
 
 ```typescript
-import { validatePlugins } from '@kysera/repository'
+import { validatePlugins, PluginValidationError } from '@kysera/executor'
 
 try {
   validatePlugins([pluginA, pluginB])
 } catch (error) {
   if (error instanceof PluginValidationError) {
-    console.log(error.code)    // 'MISSING_DEPENDENCY' | 'CIRCULAR_DEPENDENCY' | 'CONFLICT'
-    console.log(error.details)
+    console.log(error.type)    // 'DUPLICATE_NAME' | 'MISSING_DEPENDENCY' | 'CIRCULAR_DEPENDENCY' | 'CONFLICT'
+    console.log(error.details) // { pluginName, missingDependency?, conflictingPlugin?, cycle? }
   }
 }
 ```
+
+**Validation happens automatically:**
+- When calling `createORM(db, plugins)` (via `createExecutor`)
+- When calling `createExecutor(db, plugins)` directly
 
 ## Creating Custom Plugins
 

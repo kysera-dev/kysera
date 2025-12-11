@@ -1,3 +1,4 @@
+// @ts-nocheck - Test file with mock objects
 /**
  * Comprehensive Soft Delete Plugin Tests
  *
@@ -1253,7 +1254,7 @@ describe('Soft Delete Plugin - Additional Edge Cases', () => {
     it('should have correct name and version', () => {
       const plugin = softDeletePlugin();
       expect(plugin.name).toBe('@kysera/soft-delete');
-      expect(plugin.version).toBe('0.5.1');
+      expect(plugin.version).toBe('0.7.0');
     });
   });
 

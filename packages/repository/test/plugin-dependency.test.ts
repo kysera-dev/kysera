@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDatabase, seedTestData } from './setup/database.js';
+import { createORM } from '../src/plugin.js';
 import {
-  createORM,
+  type Plugin,
   validatePlugins,
   resolvePluginOrder,
   PluginValidationError,
-  type Plugin,
-} from '../src/plugin.js';
+} from '@kysera/executor';
 import type { Kysely } from 'kysely';
 import type { TestDatabase } from './setup/database.js';
 
@@ -57,7 +57,7 @@ describe('Plugin Dependency Resolution', () => {
         validatePlugins(plugins);
       } catch (e) {
         const error = e as PluginValidationError;
-        expect(error.code).toBe('DUPLICATE_NAME');
+        expect(error.type).toBe('DUPLICATE_NAME');
         expect(error.details.pluginName).toBe('duplicate');
       }
     });
@@ -73,7 +73,7 @@ describe('Plugin Dependency Resolution', () => {
         validatePlugins(plugins);
       } catch (e) {
         const error = e as PluginValidationError;
-        expect(error.code).toBe('MISSING_DEPENDENCY');
+        expect(error.type).toBe('MISSING_DEPENDENCY');
         expect(error.details.pluginName).toBe('dependent');
         expect(error.details.missingDependency).toBe('missing-plugin');
       }
@@ -91,7 +91,7 @@ describe('Plugin Dependency Resolution', () => {
         validatePlugins(plugins);
       } catch (e) {
         const error = e as PluginValidationError;
-        expect(error.code).toBe('CONFLICT');
+        expect(error.type).toBe('CONFLICT');
         expect(error.details.pluginName).toBe('plugin-b');
         expect(error.details.conflictingPlugin).toBe('plugin-a');
       }
@@ -109,7 +109,7 @@ describe('Plugin Dependency Resolution', () => {
         validatePlugins(plugins);
       } catch (e) {
         const error = e as PluginValidationError;
-        expect(error.code).toBe('CIRCULAR_DEPENDENCY');
+        expect(error.type).toBe('CIRCULAR_DEPENDENCY');
         expect(error.details.cycle).toBeDefined();
       }
     });
@@ -127,7 +127,7 @@ describe('Plugin Dependency Resolution', () => {
         validatePlugins(plugins);
       } catch (e) {
         const error = e as PluginValidationError;
-        expect(error.code).toBe('CIRCULAR_DEPENDENCY');
+        expect(error.type).toBe('CIRCULAR_DEPENDENCY');
       }
     });
 

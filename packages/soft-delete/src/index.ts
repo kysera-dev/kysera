@@ -1,4 +1,5 @@
-import type { Plugin, AnyQueryBuilder, Repository } from '@kysera/repository';
+import type { Plugin, QueryBuilderContext } from '@kysera/executor';
+import { getRawDb } from '@kysera/executor';
 import type { SelectQueryBuilder, Kysely } from 'kysely';
 import { sql } from 'kysely';
 import { NotFoundError, silentLogger } from '@kysera/core';
@@ -88,8 +89,9 @@ export interface SoftDeleteMethods<T> {
 
 /**
  * Repository extended with soft delete methods
+ * Note: Repository type is from @kysera/repository
  */
-export type SoftDeleteRepository<Entity, DB> = Repository<Entity, DB> & SoftDeleteMethods<Entity>;
+export type SoftDeleteRepository<Entity> = any & SoftDeleteMethods<Entity>;
 
 interface BaseRepository {
   tableName: string;
@@ -202,7 +204,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
   return {
     name: '@kysera/soft-delete',
-    version: '0.5.1',
+    version: '0.7.0',
 
     /**
      * Intercept queries to automatically filter soft-deleted records.
@@ -214,11 +216,10 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
      * - Use hardDelete() method to bypass soft delete and perform a real DELETE
      *
      * This approach is simpler and more explicit than full query interception.
+     *
+     * Works with both Repository and DAL patterns through the unified executor layer.
      */
-    interceptQuery<QB extends AnyQueryBuilder>(
-      qb: QB,
-      context: { operation: string; table: string; metadata: Record<string, unknown> }
-    ): QB {
+    interceptQuery<QB>(qb: QB, context: QueryBuilderContext): QB {
       // Check if table supports soft delete
       const supportsSoftDelete = !tables || tables.includes(context.table);
 
@@ -283,29 +284,34 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
       logger.debug(`Extending repository for table ${baseRepo.tableName} with soft delete methods`);
 
-      // Wrap original methods to apply soft delete filtering
-      const originalFindAll = baseRepo.findAll.bind(baseRepo);
-      const originalFindById = baseRepo.findById.bind(baseRepo);
+      // Get raw db for queries that need to bypass interceptors
+      const rawDb = getRawDb(baseRepo.executor);
 
       const extendedRepo = {
         ...baseRepo,
 
         // Override base methods to filter soft-deleted records
+        // Use rawDb to avoid double filtering from interceptor
         async findAll(): Promise<unknown[]> {
           if (!includeDeleted) {
-            const result = await baseRepo.executor
+            const result = await rawDb
               .selectFrom(baseRepo.tableName)
               .selectAll()
               .where(deletedAtColumn as never, 'is', null)
               .execute();
             return result as unknown[];
           }
-          return await originalFindAll();
+          // Include deleted: return all records
+          const result = await rawDb
+            .selectFrom(baseRepo.tableName)
+            .selectAll()
+            .execute();
+          return result as unknown[];
         },
 
         async findById(id: number): Promise<unknown> {
           if (!includeDeleted) {
-            const result = await baseRepo.executor
+            const result = await rawDb
               .selectFrom(baseRepo.tableName)
               .selectAll()
               .where(primaryKeyColumn as never, '=', id as never)
@@ -313,44 +319,31 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
               .executeTakeFirst();
             return result ?? null;
           }
-          // When includeDeleted is true, use custom PK column if configured
-          // Otherwise fall back to original method (which uses 'id')
-          if (primaryKeyColumn !== 'id') {
-            const result = await baseRepo.executor
-              .selectFrom(baseRepo.tableName)
-              .selectAll()
-              .where(primaryKeyColumn as never, '=', id as never)
-              .executeTakeFirst();
-            return result ?? null;
-          }
-          return await originalFindById(id);
+          // Include deleted: find by id regardless of deleted status
+          const result = await rawDb
+            .selectFrom(baseRepo.tableName)
+            .selectAll()
+            .where(primaryKeyColumn as never, '=', id as never)
+            .executeTakeFirst();
+          return result ?? null;
         },
 
         async softDelete(id: number): Promise<unknown> {
           logger.info(`Soft deleting record ${id} from ${baseRepo.tableName}`);
-          // Use CURRENT_TIMESTAMP directly in SQL to avoid datetime format issues
-          // This works across all databases (MySQL, PostgreSQL, SQLite)
-          // We bypass repository.update() to avoid Zod validation issues with RawBuilder
-          await baseRepo.executor
+          // Use rawDb to bypass interceptors (UPDATE doesn't need filtering anyway)
+          await rawDb
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: sql`CURRENT_TIMESTAMP` } as never)
             .where(primaryKeyColumn as never, '=', id as never)
             .execute();
 
-          // Fetch the updated record to verify it exists
-          // Use custom PK column if configured
-          let record;
-          if (primaryKeyColumn !== 'id') {
-            record = await baseRepo.executor
-              .selectFrom(baseRepo.tableName)
-              .selectAll()
-              .where(primaryKeyColumn as never, '=', id as never)
-              .executeTakeFirst();
-          } else {
-            record = await originalFindById(id);
-          }
+          // Fetch the updated record - use rawDb to see the just-deleted record
+          const record = await rawDb
+            .selectFrom(baseRepo.tableName)
+            .selectAll()
+            .where(primaryKeyColumn as never, '=', id as never)
+            .executeTakeFirst();
 
-          // If record not found or deleted_at not set, throw error
           if (!record) {
             logger.warn(`Record ${id} not found in ${baseRepo.tableName} for soft delete`);
             throw new NotFoundError('Record', { id });
@@ -361,24 +354,18 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
         async restore(id: number): Promise<unknown> {
           logger.info(`Restoring soft-deleted record ${id} from ${baseRepo.tableName}`);
-          // Use direct executor to support custom primary key columns
-          await baseRepo.executor
+          await rawDb
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: null } as never)
             .where(primaryKeyColumn as never, '=', id as never)
             .execute();
 
-          // Fetch and return the restored record
-          let record;
-          if (primaryKeyColumn !== 'id') {
-            record = await baseRepo.executor
-              .selectFrom(baseRepo.tableName)
-              .selectAll()
-              .where(primaryKeyColumn as never, '=', id as never)
-              .executeTakeFirst();
-          } else {
-            record = await originalFindById(id);
-          }
+          // Fetch the restored record
+          const record = await rawDb
+            .selectFrom(baseRepo.tableName)
+            .selectAll()
+            .where(primaryKeyColumn as never, '=', id as never)
+            .executeTakeFirst();
 
           if (!record) {
             logger.warn(`Record ${id} not found in ${baseRepo.tableName} for restore`);
@@ -390,33 +377,34 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
         async hardDelete(id: number): Promise<void> {
           logger.info(`Hard deleting record ${id} from ${baseRepo.tableName}`);
-          // Direct hard delete - bypass soft delete
-          await baseRepo.executor
+          await rawDb
             .deleteFrom(baseRepo.tableName)
             .where(primaryKeyColumn as never, '=', id as never)
             .execute();
         },
 
         async findWithDeleted(id: number): Promise<unknown> {
-          // Use custom PK column if configured, otherwise use original method
-          if (primaryKeyColumn !== 'id') {
-            const result = await baseRepo.executor
-              .selectFrom(baseRepo.tableName)
-              .selectAll()
-              .where(primaryKeyColumn as never, '=', id as never)
-              .executeTakeFirst();
-            return result ?? null;
-          }
-          return await originalFindById(id);
+          // Use rawDb to bypass soft-delete filter
+          const result = await rawDb
+            .selectFrom(baseRepo.tableName)
+            .selectAll()
+            .where(primaryKeyColumn as never, '=', id as never)
+            .executeTakeFirst();
+          return result ?? null;
         },
 
         async findAllWithDeleted(): Promise<unknown[]> {
-          // Use original method without filtering
-          return await originalFindAll();
+          // Use rawDb to bypass soft-delete filter and return ALL records
+          const result = await rawDb
+            .selectFrom(baseRepo.tableName)
+            .selectAll()
+            .execute();
+          return result as unknown[];
         },
 
         async findDeleted(): Promise<unknown[]> {
-          const result = await baseRepo.executor
+          // Use rawDb to bypass soft-delete filter, then filter for deleted only
+          const result = await rawDb
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(deletedAtColumn as never, 'is not', null)
@@ -425,28 +413,25 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         },
 
         async softDeleteMany(ids: (number | string)[]): Promise<unknown[]> {
-          // Handle empty arrays gracefully
           if (ids.length === 0) {
             return [];
           }
 
           logger.info(`Soft deleting ${ids.length} records from ${baseRepo.tableName}`);
 
-          // Efficient bulk UPDATE query
-          await baseRepo.executor
+          await rawDb
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: sql`CURRENT_TIMESTAMP` } as never)
             .where(primaryKeyColumn as never, 'in', ids as never)
             .execute();
 
-          // Fetch all affected records to verify and return them
-          const records = await baseRepo.executor
+          // Use rawDb to see the just-deleted records
+          const records = await rawDb
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(primaryKeyColumn as never, 'in', ids as never)
             .execute();
 
-          // Verify all records were found
           if (records.length !== ids.length) {
             const foundIds = records.map((r: any) => r[primaryKeyColumn]);
             const missingIds = ids.filter((id) => !foundIds.includes(id));
@@ -458,22 +443,19 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         },
 
         async restoreMany(ids: (number | string)[]): Promise<unknown[]> {
-          // Handle empty arrays gracefully
           if (ids.length === 0) {
             return [];
           }
 
           logger.info(`Restoring ${ids.length} soft-deleted records from ${baseRepo.tableName}`);
 
-          // Efficient bulk UPDATE query to restore records
-          await baseRepo.executor
+          await rawDb
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: null } as never)
             .where(primaryKeyColumn as never, 'in', ids as never)
             .execute();
 
-          // Fetch all affected records to return them
-          const records = await baseRepo.executor
+          const records = await rawDb
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(primaryKeyColumn as never, 'in', ids as never)
@@ -483,15 +465,13 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         },
 
         async hardDeleteMany(ids: (number | string)[]): Promise<void> {
-          // Handle empty arrays gracefully
           if (ids.length === 0) {
             return;
           }
 
           logger.info(`Hard deleting ${ids.length} records from ${baseRepo.tableName}`);
 
-          // Efficient bulk DELETE query
-          await baseRepo.executor
+          await rawDb
             .deleteFrom(baseRepo.tableName)
             .where(primaryKeyColumn as never, 'in', ids as never)
             .execute();

@@ -1,3 +1,4 @@
+// @ts-nocheck - Test file with mock objects
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDatabase, seedTestData } from './setup/database.js';
 import { softDeletePlugin } from '../src/index.js';

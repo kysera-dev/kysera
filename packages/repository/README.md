@@ -1,2556 +1,650 @@
 # @kysera/repository
 
-> Type-safe repository pattern for Kysely with validation-agnostic design, transaction dependency injection, and zero-config multi-database support.
+Repository pattern implementation with unified plugin support for Kysera ORM.
 
 [![Version](https://img.shields.io/npm/v/@kysera/repository.svg)](https://www.npmjs.com/package/@kysera/repository)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
 
-## 📦 Package Information
+## Overview
 
-| Metric | Value |
-|--------|-------|
-| **Version** | 0.5.1 |
-| **Bundle Size** | ~12 KB (minified) |
-| **Test Coverage** | 127 tests passing |
-| **Dependencies** | @kysera/core (workspace) |
-| **Peer Dependencies** | kysely >=0.28.8, zod ^4.1.13 (optional) |
-| **Target Runtimes** | Node.js 20+, Bun 1.0+, Deno |
-| **Module System** | ESM only |
-| **Database Support** | PostgreSQL, MySQL, SQLite |
+The Repository package provides a traditional ORM-style interface for Kysely with full plugin support via [@kysera/executor](../executor). It supports flexible validation adapters (Zod, Valibot, TypeBox, or custom), CQRS-lite patterns, and works seamlessly with plugins like soft-delete and RLS.
 
-## 🎯 Features
+**Key Features:**
+- Repository pattern with CRUD operations
+- Unified plugin system via [@kysera/executor](../executor)
+- Flexible validation adapters (Zod, Valibot, TypeBox, custom)
+- Primary key flexibility (single, composite, UUID)
+- Bulk operations and pagination
+- CQRS-lite support (Repository writes + DAL reads)
+- Full TypeScript type safety
 
-- ✅ **Repository Pattern** - Clean separation of data access logic
-- ✅ **Type-Safe Factory** - Fully typed repository creation with inference
-- ✅ **Validation Agnostic** - Use Zod, Valibot, TypeBox, or no validation at all
-- ✅ **Smart Validation** - Development/production modes with environment control
-- ✅ **Transaction DI** - Dependency injection via `Executor<DB>` type
-- ✅ **Batch Operations** - `bulkCreate`, `bulkUpdate`, `bulkDelete` with validation
-- ✅ **Multi-Database** - PostgreSQL, MySQL, SQLite with unified API
-- ✅ **Plugin System** - Extensible architecture for custom behaviors
-- ✅ **Zero Config** - Works out of the box with sensible defaults
-- ✅ **Production Ready** - Battle-tested, optimized, fully typed
-
-## 📥 Installation
+## Installation
 
 ```bash
-# npm (with Zod)
-npm install @kysera/repository @kysera/core kysely zod
-
-# pnpm (with Valibot)
-pnpm add @kysera/repository @kysera/core kysely valibot
-
-# bun (with TypeBox)
-bun add @kysera/repository @kysera/core kysely @sinclair/typebox
-
-# deno
-import * as repo from "npm:@kysera/repository"
-
-# No validation library (native adapter)
-npm install @kysera/repository @kysera/core kysely
+pnpm add @kysera/repository kysely
 ```
 
-**Note:** Validation libraries (Zod, Valibot, TypeBox) are optional. You can use the native adapter for zero validation overhead.
+Optional validation libraries:
 
-## 🚀 Quick Start
+```bash
+# For Zod validation
+pnpm add zod
 
-### With Zod (Most Common)
+# For Valibot validation
+pnpm add valibot
+
+# For TypeBox validation
+pnpm add @sinclair/typebox
+```
+
+## Quick Start
+
+### Basic Repository
 
 ```typescript
-import { Kysely, PostgresDialect, Generated } from 'kysely'
-import { Pool } from 'pg'
-import { createRepositoryFactory, zodAdapter } from '@kysera/repository'
-import { z } from 'zod'
+import { createRepositoryFactory, nativeAdapter } from '@kysera/repository';
+import { Kysely } from 'kysely';
 
-// 1. Define database schema
-interface Database {
-  users: {
-    id: Generated<number>
-    email: string
-    name: string
-    created_at: Generated<Date>
-  }
-}
-
-// 2. Define validation schemas
-const CreateUserSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(1)
-})
-
-const UpdateUserSchema = CreateUserSchema.partial()
-
-// 3. Define domain entity
 interface User {
-  id: number
-  email: string
-  name: string
-  created_at: Date
+  id: number;
+  name: string;
+  email: string;
 }
 
-// 4. Create database connection
-const db = new Kysely<Database>({
-  dialect: new PostgresDialect({
-    pool: new Pool({
-      host: 'localhost',
-      database: 'myapp'
-    })
-  })
-})
+interface Database {
+  users: User;
+}
 
-// 5. Create repository factory
-const factory = createRepositoryFactory(db)
+const db: Kysely<Database> = /* ... */;
+const factory = createRepositoryFactory(db);
 
-// 6. Create typed repository
-const userRepo = factory.create<'users', User>({
+const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => ({
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    created_at: row.created_at
-  }),
+  mapRow: (row) => row,
   schemas: {
-    create: zodAdapter(CreateUserSchema),
-    update: zodAdapter(UpdateUserSchema)
-  }
-})
-
-// 7. Use repository (fully typed!)
-const user = await userRepo.create({
-  email: 'alice@example.com',
-  name: 'Alice'
-})
-
-const foundUser = await userRepo.findById(user.id)
-
-const allUsers = await userRepo.findAll()
-
-await userRepo.update(user.id, { name: 'Alice Smith' })
-
-await userRepo.delete(user.id)
-
-// 8. Use in transaction
-await db.transaction().execute(async (trx) => {
-  const txRepo = userRepo.withTransaction(trx)
-  const user1 = await txRepo.create({ email: 'bob@example.com', name: 'Bob' })
-  const user2 = await txRepo.create({ email: 'charlie@example.com', name: 'Charlie' })
-})
-```
-
-### With Valibot
-
-```typescript
-import { createRepositoryFactory, valibotAdapter } from '@kysera/repository'
-import * as v from 'valibot'
-
-const CreateUserSchema = v.object({
-  email: v.string([v.email()]),
-  name: v.string([v.minLength(1)])
-})
-
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: valibotAdapter(CreateUserSchema, v),
-    update: valibotAdapter(v.partial(CreateUserSchema), v)
-  }
-})
-```
-
-### With TypeBox
-
-```typescript
-import { createRepositoryFactory, typeboxAdapter } from '@kysera/repository'
-import { Type } from '@sinclair/typebox'
-import { Value } from '@sinclair/typebox/value'
-
-const CreateUserSchema = Type.Object({
-  email: Type.String({ format: 'email' }),
-  name: Type.String({ minLength: 1 })
-})
-
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: typeboxAdapter(CreateUserSchema, Value)
-  }
-})
-```
-
-### With Native Adapter (No Validation)
-
-```typescript
-import { createRepositoryFactory, nativeAdapter } from '@kysera/repository'
-
-// Zero validation overhead - just type casting
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: nativeAdapter<CreateUserInput>(),
-    update: nativeAdapter<UpdateUserInput>()
-  }
-})
-
-// Data passes through without runtime validation
-const user = await userRepo.create({
-  email: 'alice@example.com',
-  name: 'Alice'
-})
-```
-
-### Backward Compatibility (Auto-Detection)
-
-For backward compatibility, Zod schemas are automatically detected and wrapped:
-
-```typescript
-// Old way (still works!)
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: CreateUserSchema,  // Zod schema detected automatically
-    update: UpdateUserSchema
-  }
-})
-
-// New way (explicit, recommended)
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: zodAdapter(CreateUserSchema),
-    update: zodAdapter(UpdateUserSchema)
-  }
-})
-```
-
----
-
-## 📚 Table of Contents
-
-1. [Repository Factory Pattern](#-repository-factory-pattern)
-   - [Basic Usage](#basic-usage)
-   - [Type Inference](#type-inference)
-   - [Repository Configuration](#repository-configuration)
-2. [CRUD Operations](#-crud-operations)
-   - [Create](#create)
-   - [Read](#read)
-   - [Update](#update)
-   - [Delete](#delete)
-3. [Batch Operations](#-batch-operations)
-   - [Bulk Create](#bulk-create)
-   - [Bulk Update](#bulk-update)
-   - [Bulk Delete](#bulk-delete)
-4. [Validation Adapters](#-validation-adapters)
-   - [ValidationSchema Interface](#validationschema-interface)
-   - [Zod Adapter](#zod-adapter)
-   - [Valibot Adapter](#valibot-adapter)
-   - [TypeBox Adapter](#typebox-adapter)
-   - [Native Adapter](#native-adapter)
-   - [Custom Adapter](#custom-adapter)
-   - [Backward Compatibility](#backward-compatibility-1)
-5. [Validation](#-validation)
-   - [Input Validation](#input-validation)
-   - [Result Validation](#result-validation)
-   - [Validation Strategies](#validation-strategies)
-   - [Environment Variables](#environment-variables)
-6. [Transaction Support](#-transaction-support)
-   - [Executor Pattern](#executor-pattern)
-   - [withTransaction Method](#withtransaction-method)
-   - [Repository Bundle Pattern](#repository-bundle-pattern)
-6. [Query Operations](#-query-operations)
-   - [Find Methods](#find-methods)
-   - [Count and Exists](#count-and-exists)
-   - [Pagination](#pagination)
-7. [Type Utilities](#-type-utilities)
-8. [Plugin System](#-plugin-system)
-9. [Multi-Database Support](#-multi-database-support)
-10. [API Reference](#-api-reference)
-11. [Best Practices](#-best-practices)
-12. [Performance](#-performance)
-13. [Migration Guide](#-migration-guide)
-
----
-
-## 🏭 Repository Factory Pattern
-
-The repository factory provides type-safe repository creation with full TypeScript inference.
-
-### Basic Usage
-
-```typescript
-import { createRepositoryFactory } from '@kysera/repository'
-
-// Create factory from database connection
-const factory = createRepositoryFactory(db)
-
-// Create repository with type parameters
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => ({
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    created_at: row.created_at
-  }),
-  schemas: {
-    create: CreateUserSchema,
-    update: UpdateUserSchema
-  }
-})
-```
-
-### Type Inference
-
-The factory provides full type inference:
-
-```typescript
-// ✅ Type-safe: tableName must be keyof Database
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',  // ✅ Valid
-  // ...
-})
-
-// ❌ Type error: 'invalid' is not a valid table name
-const invalidRepo = factory.create<'invalid', User>({
-  tableName: 'invalid',  // ❌ TypeScript error
-  // ...
-})
-
-// ✅ mapRow receives correctly typed row
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => {
-    // row is typed as Selectable<Database['users']>
-    // Full autocomplete and type checking!
-    return {
-      id: row.id,          // ✅ number
-      email: row.email,    // ✅ string
-      name: row.name       // ✅ string
-    }
+    create: nativeAdapter<{ name: string; email: string }>(),
   },
-  schemas: { create: CreateUserSchema }
-})
+});
+
+// CRUD operations
+const user = await userRepo.create({ name: 'Alice', email: 'alice@example.com' });
+const found = await userRepo.findById(user.id);
+const updated = await userRepo.update(user.id, { name: 'Alice Smith' });
+await userRepo.delete(user.id);
 ```
 
-### Repository Configuration
+### With Zod Validation
 
 ```typescript
-interface RepositoryConfig<Table, Entity> {
-  // Table name (must be keyof Database)
-  tableName: string
+import { createRepositoryFactory, zodAdapter } from '@kysera/repository';
+import { z } from 'zod';
 
-  // Map database row to domain entity
-  mapRow: (row: Selectable<Table>) => Entity
-
-  // ValidationSchema-compatible validators
-  schemas: {
-    entity?: ValidationSchema<Entity>      // Optional entity validation
-    create: ValidationSchema               // Required for create operations
-    update?: ValidationSchema              // Optional for update
-  }
-
-  // Validate database results (default: NODE_ENV === 'development')
-  validateDbResults?: boolean
-
-  // Validation strategy (default: 'strict')
-  validationStrategy?: 'none' | 'strict'
-}
-```
-
-#### Configuration Examples
-
-**Minimal Configuration (with Zod):**
-```typescript
-import { zodAdapter } from '@kysera/repository'
-
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: zodAdapter(CreateUserSchema)
-  }
-})
-```
-
-**With Valibot:**
-```typescript
-import * as v from 'valibot'
-import { valibotAdapter } from '@kysera/repository'
-
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: valibotAdapter(CreateUserSchema, v),
-    update: valibotAdapter(v.partial(CreateUserSchema), v)
-  }
-})
-```
-
-**With Native Adapter (no validation):**
-```typescript
-import { nativeAdapter } from '@kysera/repository'
-
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: nativeAdapter<CreateUserInput>(),
-    update: nativeAdapter<UpdateUserInput>()
-  }
-})
-```
-
-**Full Configuration (with Zod):**
-```typescript
-import { zodAdapter } from '@kysera/repository'
-
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-
-  mapRow: (row) => ({
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    created_at: new Date(row.created_at)  // Type conversion
-  }),
-
-  schemas: {
-    entity: zodAdapter(UserSchema),         // Validate results
-    create: zodAdapter(CreateUserSchema),   // Validate create input
-    update: zodAdapter(UpdateUserSchema)    // Validate update input
-  },
-
-  validateDbResults: true,      // Always validate results
-  validationStrategy: 'strict'  // Throw on validation errors
-})
-```
-
----
-
-## 📝 CRUD Operations
-
-All repositories implement a consistent CRUD interface with full type safety.
-
-### Create
-
-```typescript
-// Single create
-const user = await userRepo.create({
-  email: 'alice@example.com',
-  name: 'Alice'
-})
-// Returns: User { id: 1, email: 'alice@example.com', name: 'Alice', ... }
-
-// Validation happens automatically
-await userRepo.create({
-  email: 'invalid-email',  // ❌ Throws ZodError
-  name: 'Bob'
-})
-
-await userRepo.create({
-  email: 'bob@example.com',
-  name: ''  // ❌ Throws ZodError (min length 1)
-})
-```
-
-### Read
-
-#### findById
-
-```typescript
-const user = await userRepo.findById(1)
-// Returns: User | null
-
-if (user) {
-  console.log(user.email)  // ✅ Type-safe access
-}
-```
-
-#### findAll
-
-```typescript
-const users = await userRepo.findAll()
-// Returns: User[]
-
-users.forEach(user => {
-  console.log(user.name)  // ✅ Fully typed
-})
-```
-
-#### findByIds
-
-```typescript
-const users = await userRepo.findByIds([1, 2, 3])
-// Returns: User[]
-
-console.log(users.length)  // Could be 0-3 depending on what exists
-```
-
-#### find (with conditions)
-
-```typescript
-// Find by single condition
-const activeUsers = await userRepo.find({
-  where: { active: true }
-})
-
-// Find by multiple conditions (AND logic)
-const specificUsers = await userRepo.find({
-  where: {
-    role: 'admin',
-    active: true,
-    department: 'engineering'
-  }
-})
-
-// Find all (no conditions)
-const allUsers = await userRepo.find()
-```
-
-#### findOne
-
-```typescript
-// Find first matching record
-const admin = await userRepo.findOne({
-  where: { role: 'admin' }
-})
-// Returns: User | null
-
-// Find first record (no conditions)
-const anyUser = await userRepo.findOne()
-```
-
-### Update
-
-```typescript
-// Update single record
-const updatedUser = await userRepo.update(1, {
-  name: 'Alice Smith'
-})
-// Returns: User (throws if not found)
-
-// Validation happens automatically
-await userRepo.update(1, {
-  email: 'invalid-email'  // ❌ Throws ZodError
-})
-
-// Partial updates work
-await userRepo.update(1, {
-  name: 'New Name'  // Only updates name, email unchanged
-})
-
-// Update not found
-await userRepo.update(999, { name: 'Test' })
-// ❌ Throws: "Record with id 999 not found"
-```
-
-### Delete
-
-```typescript
-// Delete single record
-const deleted = await userRepo.delete(1)
-// Returns: boolean (true if deleted, false if not found)
-
-if (deleted) {
-  console.log('User deleted successfully')
-}
-
-// Delete non-existent record
-const result = await userRepo.delete(999)
-// Returns: false (no error thrown)
-```
-
----
-
-## 📦 Batch Operations
-
-Efficient bulk operations with validation and type safety.
-
-### Bulk Create
-
-```typescript
-// Create multiple records at once
-const users = await userRepo.bulkCreate([
-  { email: 'alice@example.com', name: 'Alice' },
-  { email: 'bob@example.com', name: 'Bob' },
-  { email: 'charlie@example.com', name: 'Charlie' }
-])
-// Returns: User[] (array of created users)
-
-console.log(users.length)  // 3
-users.forEach(user => {
-  console.log(`Created user ${user.id}: ${user.name}`)
-})
-
-// Each item is validated independently
-await userRepo.bulkCreate([
-  { email: 'valid@example.com', name: 'Valid' },
-  { email: 'invalid-email', name: 'Invalid' }  // ❌ Throws on second item
-])
-
-// Empty array returns empty array
-const result = await userRepo.bulkCreate([])
-// Returns: []
-```
-
-### Bulk Update
-
-```typescript
-// Update multiple records
-const updated = await userRepo.bulkUpdate([
-  { id: 1, data: { name: 'Alice Updated' } },
-  { id: 2, data: { name: 'Bob Updated' } },
-  { id: 3, data: { email: 'newemail@example.com' } }
-])
-// Returns: User[] (array of updated users)
-
-// Throws if any record not found
-await userRepo.bulkUpdate([
-  { id: 1, data: { name: 'Valid' } },
-  { id: 999, data: { name: 'Invalid' } }  // ❌ Throws: "Failed to update record with id 999: Record not found"
-])
-
-// Validation applied to each update
-await userRepo.bulkUpdate([
-  { id: 1, data: { email: 'invalid-email' } }  // ❌ Throws ZodError
-])
-```
-
-#### Bulk Update Performance
-
-```typescript
-// Updates are executed in parallel for performance
-// This is equivalent to:
-const promises = updates.map(({ id, data }) =>
-  userRepo.update(id, data)
-)
-const results = await Promise.all(promises)
-
-// For atomic updates, wrap in transaction:
-await db.transaction().execute(async (trx) => {
-  const txRepo = userRepo.withTransaction(trx)
-  await txRepo.bulkUpdate(updates)
-  // All updates committed together or all rolled back
-})
-```
-
-### Bulk Delete
-
-```typescript
-// Delete multiple records by IDs
-const deletedCount = await userRepo.bulkDelete([1, 2, 3])
-// Returns: number (count of deleted records)
-
-console.log(`Deleted ${deletedCount} users`)  // e.g., "Deleted 3 users"
-
-// Returns 0 for non-existent IDs (no error)
-const count = await userRepo.bulkDelete([999, 1000])
-// Returns: 0
-
-// Empty array returns 0
-const result = await userRepo.bulkDelete([])
-// Returns: 0
-```
-
----
-
-## 🔌 Validation Adapters
-
-Kysera Repository uses a validation-agnostic design through the `ValidationSchema` interface. This allows you to use any validation library (Zod, Valibot, TypeBox) or no validation at all.
-
-### ValidationSchema Interface
-
-All adapters implement this unified interface:
-
-```typescript
-interface ValidationSchema<T = unknown> {
-  /**
-   * Parse and validate data.
-   * @throws ValidationError if validation fails
-   */
-  parse(data: unknown): T
-
-  /**
-   * Safe parse without throwing.
-   * Returns success/failure result with data or error.
-   */
-  safeParse(data: unknown): ValidationResult<T>
-
-  /**
-   * Optional: Returns a new schema that makes all fields optional.
-   */
-  partial?(): ValidationSchema<Partial<T>>
-}
-
-type ValidationResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: ValidationError }
-```
-
-### Zod Adapter
-
-The `zodAdapter` wraps Zod schemas to implement the `ValidationSchema` interface:
-
-```typescript
-import { z } from 'zod'
-import { zodAdapter } from '@kysera/repository'
-
-const UserSchema = z.object({
+const CreateUserSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  age: z.number().int().positive().optional()
-})
+});
 
-const validator = zodAdapter(UserSchema)
-
-// Use validator
-const user = validator.parse({ name: 'Alice', email: 'alice@example.com' })
-
-// Safe parse
-const result = validator.safeParse({ name: 'Bob' })
-if (result.success) {
-  console.log(result.data)
-} else {
-  console.error(result.error)
-}
-
-// Partial schema
-const partialValidator = validator.partial?.()
-const updateData = partialValidator?.parse({ name: 'Bob' }) // Only name, email optional
-```
-
-**Automatic Zod Detection:**
-
-```typescript
-// Zod schemas are auto-detected (backward compatibility)
-const userRepo = factory.create<'users', User>({
+const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row as User,
+  mapRow: (row) => row,
   schemas: {
-    create: UserSchema,  // Automatically wrapped with zodAdapter
-    update: UserSchema.partial()
-  }
-})
+    create: zodAdapter(CreateUserSchema),
+    update: zodAdapter(CreateUserSchema.partial()),
+  },
+});
 
-// Explicit is better (recommended)
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: zodAdapter(UserSchema),
-    update: zodAdapter(UserSchema.partial())
-  }
-})
+// Validation happens automatically
+const user = await userRepo.create({
+  name: 'Bob',
+  email: 'invalid-email' // Throws validation error
+});
 ```
 
-### Valibot Adapter
+## Core API
 
-The `valibotAdapter` wraps Valibot schemas:
+### createORM
+
+Create an ORM instance with unified plugin management via [@kysera/executor](../executor).
 
 ```typescript
-import * as v from 'valibot'
-import { valibotAdapter } from '@kysera/repository'
+import { createORM } from '@kysera/repository';
+import { softDeletePlugin } from '@kysera/soft-delete';
+import { rlsPlugin } from '@kysera/rls';
 
-const UserSchema = v.object({
-  name: v.string([v.minLength(1)]),
-  email: v.string([v.email()]),
-  age: v.optional(v.number([v.integer(), v.minValue(1)]))
-})
-
-const validator = valibotAdapter(UserSchema, v)
-
-// Use validator
-const user = validator.parse({ name: 'Alice', email: 'alice@example.com' })
-
-// Safe parse
-const result = validator.safeParse({ name: 'Bob', email: 'bob@example.com' })
-if (result.success) {
-  console.log(result.data)
-}
-
-// Partial schema (if v.partial is available)
-const partialValidator = validator.partial?.()
+const orm = await createORM(db, [
+  softDeletePlugin(),
+  rlsPlugin({ schema: rlsSchema }),
+]);
 ```
 
-**In Repository:**
+**ORM Interface:**
 
 ```typescript
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: valibotAdapter(UserSchema, v),
-    update: valibotAdapter(v.partial(UserSchema), v)
-  }
-})
-```
+interface PluginOrm<DB> {
+  // Plugin-aware executor (Kysely instance with plugin interception)
+  executor: Kysely<DB>;
 
-### TypeBox Adapter
+  // Create a repository with plugin support
+  createRepository<T>(factory: (executor: Kysely<DB>, applyPlugins: ApplyPluginsFunction) => T): T;
 
-The `typeboxAdapter` wraps TypeBox schemas:
+  // Apply plugin interceptors to query builders
+  applyPlugins<QB>(qb: QB, operation: string, table: string, metadata?: Record<string, unknown>): QB;
 
-```typescript
-import { Type } from '@sinclair/typebox'
-import { Value } from '@sinclair/typebox/value'
-import { typeboxAdapter } from '@kysera/repository'
+  // Registered plugins in resolved dependency order
+  plugins: readonly Plugin[];
 
-const UserSchema = Type.Object({
-  name: Type.String({ minLength: 1 }),
-  email: Type.String({ format: 'email' }),
-  age: Type.Optional(Type.Integer({ minimum: 1 }))
-})
+  // Create a DAL context with ORM plugins
+  createContext(): DbContext<DB>;
 
-const validator = typeboxAdapter(UserSchema, Value)
-
-// Use validator
-const user = validator.parse({ name: 'Alice', email: 'alice@example.com' })
-
-// Safe parse
-const result = validator.safeParse({ name: 'Bob', email: 'bob@example.com' })
-if (result.success) {
-  console.log(result.data)
+  // Execute a transaction with both Repository and DAL patterns
+  transaction<T>(fn: (ctx: DbContext<DB>) => Promise<T>): Promise<T>;
 }
 ```
 
-**In Repository:**
+### createRepositoryFactory
+
+Create a factory for building type-safe repositories.
 
 ```typescript
-const userRepo = factory.create<'users', User>({
+import { createRepositoryFactory } from '@kysera/repository';
+
+const factory = createRepositoryFactory(db);
+
+const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: typeboxAdapter(UserSchema, Value)
-  }
-})
-```
-
-**Note:** TypeBox adapter doesn't support `partial()` automatically. Create a separate partial schema:
-
-```typescript
-const UpdateUserSchema = Type.Partial(UserSchema)
-
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: typeboxAdapter(UserSchema, Value),
-    update: typeboxAdapter(UpdateUserSchema, Value)
-  }
-})
-```
-
-### Native Adapter
-
-The `nativeAdapter` provides zero validation overhead by simply casting types:
-
-```typescript
-import { nativeAdapter } from '@kysera/repository'
-
-interface CreateUserInput {
-  name: string
-  email: string
-  age?: number
-}
-
-interface UpdateUserInput {
-  name?: string
-  email?: string
-  age?: number
-}
-
-const validator = nativeAdapter<CreateUserInput>()
-
-// No runtime validation - just type casting
-const user = validator.parse({ name: 'Alice', email: 'alice@example.com' })
-```
-
-**In Repository:**
-
-```typescript
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
+  primaryKey: 'id',           // Optional, default: 'id'
+  primaryKeyType: 'number',   // Optional, default: 'number'
+  mapRow: (row) => row,
   schemas: {
     create: nativeAdapter<CreateUserInput>(),
-    update: nativeAdapter<UpdateUserInput>()
-  }
-})
-
-// Data passes through without validation
-const user = await userRepo.create({
-  name: 'Alice',
-  email: 'alice@example.com'
-})
-```
-
-**Use Cases:**
-- High-performance systems where validation is done elsewhere
-- Trusted data sources (internal microservices)
-- Prototyping and development
-- When you want compile-time type safety without runtime overhead
-
-### Custom Adapter
-
-Create your own adapter from a validation function:
-
-```typescript
-import { customAdapter } from '@kysera/repository'
-
-const emailValidator = customAdapter<string>((data) => {
-  if (typeof data !== 'string') {
-    throw new Error('Must be a string')
-  }
-  if (!data.includes('@')) {
-    throw new Error('Invalid email format')
-  }
-  return data
-})
-
-// Use in validation
-const email = emailValidator.parse('alice@example.com') // 'alice@example.com'
-emailValidator.parse('invalid') // throws Error
-
-// Safe parse
-const result = emailValidator.safeParse('test@example.com')
-if (result.success) {
-  console.log(result.data)
-}
-```
-
-**Complex Example:**
-
-```typescript
-interface User {
-  name: string
-  email: string
-  age: number
-}
-
-const userValidator = customAdapter<User>((data) => {
-  if (typeof data !== 'object' || data === null) {
-    throw new Error('User must be an object')
-  }
-
-  const user = data as Record<string, unknown>
-
-  if (typeof user['name'] !== 'string' || user['name'].length === 0) {
-    throw new Error('Name must be a non-empty string')
-  }
-
-  if (typeof user['email'] !== 'string' || !user['email'].includes('@')) {
-    throw new Error('Email must be valid')
-  }
-
-  if (typeof user['age'] !== 'number' || user['age'] < 0) {
-    throw new Error('Age must be a positive number')
-  }
-
-  return {
-    name: user['name'],
-    email: user['email'],
-    age: user['age']
-  }
-})
-
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: userValidator
-  }
-})
-```
-
-### Backward Compatibility
-
-For seamless migration, Kysera automatically detects and wraps Zod schemas:
-
-```typescript
-import { z } from 'zod'
-import { normalizeSchema } from '@kysera/repository'
-
-const UserSchema = z.object({ name: z.string() })
-
-// Automatic detection and wrapping
-const validator = normalizeSchema(UserSchema)
-// Returns: zodAdapter(UserSchema)
-
-// Works transparently in repositories
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: UserSchema  // Automatically normalized to ValidationSchema
-  }
-})
-```
-
-**isValidationSchema Helper:**
-
-```typescript
-import { isValidationSchema } from '@kysera/repository'
-
-// Check if value implements ValidationSchema
-if (isValidationSchema(someSchema)) {
-  const result = someSchema.safeParse(data)
-}
-```
-
----
-
-## ✅ Validation
-
-Smart validation with configurable per environment modes.
-
-### Input Validation
-
-Input validation **always** happens (cannot be disabled):
-
-```typescript
-import { z } from 'zod'
-import { zodAdapter } from '@kysera/repository'
-
-const CreateUserSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(1).max(100),
-  age: z.number().int().positive().optional()
-})
-
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: zodAdapter(CreateUserSchema)
-  }
-})
-
-// ✅ Valid input
-await userRepo.create({
-  email: 'alice@example.com',
-  name: 'Alice',
-  age: 30
-})
-
-// ❌ Invalid email
-await userRepo.create({
-  email: 'not-an-email',
-  name: 'Bob'
-})
-// Throws: ValidationError with details
-
-// ❌ Name too long
-await userRepo.create({
-  email: 'bob@example.com',
-  name: 'B'.repeat(101)
-})
-// Throws: ValidationError
-
-// ❌ Missing required field
-await userRepo.create({
-  email: 'charlie@example.com'
-  // name missing
-})
-// Throws: ValidationError
-```
-
-### Result Validation
-
-Result validation is **optional** and controlled by environment:
-
-```typescript
-import { z } from 'zod'
-import { zodAdapter } from '@kysera/repository'
-
-const UserSchema = z.object({
-  id: z.number(),
-  email: z.string().email(),
-  name: z.string(),
-  created_at: z.date()
-})
-
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => ({
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    created_at: new Date(row.created_at)
-  }),
-  schemas: {
-    entity: zodAdapter(UserSchema),  // Enable result validation
-    create: zodAdapter(CreateUserSchema)
+    update: nativeAdapter<UpdateUserInput>(),
   },
-  validateDbResults: true  // Explicitly enable (default: NODE_ENV === 'development')
-})
-
-// Database results are validated against UserSchema
-const user = await userRepo.findById(1)
-// If database returns invalid data, throws ValidationError
+});
 ```
 
-#### When to Use Result Validation
+## Plugin Integration
 
-**Enable in development:**
-- Catch schema mismatches early
-- Detect data type issues
-- Validate date conversions
-- Debug data integrity issues
+Plugins work by intercepting queries and extending repository interfaces. The ORM uses [@kysera/executor](../executor) internally for unified plugin management.
 
-**Disable in production:**
-- Better performance (no validation overhead)
-- Trust your database schema
-- Validation already happened on input
-
-### Validation Strategies
-
-Control validation behavior:
+### Using Plugins with ORM
 
 ```typescript
-import { zodAdapter } from '@kysera/repository'
+import { createORM } from '@kysera/repository';
+import { softDeletePlugin } from '@kysera/soft-delete';
 
-// Strategy: 'strict' (default)
-// Throws on validation errors
-const strictRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: zodAdapter(CreateUserSchema)
-  },
-  validationStrategy: 'strict'
-})
+const orm = await createORM(db, [softDeletePlugin()]);
 
-await strictRepo.create({ email: 'invalid' })
-// ❌ Throws ValidationError
+// Create repository with plugin extensions
+const userRepo = orm.createRepository((executor, applyPlugins) => {
+  const factory = createRepositoryFactory(executor);
+  return factory.create({
+    tableName: 'users',
+    mapRow: (row) => row,
+    schemas: {
+      create: nativeAdapter<CreateUserInput>(),
+    },
+  });
+});
 
-// Strategy: 'none'
-// Skips input validation (not recommended!)
-const unsafeRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: zodAdapter(CreateUserSchema)
-  },
-  validationStrategy: 'none'
-})
-
-await unsafeRepo.create({ email: 'invalid' })
-// ⚠️ No validation, passes invalid data to database
+// Plugin methods are automatically available
+await userRepo.create({ name: 'Alice', email: 'alice@example.com' });
+await userRepo.softDelete(1);  // Added by soft-delete plugin
+await userRepo.restore(1);     // Added by soft-delete plugin
 ```
 
-### Environment Variables
+### Plugin Lifecycle
 
-Control validation globally via environment variables:
+1. **Validation** - Plugins validated for conflicts and dependencies
+2. **Resolution** - Plugins sorted by priority and dependencies
+3. **Initialization** - `plugin.onInit()` called (if defined)
+4. **Interception** - `plugin.interceptQuery()` applied to all queries
+5. **Extension** - `plugin.extendRepository()` adds methods to repositories
 
-```bash
-# Priority order (highest to lowest):
-
-# 1. KYSERA_VALIDATION_MODE (recommended)
-export KYSERA_VALIDATION_MODE=always    # Validate in all environments
-export KYSERA_VALIDATION_MODE=never     # Never validate results
-export KYSERA_VALIDATION_MODE=development  # Validate only in dev
-export KYSERA_VALIDATION_MODE=production   # Never validate
-
-# 2. KYSERA_VALIDATE (backward compatibility)
-export KYSERA_VALIDATE=always
-export KYSERA_VALIDATE=never
-
-# 3. VALIDATE_DB_RESULTS (legacy)
-export VALIDATE_DB_RESULTS=always
-export VALIDATE_DB_RESULTS=never
-
-# 4. NODE_ENV (default behavior)
-export NODE_ENV=development  # Enables result validation
-export NODE_ENV=production   # Disables result validation
-```
-
-#### Validation Configuration Examples
-
-**Development (default):**
-```bash
-NODE_ENV=development
-# Result validation: ✅ Enabled
-# Input validation: ✅ Always enabled
-```
-
-**Production (default):**
-```bash
-NODE_ENV=production
-# Result validation: ❌ Disabled (performance)
-# Input validation: ✅ Always enabled
-```
-
-**Force validation in production:**
-```bash
-NODE_ENV=production
-KYSERA_VALIDATION_MODE=always
-# Result validation: ✅ Enabled
-# Input validation: ✅ Always enabled
-```
-
-**Disable validation in development:**
-```bash
-NODE_ENV=development
-KYSERA_VALIDATION_MODE=never
-# Result validation: ❌ Disabled
-# Input validation: ✅ Always enabled (cannot disable)
-```
-
----
-
-## 🔄 Transaction Support
-
-Repositories support transaction dependency injection via the `Executor<DB>` pattern.
-
-### Executor Pattern
-
-The `Executor<DB>` type accepts both `Kysely<DB>` and `Transaction<DB>`:
+### Manual Plugin Application
 
 ```typescript
-import type { Executor } from '@kysera/repository'
+const orm = await createORM(db, [softDeletePlugin()]);
 
-// Executor type = Kysely<DB> | Transaction<DB>
-function createUserRepository(executor: Executor<Database>) {
-  const factory = createRepositoryFactory(executor)
-  return factory.create<'users', User>({ /* ... */ })
-}
+// Manually apply plugins to custom queries
+let query = orm.executor.selectFrom('users').selectAll();
 
-// Works with database instance
-const repo1 = createUserRepository(db)
-await repo1.findAll()
+query = orm.applyPlugins(query, 'select', 'users', {
+  customMetadata: 'value'
+});
 
-// Works with transaction
-await db.transaction().execute(async (trx) => {
-  const repo2 = createUserRepository(trx)
-  await repo2.create({ email: 'test@example.com', name: 'Test' })
-})
+const users = await query.execute();
 ```
 
-### withTransaction Method
+## CQRS-lite Pattern
 
-Every repository has a `withTransaction` method:
+Combine Repository writes with DAL reads in the same transaction with shared plugins.
 
 ```typescript
-// Create repository with db
-const userRepo = factory.create<'users', User>({ /* ... */ })
+import { createORM } from '@kysera/repository';
+import { createQuery } from '@kysera/dal';
+import { softDeletePlugin } from '@kysera/soft-delete';
 
-// Use in transaction
-await db.transaction().execute(async (trx) => {
-  const txRepo = userRepo.withTransaction(trx)
+const orm = await createORM(db, [softDeletePlugin()]);
 
-  const user1 = await txRepo.create({ email: 'alice@example.com', name: 'Alice' })
-  const user2 = await txRepo.create({ email: 'bob@example.com', name: 'Bob' })
+// Define DAL query for complex reads
+const getUserStats = createQuery((ctx, userId: number) =>
+  ctx.db
+    .selectFrom('users')
+    .leftJoin('posts', 'posts.user_id', 'users.id')
+    .select([
+      'users.id',
+      'users.name',
+      (eb) => eb.fn.count('posts.id').as('postCount'),
+    ])
+    .where('users.id', '=', userId)
+    .groupBy(['users.id', 'users.name'])
+    .executeTakeFirst()
+);
 
-  // Both commits together or both rollback on error
-})
+// Use in transaction with Repository
+const result = await orm.transaction(async (ctx) => {
+  // Create repository for writes
+  const userRepo = orm.createRepository((executor) => {
+    const factory = createRepositoryFactory(executor);
+    return factory.create({
+      tableName: 'users',
+      mapRow: (row) => row,
+      schemas: { create: nativeAdapter<CreateUserInput>() },
+    });
+  });
+
+  // Write: Create user via Repository
+  const user = await userRepo.create({
+    name: 'Alice',
+    email: 'alice@example.com',
+  });
+
+  // Read: Get stats via DAL (plugins automatically applied)
+  const stats = await getUserStats(ctx, user.id);
+
+  return { user, stats };
+});
 ```
 
-### Repository Bundle Pattern
+**Benefits:**
+- Separation of concerns (Repository for writes, DAL for complex reads)
+- Shared transaction context
+- Plugins apply to both patterns
+- Full type safety
 
-Create multiple repositories at once for cleaner transaction code:
+## Repository API
+
+All repositories implement the `BaseRepository` interface:
+
+### Core Operations
 
 ```typescript
-import { createRepositoriesFactory } from '@kysera/repository'
+// Create
+const user = await repo.create({ name: 'Alice', email: 'alice@example.com' });
 
-// Define repository factories
-const createUserRepo = (executor: Executor<Database>) => {
-  const factory = createRepositoryFactory(executor)
-  return factory.create<'users', User>({ /* ... */ })
-}
+// Read
+const found = await repo.findById(1);
+const all = await repo.findAll();
+const filtered = await repo.find({ where: { name: 'Alice' } });
+const one = await repo.findOne({ where: { email: 'alice@example.com' } });
 
-const createPostRepo = (executor: Executor<Database>) => {
-  const factory = createRepositoryFactory(executor)
-  return factory.create<'posts', Post>({ /* ... */ })
-}
+// Update
+const updated = await repo.update(1, { name: 'Alice Smith' });
 
-const createCommentRepo = (executor: Executor<Database>) => {
-  const factory = createRepositoryFactory(executor)
-  return factory.create<'comments', Comment>({ /* ... */ })
-}
-
-// Create bundle factory
-const createRepositories = createRepositoriesFactory({
-  users: createUserRepo,
-  posts: createPostRepo,
-  comments: createCommentRepo
-})
-
-// Use with database
-const repos = createRepositories(db)
-await repos.users.findAll()
-await repos.posts.findById(1)
-
-// Use in transaction (clean one-liner!)
-await db.transaction().execute(async (trx) => {
-  const repos = createRepositories(trx)
-
-  // All operations in same transaction
-  const user = await repos.users.create({ email: 'alice@example.com', name: 'Alice' })
-  const post = await repos.posts.create({ userId: user.id, title: 'Hello World' })
-  const comment = await repos.comments.create({ postId: post.id, text: 'Great post!' })
-})
+// Delete
+const deleted = await repo.delete(1); // Returns true if deleted
 ```
 
-#### Complex Transaction Example
+### Bulk Operations
 
 ```typescript
-async function createUserWithProfile(
-  email: string,
-  name: string,
-  profileData: ProfileData
-): Promise<{ user: User, profile: Profile }> {
-  return db.transaction().execute(async (trx) => {
-    const repos = createRepositories(trx)
+// Bulk create
+const users = await repo.bulkCreate([
+  { name: 'Alice', email: 'alice@example.com' },
+  { name: 'Bob', email: 'bob@example.com' },
+]);
 
-    // Create user
-    const user = await repos.users.create({ email, name })
+// Bulk update
+const updated = await repo.bulkUpdate([
+  { id: 1, data: { name: 'Alice Smith' } },
+  { id: 2, data: { name: 'Bob Jones' } },
+]);
 
-    // Create profile
-    const profile = await repos.profiles.create({
-      userId: user.id,
-      ...profileData
-    })
-
-    // Create welcome notification
-    await repos.notifications.create({
-      userId: user.id,
-      message: 'Welcome to our platform!'
-    })
-
-    return { user, profile }
-  })
-}
-
-// All operations committed atomically
-const result = await createUserWithProfile(
-  'alice@example.com',
-  'Alice',
-  { bio: 'Developer', website: 'https://alice.dev' }
-)
+// Bulk delete
+const deletedCount = await repo.bulkDelete([1, 2, 3]);
 ```
 
----
-
-## 🔍 Query Operations
-
-Advanced query operations beyond basic CRUD.
-
-### Find Methods
-
-#### find (with where conditions)
+### Queries
 
 ```typescript
-// Find with single condition
-const admins = await userRepo.find({
-  where: { role: 'admin' }
-})
+// Count
+const total = await repo.count();
+const filtered = await repo.count({ where: { active: true } });
 
-// Find with multiple conditions (AND logic)
-const results = await userRepo.find({
-  where: {
-    role: 'admin',
-    active: true,
-    department: 'engineering'
-  }
-})
+// Exists
+const exists = await repo.exists({ where: { email: 'alice@example.com' } });
 
-// Find all
-const all = await userRepo.find()
-```
-
-#### findOne
-
-```typescript
-// Find first match
-const admin = await userRepo.findOne({
-  where: { role: 'admin' }
-})
-
-if (admin) {
-  console.log(`First admin: ${admin.name}`)
-}
-
-// Find first record
-const anyUser = await userRepo.findOne()
-```
-
-### Count and Exists
-
-```typescript
-// Count all records
-const total = await userRepo.count()
-console.log(`Total users: ${total}`)
-
-// Count with conditions
-const activeCount = await userRepo.count({
-  where: { active: true }
-})
-console.log(`Active users: ${activeCount}`)
-
-// Check existence
-const hasUsers = await userRepo.exists()
-console.log(`Has users: ${hasUsers}`)
-
-// Check existence with conditions
-const hasAdmins = await userRepo.exists({
-  where: { role: 'admin' }
-})
-console.log(`Has admins: ${hasAdmins}`)
+// Find by IDs
+const users = await repo.findByIds([1, 2, 3]);
 ```
 
 ### Pagination
 
-#### Offset-based Pagination
+**Offset-based pagination:**
 
 ```typescript
-// Page 1 (first 20 records)
-const page1 = await userRepo.paginate({
-  limit: 20,
+const result = await repo.paginate({
+  limit: 10,
   offset: 0,
   orderBy: 'created_at',
-  orderDirection: 'desc'
-})
+  orderDirection: 'desc',
+});
 
-console.log(`Items: ${page1.items.length}`)
-console.log(`Total: ${page1.total}`)
-console.log(`Limit: ${page1.limit}`)
-console.log(`Offset: ${page1.offset}`)
-
-// Page 2 (next 20 records)
-const page2 = await userRepo.paginate({
-  limit: 20,
-  offset: 20,
-  orderBy: 'created_at',
-  orderDirection: 'desc'
-})
-
-// Calculate total pages
-const totalPages = Math.ceil(page1.total / page1.limit)
+console.log(result.items); // Array of entities
+console.log(result.total); // Total count
+console.log(result.limit); // 10
+console.log(result.offset); // 0
 ```
 
-#### Cursor-based Pagination (Keyset Pagination)
-
-**True keyset pagination with O(1) performance and cursor stability.**
+**Cursor-based pagination:**
 
 ```typescript
-// First page (default: ordered by 'id' ascending)
-const page1 = await userRepo.paginateCursor({
-  limit: 20
-})
+const result = await repo.paginateCursor({
+  limit: 10,
+  orderBy: 'created_at',
+  orderDirection: 'desc',
+});
 
-console.log(`Items: ${page1.items.length}`)          // 20
-console.log(`Has more: ${page1.hasMore}`)            // true/false
-console.log(`Next cursor:`, page1.nextCursor)        // { value: 20, id: 20 }
+console.log(result.items); // Array of entities
+console.log(result.nextCursor); // { value: Date, id: number }
+console.log(result.hasMore); // boolean
 
 // Next page
-if (page1.nextCursor) {
-  const page2 = await userRepo.paginateCursor({
-    limit: 20,
-    cursor: page1.nextCursor
-  })
-}
-
-// Custom ordering (e.g., by created_at descending)
-const recentUsers = await userRepo.paginateCursor({
+const nextPage = await repo.paginateCursor({
   limit: 10,
+  cursor: result.nextCursor,
   orderBy: 'created_at',
-  orderDirection: 'desc'
-})
-
-// Continue pagination
-const nextPage = await userRepo.paginateCursor({
-  limit: 10,
-  cursor: recentUsers.nextCursor,
-  orderBy: 'created_at',
-  orderDirection: 'desc'
-})
+  orderDirection: 'desc',
+});
 ```
 
-**Keyset vs Offset Pagination:**
-
-| Feature | Keyset (Cursor) | Offset |
-|---------|----------------|--------|
-| **Performance** | O(1) constant | O(N) degrades with offset |
-| **Cursor Stability** | ✅ Stable across inserts/deletes | ❌ Shifts with data changes |
-| **Deep Pagination** | ✅ Fast at any depth | ❌ Slow at large offsets |
-| **Random Access** | ❌ Sequential only | ✅ Jump to any page |
-| **Use Case** | Infinite scroll, feeds | Admin tables, reports |
-
-**How it works:**
-
-Keyset pagination uses WHERE clauses instead of OFFSET:
-
-```sql
--- Offset pagination (slow for large offsets)
-SELECT * FROM users ORDER BY id LIMIT 20 OFFSET 1000;  -- Scans 1020 rows
-
--- Keyset pagination (always fast)
-SELECT * FROM users
-WHERE id > 1000                    -- Uses index
-ORDER BY id
-LIMIT 20;                          -- Scans 20 rows
-```
-
-**Tie-breaking with duplicate values:**
-
-When ordering by non-unique columns, `id` is used as a secondary sort for consistent pagination:
+### Transactions
 
 ```typescript
-// Users with duplicate names are paginated consistently
-const page1 = await userRepo.paginateCursor({
-  limit: 2,
-  orderBy: 'name',
-  orderDirection: 'asc'
-})
+await repo.transaction(async (trx) => {
+  const user = await trx
+    .insertInto('users')
+    .values({ name: 'Alice', email: 'alice@example.com' })
+    .returningAll()
+    .executeTakeFirstOrThrow();
 
-// Even with duplicates, pagination is stable and complete
-// Example: Alice (id:1), Alice (id:2), Bob (id:3)
-// Page 1: Alice (id:1), Alice (id:2)
-// Page 2: Bob (id:3)
+  await trx
+    .insertInto('profiles')
+    .values({ user_id: user.id, bio: 'Hello!' })
+    .execute();
+});
 ```
 
----
+## Validation Adapters
 
-## 🎨 Type Utilities
+The repository supports multiple validation libraries through a unified adapter interface.
 
-Useful type utilities for working with repositories.
-
-### Type Extraction
+### Zod Adapter
 
 ```typescript
-import type {
-  Unwrap,
-  DomainType,
-  EntityType,
-  CreateInput,
-  UpdateInput
-} from '@kysera/repository'
+import { z } from 'zod';
+import { zodAdapter } from '@kysera/repository';
 
-interface UsersTable {
-  id: Generated<number>
-  email: string
-  name: string
-  created_at: Generated<Date>
-}
+const UserSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+});
 
-// Remove Generated<> wrapper
-type Id = Unwrap<UsersTable['id']>  // number
-type CreatedAt = Unwrap<UsersTable['created_at']>  // Date
-
-// Convert table type to domain type
-type User = DomainType<UsersTable>
-// { id: number, email: string, name: string, created_at: Date }
-
-// Extract selectable fields
-type UserEntity = EntityType<UsersTable>
-// Same as Selectable<UsersTable>
-
-// Extract create input (omit generated fields)
-type UserCreate = CreateInput<UsersTable>
-// { email: string, name: string }
-
-// Extract update input (all optional)
-type UserUpdate = UpdateInput<UsersTable>
-// { email?: string, name?: string }
-```
-
-### Database Schema Constraint
-
-```typescript
-import type { DatabaseSchema } from '@kysera/repository'
-
-// Ensure all tables have an id field
-interface MyDatabase extends DatabaseSchema {
-  users: {
-    id: Generated<number>
-    email: string
-    // ...
-  }
-  posts: {
-    id: Generated<number>
-    title: string
-    // ...
-  }
-}
-
-// Type error if table missing id:
-interface InvalidDatabase extends DatabaseSchema {
-  users: {
-    // ❌ Error: missing 'id' field
-    email: string
-  }
-}
-```
-
-### Repository Type Extraction
-
-```typescript
-import type { Repository } from '@kysera/repository'
-
-// Extract repository type
-const userRepo = factory.create<'users', User>({ /* ... */ })
-
-type UserRepository = typeof userRepo
-// Repository<User, Database>
-
-// Use in function signatures
-async function findUserByEmail(
-  repo: UserRepository,
-  email: string
-): Promise<User | null> {
-  return repo.findOne({ where: { email } })
-}
-```
-
----
-
-## 🔌 Plugin System
-
-Extend repository behavior with plugins.
-
-### Plugin Interface
-
-```typescript
-interface Plugin {
-  name: string
-  version: string
-
-  // Lifecycle hooks
-  onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
-
-  // Query interceptors (modify queries)
-  interceptQuery?<QB>(qb: QB, context: QueryBuilderContext): QB
-
-  // Result interceptors (post-execution)
-  afterQuery?(context: QueryContext, result: unknown): Promise<unknown> | unknown
-  onError?(context: QueryContext, error: unknown): Promise<void> | void
-
-  // Repository extensions
-  extendRepository?<T>(repo: T): T
-}
-```
-
-### Creating a Plugin
-
-```typescript
-import { Plugin } from '@kysera/repository'
-
-const auditPlugin: Plugin = {
-  name: 'audit-plugin',
-  version: '1.0.0',
-
-  async onInit(executor) {
-    console.log('Audit plugin initialized')
+const repo = factory.create({
+  tableName: 'users',
+  mapRow: (row) => row,
+  schemas: {
+    create: zodAdapter(UserSchema),
+    update: zodAdapter(UserSchema.partial()),
   },
+});
+```
 
-  interceptQuery(qb, context) {
-    console.log(`Query: ${context.operation} on ${context.table}`)
-    return qb
+### Valibot Adapter
+
+```typescript
+import * as v from 'valibot';
+import { valibotAdapter } from '@kysera/repository';
+
+const UserSchema = v.object({
+  name: v.string([v.minLength(1)]),
+  email: v.string([v.email()]),
+});
+
+const repo = factory.create({
+  tableName: 'users',
+  mapRow: (row) => row,
+  schemas: {
+    create: valibotAdapter(UserSchema, v),
   },
+});
+```
 
-  async afterQuery(context, result) {
-    console.log(`Result: ${JSON.stringify(result)}`)
-    return result
+### TypeBox Adapter
+
+```typescript
+import { Type } from '@sinclair/typebox';
+import { Value } from '@sinclair/typebox/value';
+import { typeboxAdapter } from '@kysera/repository';
+
+const UserSchema = Type.Object({
+  name: Type.String({ minLength: 1 }),
+  email: Type.String({ format: 'email' }),
+});
+
+const repo = factory.create({
+  tableName: 'users',
+  mapRow: (row) => row,
+  schemas: {
+    create: typeboxAdapter(UserSchema, Value),
   },
+});
+```
 
-  async onError(context, error) {
-    console.error(`Error in ${context.operation}:`, error)
+### Native Adapter (No Validation)
+
+```typescript
+import { nativeAdapter } from '@kysera/repository';
+
+const repo = factory.create({
+  tableName: 'users',
+  mapRow: (row) => row,
+  schemas: {
+    create: nativeAdapter<CreateUserInput>(),
   },
+});
+```
 
-  extendRepository(repo) {
-    // Add custom methods
-    return {
-      ...repo,
-      customMethod() {
-        console.log('Custom method called')
-      }
-    }
+### Custom Adapter
+
+```typescript
+import { customAdapter } from '@kysera/repository';
+
+const isPositiveNumber = customAdapter<number>((data) => {
+  if (typeof data !== 'number' || data <= 0) {
+    throw new Error('Must be a positive number');
   }
-}
+  return data;
+});
 ```
 
-### Using Plugins
+## Primary Key Configuration
+
+Repositories support flexible primary key configurations.
+
+### Default (id: number)
 
 ```typescript
-import { createORM } from '@kysera/repository'
-
-// Create ORM with plugins
-const orm = await createORM(db, [auditPlugin, softDeletePlugin])
-
-// Create repository with plugin support
-const userRepo = orm.createRepository((executor, applyPlugins) => {
-  const factory = createRepositoryFactory(executor)
-  return factory.create<'users', User>({ /* ... */ })
-})
-
-// All operations now go through plugins
-await userRepo.create({ email: 'test@example.com', name: 'Test' })
-// Logs: "Query: insert on users"
-// Logs: "Result: {...}"
+const repo = factory.create({
+  tableName: 'users',
+  // primaryKey defaults to 'id'
+  // primaryKeyType defaults to 'number'
+  mapRow: (row) => row,
+  schemas: { create: nativeAdapter() },
+});
 ```
 
-### withPlugins Helper
+### Custom Column Name
 
 ```typescript
-import { withPlugins } from '@kysera/repository'
+const repo = factory.create({
+  tableName: 'users',
+  primaryKey: 'user_id',
+  primaryKeyType: 'number',
+  mapRow: (row) => row,
+  schemas: { create: nativeAdapter() },
+});
+```
 
-// Simpler plugin integration
+### UUID Primary Key
+
+```typescript
+const repo = factory.create({
+  tableName: 'users',
+  primaryKey: 'id',
+  primaryKeyType: 'uuid',
+  mapRow: (row) => row,
+  schemas: { create: nativeAdapter() },
+});
+```
+
+### Composite Primary Key
+
+```typescript
+const repo = factory.create({
+  tableName: 'user_roles',
+  primaryKey: ['user_id', 'role_id'],
+  primaryKeyType: 'number',
+  mapRow: (row) => row,
+  schemas: { create: nativeAdapter() },
+});
+
+// Usage with composite key
+const userRole = await repo.findById({ user_id: 1, role_id: 2 });
+await repo.delete({ user_id: 1, role_id: 2 });
+```
+
+## Helper Functions
+
+### withPlugins
+
+Create a repository with plugins in one step:
+
+```typescript
+import { withPlugins } from '@kysera/repository';
+import { softDeletePlugin } from '@kysera/soft-delete';
+
 const userRepo = await withPlugins(
-  (executor) => {
-    const factory = createRepositoryFactory(executor)
-    return factory.create<'users', User>({ /* ... */ })
+  (executor, applyPlugins) => {
+    const factory = createRepositoryFactory(executor);
+    return factory.create({
+      tableName: 'users',
+      mapRow: (row) => row,
+      schemas: { create: nativeAdapter() },
+    });
   },
   db,
-  [auditPlugin, softDeletePlugin]
-)
+  [softDeletePlugin()]
+);
 ```
 
----
+### createSimpleRepository
 
-## 🗄️ Multi-Database Support
-
-Unified API across PostgreSQL, MySQL, and SQLite with automatic adapter detection.
-
-### PostgreSQL
+Create a repository without schemas (useful for plugins):
 
 ```typescript
-import { Kysely, PostgresDialect } from 'kysely'
-import { Pool } from 'pg'
+import { createSimpleRepository } from '@kysera/repository';
 
-const db = new Kysely<Database>({
-  dialect: new PostgresDialect({
-    pool: new Pool({
-      host: 'localhost',
-      database: 'myapp'
-    })
-  })
-})
-
-const factory = createRepositoryFactory(db)
-// ✅ Full support for RETURNING clause
-// ✅ Optimal performance for bulk operations
+const userRepo = createSimpleRepository(
+  db,
+  'users',
+  (row) => row,
+  {
+    primaryKey: 'id',
+    primaryKeyType: 'number',
+  }
+);
 ```
-
-### MySQL
-
-```typescript
-import { Kysely, MysqlDialect } from 'kysely'
-import { createPool } from 'mysql2'
-
-const db = new Kysely<Database>({
-  dialect: new MysqlDialect({
-    pool: createPool({
-      host: 'localhost',
-      database: 'myapp'
-    })
-  })
-})
-
-const factory = createRepositoryFactory(db)
-// ✅ Automatic fallback for operations without RETURNING
-// ✅ Uses insertId and additional SELECT when needed
-```
-
-### SQLite
-
-```typescript
-import { Kysely, SqliteDialect } from 'kysely'
-import Database from 'better-sqlite3'
-
-const db = new Kysely<Database>({
-  dialect: new SqliteDialect({
-    database: new Database('myapp.db')
-  })
-})
-
-const factory = createRepositoryFactory(db)
-// ✅ Full support for RETURNING clause
-// ✅ Works with in-memory databases
-```
-
-### Database-Specific Handling
-
-The repository automatically detects the database type and adapts behavior:
-
-| Operation | PostgreSQL | MySQL | SQLite |
-|-----------|-----------|-------|--------|
-| **INSERT** | `RETURNING *` | `insertId` + SELECT | `RETURNING *` |
-| **UPDATE** | `RETURNING *` | UPDATE + SELECT | `RETURNING *` |
-| **Bulk INSERT** | Single query with `RETURNING *` | Loop with `insertId` + SELECT | Single query with `RETURNING *` |
-| **Boolean Type** | `true`/`false` | `1`/`0` | `1`/`0` |
-
-### Multi-Database Testing
-
-```typescript
-// Test suite runs against all databases
-import { describeAllDatabases } from './test-utils'
-
-describeAllDatabases('User Repository', (getDb) => {
-  it('should create user', async () => {
-    const db = getDb()
-    const factory = createRepositoryFactory(db)
-    const userRepo = factory.create<'users', User>({ /* ... */ })
-
-    const user = await userRepo.create({
-      email: 'test@example.com',
-      name: 'Test User'
-    })
-
-    expect(user.email).toBe('test@example.com')
-    // ✅ Works on PostgreSQL, MySQL, SQLite
-  })
-})
-```
-
----
-
-## 📖 API Reference
-
-### createRepositoryFactory
-
-```typescript
-function createRepositoryFactory<DB>(
-  executor: Executor<DB>
-): RepositoryFactory<DB>
-```
-
-Creates a factory for building type-safe repositories.
-
-**Parameters:**
-- `executor: Executor<DB>` - Kysely instance or Transaction
-
-**Returns:** Factory object with `create` method
-
----
-
-### RepositoryFactory.create
-
-```typescript
-create<TableName extends keyof DB & string, Entity>(
-  config: RepositoryConfig<DB[TableName], Entity>
-): Repository<Entity, DB>
-```
-
-Creates a typed repository for a specific table.
-
-**Type Parameters:**
-- `TableName` - Table name from database schema
-- `Entity` - Domain entity type
-
-**Parameters:**
-- `config: RepositoryConfig` - Repository configuration
-
-**Returns:** Fully typed repository instance
-
----
-
-### Repository Interface
-
-```typescript
-interface Repository<Entity, DB> {
-  // Properties
-  readonly executor: Executor<DB>
-  readonly tableName: string
-
-  // Transaction support
-  withTransaction(trx: Transaction<DB>): Repository<Entity, DB>
-  transaction<R>(fn: (trx: Transaction<DB>) => Promise<R>): Promise<R>
-
-  // Single record operations
-  findById(id: number): Promise<Entity | null>
-  findAll(): Promise<Entity[]>
-  create(input: unknown): Promise<Entity>
-  update(id: number, input: unknown): Promise<Entity>
-  delete(id: number): Promise<boolean>
-
-  // Batch operations
-  findByIds(ids: number[]): Promise<Entity[]>
-  bulkCreate(inputs: unknown[]): Promise<Entity[]>
-  bulkUpdate(updates: { id: number, data: unknown }[]): Promise<Entity[]>
-  bulkDelete(ids: number[]): Promise<number>
-
-  // Query operations
-  find(options?: { where?: Record<string, unknown> }): Promise<Entity[]>
-  findOne(options?: { where?: Record<string, unknown> }): Promise<Entity | null>
-  count(options?: { where?: Record<string, unknown> }): Promise<number>
-  exists(options?: { where?: Record<string, unknown> }): Promise<boolean>
-
-  // Pagination
-  paginate(options: PaginateOptions): Promise<PaginatedResult<Entity>>
-  paginateCursor(options: CursorOptions): Promise<CursorResult<Entity>>
-}
-```
-
----
 
 ### createRepositoriesFactory
 
-```typescript
-function createRepositoriesFactory<DB, Repos>(
-  factories: RepositoryFactoryMap<DB, Repos>
-): (executor: Executor<DB>) => Repos
-```
-
-Creates a bundle factory for multiple repositories.
-
-**Parameters:**
-- `factories: RepositoryFactoryMap` - Map of repository factory functions
-
-**Returns:** Function that creates all repositories from an executor
-
-**Example:**
-```typescript
-const createRepos = createRepositoriesFactory({
-  users: createUserRepo,
-  posts: createPostRepo
-})
-
-const repos = createRepos(db)
-// repos.users: UserRepository
-// repos.posts: PostRepository
-```
-
----
-
-### Validation Adapter Functions
-
-#### zodAdapter
+Create a bundle of repositories for use in transactions:
 
 ```typescript
-function zodAdapter<T>(schema: ZodLikeSchema<T>): ValidationSchema<T>
-```
-
-Wraps a Zod schema to implement the ValidationSchema interface.
-
-**Parameters:**
-- `schema: ZodLikeSchema<T>` - Zod schema with parse/safeParse methods
-
-**Returns:** ValidationSchema-compatible validator
-
-**Example:**
-```typescript
-import { z } from 'zod'
-import { zodAdapter } from '@kysera/repository'
-
-const UserSchema = z.object({ name: z.string() })
-const validator = zodAdapter(UserSchema)
-
-const user = validator.parse({ name: 'Alice' })
-```
-
----
-
-#### valibotAdapter
-
-```typescript
-function valibotAdapter<T>(
-  schema: ValibotSchema<T>,
-  valibot: { parse, safeParse, partial? }
-): ValidationSchema<T>
-```
-
-Wraps a Valibot schema to implement the ValidationSchema interface.
-
-**Parameters:**
-- `schema: ValibotSchema<T>` - Valibot schema
-- `valibot` - Valibot module (import * as v from 'valibot')
-
-**Returns:** ValidationSchema-compatible validator
-
-**Example:**
-```typescript
-import * as v from 'valibot'
-import { valibotAdapter } from '@kysera/repository'
-
-const UserSchema = v.object({ name: v.string() })
-const validator = valibotAdapter(UserSchema, v)
-```
-
----
-
-#### typeboxAdapter
-
-```typescript
-function typeboxAdapter<T>(
-  schema: TypeBoxSchema,
-  Value: { Check, Parse, Errors }
-): ValidationSchema<T>
-```
-
-Wraps a TypeBox schema to implement the ValidationSchema interface.
-
-**Parameters:**
-- `schema: TypeBoxSchema` - TypeBox TSchema
-- `Value` - TypeBox Value module from '@sinclair/typebox/value'
-
-**Returns:** ValidationSchema-compatible validator
-
-**Example:**
-```typescript
-import { Type } from '@sinclair/typebox'
-import { Value } from '@sinclair/typebox/value'
-import { typeboxAdapter } from '@kysera/repository'
-
-const UserSchema = Type.Object({ name: Type.String() })
-const validator = typeboxAdapter(UserSchema, Value)
-```
-
----
-
-#### nativeAdapter
-
-```typescript
-function nativeAdapter<T>(): ValidationSchema<T>
-```
-
-Creates a passthrough adapter with no runtime validation (type casting only).
-
-**Returns:** ValidationSchema-compatible validator that performs no validation
-
-**Example:**
-```typescript
-import { nativeAdapter } from '@kysera/repository'
-
-interface User { name: string; email: string }
-const validator = nativeAdapter<User>()
-
-// No runtime validation, just type casting
-const user = validator.parse({ name: 'Alice', email: 'alice@example.com' })
-```
-
----
-
-#### customAdapter
-
-```typescript
-function customAdapter<T>(
-  validateFn: (data: unknown) => T
-): ValidationSchema<T>
-```
-
-Creates a custom adapter from a validation function.
-
-**Parameters:**
-- `validateFn: (data: unknown) => T` - Function that validates and returns data, or throws
-
-**Returns:** ValidationSchema-compatible validator
-
-**Example:**
-```typescript
-import { customAdapter } from '@kysera/repository'
-
-const emailValidator = customAdapter<string>((data) => {
-  if (typeof data !== 'string' || !data.includes('@')) {
-    throw new Error('Invalid email')
-  }
-  return data
-})
-```
-
----
-
-#### normalizeSchema
-
-```typescript
-function normalizeSchema<T>(
-  schema: ValidationSchema<T> | ZodLikeSchema<T>
-): ValidationSchema<T>
-```
-
-Automatically detects and wraps Zod schemas for backward compatibility.
-
-**Parameters:**
-- `schema` - ValidationSchema or Zod schema
-
-**Returns:** ValidationSchema (wraps Zod if needed)
-
----
-
-#### isValidationSchema
-
-```typescript
-function isValidationSchema(value: unknown): value is ValidationSchema
-```
-
-Type guard to check if a value implements ValidationSchema interface.
-
-**Parameters:**
-- `value: unknown` - Value to check
-
-**Returns:** `true` if value is a ValidationSchema
-
----
-
-### Validation Functions
-
-#### getValidationMode
-
-```typescript
-function getValidationMode(): 'always' | 'never' | 'development' | 'production'
-```
-
-Gets current validation mode from environment variables.
-
----
-
-#### shouldValidate
-
-```typescript
-function shouldValidate(options?: ValidationOptions): boolean
-```
-
-Determines if validation should be enabled.
-
-**Parameters:**
-- `options?: ValidationOptions` - Optional validation options
-
-**Returns:** `true` if validation should be enabled
-
----
-
-#### createValidator
-
-```typescript
-function createValidator<T>(
-  schema: ValidationSchema<T>,
-  options?: ValidationOptions
-): Validator<T>
-```
-
-Creates a validator wrapper with multiple validation methods.
-
-**Parameters:**
-- `schema: ValidationSchema<T>` - Any ValidationSchema-compatible validator
-
-**Returns:**
-```typescript
-interface Validator<T> {
-  validate(data: unknown): T                    // Throws on error
-  validateSafe(data: unknown): T | null         // Returns null on error
-  isValid(data: unknown): boolean               // Returns boolean
-  validateConditional(data: unknown): T         // Validates based on mode
-}
-```
-
----
-
-### Plugin Functions
-
-#### createORM
-
-```typescript
-async function createORM<DB>(
-  executor: Kysely<DB>,
-  plugins: Plugin[]
-): Promise<PluginOrm<DB>>
-```
-
-Creates an ORM instance with plugin support.
-
----
-
-#### withPlugins
-
-```typescript
-async function withPlugins<DB, T>(
-  factory: (executor: Kysely<DB>) => T,
-  executor: Kysely<DB>,
-  plugins: Plugin[]
-): Promise<T>
-```
-
-Helper to reduce boilerplate when using plugins.
-
----
-
-### Type Utilities
-
-```typescript
-// Remove Generated<> wrapper
-type Unwrap<T> = T extends Generated<infer U> ? U : T
-
-// Convert table to domain type
-type DomainType<Table> = { [K in keyof Table]: Unwrap<Table[K]> }
-
-// Selectable fields
-type EntityType<Table> = Selectable<Table>
-
-// Create input (omit generated)
-type CreateInput<Table> = { [K in keyof Table as ...]: Table[K] }
-
-// Update input (partial create)
-type UpdateInput<Table> = Partial<CreateInput<Table>>
-
-// Database schema constraint
-type DatabaseSchema = { [K: string]: { id: ..., [key: string]: unknown } }
-
-// Executor type
-type Executor<DB> = Kysely<DB> | Transaction<DB>
-```
-
----
-
-## ✨ Best Practices
-
-### 1. Use Factory Pattern for Consistency
-
-```typescript
-// ✅ Good: Centralized repository creation
-function createUserRepository(executor: Executor<Database>) {
-  const factory = createRepositoryFactory(executor)
-  return factory.create<'users', User>({
-    tableName: 'users',
-    mapRow: (row) => ({ /* ... */ }),
-    schemas: { create: CreateUserSchema, update: UpdateUserSchema }
-  })
-}
-
-// Use everywhere
-const userRepo = createUserRepository(db)
+import { createRepositoriesFactory } from '@kysera/repository';
+
+const createRepositories = createRepositoriesFactory({
+  users: (executor) => createUserRepository(executor),
+  posts: (executor) => createPostRepository(executor),
+  comments: (executor) => createCommentRepository(executor),
+});
+
+// Use with database instance
+const repos = createRepositories(db);
+await repos.users.findById(1);
+
+// Use within transaction
 await db.transaction().execute(async (trx) => {
-  const txUserRepo = createUserRepository(trx)
-})
-
-// ❌ Bad: Duplicated configuration
-const userRepo1 = factory.create<'users', User>({ /* config */ })
-const userRepo2 = factory.create<'users', User>({ /* duplicate config */ })
+  const repos = createRepositories(trx);
+  await repos.users.create({ name: 'Alice' });
+  await repos.posts.create({ userId: 1, title: 'Hello' });
+});
 ```
 
-### 2. Always Define Update Schemas
+## Architecture
 
-```typescript
-// ✅ Good: Explicit update schema
-const UpdateUserSchema = z.object({
-  email: z.string().email().optional(),
-  name: z.string().min(1).optional()
-})
+The repository package architecture in v0.7.0:
 
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: CreateUserSchema,
-    update: UpdateUserSchema  // ✅ Explicit
-  }
-})
-
-// ❌ Bad: Relying on automatic partial()
-// May not work correctly with Zod refinements
+```
+@kysera/repository
+├── createORM
+│   └── uses @kysera/executor internally
+│       ├── Validates, resolves, and initializes plugins
+│       ├── Creates plugin-aware executor (Kysely instance)
+│       └── Provides applyPlugins function
+├── createRepositoryFactory
+│   ├── Creates table operations (selectById, insert, update, etc.)
+│   └── Creates base repository (CRUD + pagination + validation)
+└── Plugin integration
+    ├── interceptQuery: Modifies queries before execution
+    └── extendRepository: Adds methods to repository instances
 ```
 
-### 3. Use Repository Bundles for Transactions
-
-```typescript
-// ✅ Good: Clean transaction code
-const createRepos = createRepositoriesFactory({
-  users: createUserRepo,
-  posts: createPostRepo,
-  comments: createCommentRepo
-})
-
-await db.transaction().execute(async (trx) => {
-  const repos = createRepos(trx)
-  const user = await repos.users.create({ /* ... */ })
-  const post = await repos.posts.create({ /* ... */ })
-})
-
-// ❌ Bad: Verbose transaction code
-await db.transaction().execute(async (trx) => {
-  const userRepo = createUserRepository(trx)
-  const postRepo = createPostRepository(trx)
-  const commentRepo = createCommentRepository(trx)
-  // ...
-})
-```
-
-### 4. Enable Result Validation in Development
-
-```typescript
-// .env.development
-NODE_ENV=development
-# Result validation automatically enabled
-
-// .env.production
-NODE_ENV=production
-# Result validation automatically disabled for performance
-```
-
-### 5. Use Batch Operations for Performance
-
-```typescript
-// ✅ Good: Single batch operation
-const users = await userRepo.bulkCreate([
-  { email: 'user1@example.com', name: 'User 1' },
-  { email: 'user2@example.com', name: 'User 2' },
-  { email: 'user3@example.com', name: 'User 3' }
-])
-
-// ❌ Bad: Loop with individual creates
-for (const userData of usersData) {
-  await userRepo.create(userData)  // N database queries!
-}
-```
-
-### 6. Type-Safe Row Mapping
-
-```typescript
-// ✅ Good: Explicit mapping with type conversions
-mapRow: (row: Selectable<Database['users']>) => ({
-  id: row.id,
-  email: row.email,
-  name: row.name,
-  created_at: new Date(row.created_at),  // Convert string to Date
-  deleted_at: row.deleted_at ? new Date(row.deleted_at) : null
-})
-
-// ❌ Bad: Type assertion without conversion
-mapRow: (row) => row as User
-```
-
-### 7. Atomic Bulk Updates
-
-```typescript
-// ✅ Good: Wrap in transaction for atomicity
-await db.transaction().execute(async (trx) => {
-  const txRepo = userRepo.withTransaction(trx)
-  await txRepo.bulkUpdate(updates)
-  // All updates committed together or all rolled back
-})
-
-// ⚠️ OK for non-critical updates: Parallel execution
-await userRepo.bulkUpdate(updates)
-// Updates execute in parallel (faster but not atomic)
-```
-
-### 8. Choose the Right Validation Library
-
-```typescript
-// ✅ Zod: Best for most projects (rich features, great DX)
-import { zodAdapter } from '@kysera/repository'
-schemas: { create: zodAdapter(UserSchema) }
-
-// ✅ Valibot: Best for bundle size (smaller than Zod)
-import { valibotAdapter } from '@kysera/repository'
-schemas: { create: valibotAdapter(UserSchema, v) }
-
-// ✅ TypeBox: Best for JSON Schema compatibility
-import { typeboxAdapter } from '@kysera/repository'
-schemas: { create: typeboxAdapter(UserSchema, Value) }
-
-// ✅ Native: Best for maximum performance (trusted data)
-import { nativeAdapter } from '@kysera/repository'
-schemas: { create: nativeAdapter<CreateInput>() }
-```
-
-**Comparison:**
-
-| Library | Bundle Size | Features | DX | Use When |
-|---------|------------|----------|-----|----------|
-| **Zod** | ~10 KB | Rich | Excellent | Most projects |
-| **Valibot** | ~2 KB | Good | Good | Bundle size matters |
-| **TypeBox** | ~5 KB | JSON Schema | Good | Need JSON Schema |
-| **Native** | 0 KB | None | Basic | Trusted data sources |
-
----
-
-## ⚡ Performance
-
-### Bundle Size
-
-| Module | Size (minified) | Exports |
-|--------|----------------|---------|
-| **repository** | ~2 KB | Factory, Repository interface |
-| **base-repository** | ~1.5 KB | CRUD operations |
-| **table-operations** | ~1 KB | Low-level database operations |
-| **validation** | ~0.5 KB | Validation utilities |
-| **plugin** | ~0.5 KB | Plugin system |
-| **helpers** | ~0.3 KB | Repository bundle factory |
-| **Full Package** | **4.93 KB** | All modules |
-
-### Operation Performance
-
-Benchmarked on PostgreSQL with 1000 records:
-
-| Operation | Time | Notes |
-|-----------|------|-------|
-| **create** | ~2ms | Single INSERT with RETURNING |
-| **findById** | ~1ms | Indexed SELECT |
-| **findAll** | ~15ms | Full table scan |
-| **update** | ~2ms | Single UPDATE with RETURNING |
-| **delete** | ~1ms | Single DELETE |
-| **bulkCreate (10)** | ~5ms | Single INSERT with 10 rows |
-| **bulkCreate (100)** | ~20ms | Single INSERT with 100 rows |
-| **bulkUpdate (10)** | ~15ms | 10 parallel UPDATE queries |
-| **bulkDelete (10)** | ~3ms | Single DELETE with IN clause |
-
-### Database-Specific Performance
-
-#### PostgreSQL (Fastest)
-- ✅ Native `RETURNING *` support
-- ✅ Optimal bulk inserts (single query)
-- ✅ Efficient bulk updates (single query)
-
-#### SQLite (Fast)
-- ✅ Native `RETURNING *` support
-- ✅ Optimal bulk inserts (single query)
-- ⚠️ In-memory mode extremely fast
-
-#### MySQL (Good)
-- ⚠️ No `RETURNING` support (extra SELECT needed)
-- ⚠️ Bulk inserts require loop + SELECT per row
-- ⚠️ ~20% slower than PostgreSQL for bulk operations
-
-### Validation Overhead
-
-| Mode | Overhead per Operation |
-|------|----------------------|
-| **Input validation only** | +0.1ms (always enabled) |
-| **Input + Result validation** | +0.3ms (development) |
-| **No result validation** | +0.1ms (production) |
-
-### Optimization Tips
-
-1. **Batch Operations:** Use `bulkCreate`, `bulkUpdate`, `bulkDelete` instead of loops
-2. **Disable Result Validation:** Set `NODE_ENV=production` for ~2x faster reads
-3. **Use Indexes:** Ensure `id` and foreign keys are indexed
-4. **PostgreSQL First:** Best performance and feature support
-5. **Transaction Batching:** Group multiple operations in transactions
-
----
-
-## 🔄 Migration Guide
-
-### From Raw Kysely
-
-#### Before
-
-```typescript
-// Manual CRUD operations
-const user = await db
-  .selectFrom('users')
-  .selectAll()
-  .where('id', '=', 1)
-  .executeTakeFirst()
-
-await db
-  .insertInto('users')
-  .values({ email: 'test@example.com', name: 'Test' })
-  .execute()
-
-await db
-  .updateTable('users')
-  .set({ name: 'Updated' })
-  .where('id', '=', 1)
-  .execute()
-
-// No validation
-// No type safety for domain entities
-// Verbose queries
-```
-
-#### After
-
-```typescript
-import { createRepositoryFactory } from '@kysera/repository'
-
-const factory = createRepositoryFactory(db)
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: {
-    create: CreateUserSchema,
-    update: UpdateUserSchema
-  }
-})
-
-// Clean, validated, type-safe operations
-const user = await userRepo.findById(1)
-await userRepo.create({ email: 'test@example.com', name: 'Test' })
-await userRepo.update(1, { name: 'Updated' })
-```
-
-### From TypeORM
-
-```typescript
-// TypeORM
-@Entity()
-class User {
-  @PrimaryGeneratedColumn()
-  id: number
-
-  @Column()
-  email: string
-
-  @Column()
-  name: string
-}
-
-const userRepo = dataSource.getRepository(User)
-const user = await userRepo.findOne({ where: { id: 1 } })
-
-// Kysera Repository
-const userRepo = factory.create<'users', User>({
-  tableName: 'users',
-  mapRow: (row) => row as User,
-  schemas: { create: CreateUserSchema }
-})
-
-const user = await userRepo.findById(1)
-```
-
-### From Prisma
-
-```typescript
-// Prisma
-const user = await prisma.user.findUnique({ where: { id: 1 } })
-await prisma.user.create({ data: { email: 'test@example.com', name: 'Test' } })
-
-// Kysera Repository
-const user = await userRepo.findById(1)
-await userRepo.create({ email: 'test@example.com', name: 'Test' })
-
-// Key differences:
-// - Kysera: More control, less magic, type-safe
-// - Prisma: Auto-generated client, migrations included
-// - Kysera: Bring your own migrations, use Kysely's query builder
-```
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! This package follows strict development principles:
-
-- ✅ **Minimal dependencies** (@kysera/core only)
-- ✅ **100% type safe** (TypeScript strict mode)
-- ✅ **95%+ test coverage** (99+ tests)
-- ✅ **Multi-database tested** (PostgreSQL, MySQL, SQLite)
-- ✅ **ESM only** (no CommonJS)
-
-See [CLAUDE.md](../../CLAUDE.md) for development guidelines.
-
----
-
-## 📄 License
-
-MIT © Kysera
-
----
-
-## 🔗 Links
-
-- [GitHub Repository](https://github.com/kysera-dev/kysera)
-- [@kysera/core Documentation](../core/README.md)
-- [Kysely Documentation](https://kysely.dev)
-- [Zod Documentation](https://zod.dev)
-- [Issue Tracker](https://github.com/kysera-dev/kysera/issues)
-
----
-
-**Built with ❤️ for clean, type-safe database access**
+**Key design principles:**
+- **Unified Execution Layer** - [@kysera/executor](../executor) provides plugin interception for both Repository and DAL
+- **Type Safety** - Full TypeScript support with strict typing
+- **Plugin Compatibility** - Both `interceptQuery` and `extendRepository` applied to repositories
+- **Transaction Support** - Plugins automatically propagate through transactions
+
+## Best Practices
+
+1. **Use createORM for plugin management** - Let [@kysera/executor](../executor) handle plugin lifecycle
+2. **Prefer validation** - Use Zod or similar for runtime safety
+3. **Use transactions** - Wrap related operations in transactions
+4. **Leverage CQRS-lite** - Use Repository for writes, DAL for complex reads
+5. **Bulk operations** - Use bulkCreate/bulkUpdate/bulkDelete for efficiency
+6. **Cursor pagination** - Prefer cursor-based pagination for large datasets
+
+## Related Packages
+
+- **[@kysera/executor](../executor)** - Plugin execution layer (used internally)
+- **[@kysera/dal](../dal)** - Functional Data Access Layer for complex queries
+- **[@kysera/soft-delete](../soft-delete)** - Soft delete plugin
+- **[@kysera/audit](../audit)** - Audit logging plugin
+- **[@kysera/timestamps](../timestamps)** - Automatic timestamp plugin
+- **[@kysera/rls](../rls)** - Row-Level Security plugin
+
+## License
+
+MIT

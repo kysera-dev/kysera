@@ -6,7 +6,9 @@ description: Row-level security plugin for multi-tenant applications
 
 # Row-Level Security (RLS) Plugin
 
-Implement declarative authorization policies for multi-tenant applications with automatic query transformation.
+Implement declarative authorization policies for multi-tenant applications with automatic query transformation using AsyncLocalStorage for context propagation.
+
+**New in v0.7**: RLS plugin now uses the unified `@kysera/executor` Plugin interface and works with both **Repository** and **DAL** patterns through query interception.
 
 ## Installation
 
@@ -120,7 +122,7 @@ const rlsSchema = defineRLSSchema<Database>({
 
 ### allow
 
-Grant permission based on condition:
+Grant permission based on condition. Returns `true` to allow access, `false` to deny.
 
 ```typescript
 // Authors can update their own posts
@@ -130,20 +132,39 @@ allow('update', ctx => ctx.auth.userId === ctx.row?.author_id)
 allow(['read', 'create', 'update', 'delete'], ctx =>
   ctx.auth.roles?.includes('admin')
 )
+
+// Multiple operations with options
+allow(['update', 'delete'], ctx => ctx.auth.userId === ctx.row?.author_id, {
+  name: 'ownership-policy',
+  priority: 10
+})
 ```
+
+**Operations:** `'read'`, `'create'`, `'update'`, `'delete'`, `'all'`, or an array of operations.
 
 ### deny
 
-Explicitly deny access:
+Explicitly deny access. Takes precedence over allow policies. Returns `true` to deny access.
 
 ```typescript
 // Never allow deleting system users
 deny('delete', ctx => ctx.row?.is_system === true)
+
+// Prevent banned users from any access
+deny('all', ctx => ctx.auth.attributes?.banned === true, {
+  name: 'block-banned-users',
+  priority: 200  // High priority for deny policies
+})
+
+// Deny all access (no condition defaults to always deny)
+deny('all')
 ```
+
+**Priority:** Deny policies default to priority `100` (higher than allow policies).
 
 ### filter
 
-Add WHERE conditions to queries:
+Add WHERE conditions to SELECT queries. Returns an object with column-value pairs.
 
 ```typescript
 // Tenant isolation
@@ -152,21 +173,42 @@ filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
 // Status-based filtering
 filter('read', ctx =>
   ctx.auth.roles?.includes('admin')
-    ? {}
+    ? {}  // Admins see everything
     : { status: 'active', visibility: 'public' }
 )
+
+// Multiple conditions
+filter('read', ctx => ({
+  tenant_id: ctx.auth.tenantId,
+  deleted_at: null,
+  status: 'published'
+}))
 ```
+
+**Operations:** Only `'read'` or `'all'` (which becomes `'read'`).
 
 ### validate
 
-Validate input data before operations:
+Validate input data before create/update operations. Returns `true` if data is valid, `false` otherwise.
 
 ```typescript
 // Users can only create posts for themselves
 validate('create', ctx =>
   ctx.data?.author_id === ctx.auth.userId
 )
+
+// Validate tenant_id matches user's tenant
+validate('create', ctx => ctx.data?.tenant_id === ctx.auth.tenantId)
+
+// Validate status transitions
+validate('update', ctx => {
+  if (!ctx.data?.status) return true
+  const validStatuses = ['draft', 'published', 'archived']
+  return validStatuses.includes(ctx.data.status)
+})
 ```
+
+**Operations:** `'create'`, `'update'`, or `'all'` (expands to both create and update).
 
 ## Schema Definition
 
@@ -210,10 +252,12 @@ const fullSchema = mergeRLSSchemas(tenantSchema, roleSchema, customSchema)
 
 ## Context Management
 
+RLS uses Node.js `AsyncLocalStorage` to automatically propagate context through async operations without manual parameter passing.
+
 ### Setting Context
 
 ```typescript
-import { rlsContext, createRLSContext, withRLSContext } from '@kysera/rls'
+import { rlsContext, createRLSContext } from '@kysera/rls'
 
 // Express middleware
 app.use(async (req, res, next) => {
@@ -228,41 +272,113 @@ app.use(async (req, res, next) => {
         isSystem: false,
         permissions: user.permissions,
       },
+      timestamp: new Date()
     },
     async () => {
       next()
     }
   )
 })
+
+// Or use the convenience function
+import { withRLSContextAsync } from '@kysera/rls'
+
+await withRLSContextAsync(
+  { auth: { userId: 1, roles: ['user'], tenantId: 'acme' }, timestamp: new Date() },
+  async () => {
+    // Your code here
+  }
+)
+```
+
+### RLS Context Structure
+
+```typescript
+interface RLSContext<TUser = unknown, TMeta = unknown> {
+  auth: RLSAuthContext<TUser>     // Required authentication context
+  request?: RLSRequestContext     // Optional request info (for audit)
+  meta?: TMeta                    // Optional custom metadata
+  timestamp: Date                 // Context creation timestamp
+}
 ```
 
 ### Auth Context Structure
 
 ```typescript
 interface RLSAuthContext<TUser = unknown> {
-  userId: string | number
-  roles: string[]                          // Required
-  tenantId?: string | number
-  organizationIds?: (string | number)[]    // For multi-org scenarios
-  permissions?: string[]                   // Permission strings
-  attributes?: Record<string, unknown>
-  user?: TUser                             // Full user object if needed
-  isSystem?: boolean                       // Bypass all policies
+  userId: string | number          // Required: Unique user identifier
+  roles: string[]                  // Required: User roles array
+  tenantId?: string | number       // Optional: Tenant ID for multi-tenancy
+  organizationIds?: (string | number)[]  // Optional: For multi-org scenarios
+  permissions?: string[]           // Optional: Granular permissions
+  attributes?: Record<string, unknown>   // Optional: Custom attributes
+  user?: TUser                     // Optional: Full user object
+  isSystem?: boolean               // Optional: Bypass all policies (default: false)
 }
 ```
 
-### System Context (Bypass)
+### Context Helper Methods
 
 ```typescript
-// System operations bypass all policies
+// Get current context (throws if not set)
+const ctx = rlsContext.getContext()
+
+// Get current context or null (safe)
+const ctx = rlsContext.getContextOrNull()
+
+// Check if context exists
+if (rlsContext.hasContext()) {
+  // Context is available
+}
+
+// Get auth context
+const auth = rlsContext.getAuth()  // Throws if no context
+
+// Get specific auth properties
+const userId = rlsContext.getUserId()       // Throws if no context
+const tenantId = rlsContext.getTenantId()   // Returns undefined if no tenant
+
+// Check roles and permissions
+if (rlsContext.hasRole('admin')) {
+  // User has admin role
+}
+
+if (rlsContext.hasPermission('posts:delete')) {
+  // User has specific permission
+}
+
+// Check if system context
+if (rlsContext.isSystem()) {
+  // Running in system/bypass mode
+}
+```
+
+### System Context (Bypass RLS)
+
+```typescript
+// Create system context from existing context
+await rlsContext.asSystemAsync(async () => {
+  // All policies bypassed - full data access
+  const allPosts = await postRepo.findAll()
+})
+
+// Synchronous version
+const result = rlsContext.asSystem(() => {
+  // System operations
+  return someValue
+})
+
+// Or set isSystem: true directly
 await rlsContext.runAsync(
-  { auth: { userId: 'system', isSystem: true } },
+  { auth: { userId: 'system', roles: [], isSystem: true }, timestamp: new Date() },
   async () => {
     // Full access to all data
     const allPosts = await postRepo.findAll()
   }
 )
 ```
+
+**Note:** `asSystem()` and `asSystemAsync()` require an existing RLS context and throw `RLSContextError` if none exists.
 
 ## Policy Evaluation
 
@@ -317,6 +433,48 @@ Policies are evaluated differently depending on operation type:
 | **deny** | All mutations | First in mutation guard | If true → throw |
 | **validate** | create, update | After deny | All must be true |
 | **allow** | All mutations | Last | ≥1 must be true |
+
+## Repository Extensions
+
+When using RLS with Repository pattern, the plugin automatically extends repositories with RLS-aware methods.
+
+### withoutRLS
+
+Execute operations bypassing RLS (requires existing context):
+
+```typescript
+// Temporarily bypass RLS for specific operation
+const result = await repo.withoutRLS(async () => {
+  // No RLS filtering applied
+  return repo.findAll()
+})
+```
+
+**Equivalent to:** `rlsContext.asSystemAsync()`
+
+### canAccess
+
+Check if current user can perform operation on a row:
+
+```typescript
+const post = await postRepo.findById(1)
+
+// Check permissions before attempting operation
+const canUpdate = await postRepo.canAccess('update', post)
+if (canUpdate) {
+  await postRepo.update(1, { title: 'New title' })
+} else {
+  throw new Error('Permission denied')
+}
+
+// Check multiple operations
+const canDelete = await postRepo.canAccess('delete', post)
+const canRead = await postRepo.canAccess('read', post)
+```
+
+**Operations:** `'read'`, `'create'`, `'update'`, `'delete'`
+
+**Returns:** `true` if access is allowed, `false` otherwise. Never throws.
 
 ## Multi-Tenant Patterns
 
@@ -420,73 +578,144 @@ allow('read', ctx => {
 - Operation requires authentication but no context was set
 - Should result in a 401 response
 
-## DAL Compatibility
+## DAL Pattern Support (New in v0.7)
 
-:::warning Functional DAL Limitation
-**RLS automatic filtering does not apply to `@kysera/dal` queries.** The RLS plugin is designed for the Repository pattern and intercepts queries through the plugin system, which DAL bypasses.
-:::
+**New in v0.7**: RLS filtering now works automatically with DAL pattern through `@kysera/executor` query interception.
+
+### Usage with DAL
+
+```typescript
+import { createQuery, createContext, withTransaction } from '@kysera/dal'
+import { createExecutor } from '@kysera/executor'
+import { rlsPlugin, defineRLSSchema, filter, rlsContext } from '@kysera/rls'
+
+// Define schema
+const rlsSchema = defineRLSSchema<Database>({
+  posts: {
+    policies: [
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+    ],
+  },
+})
+
+// Create executor with RLS plugin
+const executor = await createExecutor(db, [
+  rlsPlugin({ schema: rlsSchema })
+])
+
+// Define DAL queries
+const getAllPosts = createQuery((ctx) =>
+  ctx.db.selectFrom('posts').selectAll().execute()
+)
+
+const getPostById = createQuery((ctx, id: number) =>
+  ctx.db.selectFrom('posts').where('id', '=', id).executeTakeFirst()
+)
+
+// Use within RLS context
+await rlsContext.runAsync(
+  {
+    auth: { userId: 1, tenantId: 'acme', roles: ['user'] },
+    timestamp: new Date()
+  },
+  async () => {
+    // RLS filter automatically applied
+    const posts = await getAllPosts(createContext(executor))
+
+    // Works in transactions too
+    await withTransaction(executor, async (txCtx) => {
+      const post = await getPostById(txCtx, 1)
+      // RLS filtering still active in transaction
+    })
+  }
+)
+```
 
 ### What Works with DAL
 
-| Feature | Works in DAL? |
-|---------|---------------|
-| `rlsContext.runAsync()` | Yes |
-| `rlsContext.getContextOrNull()` | Yes |
-| `rlsContext.asSystemAsync()` | Yes |
-| Automatic SELECT filtering | **No** |
-| Automatic mutation validation | **No** |
-| `repo.withoutRLS()` | **No** (repository method) |
-| `repo.canAccess()` | **No** (repository method) |
+| Feature | Works in DAL (v0.7)? | Notes |
+|---------|---------------------|-------|
+| `rlsContext.runAsync()` | ✅ Yes | Context management |
+| `rlsContext.getContextOrNull()` | ✅ Yes | Context access |
+| `rlsContext.asSystemAsync()` | ✅ Yes | System bypass |
+| **Automatic SELECT filtering** | ✅ **Yes** | **New in v0.7** via `interceptQuery` |
+| Automatic mutation validation | ❌ No | Repository only (`extendRepository`) |
+| `repo.withoutRLS()` | ❌ No | Repository method only |
+| `repo.canAccess()` | ❌ No | Repository method only |
 
-### Manual RLS in DAL
+### Filter vs Validation Policies
 
-If using DAL with RLS requirements, apply filters manually:
-
-```typescript
-import { createQuery } from '@kysera/dal';
-import { rlsContext } from '@kysera/rls';
-
-const getPostsByTenant = createQuery((ctx) => {
-  const rlsCtx = rlsContext.getContextOrNull();
-
-  let query = ctx.db.selectFrom('posts').selectAll();
-
-  // Apply RLS filter manually
-  if (rlsCtx && !rlsCtx.auth.isSystem && rlsCtx.auth.tenantId) {
-    query = query.where('tenant_id', '=', rlsCtx.auth.tenantId);
-  }
-
-  return query.execute();
-});
-
-// Context is available
-await rlsContext.runAsync(
-  { auth: { userId: 1, tenantId: 'acme', roles: ['user'] } },
-  async () => {
-    const posts = await getPostsByTenant(db);
-  }
-);
-```
+- **Filter policies** (`filter()`) work in **both Repository and DAL** - applied via `interceptQuery()`
+- **Validation policies** (`allow()`, `deny()`, `validate()`) work in **Repository only** - applied via `extendRepository()`
 
 For comprehensive comparison, see [Repository vs DAL Guide](/docs/guides/dal-vs-repository).
 
-## How RLS Works
+## How RLS Works (v0.7 Architecture)
 
-The RLS plugin implements row-level security at the **application layer** using Kysely query transformations. This approach:
+The RLS plugin implements row-level security at the **application layer** using `@kysera/executor` for query transformations:
 
-- Works with any database (PostgreSQL, MySQL, SQLite)
-- Provides consistent behavior across all environments
-- Allows complex policies using JavaScript logic
-- Integrates seamlessly with Kysely's type system
+### Architecture
+
+1. **createORM** or **createExecutor** creates a plugin-aware executor
+2. The executor wraps Kysely with a Proxy that intercepts query methods
+3. RLS plugin's `interceptQuery` hook is called for every query operation
+4. For SELECT queries, filter policies add WHERE conditions
+5. For mutations (INSERT/UPDATE/DELETE), validation happens in `extendRepository`
+6. **Works with both Repository and DAL patterns** via unified Plugin interface
+
+### Query Interception
 
 ```typescript
-// Policies are applied automatically to all queries
-const posts = await postRepo.findAll()
-// SQL: SELECT * FROM posts WHERE tenant_id = $1
+// Plugin implementation (simplified)
+interceptQuery(qb, context) {
+  const rlsCtx = rlsContext.getStore()
 
-// Filter policies add WHERE clauses
-// Validation policies check before write operations
+  if (!rlsCtx && requireContext) {
+    throw new RLSContextError()
+  }
+
+  // Check bypass rules
+  if (rlsCtx?.auth.isSystem) {
+    return qb  // No filtering
+  }
+
+  // Apply filter policies
+  for (const policy of filterPolicies) {
+    if (policy.operations.includes(context.operation)) {
+      const filter = policy.getFilter({ auth: rlsCtx.auth, ...context })
+      qb = qb.where(filter)
+    }
+  }
+
+  return qb
+}
 ```
+
+**Intercepted operations:**
+- `selectFrom` → Automatic filtering via `interceptQuery` (works in both Repository and DAL)
+- `insertInto` → Context available, validation in `extendRepository` (Repository only)
+- `updateTable` → Context available, validation in `extendRepository` (Repository only)
+- `deleteFrom` → Context available, validation in `extendRepository` (Repository only)
+
+### getRawDb() for Internal Queries
+
+When implementing RLS policies that need to fetch existing rows (e.g., for update/delete validation), the plugin uses `getRawDb()` from `@kysera/executor` to bypass RLS filtering and prevent infinite recursion:
+
+```typescript
+import { getRawDb } from '@kysera/executor'
+
+// Inside plugin's extendRepository
+const rawDb = getRawDb(baseRepo.executor)
+
+// Fetch existing row without RLS filtering
+const existingRow = await rawDb
+  .selectFrom(table)
+  .selectAll()
+  .where('id', '=', id)
+  .executeTakeFirst()
+```
+
+This ensures that internal queries used for policy evaluation don't trigger RLS filtering themselves.
 
 :::tip PostgreSQL Native RLS
 If you need PostgreSQL's native RLS for database-level security, you can use it alongside or instead of this plugin. Native RLS policies are enforced at the database level using `current_setting()`:
@@ -504,7 +733,7 @@ Set the context before queries: `SET app.tenant_id = '123'`
 
 ## Best Practices
 
-### 1. Always Set Context
+### 1. Always Set Context with Timestamp
 
 ```typescript
 // Every request should have RLS context
@@ -513,7 +742,18 @@ app.use(async (req, res, next) => {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
-  await rlsContext.runAsync({ auth: req.user }, next)
+  await rlsContext.runAsync(
+    {
+      auth: {
+        userId: req.user.id,
+        roles: req.user.roles,
+        tenantId: req.user.tenantId,
+        isSystem: false
+      },
+      timestamp: new Date()  // Always include timestamp
+    },
+    next
+  )
 })
 ```
 
@@ -522,25 +762,383 @@ app.use(async (req, res, next) => {
 ```typescript
 // Only for background jobs, migrations, etc.
 await rlsContext.runAsync(
-  { auth: { userId: 'system', isSystem: true } },
+  {
+    auth: { userId: 'system', roles: [], isSystem: true },
+    timestamp: new Date()
+  },
   async () => {
     // Full access - use carefully!
+    await runMigration()
   }
 )
 ```
 
-### 3. Test Policies
+### 3. Validate Context Requirements
+
+```typescript
+// Use createRLSContext for validation
+import { createRLSContext } from '@kysera/rls'
+
+try {
+  const ctx = createRLSContext({
+    auth: {
+      userId: user.id,
+      roles: user.roles,  // Required array
+      tenantId: user.tenantId
+    }
+  })
+  // Context is valid, timestamp added automatically
+} catch (error) {
+  // Will throw RLSContextValidationError if invalid
+  console.error('Invalid RLS context:', error.message)
+}
+```
+
+### 4. Test Policies Thoroughly
 
 ```typescript
 describe('Post RLS Policies', () => {
   it('should filter by tenant', async () => {
     await rlsContext.runAsync(
-      { auth: { tenantId: 'acme' } },
+      {
+        auth: { userId: 1, tenantId: 'acme', roles: ['user'] },
+        timestamp: new Date()
+      },
       async () => {
         const posts = await postRepo.findAll()
         expect(posts.every(p => p.tenant_id === 'acme')).toBe(true)
       }
     )
   })
+
+  it('should enforce ownership policies', async () => {
+    await rlsContext.runAsync(
+      {
+        auth: { userId: 2, tenantId: 'acme', roles: ['user'] },
+        timestamp: new Date()
+      },
+      async () => {
+        const post = await postRepo.findById(1)  // Owned by user 1
+        const canUpdate = await postRepo.canAccess('update', post)
+        expect(canUpdate).toBe(false)
+      }
+    )
+  })
+
+  it('should work with DAL queries (v0.7)', async () => {
+    await rlsContext.runAsync(
+      {
+        auth: { userId: 1, tenantId: 'acme', roles: ['user'] },
+        timestamp: new Date()
+      },
+      async () => {
+        const posts = await getAllPosts(createContext(executor))
+        expect(posts.every(p => p.tenant_id === 'acme')).toBe(true)
+      }
+    )
+  })
 })
 ```
+
+### 5. Use Named Policies for Debugging
+
+```typescript
+const rlsSchema = defineRLSSchema<Database>({
+  posts: {
+    policies: [
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }), {
+        name: 'tenant-isolation',
+        priority: 1000
+      }),
+      allow('update', ctx => ctx.auth.userId === ctx.row?.author_id, {
+        name: 'author-ownership'
+      }),
+      deny('delete', ctx => ctx.row?.status === 'published', {
+        name: 'prevent-delete-published',
+        priority: 200
+      })
+    ]
+  }
+})
+```
+
+Named policies provide better error messages and audit logs.
+
+## Complete Usage Examples
+
+### Multi-Tenant SaaS Application
+
+```typescript
+import { createORM } from '@kysera/repository'
+import { rlsPlugin, defineRLSSchema, filter, allow, deny, validate, rlsContext } from '@kysera/rls'
+
+interface Database {
+  users: { id: number; email: string; tenant_id: number; role: string }
+  resources: { id: number; name: string; owner_id: number; tenant_id: number; is_archived: boolean }
+  posts: { id: number; title: string; user_id: number; tenant_id: number; status: string }
+}
+
+// Define RLS schema
+const rlsSchema = defineRLSSchema<Database>({
+  users: {
+    policies: [
+      // Tenant isolation for all reads
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+      // Users can update their own profile
+      allow('update', ctx => ctx.auth.userId === ctx.row?.id),
+      // Admins can update any user in their tenant
+      allow('update', ctx => ctx.auth.roles.includes('admin')),
+      // Only admins can delete users
+      allow('delete', ctx => ctx.auth.roles.includes('admin')),
+      // Cannot delete yourself
+      deny('delete', ctx => ctx.auth.userId === ctx.row?.id, {
+        name: 'prevent-self-delete',
+        priority: 200
+      })
+    ],
+    skipFor: ['superadmin'],  // Superadmins bypass all RLS
+    defaultDeny: true
+  },
+  resources: {
+    policies: [
+      // Tenant isolation
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+      // Owners have full access
+      allow('all', ctx => ctx.auth.userId === ctx.row?.owner_id),
+      // Admins have full access
+      allow('all', ctx => ctx.auth.roles.includes('admin')),
+      // Deny archived resources for non-admins (except read)
+      deny(['update', 'delete'], ctx =>
+        ctx.row?.is_archived && !ctx.auth.roles.includes('admin')
+      )
+    ],
+    defaultDeny: true
+  },
+  posts: {
+    policies: [
+      // Tenant isolation
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+      // Authors can manage their posts
+      allow(['update', 'delete'], ctx => ctx.auth.userId === ctx.row?.user_id),
+      // Editors can update any post
+      allow('update', ctx => ctx.auth.roles.includes('editor')),
+      // Cannot delete published posts
+      deny('delete', ctx => ctx.row?.status === 'published'),
+      // Validate tenant_id on create
+      validate('create', ctx => ctx.data?.tenant_id === ctx.auth.tenantId)
+    ]
+  }
+})
+
+// Create ORM with RLS
+const orm = await createORM(db, [
+  rlsPlugin({ schema: rlsSchema })
+])
+
+// Express middleware
+app.use(async (req, res, next) => {
+  const user = await authenticate(req)
+
+  await rlsContext.runAsync(
+    {
+      auth: {
+        userId: user.id,
+        roles: user.roles,
+        tenantId: user.tenantId,
+        isSystem: false
+      },
+      timestamp: new Date()
+    },
+    next
+  )
+})
+
+// Usage in routes
+app.get('/api/posts', async (req, res) => {
+  // Automatically filtered by tenant_id
+  const posts = await orm.posts.findAll()
+  res.json(posts)
+})
+
+app.put('/api/posts/:id', async (req, res) => {
+  try {
+    const post = await orm.posts.findById(req.params.id)
+
+    // Check access before updating
+    const canUpdate = await orm.posts.canAccess('update', post)
+    if (!canUpdate) {
+      return res.status(403).json({ error: 'Permission denied' })
+    }
+
+    const updated = await orm.posts.update(req.params.id, req.body)
+    res.json(updated)
+  } catch (error) {
+    if (error instanceof RLSPolicyViolation) {
+      return res.status(403).json({ error: error.message })
+    }
+    throw error
+  }
+})
+```
+
+### Role-Based Access Control (RBAC)
+
+```typescript
+import { defineRLSSchema, allow, deny, filter } from '@kysera/rls'
+
+const rbacSchema = defineRLSSchema<Database>({
+  documents: {
+    policies: [
+      // Admins see everything
+      allow('all', ctx => ctx.auth.roles.includes('admin')),
+
+      // Editors can read and update
+      allow(['read', 'update'], ctx => ctx.auth.roles.includes('editor')),
+
+      // Viewers can only read
+      allow('read', ctx => ctx.auth.roles.includes('viewer')),
+
+      // Authors can manage their own documents
+      allow('all', ctx => ctx.auth.userId === ctx.row?.author_id),
+
+      // Hide draft documents from viewers
+      filter('read', ctx =>
+        ctx.auth.roles.includes('viewer')
+          ? { status: 'published' }
+          : {}
+      ),
+
+      // Prevent deletion of published documents
+      deny('delete', ctx => ctx.row?.status === 'published')
+    ],
+    defaultDeny: true
+  }
+})
+```
+
+### Using with DAL Pattern
+
+```typescript
+import { createQuery, createContext, withTransaction } from '@kysera/dal'
+import { createExecutor } from '@kysera/executor'
+import { rlsPlugin, rlsContext } from '@kysera/rls'
+
+// Create executor with RLS
+const executor = await createExecutor(db, [
+  rlsPlugin({ schema: rlsSchema })
+])
+
+// Define DAL queries
+const getUserPosts = createQuery((ctx, userId: number) =>
+  ctx.db
+    .selectFrom('posts')
+    .where('user_id', '=', userId)
+    .selectAll()
+    .execute()
+)
+
+const getDashboardStats = createQuery(async (ctx, userId: number) => {
+  // All queries automatically get RLS filtering
+  const posts = await ctx.db.selectFrom('posts').selectAll().execute()
+  const resources = await ctx.db.selectFrom('resources').selectAll().execute()
+
+  return {
+    totalPosts: posts.length,
+    totalResources: resources.length,
+    userPosts: posts.filter(p => p.user_id === userId).length
+  }
+})
+
+// Use within RLS context
+await rlsContext.runAsync(
+  {
+    auth: { userId: 1, tenantId: 'acme', roles: ['user'] },
+    timestamp: new Date()
+  },
+  async () => {
+    const ctx = createContext(executor)
+
+    // RLS filtering applied automatically
+    const posts = await getUserPosts(ctx, 1)
+    const stats = await getDashboardStats(ctx, 1)
+
+    // Works in transactions too
+    await withTransaction(executor, async (txCtx) => {
+      const newPost = await txCtx.db
+        .insertInto('posts')
+        .values({ title: 'New Post', user_id: 1, tenant_id: 'acme' })
+        .returningAll()
+        .executeTakeFirst()
+
+      // RLS filtering still active
+      const allPosts = await getUserPosts(txCtx, 1)
+    })
+  }
+)
+```
+
+### CQRS-lite Pattern (Repository + DAL)
+
+```typescript
+import { createORM } from '@kysera/repository'
+import { createQuery, createContext } from '@kysera/dal'
+import { rlsPlugin, rlsContext } from '@kysera/rls'
+
+const orm = await createORM(db, [
+  rlsPlugin({ schema: rlsSchema })
+])
+
+// DAL for complex reads
+const getPostAnalytics = createQuery(async (ctx, postId: number) => {
+  const post = await ctx.db
+    .selectFrom('posts')
+    .where('id', '=', postId)
+    .selectAll()
+    .executeTakeFirst()
+
+  const comments = await ctx.db
+    .selectFrom('comments')
+    .where('post_id', '=', postId)
+    .selectAll()
+    .execute()
+
+  return {
+    post,
+    commentCount: comments.length,
+    authors: [...new Set(comments.map(c => c.author_id))]
+  }
+})
+
+// Use both patterns in same transaction
+await rlsContext.runAsync(
+  {
+    auth: { userId: 1, tenantId: 'acme', roles: ['user'] },
+    timestamp: new Date()
+  },
+  async () => {
+    await orm.transaction(async (ctx) => {
+      // Repository for writes
+      const post = await orm.posts.create({
+        title: 'New Post',
+        user_id: 1,
+        tenant_id: 'acme',
+        status: 'draft'
+      })
+
+      // DAL for complex reads (same transaction, same RLS context)
+      const analytics = await getPostAnalytics(ctx, post.id)
+
+      console.log(`Created post with ${analytics.commentCount} comments`)
+    })
+  }
+)
+```
+
+## See Also
+
+- [Plugin Overview](/docs/plugins/overview)
+- [Plugin Authoring Guide](/docs/plugins/authoring-guide)
+- [@kysera/rls API Reference](/docs/api/rls)
+- [@kysera/executor API Reference](/docs/api/executor)
+- [@kysera/dal API Reference](/docs/api/dal)
+- [Repository vs DAL Guide](/docs/guides/dal-vs-repository)

@@ -5,18 +5,19 @@
  */
 
 import type { Kysely, Transaction } from 'kysely';
+import type { KyseraExecutor, KyseraTransaction } from '@kysera/executor';
 
 /**
  * Database context for query functions.
  *
- * Contains the database instance (either Kysely or Transaction)
- * and metadata about the current execution context.
+ * Supports both raw Kysely instances and plugin-aware KyseraExecutor.
+ * When using KyseraExecutor, all queries automatically have plugins applied.
  *
  * @typeParam DB - Database schema type, defaults to Record<string, unknown>
  */
 export interface DbContext<DB = Record<string, unknown>> {
-  /** Database or transaction instance */
-  readonly db: Kysely<DB> | Transaction<DB>;
+  /** Database or transaction instance (raw or plugin-aware) */
+  readonly db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>;
   /** Whether the context is within a transaction */
   readonly isTransaction: boolean;
 }
@@ -34,19 +35,20 @@ export interface TransactionOptions {
 /**
  * Query function signature.
  *
- * A query function takes a database context (or Kysely instance) and arguments,
- * and returns a Promise with the result.
+ * A query function accepts database context or any database instance and arguments,
+ * returning a Promise with the result.
  *
- * The function can be called with either:
- * - `DbContext<DB>` - when inside `withTransaction` or with explicit context
- * - `Kysely<DB>` - for convenience, context is created automatically
+ * Supports:
+ * - `DbContext<DB>` - Explicit context (inside `withTransaction`)
+ * - `Kysely<DB>` - Raw Kysely instance
+ * - `KyseraExecutor<DB>` - Plugin-aware executor (recommended)
  *
  * @typeParam DB - Database schema type
  * @typeParam TArgs - Tuple of argument types
  * @typeParam TResult - Return type
  */
 export type QueryFunction<DB, TArgs extends readonly unknown[], TResult> = (
-  ctxOrDb: DbContext<DB> | Kysely<DB>,
+  ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>,
   ...args: TArgs
 ) => Promise<TResult>;
 

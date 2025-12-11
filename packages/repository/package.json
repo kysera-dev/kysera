@@ -1,6 +1,6 @@
 {
   "name": "@kysera/repository",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Repository pattern for Kysera ORM with smart validation",
   "type": "module",
   "main": "./dist/index.js",
@@ -35,7 +35,9 @@
     }
   },
   "dependencies": {
-    "@kysera/core": "workspace:*"
+    "@kysera/core": "workspace:*",
+    "@kysera/dal": "workspace:*",
+    "@kysera/executor": "workspace:*"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

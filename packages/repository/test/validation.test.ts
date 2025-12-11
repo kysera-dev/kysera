@@ -60,54 +60,15 @@ describe('Validation Mode', () => {
         expect(getValidationMode()).toBe('always');
       });
 
-      it('should ignore invalid values and fallback to next priority', () => {
+      it('should ignore invalid values and fallback to NODE_ENV', () => {
         process.env['KYSERA_VALIDATION_MODE'] = 'invalid' as any;
-        process.env['KYSERA_VALIDATE'] = 'always';
+        process.env['NODE_ENV'] = 'development';
 
-        expect(getValidationMode()).toBe('always');
+        expect(getValidationMode()).toBe('development');
       });
     });
 
-    describe('KYSERA_VALIDATE (second priority)', () => {
-      it('should return "always" when KYSERA_VALIDATE=always', () => {
-        process.env['KYSERA_VALIDATE'] = 'always';
-        expect(getValidationMode()).toBe('always');
-      });
-
-      it('should return "never" when KYSERA_VALIDATE=never', () => {
-        process.env['KYSERA_VALIDATE'] = 'never';
-        expect(getValidationMode()).toBe('never');
-      });
-
-      it('should override VALIDATE_DB_RESULTS and NODE_ENV', () => {
-        process.env['KYSERA_VALIDATE'] = 'always';
-        process.env['VALIDATE_DB_RESULTS'] = 'never';
-        process.env['NODE_ENV'] = 'production';
-
-        expect(getValidationMode()).toBe('always');
-      });
-    });
-
-    describe('VALIDATE_DB_RESULTS (third priority, legacy)', () => {
-      it('should return "always" when VALIDATE_DB_RESULTS=always', () => {
-        process.env['VALIDATE_DB_RESULTS'] = 'always';
-        expect(getValidationMode()).toBe('always');
-      });
-
-      it('should return "never" when VALIDATE_DB_RESULTS=never', () => {
-        process.env['VALIDATE_DB_RESULTS'] = 'never';
-        expect(getValidationMode()).toBe('never');
-      });
-
-      it('should override NODE_ENV', () => {
-        process.env['VALIDATE_DB_RESULTS'] = 'always';
-        process.env['NODE_ENV'] = 'production';
-
-        expect(getValidationMode()).toBe('always');
-      });
-    });
-
-    describe('NODE_ENV (lowest priority, default)', () => {
+    describe('NODE_ENV (fallback)', () => {
       it('should return "development" when NODE_ENV=development', () => {
         process.env['NODE_ENV'] = 'development';
         expect(getValidationMode()).toBe('development');
@@ -163,26 +124,16 @@ describe('Validation Mode', () => {
 
   describe('Environment variable precedence', () => {
     it('should follow correct precedence order', () => {
-      // Test 1: All set, should use KYSERA_VALIDATION_MODE
+      // Test 1: KYSERA_VALIDATION_MODE takes priority over NODE_ENV
       process.env['KYSERA_VALIDATION_MODE'] = 'never';
-      process.env['KYSERA_VALIDATE'] = 'always';
-      process.env['VALIDATE_DB_RESULTS'] = 'always';
       process.env['NODE_ENV'] = 'development';
       expect(getValidationMode()).toBe('never');
 
-      // Test 2: KYSERA_VALIDATION_MODE removed, should use KYSERA_VALIDATE
+      // Test 2: KYSERA_VALIDATION_MODE removed, should use NODE_ENV
       delete process.env['KYSERA_VALIDATION_MODE'];
-      expect(getValidationMode()).toBe('always');
-
-      // Test 3: KYSERA_VALIDATE removed, should use VALIDATE_DB_RESULTS
-      delete process.env['KYSERA_VALIDATE'];
-      expect(getValidationMode()).toBe('always');
-
-      // Test 4: VALIDATE_DB_RESULTS removed, should use NODE_ENV
-      delete process.env['VALIDATE_DB_RESULTS'];
       expect(getValidationMode()).toBe('development');
 
-      // Test 5: NODE_ENV removed, should default to production
+      // Test 3: NODE_ENV removed, should default to production
       delete process.env['NODE_ENV'];
       expect(getValidationMode()).toBe('production');
     });
@@ -209,12 +160,6 @@ describe('Validation Mode', () => {
       process.env['NODE_ENV'] = 'development';
       process.env['KYSERA_VALIDATION_MODE'] = 'never';
       expect(shouldValidate()).toBe(false);
-    });
-
-    it('should support legacy VALIDATE_DB_RESULTS environment variable', () => {
-      process.env['NODE_ENV'] = 'production';
-      process.env['VALIDATE_DB_RESULTS'] = 'always';
-      expect(shouldValidate()).toBe(true);
     });
   });
 });

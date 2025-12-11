@@ -34,8 +34,6 @@ export interface ValidationOptions {
  *
  * Supported environment variables (in order of precedence):
  * - `KYSERA_VALIDATION_MODE`: 'always' | 'never' | 'development' | 'production'
- * - `KYSERA_VALIDATE`: 'always' | 'never' (backward compatibility)
- * - `VALIDATE_DB_RESULTS`: 'always' | 'never' (legacy)
  * - `NODE_ENV`: 'development' (enables validation) | 'production' (disables validation)
  *
  * @example
@@ -52,7 +50,6 @@ export interface ValidationOptions {
  * ```
  */
 export function getValidationMode(): ValidationOptions['mode'] {
-  // Check Kysera-specific environment variables first
   const kyseraMode = process.env['KYSERA_VALIDATION_MODE'];
   if (
     kyseraMode === 'always' ||
@@ -62,15 +59,6 @@ export function getValidationMode(): ValidationOptions['mode'] {
   ) {
     return kyseraMode;
   }
-
-  // Check alternative environment variables (backward compatibility)
-  const kyseraValidate = process.env['KYSERA_VALIDATE'];
-  if (kyseraValidate === 'always') return 'always';
-  if (kyseraValidate === 'never') return 'never';
-
-  const validateMode = process.env['VALIDATE_DB_RESULTS'];
-  if (validateMode === 'always') return 'always';
-  if (validateMode === 'never') return 'never';
 
   // Fallback to NODE_ENV
   const env = process.env['NODE_ENV'];

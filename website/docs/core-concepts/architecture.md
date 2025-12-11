@@ -186,18 +186,7 @@ interceptQuery(qb, context) {
 }
 ```
 
-### 2. Result Transformation
-
-Process results after query:
-
-```typescript
-afterQuery(context, result) {
-  // Transform or validate result
-  return result
-}
-```
-
-### 3. Repository Extension
+### 2. Repository Extension
 
 Add new methods to repositories:
 

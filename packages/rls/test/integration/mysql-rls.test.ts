@@ -87,9 +87,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
       },
     });
 
-    it('should filter users by tenant_id in MySQL', async function () {
+    it('should filter users by tenant_id in MySQL', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -111,9 +111,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
       expect(result.every((u) => u.tenant_id === 1)).toBe(true);
     });
 
-    it('should enforce tenant isolation for posts', async function () {
+    it('should enforce tenant isolation for posts', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -136,9 +136,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
       expect(result[0]!.tenant_id).toBe(2);
     });
 
-    it('should handle complex queries with JOINs', async function () {
+    it('should handle complex queries with JOINs', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -167,9 +167,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
   });
 
   describe('MySQL-Specific Features', () => {
-    it('should handle MySQL date/time functions', async function () {
+    it('should handle MySQL date/time functions', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -178,9 +178,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
       expect(result.rows[0]!.now).toBeInstanceOf(Date);
     });
 
-    it('should handle transactions with RLS context', async function () {
+    it('should handle transactions with RLS context', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -239,9 +239,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
       expect(posts.length).toBe(1);
     });
 
-    it('should handle concurrent contexts correctly', async function () {
+    it('should handle concurrent contexts correctly', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -283,9 +283,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
       expect(tenant2Results.length).toBe(2);
     });
 
-    it('should handle MySQL-specific string collation', async function () {
+    it('should handle MySQL-specific string collation', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -329,9 +329,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
       },
     });
 
-    it('should allow owners to access their resources', async function () {
+    it('should allow owners to access their resources', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -355,9 +355,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
       expect(canUpdate).toBe(true);
     });
 
-    it('should deny access to resources owned by others', async function () {
+    it('should deny access to resources owned by others', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -382,9 +382,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
   });
 
   describe('Performance with Large Datasets', () => {
-    it('should handle queries with many rows efficiently', async function () {
+    it('should handle queries with many rows efficiently', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -444,9 +444,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
       },
     });
 
-    it('should validate create data', async function () {
+    it('should validate create data', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -495,9 +495,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
       },
     });
 
-    it('should bypass all RLS for system users', async function () {
+    it('should bypass all RLS for system users', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -528,9 +528,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
       },
     });
 
-    it('should skip RLS for specified roles', async function () {
+    it('should skip RLS for specified roles', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -554,9 +554,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
   });
 
   describe('Error Handling', () => {
-    it('should handle database errors gracefully', async function () {
+    it('should handle database errors gracefully', async (ctx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        ctx.skip();
         return;
       }
 
@@ -564,9 +564,9 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
       await expect(sql`SELECT * FROM non_existent_table`.execute(db)).rejects.toThrow();
     });
 
-    it('should maintain context after query errors', async function () {
+    it('should maintain context after query errors', async (testCtx) => {
       if (!mysqlAvailable) {
-        this.skip?.();
+        testCtx.skip();
         return;
       }
 

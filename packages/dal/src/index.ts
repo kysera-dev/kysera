@@ -5,6 +5,7 @@
  * - **Query functions** instead of Repository methods
  * - **Type inference** instead of explicit DTOs
  * - **Context passing** instead of DI containers
+ * - **Plugin support** via KyseraExecutor integration
  * - **Colocation** - code near usage
  *
  * @module @kysera/dal
@@ -37,6 +38,28 @@
  * const result = await withTransaction(db, async (ctx) => {
  *   const user = await createUser(ctx, { email: 'test@example.com', name: 'Test' });
  *   return user;
+ * });
+ * ```
+ *
+ * @example With plugins (KyseraExecutor)
+ * ```typescript
+ * import { createExecutor } from '@kysera/executor';
+ * import { softDeletePlugin } from '@kysera/soft-delete';
+ * import { createQuery, withTransaction } from '@kysera/dal';
+ *
+ * const executor = await createExecutor(db, [softDeletePlugin()]);
+ *
+ * const getUsers = createQuery((ctx) =>
+ *   ctx.db.selectFrom('users').selectAll().execute()
+ * );
+ *
+ * // Soft-delete filter automatically applied
+ * const users = await getUsers(executor);
+ *
+ * // Plugins propagate to transactions
+ * await withTransaction(executor, async (ctx) => {
+ *   const activeUsers = await getUsers(ctx);
+ *   return activeUsers;
  * });
  * ```
  *
@@ -74,6 +97,15 @@ export type {
   InferArgs,
   InferDB,
 } from './types.js';
+
+// Re-export executor types for convenience
+export type {
+  Plugin,
+  KyseraExecutor,
+  KyseraTransaction,
+  AnyKyseraExecutor,
+  QueryBuilderContext,
+} from '@kysera/executor';
 
 // Context
 export {

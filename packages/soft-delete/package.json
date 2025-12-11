@@ -1,6 +1,6 @@
 {
   "name": "@kysera/soft-delete",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Soft delete plugin for Kysera ORM",
   "type": "module",
   "main": "./dist/index.js",
@@ -25,12 +25,14 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@kysera/core": "workspace:*"
+    "@kysera/core": "workspace:*",
+    "@kysera/executor": "workspace:*"
   },
   "devDependencies": {
+    "@kysera/dal": "workspace:*",
     "@kysera/repository": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^24.10.1",
+    "@types/node": "^25.0.0",
     "@vitest/coverage-v8": "^4.0.15",
     "better-sqlite3": "^12.5.0",
     "kysely": "^0.28.8",
@@ -40,7 +42,7 @@
     "zod": "^4.1.13"
   },
   "peerDependencies": {
-    "@kysera/repository": "workspace:*",
+    "@kysera/executor": "workspace:*",
     "kysely": ">=0.28.8",
     "zod": "^4.1.13"
   },

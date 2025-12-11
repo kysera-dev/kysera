@@ -10,7 +10,8 @@
  * @module @kysera/rls
  */
 
-import type { Plugin, QueryBuilderContext, AnyQueryBuilder } from '@kysera/repository';
+import type { Plugin, QueryBuilderContext } from '@kysera/executor';
+import { getRawDb } from '@kysera/executor';
 import type { Kysely } from 'kysely';
 import type { RLSSchema, Operation } from './policy/types.js';
 import { PolicyRegistry } from './policy/registry.js';
@@ -124,7 +125,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
 
   return {
     name: '@kysera/rls',
-    version: '0.5.1',
+    version: '0.7.0',
 
     // Run after soft-delete (priority 0), before audit
     priority: 50,
@@ -160,7 +161,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
      * it applies filter policies as WHERE conditions. For mutations, it marks
      * that RLS validation is required (performed in extendRepository).
      */
-    interceptQuery<QB extends AnyQueryBuilder>(
+    interceptQuery<QB>(
       qb: QB,
       context: QueryBuilderContext
     ): QB {
@@ -265,6 +266,11 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
       const originalDelete = baseRepo.delete?.bind(baseRepo);
       const originalFindById = baseRepo.findById?.bind(baseRepo);
 
+      // Get raw db for internal queries that need to bypass RLS
+      // If executor doesn't have __rawDb (e.g., in tests), we'll use originalFindById
+      const rawDb = getRawDb(baseRepo.executor);
+      const hasRawDb = (baseRepo.executor as any).__rawDb !== undefined;
+
       const extendedRepo = {
         ...baseRepo,
 
@@ -309,7 +315,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
          * Wrapped update with RLS check
          */
         async update(id: unknown, data: unknown): Promise<unknown> {
-          if (!originalUpdate || !originalFindById) {
+          if (!originalUpdate) {
             throw new RLSError('Repository does not support update operation', RLSErrorCodes.RLS_POLICY_INVALID);
           }
 
@@ -318,7 +324,23 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
           if (ctx && !ctx.auth.isSystem &&
               !bypassRoles.some(role => ctx.auth.roles.includes(role))) {
             // Fetch existing row for policy evaluation
-            const existingRow = await originalFindById(id);
+            // Use raw db if available to bypass RLS filtering and prevent self-interception
+            let existingRow: unknown;
+
+            if (hasRawDb) {
+              // Use raw db to bypass RLS filtering
+              existingRow = await rawDb
+                .selectFrom(table as any)
+                .selectAll()
+                .where('id' as any, '=', id as any)
+                .executeTakeFirst();
+            } else if (originalFindById) {
+              // Fallback to originalFindById for tests/mocks
+              existingRow = await originalFindById(id);
+            } else {
+              throw new RLSError('Repository does not support update operation', RLSErrorCodes.RLS_POLICY_INVALID);
+            }
+
             if (!existingRow) {
               // Let the original method handle not found
               return originalUpdate(id, data);
@@ -357,7 +379,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
          * Wrapped delete with RLS check
          */
         async delete(id: unknown): Promise<unknown> {
-          if (!originalDelete || !originalFindById) {
+          if (!originalDelete) {
             throw new RLSError('Repository does not support delete operation', RLSErrorCodes.RLS_POLICY_INVALID);
           }
 
@@ -366,7 +388,23 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
           if (ctx && !ctx.auth.isSystem &&
               !bypassRoles.some(role => ctx.auth.roles.includes(role))) {
             // Fetch existing row for policy evaluation
-            const existingRow = await originalFindById(id);
+            // Use raw db if available to bypass RLS filtering and prevent self-interception
+            let existingRow: unknown;
+
+            if (hasRawDb) {
+              // Use raw db to bypass RLS filtering
+              existingRow = await rawDb
+                .selectFrom(table as any)
+                .selectAll()
+                .where('id' as any, '=', id as any)
+                .executeTakeFirst();
+            } else if (originalFindById) {
+              // Fallback to originalFindById for tests/mocks
+              existingRow = await originalFindById(id);
+            } else {
+              throw new RLSError('Repository does not support delete operation', RLSErrorCodes.RLS_POLICY_INVALID);
+            }
+
             if (!existingRow) {
               // Let the original method handle not found
               return originalDelete(id);
