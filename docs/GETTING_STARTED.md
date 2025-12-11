@@ -1,6 +1,6 @@
 # Getting Started with Kysera
 
-A quick-start guide to using Kysera - a TypeScript ORM built on top of Kysely with zero compromises on type safety and performance.
+A quick-start guide to using Kysera - a type-safe data access toolkit built on top of Kysely with zero compromises on type safety and performance.
 
 ## Installation
 
@@ -177,7 +177,7 @@ const audit = auditPlugin({
   captureNewValues: true
 })
 
-// Create ORM with plugins
+// Create toolkit with plugins
 const orm = await createORM(db, [audit])
 
 // Create repository with audit

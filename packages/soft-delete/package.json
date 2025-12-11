@@ -1,7 +1,7 @@
 {
   "name": "@kysera/soft-delete",
   "version": "0.7.0",
-  "description": "Soft delete plugin for Kysera ORM",
+  "description": "Soft delete plugin for Kysely repositories",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -53,7 +53,7 @@
   },
   "keywords": [
     "kysely",
-    "orm",
+    "data-access",
     "soft-delete",
     "plugin"
   ],

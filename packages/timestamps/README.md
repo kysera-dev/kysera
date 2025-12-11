@@ -1,6 +1,6 @@
 # @kysera/timestamps
 
-> Automatic timestamp management plugin for Kysera ORM - Zero-configuration `created_at` and `updated_at` tracking with powerful query helpers.
+> Automatic timestamp management plugin for Kysera - Zero-configuration `created_at` and `updated_at` tracking with powerful query helpers.
 
 [![Version](https://img.shields.io/npm/v/@kysera/timestamps.svg)](https://www.npmjs.com/package/@kysera/timestamps)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -94,7 +94,7 @@ const db = new Kysely<Database>({
   })
 })
 
-// Create ORM with timestamps plugin
+// Create plugin container with timestamps plugin
 const orm = await createORM(db, [
   timestampsPlugin()  // ✨ That's it!
 ])
@@ -286,7 +286,7 @@ const plugin = timestampsPlugin({
 })
 
 // Generates: new Date()
-// Best for: Native DATE columns, ORM compatibility
+// Best for: Native DATE columns, database compatibility
 ```
 
 ### Custom Timestamp Generator
@@ -924,7 +924,7 @@ function createUserRepository(executor: Executor<Database>) {
   })
 }
 
-// Create ORM with timestamps
+// Create plugin container with timestamps
 const orm = await createORM(db, [timestampsPlugin()])
 
 // Create repository (automatically extended)
@@ -1538,7 +1538,7 @@ const plugin = timestampsPlugin({
 
 **Problem:** `userRepo.findRecentlyCreated` is undefined.
 
-**Solution:** Ensure you're using the ORM-created repository:
+**Solution:** Ensure you're using the plugin container's createRepository method:
 
 ```typescript
 // ❌ Wrong: Direct factory (no plugin extensions)
@@ -1546,7 +1546,7 @@ const factory = createRepositoryFactory(db)
 const userRepo = factory.create(/* ... */)
 await userRepo.findRecentlyCreated()  // ❌ Undefined
 
-// ✅ Correct: ORM with plugins
+// ✅ Correct: Plugin container with plugins
 const orm = await createORM(db, [timestampsPlugin()])
 const userRepo = orm.createRepository((executor) => {
   const factory = createRepositoryFactory(executor)

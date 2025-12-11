@@ -1,6 +1,6 @@
 # @kysera/cli
 
-Comprehensive command-line interface for Kysera ORM - A production-ready TypeScript ORM framework with enterprise-grade features.
+Comprehensive command-line interface for Kysera - A production-ready type-safe data access toolkit for TypeScript with enterprise-grade features.
 
 ## 🚀 Features
 

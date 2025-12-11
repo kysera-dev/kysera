@@ -1,6 +1,6 @@
 # Vertical Slice Architecture with Kysera
 
-This guide explains how to structure your application using Vertical Slice Architecture with Kysera ORM and enforce module boundaries using ESLint.
+This guide explains how to structure your application using Vertical Slice Architecture with Kysera and enforce module boundaries using ESLint.
 
 ## Overview
 

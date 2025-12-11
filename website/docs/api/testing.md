@@ -6,7 +6,7 @@ description: Testing utilities API reference
 
 # @kysera/testing
 
-Testing utilities for Kysera ORM - transaction isolation, factories, seeding, and test helpers.
+Testing utilities for Kysera - transaction isolation, factories, seeding, and test helpers.
 
 ## Installation
 

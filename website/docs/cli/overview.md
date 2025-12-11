@@ -6,7 +6,7 @@ description: Kysera CLI tool overview and installation
 
 # Kysera CLI
 
-Command-line interface for Kysera ORM - database management, migrations, code generation, and more.
+Command-line interface for Kysera - database management, migrations, code generation, and more.
 
 ## Installation
 

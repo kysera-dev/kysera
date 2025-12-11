@@ -15,7 +15,7 @@ import { checkDatabaseHealth } from '@kysera/infra'
  * - State machine for order status
  */
 async function main() {
-  console.log('🛒 E-Commerce Example - Kysera ORM')
+  console.log('🛒 E-Commerce Example - Kysera')
 
   // Check database health
   const health = await checkDatabaseHealth(db, pool)

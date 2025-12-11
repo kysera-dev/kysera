@@ -106,8 +106,8 @@ export default function Home(): ReactNode {
   const {siteConfig} = useDocusaurusContext();
   return (
     <Layout
-      title="Production-ready TypeScript ORM"
-      description="Production-ready TypeScript ORM built on Kysely with zero compromises on reliability, type safety, and performance.">
+      title="Type-safe data access toolkit"
+      description="Type-safe data access toolkit for TypeScript built on Kysely. Repository pattern, Functional DAL, and plugin ecosystem.">
       <HomepageHeader />
       <main>
         <HomepageFeatures />

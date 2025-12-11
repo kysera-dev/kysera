@@ -1,7 +1,7 @@
 {
   "name": "@kysera/dal",
   "version": "0.7.0",
-  "description": "Functional Data Access Layer for Kysera ORM - query functions, context passing, composition, plugin integration",
+  "description": "Functional Data Access Layer for Kysely - query functions, context passing, composition, plugin integration",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -42,7 +42,7 @@
   },
   "keywords": [
     "kysely",
-    "orm",
+    "data-access",
     "database",
     "dal",
     "data-access-layer",

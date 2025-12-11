@@ -15,7 +15,7 @@ export type ApplyPluginsFunction = <QB extends AnyQueryBuilder>(
 ) => QB;
 
 /**
- * ORM interface with plugin support
+ * Plugin container interface for repository pattern
  * Provides repository creation and plugin application
  */
 export interface PluginOrm<DB> {
@@ -27,14 +27,14 @@ export interface PluginOrm<DB> {
   applyPlugins: ApplyPluginsFunction;
   /** Registered plugins */
   plugins: readonly Plugin[];
-  /** Create a DAL context with ORM plugins */
+  /** Create a DAL context with registered plugins */
   createContext(): DbContext<DB>;
   /** Execute a transaction with both Repository and DAL patterns */
   transaction<T>(fn: (ctx: DbContext<DB>) => Promise<T>): Promise<T>;
 }
 
 /**
- * Create ORM with plugin support
+ * Create plugin container with plugin support
  * Uses @kysera/executor internally for unified plugin management
  *
  * @param db - Kysely database instance
@@ -87,7 +87,7 @@ export async function createORM<DB>(db: Kysely<DB>, plugins: Plugin[] = []): Pro
     return repo;
   }
 
-  // Create DAL context with ORM plugins
+  // Create DAL context with registered plugins
   function createContext(): DbContext<DB> {
     return createDalContext(executor);
   }
@@ -109,7 +109,7 @@ export async function createORM<DB>(db: Kysely<DB>, plugins: Plugin[] = []): Pro
 
 /**
  * Helper to create a repository with plugins
- * Simplifies the common pattern of creating an ORM and repository together
+ * Simplifies the common pattern of creating a plugin container and repository together
  *
  * @param factory - Repository factory function
  * @param executor - Kysely database instance

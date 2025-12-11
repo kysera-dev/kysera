@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-Kysera is a production-ready TypeScript ORM built on top of Kysely, designed with **zero compromises** on reliability, type safety, and performance. After intensive development across 4 phases, we have achieved **100% specification compliance** with **554+ passing tests** and comprehensive documentation.
+Kysera is a production-ready type-safe data access toolkit built on top of Kysely, designed with **zero compromises** on reliability, type safety, and performance. After intensive development across 4 phases, we have achieved **100% specification compliance** with **554+ passing tests** and comprehensive documentation.
 
 ## Key Achievements
 
@@ -453,7 +453,7 @@ MIT License - See LICENSE file for details
 
 ## Final Notes
 
-Kysera v1.0.0 represents a production-ready TypeScript ORM with **zero compromises** on quality, type safety, and performance. With **99% specification compliance**, **461 passing tests**, and **comprehensive documentation**, it's ready for production use in demanding applications.
+Kysera v1.0.0 represents a production-ready type-safe data access toolkit with **zero compromises** on quality, type safety, and performance. With **99% specification compliance**, **461 passing tests**, and **comprehensive documentation**, it's ready for production use in demanding applications.
 
 **Key Metrics**:
 - ✅ 99% specification compliance

@@ -6,7 +6,7 @@ description: Audit logging plugin API reference
 
 # @kysera/audit
 
-Audit logging plugin for Kysera ORM - Automatically track all database changes with comprehensive audit logging.
+Audit logging plugin for Kysera - Automatically track all database changes with comprehensive audit logging.
 
 ## Installation
 

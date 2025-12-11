@@ -152,10 +152,10 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 describe('Soft Delete Plugin', () => {
   it('should soft delete user', async () => {
     await testInTransaction(db, async (trx) => {
-      // Create ORM with soft delete plugin
+      // Create executor with soft delete plugin using createORM
       const orm = await createORM(trx, [softDeletePlugin()])
 
-      // Create repository using ORM's createRepository
+      // Create repository using orm's createRepository
       const userRepo = orm.createRepository((executor) => {
         const factory = createRepositoryFactory(executor)
         return factory.create({

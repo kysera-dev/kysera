@@ -6,7 +6,7 @@ description: Row-Level Security plugin API reference
 
 # @kysera/rls
 
-Row-Level Security plugin for Kysera ORM - Implement declarative authorization policies for multi-tenant applications with automatic query transformation.
+Row-Level Security plugin for Kysera - Implement declarative authorization policies for multi-tenant applications with automatic query transformation.
 
 ## Installation
 

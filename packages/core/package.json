@@ -1,7 +1,7 @@
 {
   "name": "@kysera/core",
   "version": "0.6.1",
-  "description": "Core utilities for Kysera ORM - errors, pagination, types, logger",
+  "description": "Core utilities for Kysely - errors, pagination, types, logger",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -46,7 +46,7 @@
   },
   "keywords": [
     "kysely",
-    "orm",
+    "data-access",
     "database",
     "typescript",
     "sql",

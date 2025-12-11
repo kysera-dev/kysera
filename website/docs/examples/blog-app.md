@@ -334,7 +334,7 @@ import { paginate } from '@kysera/core'
 import { checkDatabaseHealth } from '@kysera/infra'
 
 async function main() {
-  console.log('🚀 Blog App Example - Kysera ORM')
+  console.log('🚀 Blog App Example - Kysera')
 
   // Check database health
   const health = await checkDatabaseHealth(db, pool)
@@ -456,7 +456,9 @@ blog-app/
 └── tsconfig.json
 ```
 
-## What's Different from Other ORMs?
+## What's Different from Traditional ORMs?
+
+Kysera is not a traditional ORM. Unlike ORMs with entity mapping, Unit of Work, and Identity Map, Kysera provides:
 
 - **No magic** - Explicit Kysely queries, not auto-generated methods
 - **Type-safe** - Full TypeScript inference without decorators

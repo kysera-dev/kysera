@@ -1,6 +1,6 @@
 # @kysera/soft-delete
 
-Soft delete plugin for Kysera ORM. Implements soft delete functionality using the Method Override pattern with automatic filtering of deleted records.
+Soft delete plugin for Kysera. Implements soft delete functionality using the Method Override pattern with automatic filtering of deleted records.
 
 ## Features
 
@@ -46,7 +46,7 @@ Note: `zod` is optional (used for configuration schema validation in `kysera-cli
 import { createORM } from '@kysera/repository';
 import { softDeletePlugin } from '@kysera/soft-delete';
 
-// Create ORM with soft-delete plugin
+// Create plugin container with soft-delete plugin
 const orm = await createORM(db, [
   softDeletePlugin({
     deletedAtColumn: 'deleted_at',

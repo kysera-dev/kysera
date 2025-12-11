@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.17.1",
-  "description": "Production-ready TypeScript ORM built on Kysely",
+  "description": "Type-safe data access toolkit for TypeScript built on Kysely",
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",

@@ -6,7 +6,7 @@ description: Infrastructure utilities API reference
 
 # @kysera/infra
 
-Infrastructure utilities for Kysera ORM - health monitoring, resilience patterns, and graceful shutdown.
+Infrastructure utilities for Kysera - health monitoring, resilience patterns, and graceful shutdown.
 
 ## Installation
 

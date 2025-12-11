@@ -1,6 +1,6 @@
 # @kysera/audit
 
-> Comprehensive audit logging plugin for Kysera ORM with automatic change tracking, user attribution, and transaction support.
+> Comprehensive audit logging plugin for Kysera with automatic change tracking, user attribution, and transaction support.
 
 [![npm version](https://img.shields.io/npm/v/@kysera/audit.svg)](https://www.npmjs.com/package/@kysera/audit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -76,7 +76,7 @@ const audit = auditPlugin({
   metadata: () => ({ ip: request.ip, userAgent: request.headers['user-agent'] })
 })
 
-// Initialize ORM with audit plugin
+// Initialize plugin container with audit plugin
 const orm = await createORM(db, [audit])
 
 // Create repository - audit logging is automatic!
@@ -861,11 +861,11 @@ const audit = auditPlugin({ getUserId: () => currentUserId })
 // Transaction with audit logging
 async function transferFunds(fromId: number, toId: number, amount: number) {
   return await db.transaction().execute(async (trx) => {
-    // IMPORTANT: Create a new ORM instance with the transaction executor
+    // IMPORTANT: Create a new plugin container with the transaction executor
     // This ensures all plugins (including audit) use the transaction
     const trxOrm = await createORM(trx as unknown as Kysely<Database>, [audit])
 
-    // Create repositories using transaction-bound ORM
+    // Create repositories using transaction-bound plugin container
     const accountRepo = trxOrm.createRepository((executor) =>
       createRepositoryFactory(executor).create({
         tableName: 'accounts',
@@ -920,7 +920,7 @@ try {
 async function createUserWithPosts() {
   try {
     await db.transaction().execute(async (trx) => {
-      // Create transaction-bound ORM for proper audit logging
+      // Create transaction-bound plugin container for proper audit logging
       const trxOrm = await createORM(trx as unknown as Kysely<Database>, [audit])
 
       const userRepo = trxOrm.createRepository((executor) =>
@@ -1774,10 +1774,10 @@ const userRepo = orm.createRepository(...) as Repository<User, DB> & AuditReposi
 
 ### 1. Always Use Transaction Executor
 
-For proper audit logging within transactions, create a transaction-bound ORM:
+For proper audit logging within transactions, create a transaction-bound plugin container:
 
 ```typescript
-// ✅ CORRECT: Create ORM with transaction executor
+// ✅ CORRECT: Create plugin container with transaction executor
 await db.transaction().execute(async (trx) => {
   const trxOrm = await createORM(trx as unknown as Kysely<Database>, [audit])
   const userRepo = trxOrm.createRepository((executor) =>
@@ -1786,7 +1786,7 @@ await db.transaction().execute(async (trx) => {
   await userRepo.create(...)  // Both data and audit log in same transaction
 })
 
-// ❌ INCORRECT: Using original ORM (audit logs may not rollback properly)
+// ❌ INCORRECT: Using original plugin container (audit logs may not rollback properly)
 await db.transaction().execute(async (trx) => {
   const userRepo = orm.createRepository((executor) =>
     createRepositoryFactory(trx).create({...})  // Mixed executors!

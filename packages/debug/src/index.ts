@@ -1,5 +1,5 @@
 /**
- * @kysera/debug - Debug utilities for Kysera ORM
+ * @kysera/debug - Debug utilities for Kysera
  *
  * Provides query logging, metrics collection, profiling,
  * and SQL formatting utilities.

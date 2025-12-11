@@ -39,7 +39,7 @@ export { createRepositoryFactory } from './repository'
 export { createRepositoriesFactory } from './helpers'
 export { createSimpleRepository } from './repository'
 
-// ORM with plugins
+// Repository manager with plugins
 export { createORM, withPlugins } from './plugin'
 export type { PluginOrm, ApplyPluginsFunction } from './plugin'
 
@@ -302,7 +302,7 @@ await db.transaction().execute(async (trx) => {
 
 ## createORM
 
-Create an ORM instance with plugin support. Uses `@kysera/executor` internally for unified plugin management.
+Create a repository manager instance with plugin support. Uses `@kysera/executor` internally for unified plugin management.
 
 ```typescript
 async function createORM<DB>(
@@ -321,7 +321,7 @@ interface PluginOrm<DB> {
   applyPlugins: ApplyPluginsFunction
   /** Registered plugins in resolved order */
   plugins: readonly Plugin[]
-  /** Create a DAL context with ORM plugins */
+  /** Create a DAL context with plugins */
   createContext(): DbContext<DB>
   /** Execute a transaction with both Repository and DAL patterns */
   transaction<T>(fn: (ctx: DbContext<DB>) => Promise<T>): Promise<T>
@@ -349,7 +349,7 @@ import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { rlsPlugin } from '@kysera/rls'
 
-// Create ORM with plugins
+// Create repository manager with plugins
 const orm = await createORM(db, [
   rlsPlugin({ schema: rlsSchema }),  // Query interceptor + repository extensions
   softDeletePlugin()                  // Query interceptor + repository extensions
@@ -747,7 +747,7 @@ await userRepo.softDelete(userId)
 
 ### Working with Executor
 
-You can access the underlying executor from the ORM:
+You can access the underlying executor from the repository manager:
 
 ```typescript
 const orm = await createORM(db, [softDeletePlugin()])

@@ -1,7 +1,7 @@
 ---
 sidebar_position: 1
 title: Overview
-description: Core concepts and architecture of Kysera ORM
+description: Core concepts and architecture of Kysera
 ---
 
 # Core Concepts Overview

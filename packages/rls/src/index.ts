@@ -1,5 +1,5 @@
 /**
- * @kysera/rls - Row-Level Security Plugin for Kysera ORM
+ * @kysera/rls - Row-Level Security Plugin for Kysera
  *
  * Provides declarative policy definition, automatic query transformation,
  * and optional native PostgreSQL RLS generation.

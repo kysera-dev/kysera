@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'Kysera',
-  tagline: 'Production-ready TypeScript ORM built on Kysely',
+  tagline: 'Type-safe data access toolkit for TypeScript built on Kysely',
   favicon: 'img/favicon.ico',
 
   future: {

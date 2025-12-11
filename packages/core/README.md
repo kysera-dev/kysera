@@ -1,6 +1,6 @@
 # @kysera/core
 
-> Minimal core utilities for Kysera ORM - Database error handling, pagination, types, and logging interface.
+> Minimal core utilities for Kysera - Database error handling, pagination, types, and logging interface.
 
 [![Version](https://img.shields.io/npm/v/@kysera/core.svg)](https://www.npmjs.com/package/@kysera/core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

@@ -24,7 +24,7 @@ export async function cli(argv: string[]): Promise<void> {
   // Configure CLI
   program
     .name('kysera')
-    .description('Comprehensive command-line interface for Kysera ORM')
+    .description('Comprehensive command-line interface for Kysera toolkit')
     .version(process.env['KYSERA_CLI_VERSION'] || '0.5.1', '-v, --version', 'Show CLI version')
     .helpCommand('help [command]', 'Display help for command')
     .helpOption('-h, --help', 'Display help')
