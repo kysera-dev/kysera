@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.7.0] - 2025-12-11
+
+### ✨ Features
+
+- feat(executor): add Unified Execution Layer for plugin-aware Kysely operations
+
+### 📝 Other Changes
+
+- test: fix flaky tests and improve executor coverage
+- chore(deps): update dependencies and pnpm version
+- docs(website): improve clarity and accuracy across all documentation
+- docs: clarify Kysera is a data access toolkit, not an ORM
+- docs: update CLAUDE.md to reflect v0.6.1 project state
+- docs(website): add comprehensive DAL vs Repository guide and update plugin docs
+
+
 ## [0.6.1] - 2025-12-10
 
 ### ✨ Features
