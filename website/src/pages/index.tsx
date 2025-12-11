@@ -37,24 +37,26 @@ function HomepageHeader() {
 }
 
 function QuickStart() {
-  const installCode = `npm install kysely @kysera/core @kysera/repository zod`;
+  const installCode = `npm install kysely @kysera/repository @kysera/soft-delete`;
 
   const exampleCode = `import { Kysely, PostgresDialect } from 'kysely'
-import { createRepositoryFactory } from '@kysera/repository'
-import { z } from 'zod'
+import { createORM } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
 
 const db = new Kysely({ dialect: new PostgresDialect({ pool }) })
-const factory = createRepositoryFactory(db)
 
-const userRepo = factory.create({
+// Create ORM with plugins - soft delete applied automatically
+const orm = await createORM(db, [softDeletePlugin()])
+
+const userRepo = orm.createRepository({
   tableName: 'users',
+  primaryKey: 'id',
   mapRow: (row) => row,
-  schemas: {
-    create: z.object({ email: z.string().email(), name: z.string() })
-  }
 })
 
-const user = await userRepo.create({ email: 'john@example.com', name: 'John' })`;
+// CRUD with automatic soft delete filtering
+const user = await userRepo.create({ email: 'john@example.com', name: 'John' })
+const users = await userRepo.findAll() // excludes soft-deleted records`;
 
   return (
     <section className={styles.quickStart}>
@@ -81,12 +83,12 @@ function Stats() {
       <div className="container">
         <div className={styles.statsGrid}>
           <div className={styles.stat}>
-            <div className={styles.statValue}>554+</div>
-            <div className={styles.statLabel}>Tests Passing</div>
+            <div className={styles.statValue}>12</div>
+            <div className={styles.statLabel}>Packages</div>
           </div>
           <div className={styles.stat}>
-            <div className={styles.statValue}>~64KB</div>
-            <div className={styles.statLabel}>Total Bundle</div>
+            <div className={styles.statValue}>5</div>
+            <div className={styles.statLabel}>Plugins</div>
           </div>
           <div className={styles.stat}>
             <div className={styles.statValue}>0</div>
@@ -94,7 +96,7 @@ function Stats() {
           </div>
           <div className={styles.stat}>
             <div className={styles.statValue}>3</div>
-            <div className={styles.statLabel}>Database Support</div>
+            <div className={styles.statLabel}>Databases Supported</div>
           </div>
         </div>
       </div>

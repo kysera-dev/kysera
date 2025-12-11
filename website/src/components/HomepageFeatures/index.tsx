@@ -15,8 +15,8 @@ const FeatureList: FeatureItem[] = [
     icon: '🛡️',
     description: (
       <>
-        Full TypeScript support with strict mode. Zod validation for inputs,
-        type-safe queries with Kysely, and comprehensive error types.
+        Full TypeScript support with strict mode enabled. Schema validation
+        with Zod, Valibot, or TypeBox. Comprehensive error types.
       </>
     ),
   },
@@ -26,7 +26,7 @@ const FeatureList: FeatureItem[] = [
     description: (
       <>
         Core packages have zero runtime dependencies. Only peer dependencies
-        on Kysely and Zod. Minimal security surface and full control.
+        on Kysely. Minimal security surface and full control.
       </>
     ),
   },
@@ -35,8 +35,8 @@ const FeatureList: FeatureItem[] = [
     icon: '🚀',
     description: (
       <>
-        Built-in health checks, graceful shutdown, retry logic, and circuit
-        breaker. Battle-tested with 554+ passing tests.
+        Built-in health checks, graceful shutdown, retry logic with
+        exponential backoff, and circuit breaker pattern.
       </>
     ),
   },
@@ -46,7 +46,7 @@ const FeatureList: FeatureItem[] = [
     description: (
       <>
         Extend functionality with plugins: soft delete, audit logging,
-        automatic timestamps, and row-level security.
+        automatic timestamps, row-level security, and query debugging.
       </>
     ),
   },
@@ -65,8 +65,8 @@ const FeatureList: FeatureItem[] = [
     icon: '⚡',
     description: (
       <>
-        Use only what you need. ~24KB core, ~12KB repository. Tree-shakeable
-        ESM architecture for modern runtimes.
+        Use only what you need. Tree-shakeable ESM architecture with
+        cross-runtime support for Node.js, Bun, and Deno.
       </>
     ),
   },
