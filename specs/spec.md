@@ -44,7 +44,7 @@ const user = await userRepo.findById(1)
 
 ## Executive Summary
 
-Kysera is a pragmatic TypeScript ORM that provides a thin, powerful layer on top of Kysely. It focuses on solving real problems through explicit composition, functional architecture, and smart validation strategies. No magic, no false promises, just reliable data access with excellent DX.
+Kysera is a pragmatic type-safe data access toolkit that provides a thin, powerful layer on top of Kysely. It focuses on solving real problems through explicit composition, functional architecture, and smart validation strategies. **Kysera is not a traditional ORM** - it has no entity mapping, Unit of Work, Identity Map, or lazy loading. No magic, no false promises, just reliable data access with excellent DX.
 
 ## Core Philosophy
 

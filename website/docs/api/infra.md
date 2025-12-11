@@ -16,8 +16,13 @@ npm install @kysera/infra kysely
 
 ## Overview
 
+**Version:** 0.7.0
 **Bundle Size:** ~12 KB (minified)
 **Dependencies:** None (peer: kysely >=0.28.8)
+
+:::info Package Type
+This is a **utility package** providing infrastructure and resilience features. It's not part of the Repository/DAL pattern - it works with Kysely instances directly.
+:::
 
 ## Key Features
 

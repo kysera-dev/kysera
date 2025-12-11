@@ -120,7 +120,6 @@ This example demonstrates **hand-rolled repositories** with explicit Kysely quer
 import type { Selectable } from 'kysely'
 import { z } from 'zod'
 import type { Executor } from '@kysera/core'
-import { shouldValidate } from '@kysera/repository'
 import type { Database, UsersTable } from '../db/schema.js'
 
 // Domain types
@@ -155,7 +154,7 @@ function mapUserRow(row: Selectable<UsersTable>): User {
 
 // Repository function
 export function createUserRepository(executor: Executor<Database>) {
-  const validateDbResults = shouldValidate()  // Uses KYSERA_VALIDATION_MODE or NODE_ENV
+  const validateDbResults = process.env['NODE_ENV'] === 'development'
 
   return {
     async findById(id: number): Promise<User | null> {
@@ -265,7 +264,7 @@ const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Repository function (no manual deleted_at filtering needed)
 export function createUserRepository(executor: Executor<Database>) {
-  const validateDbResults = shouldValidate()
+  const validateDbResults = process.env['NODE_ENV'] === 'development'
 
   return {
     async findById(id: number): Promise<User | null> {

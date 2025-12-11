@@ -16,20 +16,29 @@ Choose the right pattern for your use case:
 
 | Use Case | Recommended |
 |----------|-------------|
-| Need plugins (soft-delete, audit, timestamps, RLS) | **Repository** |
-| Multi-tenant application with RLS | **Repository** |
+| Need repository extension plugins (audit.restore(), timestamps) | **Repository** |
+| Need query interceptor plugins (soft-delete, RLS filtering) | **Repository or DAL with KyseraExecutor** |
+| Multi-tenant application with RLS | **Repository or DAL with KyseraExecutor** |
 | Complex custom queries, analytics | **DAL** |
 | Vertical Slice Architecture | **DAL** |
 | Team prefers OOP patterns | **Repository** |
 | Team prefers functional patterns | **DAL** |
 
 ```typescript
-// Repository: Use when you need plugins
+// Repository: Full plugin support (interceptors + extensions)
 const orm = await createORM(db, [softDeletePlugin(), auditPlugin()]);
 const userRepo = orm.createRepository(createUserRepository);
-await userRepo.softDelete(1);  // Plugin method works!
+await userRepo.softDelete(1);  // Plugin extension method works!
 
-// DAL: Use for complex, custom queries
+// DAL with KyseraExecutor: Query interceptor plugins only
+import { createExecutor } from '@kysera/executor';
+const executor = await createExecutor(db, [softDeletePlugin()]);
+const getUsers = createQuery((ctx) =>
+  ctx.db.selectFrom('users').selectAll().execute()  // Soft-delete filter applied!
+);
+await getUsers(executor);
+
+// DAL: Pure functional queries, no plugins
 const getAnalytics = createQuery((ctx, userId: number) =>
   ctx.db
     .selectFrom('events')
@@ -40,7 +49,7 @@ const getAnalytics = createQuery((ctx, userId: number) =>
 ```
 
 :::tip
-Pick **one primary pattern** for your project. Mixing both can lead to inconsistent behavior, especially with plugins and transactions. See [Repository vs DAL Guide](/docs/guides/dal-vs-repository) for detailed comparison.
+You can mix both patterns using the **CQRS-lite** pattern via `orm.transaction()`. Repository for writes (with full plugin support) and DAL for complex reads (sharing the same plugins). See [Repository vs DAL Guide](/docs/guides/dal-vs-repository) for detailed comparison.
 :::
 
 ## Repository Pattern

@@ -302,7 +302,7 @@ await db.transaction().execute(async (trx) => {
 
 ## createORM
 
-Create a repository manager instance with plugin support. Uses `@kysera/executor` internally for unified plugin management.
+Create a plugin container (repository manager) with plugin support. Despite its name, `createORM` is not a traditional ORM - it's a lightweight plugin container that manages repositories and provides unified plugin execution via `@kysera/executor`.
 
 ```typescript
 async function createORM<DB>(
@@ -335,6 +335,14 @@ type ApplyPluginsFunction = <QB extends AnyQueryBuilder>(
 ) => QB
 ```
 
+**What is createORM?**
+
+`createORM` is a **plugin container** and **repository manager**, not a traditional ORM. It provides:
+- Plugin initialization and lifecycle management
+- Unified query interception across repositories
+- Repository factory with plugin extensions
+- Transaction support for both Repository and DAL patterns
+
 **How it works:**
 1. Creates a plugin-aware executor using `createExecutor(db, plugins)` from `@kysera/executor`
 2. Plugins are validated, dependencies resolved, and initialized
@@ -349,7 +357,7 @@ import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { rlsPlugin } from '@kysera/rls'
 
-// Create repository manager with plugins
+// Create plugin container (repository manager) with plugins
 const orm = await createORM(db, [
   rlsPlugin({ schema: rlsSchema }),  // Query interceptor + repository extensions
   softDeletePlugin()                  // Query interceptor + repository extensions

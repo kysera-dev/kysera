@@ -6,7 +6,17 @@ description: Core concepts and architecture of Kysera
 
 # Core Concepts Overview
 
-Kysera is built on a layered architecture that allows you to use only what you need while maintaining full type safety and production readiness.
+Kysera is a **type-safe data access toolkit** built on a layered architecture that allows you to use only what you need while maintaining full type safety and production readiness.
+
+:::info What Kysera Is NOT
+Kysera is **not a traditional ORM**. It has no:
+- Entity mapping or Active Record pattern
+- Unit of Work or Identity Map
+- Lazy loading or automatic relationship loading
+- Hidden state management or change tracking
+
+Instead, Kysera provides lightweight patterns (Repository, DAL) and plugins on top of Kysely's query builder.
+:::
 
 ## Layered Architecture
 

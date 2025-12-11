@@ -306,7 +306,7 @@ import { createExecutor } from '@kysera/executor'
 import { myPlugin } from '../src'
 
 describe('MyPlugin Integration', () => {
-  it('should work with ORM', async () => {
+  it('should work with createORM', async () => {
     const orm = await createORM(db, [myPlugin()])
 
     const repo = orm.createRepository(createUserRepository)

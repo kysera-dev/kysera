@@ -10,7 +10,7 @@ description: Production-ready type-safe data access toolkit built on Kysely with
 
 ## What is Kysera?
 
-Kysera is a lightweight, modular data access toolkit that builds upon [Kysely](https://kysely.dev) - the type-safe SQL query builder. Unlike traditional ORMs with entity mapping, Unit of Work, and Identity Map, Kysera provides lightweight patterns on top of Kysely. It provides:
+Kysera is a lightweight, modular data access toolkit that builds upon [Kysely](https://kysely.dev) - the type-safe SQL query builder. **Kysera is NOT a traditional ORM** - it has no entity mapping, Unit of Work, Identity Map, or lazy loading. Instead, it provides lightweight patterns and plugins on top of Kysely:
 
 - **Repository Pattern** with validation-agnostic design (Zod, Valibot, TypeBox, or native)
 - **Functional DAL** for type-inferred queries and context-based transactions

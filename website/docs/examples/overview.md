@@ -63,36 +63,56 @@ Enterprise multi-tenant architecture patterns.
 
 ### Repository Factory
 
-All examples use the factory pattern:
+All examples use the hand-rolled repository factory pattern:
 
 ```typescript
-export function createUserRepository(executor: Executor<Database>) {
-  const factory = createRepositoryFactory(executor)
+import type { Executor } from '@kysera/core'
+import type { Database, UsersTable } from '../db/schema.js'
+import { z } from 'zod'
 
-  return factory.create({
-    tableName: 'users' as const,
-    mapRow: (row) => row,
-    schemas: {
-      create: CreateUserSchema,
-      update: UpdateUserSchema
-    }
-  })
-}
-
-export const createRepositories = createRepositoriesFactory({
-  users: createUserRepository,
-  posts: createPostRepository
+// Validation schemas
+export const CreateUserSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1).max(100),
 })
+
+export const UpdateUserSchema = CreateUserSchema.partial()
+
+// Repository factory function
+export function createUserRepository(executor: Executor<Database>) {
+  const validateDbResults = process.env['NODE_ENV'] === 'development'
+
+  return {
+    async findById(id: number) {
+      // ... implementation
+    },
+    async create(input: unknown) {
+      const validated = CreateUserSchema.parse(input)
+      // ... implementation
+    }
+    // ... other methods
+  }
+}
 ```
 
 ### Transaction Usage
 
 ```typescript
 await db.transaction().execute(async (trx) => {
-  const repos = createRepositories(trx)
+  // Create repositories with transaction executor
+  const userRepo = createUserRepository(trx)
+  const postRepo = createPostRepository(trx)
 
-  const user = await repos.users.create({ ... })
-  await repos.posts.create({ user_id: user.id, ... })
+  const user = await userRepo.create({
+    email: 'user@example.com',
+    name: 'John Doe'
+  })
+
+  await postRepo.create({
+    user_id: user.id,
+    title: 'My First Post',
+    content: 'Hello World'
+  })
 
   // Both succeed or both fail
 })
