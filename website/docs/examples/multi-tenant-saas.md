@@ -188,11 +188,13 @@ function extractSubdomain(hostname: string): string | null {
 The actual implementation (see `src/repositories/user.repository.ts`):
 
 ```typescript
+import { shouldValidate } from '@kysera/repository'
+
 export function createUserRepository(
   executor: Executor<Database>,
   tenantContext: TenantContext
 ) {
-  const validateDbResults = process.env['NODE_ENV'] === 'development'
+  const validateDbResults = shouldValidate()  // Uses KYSERA_VALIDATION_MODE or NODE_ENV
   const getTenantId = () => tenantContext.getTenantId()
 
   return {
@@ -289,13 +291,17 @@ export function createUserRepository(
 - Updates/deletes verify `tenant_id` for security
 - Validation is optional based on environment
 
-## Alternative Pattern: Using @kysera/rls Plugin
+## Alternative Pattern: Using @kysera/rls Plugin (v0.7+)
 
-> **Important**: The actual example implementation in `examples/multi-tenant-saas` does NOT use the `@kysera/rls` plugin. It demonstrates the foundational pattern using manual tenant filtering in repositories (as shown above). This section shows an alternative approach using the RLS plugin, which is recommended for production applications as it provides automatic filtering and reduces the risk of accidentally omitting tenant filters.
+> **Important**: The actual example implementation in `examples/multi-tenant-saas` does NOT use the `@kysera/rls` plugin. It demonstrates the foundational pattern using manual tenant filtering in repositories (as shown above). This section shows an alternative approach using the RLS plugin with v0.7's unified executor, which is recommended for production applications as it provides automatic filtering and reduces the risk of accidentally omitting tenant filters.
+
+### With Repository Pattern
 
 ```typescript
+import { createORM } from '@kysera/repository'
 import { rlsPlugin, defineRLSSchema, filter, rlsContext } from '@kysera/rls'
 
+// Define RLS schema
 const rlsSchema = defineRLSSchema<Database>({
   users: {
     policies: [
@@ -316,11 +322,13 @@ const rlsSchema = defineRLSSchema<Database>({
   }
 })
 
-const orm = await createORM(db, [
-  rlsPlugin({ schema: rlsSchema })
-])
+// Create ORM with RLS plugin
+const orm = await createORM(db, [rlsPlugin({ schema: rlsSchema })])
 
-// Usage in request
+// Create repositories (no manual tenant filtering needed)
+const userRepo = orm.createRepository(createUserRepository)
+
+// Express middleware
 app.use(async (req, res, next) => {
   await rlsContext.runAsync(
     {
@@ -341,6 +349,67 @@ app.get('/users', async (req, res) => {
   res.json(users)
 })
 ```
+
+### With DAL Pattern
+
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { createQuery, createContext } from '@kysera/dal'
+import { rlsPlugin, defineRLSSchema, filter, rlsContext } from '@kysera/rls'
+
+// Define RLS schema
+const rlsSchema = defineRLSSchema<Database>({
+  users: {
+    policies: [
+      filter(['read', 'create', 'update', 'delete'], ctx => ({
+        tenant_id: ctx.auth.tenantId
+      }))
+    ],
+    defaultDeny: true
+  }
+})
+
+// Create executor with RLS plugin
+const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })])
+
+// Define DAL queries (no manual tenant filtering needed)
+const getUsers = createQuery((ctx) =>
+  ctx.db.selectFrom('users').selectAll().execute()
+)
+
+const createUser = createQuery((ctx, data) =>
+  ctx.db.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
+)
+
+// Express middleware
+app.use(async (req, res, next) => {
+  await rlsContext.runAsync(
+    {
+      auth: {
+        userId: req.user.id,
+        tenantId: req.tenant.id,
+        roles: req.user.roles
+      }
+    },
+    next
+  )
+})
+
+// All queries automatically filtered!
+app.get('/users', async (req, res) => {
+  const ctx = createContext(executor)
+  const users = await getUsers(ctx)
+  // WHERE tenant_id = <current tenant> is automatic
+  res.json(users)
+})
+```
+
+**Benefits of using @kysera/rls:**
+- Automatic tenant filtering on all queries (no manual WHERE clauses)
+- Centralized policy definitions
+- System context support via `rlsContext.asSystemAsync()`
+- Row-level access validation
+- Reduced risk of security bugs from forgotten filters
 
 ## Alternative Pattern: Using @kysera/audit Plugin
 

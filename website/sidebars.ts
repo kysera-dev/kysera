@@ -85,6 +85,11 @@ const sidebars: SidebarsConfig = {
           ],
         },
         {
+          type: 'doc',
+          id: 'api/executor',
+          label: '@kysera/executor',
+        },
+        {
           type: 'category',
           label: '@kysera/repository',
           collapsed: false,

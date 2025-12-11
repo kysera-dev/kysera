@@ -16,8 +16,11 @@ Kysera is built on a layered architecture that allows you to use only what you n
 │  (@kysera/soft-delete, @kysera/audit, @kysera/timestamps, etc.) │
 ├─────────────────────────────────────────────────────────────────┤
 │  Layer 3: Data Access (choose your style)                       │
-│  @kysera/repository (CRUD + validation)                         │
+│  @kysera/repository (CRUD + validation + plugin extensions)     │
 │  @kysera/dal (Functional queries + type inference)              │
+├─────────────────────────────────────────────────────────────────┤
+│  Layer 2.5: Unified Execution Layer (@kysera/executor ~8KB)     │
+│  Plugin-aware Kysely wrapper, query interception               │
 ├─────────────────────────────────────────────────────────────────┤
 │  Layer 2: Infrastructure (opt-in)                               │
 │  @kysera/infra (health, retry, circuit breaker)                 │
@@ -66,6 +69,44 @@ try {
 const page = await paginate(db.selectFrom('users').selectAll(), { page: 1, limit: 20 })
 ```
 
+### Layer 2.5: Unified Execution Layer (v0.7+)
+
+The `@kysera/executor` package provides a plugin-aware wrapper around Kysely:
+
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { rlsPlugin } from '@kysera/rls'
+
+// Create plugin-aware executor
+const executor = await createExecutor(db, [
+  rlsPlugin({ schema: rlsSchema }),  // High priority (50)
+  softDeletePlugin()                  // Standard priority (0)
+])
+
+// Use like normal Kysely - plugins apply automatically
+const users = await executor.selectFrom('users').selectAll().execute()
+// -> SELECT * FROM users WHERE tenant_id = ? AND deleted_at IS NULL
+
+// Works in transactions too
+await executor.transaction().execute(async (trx) => {
+  // trx inherits all plugins
+  const user = await trx.selectFrom('users').where('id', '=', 1).executeTakeFirst()
+})
+```
+
+**Key Features:**
+- **Query Interception** - Plugins can modify queries before execution
+- **Zero Overhead** - No performance penalty when no interceptor plugins are registered
+- **Type Safe** - Full TypeScript support with Kysely types preserved
+- **Transaction Propagation** - Plugins automatically work in transactions
+- **Plugin Validation** - Detects conflicts, missing dependencies, and circular dependencies
+
+**Why use `@kysera/executor`?**
+- Enables plugins to work with **both** Repository and DAL patterns
+- Provides automatic filtering (soft-delete, RLS) without code changes
+- Foundation for unified plugin architecture across Kysera
+
 ### Layer 2: Infrastructure (Opt-in)
 
 Add production utilities from separate packages:
@@ -88,7 +129,7 @@ const users = await withRetry(() => db.selectFrom('users').execute())
 
 Choose your data access style:
 
-**Repository Pattern** - Structured CRUD with validation and **plugin support**:
+**Repository Pattern** - Structured CRUD with validation and **full plugin support**:
 
 ```typescript
 import { createRepositoryFactory, createORM } from '@kysera/repository'
@@ -97,31 +138,47 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 const orm = await createORM(db, [softDeletePlugin()])
 const userRepo = orm.createRepository(createUserRepository)
 
-// Plugins work automatically
-const user = await userRepo.create({ email: 'test@example.com', name: 'Test' })
-await userRepo.softDelete(1)  // Plugin method
+// Query interceptors work automatically
+const users = await userRepo.findAll()  // Soft-deleted records filtered
+
+// Extension methods from plugins
+await userRepo.softDelete(1)
+await userRepo.restore(1)
 ```
 
-**Functional DAL** - Type-inferred queries with context passing (no plugin support):
+**Functional DAL** - Type-inferred queries with **query interceptor support** via `KyseraExecutor`:
 
 ```typescript
+import { createExecutor } from '@kysera/executor'
 import { createQuery, withTransaction } from '@kysera/dal'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+// Create executor with plugins
+const executor = await createExecutor(db, [softDeletePlugin()])
 
 const getUserById = createQuery((ctx, id: number) =>
   ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
 )
 
-// Use directly or in transactions
-const user = await getUserById(db, 1)
-const result = await withTransaction(db, async (ctx) => {
-  return getUserById(ctx, 1)
+// Query interceptors applied automatically!
+const user = await getUserById(executor, 1)  // Soft-deleted records filtered
+
+// Plugins work in transactions too
+const result = await withTransaction(executor, async (ctx) => {
+  return getUserById(ctx, 1)  // Still filtered
 })
 ```
 
-:::tip Choosing Between Repository and DAL
-- Use **Repository** when you need plugins (soft-delete, audit, timestamps, RLS)
-- Use **DAL** when you need maximum flexibility and type inference
-- See [Repository vs DAL Guide](/docs/guides/dal-vs-repository) for detailed comparison
+:::tip Choosing Between Repository and DAL (v0.7+)
+Both patterns now support query interceptor plugins through `@kysera/executor`:
+
+- **Repository**: Query interceptors + extension methods (e.g., `repo.softDelete()`)
+- **DAL with KyseraExecutor**: Query interceptors only (automatic filtering)
+- **DAL without KyseraExecutor**: No plugin support (manual everything)
+
+Use **Repository** when you need extension methods and validation.
+Use **DAL with KyseraExecutor** when you need plugin filtering without repository overhead.
+See [Repository vs DAL Guide](/docs/guides/dal-vs-repository) for detailed comparison.
 :::
 
 ### Layer 4: Plugins
@@ -138,26 +195,68 @@ const orm = await createORM(db, [softDeletePlugin(), auditPlugin()])
 
 ## Key Concepts
 
-### Executor Pattern
+### Unified Execution Layer (v0.7+)
 
-The `Executor` type is central to Kysera's transaction support:
+The `@kysera/executor` package provides `KyseraExecutor`, a plugin-aware wrapper around Kysely:
+
+```typescript
+type KyseraExecutor<DB> = Kysely<DB> & {
+  __kysera: true
+  __plugins: readonly Plugin[]
+  __rawDb: Kysely<DB>
+}
+```
+
+This enables:
+1. **Plugin interception** - Modify queries before execution
+2. **Transaction propagation** - Plugins automatically work in transactions
+3. **Unified plugin system** - Same plugins work with Repository and DAL patterns
+
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+// Create plugin-aware executor
+const executor = await createExecutor(db, [softDeletePlugin()])
+
+// Works like Kysely, but with plugin interception
+const users = await executor.selectFrom('users').selectAll().execute()
+// -> SELECT * FROM users WHERE deleted_at IS NULL (plugin applied)
+
+// Plugins propagate to transactions
+await executor.transaction().execute(async (trx) => {
+  // trx is KyseraTransaction with plugins
+  const user = await trx.selectFrom('users').where('id', '=', 1).executeTakeFirst()
+  // Soft-delete filter still applied
+})
+```
+
+**Plugin Types:**
+- **Query Interceptors** (`interceptQuery`) - Work with both Repository and DAL
+- **Repository Extensions** (`extendRepository`) - Work only with Repository
+
+### Executor Pattern (Legacy)
+
+The `Executor` type allows factories to work with both Kysely and Transaction:
 
 ```typescript
 type Executor<DB> = Kysely<DB> | Transaction<DB>
 ```
 
-This allows repository factories to work identically in normal context or within transactions:
+This pattern is now enhanced by `KyseraExecutor`, which extends it with plugin support:
 
 ```typescript
-// Normal usage
-const repos = createRepositories(db)
-const user = await repos.users.findById(1)
+// Modern approach with plugins
+const executor = await createExecutor(db, [softDeletePlugin()])
+const orm = await createORM(executor, [])
 
-// Within transaction - same API!
-await db.transaction().execute(async (trx) => {
+// Legacy approach without plugins
+const repos = createRepositories(db)
+
+// Both work in transactions
+await executor.transaction().execute(async (trx) => {
   const repos = createRepositories(trx)
   await repos.users.create({ ... })
-  await repos.posts.create({ ... })
 })
 ```
 
@@ -174,8 +273,8 @@ const userRepo = factory.create({
   schemas: {
     create: CreateUserSchema,  // Always validated
     entity: UserSchema         // Optional - validates DB results
-  },
-  validateDbResults: process.env.NODE_ENV === 'development'
+  }
+  // Output validation controlled via KYSERA_VALIDATION_MODE or NODE_ENV
 })
 ```
 

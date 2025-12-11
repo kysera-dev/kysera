@@ -274,8 +274,13 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
   type Table = DB[TableName];
   type SelectTable = Selectable<Table>;
 
-  // Get the first primary key column for default ordering
-  const defaultOrderColumn = getPrimaryKeyColumns(pkConfig.columns)[0] ?? 'id';
+  // Cache database type detection at initialization (not per-query)
+  const usesMySQL = isMySQL(db);
+
+  // Cache primary key columns at initialization
+  const pkColumns = getPrimaryKeyColumns(pkConfig.columns);
+  const defaultOrderColumn = pkColumns[0] ?? 'id';
+  const firstPkColumn = pkColumns[0] as string;
 
   return {
     async selectAll(): Promise<SelectTable[]> {
@@ -319,8 +324,6 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     },
 
     async insert(data: unknown): Promise<SelectTable> {
-      const usesMySQL = isMySQL(db);
-
       if (usesMySQL) {
         // MySQL doesn't support RETURNING, use insertId
         const result = await db
@@ -368,8 +371,6 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     },
 
     async insertMany(data: unknown[]): Promise<SelectTable[]> {
-      const usesMySQL = isMySQL(db);
-
       if (usesMySQL) {
         // MySQL doesn't support RETURNING for bulk inserts
         // We need to insert each row and fetch it back
@@ -416,7 +417,6 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     },
 
     async updateById(id: PrimaryKeyInput, data: unknown): Promise<SelectTable | undefined> {
-      const usesMySQL = isMySQL(db);
       const keyRecord = normalizePrimaryKeyInput(pkConfig.columns, id);
 
       // Type assertion needed: .set() accepts dynamic data that can't be fully typed at compile time
@@ -523,10 +523,6 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       if (cursor) {
         const { value, id } = cursor;
         const keyRecord = normalizePrimaryKeyInput(pkConfig.columns, id);
-        
-        // For composite keys, we need to handle tie-breaking differently
-        const pkColumns = getPrimaryKeyColumns(pkConfig.columns);
-        const firstPkColumn = pkColumns[0] ?? 'id';
 
         // Type assertion needed: ExpressionBuilder requires dynamic column references
         // Runtime safety: orderBy is validated at repository layer

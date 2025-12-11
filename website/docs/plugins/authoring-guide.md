@@ -10,35 +10,47 @@ Learn how to create custom plugins to extend Kysera's functionality.
 
 ## Plugin Architecture
 
-Kysera plugins use a **Method Override pattern**, not full query interception. This provides:
+Kysera plugins are powered by **@kysera/executor**, which provides a unified execution layer for both Repository and DAL patterns. The architecture combines:
 
-- **Simplicity**: Easier to understand and maintain
-- **Explicitness**: Developers know exactly what methods they're calling
-- **Type Safety**: Full TypeScript support
-- **Predictability**: No hidden query transformations
+- **Query Interception**: Modify queries before execution (works in both patterns)
+- **Method Override**: Add/wrap repository methods (Repository only)
+- **Lifecycle Hooks**: Initialize plugins with `onInit`
+- **Type Safety**: Full TypeScript support throughout
+- **Dependency Management**: Automatic validation, ordering, and conflict detection
+
+Plugins can use both interception and method override together, providing flexibility while maintaining predictability.
 
 ## Plugin Interface
 
 ```typescript
-interface Plugin {
-  name: string
-  version: string
-  dependencies?: string[]      // Plugins this depends on
-  priority?: number            // Higher = runs first
-  conflictsWith?: string[]     // Incompatible plugins
+import type { Plugin } from '@kysera/executor'
 
-  // Lifecycle
+interface Plugin {
+  // Identity
+  readonly name: string              // Unique plugin name (e.g., '@kysera/soft-delete')
+  readonly version: string           // Semantic version
+
+  // Dependencies and ordering
+  readonly dependencies?: readonly string[]    // Plugins that must load first
+  readonly priority?: number                   // Higher = runs first (default: 0)
+  readonly conflictsWith?: readonly string[]   // Incompatible plugins
+
+  // Lifecycle: Initialize plugin (called once)
   onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
 
-  // Query interception (limited to SELECT)
+  // Query interception: Works in both Repository and DAL patterns
+  // Applied to: selectFrom, insertInto, updateTable, deleteFrom
   interceptQuery?<QB>(qb: QB, context: QueryBuilderContext): QB
 
-  // Result handling
-  afterQuery?(context: QueryContext, result: unknown): Promise<unknown> | unknown
-  onError?(context: QueryContext, error: unknown): Promise<void> | void
+  // Repository extension: Repository pattern only
+  // Add/wrap methods after repository creation
+  extendRepository?<T extends object>(repo: T): T
+}
 
-  // Repository extension (primary mechanism)
-  extendRepository?<T>(repo: T): T
+interface QueryBuilderContext {
+  readonly operation: 'select' | 'insert' | 'update' | 'delete'
+  readonly table: string
+  readonly metadata: Record<string, unknown>
 }
 ```
 
@@ -57,6 +69,11 @@ export interface MyPluginOptions {
 ### Step 2: Create Plugin Factory
 
 ```typescript
+import type { Plugin } from '@kysera/executor'
+import { getRawDb } from '@kysera/executor'
+import type { Kysely } from 'kysely'
+import { silentLogger, type KyseraLogger } from '@kysera/core'
+
 export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
   const {
     enabled = true,
@@ -67,16 +84,34 @@ export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
   return {
     name: '@myorg/my-plugin',
     version: '1.0.0',
+    priority: 0,  // Default priority
 
     async onInit(executor) {
       logger.info('MyPlugin initialized')
       // Setup code (e.g., verify tables exist)
+      const result = await executor
+        .selectFrom('information_schema.tables')
+        .where('table_name', '=', 'my_table')
+        .executeTakeFirst()
+
+      if (!result) {
+        logger.warn('Required table "my_table" not found')
+      }
+    },
+
+    interceptQuery(qb, context) {
+      // Add custom query filtering (works in both Repository and DAL)
+      if (context.operation === 'select' && !context.metadata['skipFilter']) {
+        logger.debug(`Filtering ${context.operation} on ${context.table}`)
+        return qb.where('is_active', '=', true)
+      }
+      return qb
     },
 
     extendRepository<T extends object>(repo: T): T {
       if (!enabled) return repo
 
-      const baseRepo = repo as BaseRepository
+      const baseRepo = repo as any
 
       return {
         ...baseRepo,
@@ -84,6 +119,8 @@ export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
         // Add new method
         async myCustomMethod() {
           logger.debug('Custom method called')
+          // Use getRawDb to bypass interceptors if needed
+          const rawDb = getRawDb(baseRepo.executor)
           return 'result'
         },
 
@@ -109,21 +146,64 @@ export type { MyPluginOptions } from './plugin'
 
 ## Plugin Patterns
 
-### 1. Method Override (Recommended)
+### 1. Query Interception (Recommended for filtering)
 
-Add or replace repository methods:
+Modify queries before execution. Works in **both Repository and DAL patterns**:
+
+```typescript
+import type { Plugin, QueryBuilderContext } from '@kysera/executor'
+
+const myPlugin = (): Plugin => ({
+  name: '@myorg/my-plugin',
+  version: '1.0.0',
+
+  interceptQuery(qb, context: QueryBuilderContext) {
+    // Filter SELECT queries
+    if (context.operation === 'select' && !context.metadata['includeDeleted']) {
+      return qb.where(`${context.table}.deleted_at`, 'is', null)
+    }
+
+    // Validate INSERT operations
+    if (context.operation === 'insert') {
+      // Add audit fields automatically
+      return qb.$call((qb) => {
+        // Note: This is a simplified example
+        return qb
+      })
+    }
+
+    return qb
+  }
+})
+```
+
+**Intercepted methods:**
+- `selectFrom` → `operation: 'select'`
+- `insertInto` → `operation: 'insert'`
+- `updateTable` → `operation: 'update'`
+- `deleteFrom` → `operation: 'delete'`
+
+### 2. Repository Extension (Recommended for new methods)
+
+Add or replace repository methods (Repository pattern only):
 
 ```typescript
 extendRepository(repo) {
+  const baseRepo = repo as any
+
   return {
-    ...repo,
+    ...baseRepo,
+
+    // Add new method
     async softDelete(id: number) {
-      return await repo.update(id, { deleted_at: new Date().toISOString() })
+      return await baseRepo.update(id, { deleted_at: new Date().toISOString() })
     },
+
+    // Override existing method
     async findAll() {
-      // Override to filter deleted
-      return await repo.executor
-        .selectFrom(repo.tableName)
+      // Note: interceptQuery already filters, this is just an example
+      return await baseRepo.executor
+        .selectFrom(baseRepo.tableName)
         .where('deleted_at', 'is', null)
         .selectAll()
         .execute()
@@ -132,43 +212,27 @@ extendRepository(repo) {
 }
 ```
 
-### 2. Query Interception (SELECT only)
+### 3. Bypassing Interceptors
 
-Filter SELECT queries automatically:
+Use `getRawDb` to access the underlying Kysely instance without plugin interception:
 
 ```typescript
-interceptQuery<QB>(qb: QB, context: QueryBuilderContext): QB {
-  if (context.operation === 'select' && !context.metadata['includeDeleted']) {
-    return (qb as any).where(`${context.table}.deleted_at`, 'is', null)
+import { getRawDb } from '@kysera/executor'
+
+extendRepository(repo) {
+  return {
+    ...repo,
+
+    async findWithDeleted(id: number) {
+      // Bypass soft-delete filter
+      const rawDb = getRawDb(repo.executor)
+      return await rawDb
+        .selectFrom(repo.tableName)
+        .where('id', '=', id)
+        .selectAll()
+        .executeTakeFirst()
+    }
   }
-  return qb
-}
-```
-
-### 3. Result Transformation
-
-Process query results:
-
-```typescript
-afterQuery(context, result) {
-  if (context.operation === 'select' && Array.isArray(result)) {
-    return result.map(row => ({
-      ...row,
-      email: row.email ? maskEmail(row.email) : null
-    }))
-  }
-  return result
-}
-```
-
-### 4. Error Handling
-
-Handle or log errors:
-
-```typescript
-onError(context, error) {
-  logger.error(`Error in ${context.operation} on ${context.table}`, error)
-  // Don't throw - let error propagate
 }
 ```
 
@@ -238,6 +302,7 @@ describe('MyPlugin', () => {
 
 ```typescript
 import { createORM } from '@kysera/repository'
+import { createExecutor } from '@kysera/executor'
 import { myPlugin } from '../src'
 
 describe('MyPlugin Integration', () => {
@@ -248,6 +313,19 @@ describe('MyPlugin Integration', () => {
 
     const result = await repo.myCustomMethod()
     expect(result).toBe('result')
+  })
+
+  it('should work with executor directly', async () => {
+    const executor = await createExecutor(db, [myPlugin()])
+
+    // Query interception works with executor
+    const users = await executor
+      .selectFrom('users')
+      .selectAll()
+      .execute()
+
+    // Plugin filtering applied automatically
+    expect(users.every(u => u.is_active === true)).toBe(true)
   })
 })
 ```
@@ -309,22 +387,46 @@ export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
 }
 ```
 
-### 6. Declare Dependencies
+### 6. Declare Dependencies and Priority
 
 ```typescript
 export const myPlugin = (): Plugin => ({
   name: '@myorg/my-plugin',
   version: '1.0.0',
-  dependencies: ['@kysera/soft-delete'],  // Requires soft-delete
-  conflictsWith: ['@other/similar-plugin'],  // Conflicts with
-  priority: 10,  // Run after soft-delete (lower priority)
+
+  // Dependencies: Must load after these plugins
+  dependencies: ['@kysera/soft-delete'],
+
+  // Conflicts: Cannot be used with these plugins
+  conflictsWith: ['@other/similar-plugin'],
+
+  // Priority: Higher runs first (default: 0)
+  // 50: Security plugins (RLS)
+  // 10: Validation plugins
+  // 0: Standard plugins
+  // -10: Logging/audit plugins
+  priority: 10,
 })
 ```
+
+**Plugin order resolution:**
+1. Topological sort by dependencies
+2. Sort by priority (higher first)
+3. Alphabetical by name (for stability)
+
+**Validation:**
+- Duplicate names → `PluginValidationError`
+- Missing dependencies → `PluginValidationError`
+- Circular dependencies → `PluginValidationError`
+- Conflicts → `PluginValidationError`
 
 ## Complete Example
 
 ```typescript
-import { Plugin, KyseraLogger, silentLogger } from '@kysera/core'
+import type { Plugin, QueryBuilderContext } from '@kysera/executor'
+import { getRawDb } from '@kysera/executor'
+import type { Kysely } from 'kysely'
+import { silentLogger, type KyseraLogger } from '@kysera/core'
 import { z } from 'zod'
 
 export const CachePluginOptionsSchema = z.object({
@@ -338,10 +440,41 @@ export type CachePluginOptions = z.infer<typeof CachePluginOptionsSchema>
 export const cachePlugin = (options: CachePluginOptions = {}): Plugin => {
   const config = CachePluginOptionsSchema.parse(options)
   const cache = new Map<string, { data: unknown; expires: number }>()
+  let logger: KyseraLogger = silentLogger
 
   return {
     name: '@kysera/cache',
     version: '1.0.0',
+    priority: -10,  // Run after other plugins (logging/caching priority)
+
+    async onInit<DB>(executor: Kysely<DB>): Promise<void> {
+      logger.info?.('[Cache] Plugin initialized', {
+        ttl: config.ttl,
+        maxSize: config.maxSize,
+      })
+
+      // Start cache cleanup interval
+      if (config.enabled) {
+        setInterval(() => {
+          const now = Date.now()
+          for (const [key, value] of cache.entries()) {
+            if (value.expires < now) {
+              cache.delete(key)
+              logger.debug?.(`[Cache] Evicted expired key: ${key}`)
+            }
+          }
+        }, 60000)
+      }
+    },
+
+    interceptQuery<QB>(qb: QB, context: QueryBuilderContext): QB {
+      // Mark queries as cacheable
+      if (context.operation === 'select') {
+        context.metadata['cacheable'] = true
+        logger.debug?.(`[Cache] Marking ${context.table} query as cacheable`)
+      }
+      return qb
+    },
 
     extendRepository<T extends object>(repo: T): T {
       if (!config.enabled) return repo
@@ -356,10 +489,18 @@ export const cachePlugin = (options: CachePluginOptions = {}): Plugin => {
           const cached = cache.get(cacheKey)
 
           if (cached && cached.expires > Date.now()) {
+            logger.debug?.(`[Cache] Hit: ${cacheKey}`)
             return cached.data
           }
 
+          logger.debug?.(`[Cache] Miss: ${cacheKey}`)
           const result = await baseRepo.findById(id)
+
+          if (cache.size >= config.maxSize) {
+            // Evict oldest entry
+            const firstKey = cache.keys().next().value
+            cache.delete(firstKey)
+          }
 
           cache.set(cacheKey, {
             data: result,
@@ -369,16 +510,38 @@ export const cachePlugin = (options: CachePluginOptions = {}): Plugin => {
           return result
         },
 
+        async update(id: number, data: any) {
+          const result = await baseRepo.update(id, data)
+          // Invalidate cache on update
+          const cacheKey = `${baseRepo.tableName}:${id}`
+          cache.delete(cacheKey)
+          logger.debug?.(`[Cache] Invalidated: ${cacheKey}`)
+          return result
+        },
+
         invalidateCache(id?: number) {
           if (id) {
-            cache.delete(`${baseRepo.tableName}:${id}`)
+            const cacheKey = `${baseRepo.tableName}:${id}`
+            cache.delete(cacheKey)
+            logger.debug?.(`[Cache] Manual invalidation: ${cacheKey}`)
           } else {
             // Clear all entries for this table
+            let count = 0
             for (const key of cache.keys()) {
               if (key.startsWith(baseRepo.tableName)) {
                 cache.delete(key)
+                count++
               }
             }
+            logger.debug?.(`[Cache] Cleared ${count} entries for ${baseRepo.tableName}`)
+          }
+        },
+
+        getCacheStats() {
+          return {
+            size: cache.size,
+            maxSize: config.maxSize,
+            ttl: config.ttl,
           }
         }
       } as T

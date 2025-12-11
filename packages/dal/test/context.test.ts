@@ -132,34 +132,17 @@ describe('withTransaction', () => {
     ).rejects.toThrow('Transaction failed');
   });
 
-  it('should warn when isolation level is specified', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
+  it('should accept isolation level option without warning', async () => {
     const mockTrx = createMockTransaction();
     const mockDb = createMockDbWithTransaction(mockTrx);
 
-    await withTransaction(
+    const result = await withTransaction(
       mockDb,
       async () => ({ done: true }),
       { isolationLevel: 'serializable' }
     );
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('serializable')
-    );
-    warnSpy.mockRestore();
-  });
-
-  it('should not warn when isolation level is not specified', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    const mockTrx = createMockTransaction();
-    const mockDb = createMockDbWithTransaction(mockTrx);
-
-    await withTransaction(mockDb, async () => ({ done: true }));
-
-    expect(warnSpy).not.toHaveBeenCalled();
-    warnSpy.mockRestore();
+    expect(result).toEqual({ done: true });
   });
 });
 

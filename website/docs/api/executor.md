@@ -1,0 +1,961 @@
+---
+sidebar_position: 4
+title: "@kysera/executor"
+description: Unified Execution Layer API reference
+---
+
+# @kysera/executor
+
+Unified Execution Layer for Kysera - Plugin-aware Kysely wrapper that enables plugins to work seamlessly with both Repository and DAL patterns.
+
+## Installation
+
+```bash
+npm install @kysera/executor kysely
+```
+
+## Overview
+
+**Version:** 0.7.0
+**Bundle Size:** ~8 KB (minified)
+**Dependencies:** None (peer: kysely >=0.28.8)
+
+`@kysera/executor` provides a unified plugin system that works seamlessly with both Repository and DAL patterns. It wraps Kysely instances with plugin interception capabilities while maintaining full type safety and zero overhead when plugins aren't active.
+
+## Key Features
+
+- **Unified Plugin System** - Single plugin architecture for both Repository and DAL
+- **Zero Overhead** - No performance penalty when no interceptor plugins are registered
+- **Type Safe** - Full TypeScript support with Kysely types preserved
+- **Transaction Support** - Plugins automatically propagate through transactions
+- **Plugin Validation** - Detects conflicts, missing dependencies, and circular dependencies
+- **Cross-Runtime** - Works with Node.js, Bun, and Deno
+
+## Quick Start
+
+```typescript
+import { createExecutor } from '@kysera/executor';
+import { softDeletePlugin } from '@kysera/soft-delete';
+
+const executor = await createExecutor(db, [softDeletePlugin()]);
+
+// All queries now have soft-delete filter applied automatically
+const users = await executor.selectFrom('users').selectAll().execute();
+```
+
+**Intercepted Methods:**
+
+The executor intercepts these Kysely methods to apply plugins:
+- `selectFrom(table)` - SELECT queries
+- `insertInto(table)` - INSERT queries
+- `updateTable(table)` - UPDATE queries
+- `deleteFrom(table)` - DELETE queries
+
+All other Kysely methods pass through unchanged.
+
+## Core Functions
+
+### createExecutor
+
+Creates a plugin-aware executor with async plugin initialization.
+
+```typescript
+async function createExecutor<DB>(
+  db: Kysely<DB>,
+  plugins?: readonly Plugin[],
+  config?: ExecutorConfig
+): Promise<KyseraExecutor<DB>>
+```
+
+**Parameters:**
+- `db` - Kysely database instance
+- `plugins` - Array of plugins to apply (default: `[]`)
+- `config.enabled` - Enable/disable plugin interception at runtime (default: `true`)
+
+**Returns:** `KyseraExecutor<DB>` - Plugin-aware Kysely wrapper
+
+**Example:**
+
+```typescript
+import { createExecutor } from '@kysera/executor';
+import { softDeletePlugin } from '@kysera/soft-delete';
+import { rlsPlugin } from '@kysera/rls';
+
+// With multiple plugins
+const executor = await createExecutor(db, [
+  softDeletePlugin(),
+  rlsPlugin({ schema: rlsSchema })
+]);
+
+// With config
+const executor = await createExecutor(db, plugins, {
+  enabled: process.env.NODE_ENV === 'production'
+});
+
+// Use like normal Kysely instance
+const users = await executor
+  .selectFrom('users')
+  .selectAll()
+  .execute();
+```
+
+**Plugin Initialization:**
+
+Plugins are:
+1. Validated for conflicts and dependencies
+2. Sorted by priority and dependencies (topological sort)
+3. Initialized via `onInit` lifecycle hook (async)
+4. Cached for efficient interception
+
+**Performance:**
+
+- **No plugins:** Returns augmented Kysely instance (zero overhead)
+- **No interceptors:** Returns augmented Kysely instance (minimal overhead)
+- **With interceptors:** Uses optimized Proxy with method caching
+
+### createExecutorSync
+
+Synchronous version of `createExecutor` that skips async plugin initialization.
+
+```typescript
+function createExecutorSync<DB>(
+  db: Kysely<DB>,
+  plugins?: readonly Plugin[],
+  config?: ExecutorConfig
+): KyseraExecutor<DB>
+```
+
+**Parameters:**
+- `db` - Kysely database instance
+- `plugins` - Array of plugins to apply (default: `[]`)
+- `config.enabled` - Enable/disable plugin interception (default: `true`)
+
+**Returns:** `KyseraExecutor<DB>` - Plugin-aware Kysely wrapper
+
+**Example:**
+
+```typescript
+import { createExecutorSync } from '@kysera/executor';
+
+// Synchronous creation (no onInit hooks called)
+const executor = createExecutorSync(db, [
+  softDeletePlugin()
+]);
+
+// Use immediately
+const users = await executor.selectFrom('users').selectAll().execute();
+```
+
+**Use Cases:**
+- Plugins without `onInit` hooks
+- Performance-critical initialization paths
+- Testing scenarios where initialization isn't needed
+
+**Limitations:**
+- Does not call `plugin.onInit()` hooks
+- Plugins requiring async initialization will not work correctly
+
+### isKyseraExecutor
+
+Type guard to check if a value is a `KyseraExecutor`.
+
+```typescript
+function isKyseraExecutor<DB>(
+  value: Kysely<DB> | KyseraExecutor<DB>
+): value is KyseraExecutor<DB>
+```
+
+**Parameters:**
+- `value` - Kysely or KyseraExecutor instance to check
+
+**Returns:** `true` if value is a KyseraExecutor, `false` otherwise
+
+**Example:**
+
+```typescript
+import { isKyseraExecutor, createExecutor } from '@kysera/executor';
+
+function processDb(db: Kysely<DB> | KyseraExecutor<DB>) {
+  if (isKyseraExecutor(db)) {
+    const plugins = db.__plugins;
+    console.log(`Using ${plugins.length} plugins`);
+  } else {
+    console.log('Plain Kysely instance');
+  }
+}
+
+const executor = await createExecutor(db, [softDeletePlugin()]);
+processDb(executor); // "Using 1 plugins"
+processDb(db);       // "Plain Kysely instance"
+```
+
+### getPlugins
+
+Get the list of plugins from a KyseraExecutor.
+
+```typescript
+function getPlugins<DB>(executor: KyseraExecutor<DB>): readonly Plugin[]
+```
+
+**Parameters:**
+- `executor` - KyseraExecutor instance
+
+**Returns:** Array of plugins in execution order
+
+**Example:**
+
+```typescript
+import { getPlugins } from '@kysera/executor';
+
+const executor = await createExecutor(db, [
+  softDeletePlugin(),
+  rlsPlugin({ schema })
+]);
+
+const plugins = getPlugins(executor);
+console.log(plugins.map(p => p.name));
+// ['@kysera/rls', '@kysera/soft-delete']
+// (ordered by priority and dependencies)
+```
+
+### getRawDb
+
+Get the raw Kysely instance from an executor, bypassing plugin interceptors.
+
+```typescript
+function getRawDb<DB>(executor: Kysely<DB>): Kysely<DB>
+```
+
+**Parameters:**
+- `executor` - Kysely or KyseraExecutor instance
+
+**Returns:** Raw Kysely instance without plugin interception
+
+**Example:**
+
+```typescript
+import { getRawDb } from '@kysera/executor';
+
+const executor = await createExecutor(db, [softDeletePlugin()]);
+
+// This query has soft-delete filter applied
+const users = await executor
+  .selectFrom('users')
+  .selectAll()
+  .execute();
+
+// This query BYPASSES soft-delete filter
+const rawDb = getRawDb(executor);
+const allUsers = await rawDb
+  .selectFrom('users')
+  .selectAll()
+  .execute();
+```
+
+**Use Cases:**
+- Plugin internal queries that shouldn't trigger interceptors
+- Avoiding double-filtering (e.g., soft-delete plugin checking its own records)
+- Admin operations that need full database access
+- Performance-critical queries where plugin overhead must be avoided
+
+**Safety:**
+
+Use with caution - bypassing plugins can expose deleted records, violate RLS policies, etc.
+
+### wrapTransaction
+
+Wrap a transaction with plugins from an executor.
+
+```typescript
+function wrapTransaction<DB>(
+  trx: Transaction<DB>,
+  plugins: readonly Plugin[]
+): KyseraTransaction<DB>
+```
+
+**Parameters:**
+- `trx` - Kysely transaction instance
+- `plugins` - Array of plugins to apply
+
+**Returns:** `KyseraTransaction<DB>` - Plugin-aware transaction
+
+**Example:**
+
+```typescript
+import { wrapTransaction, getPlugins } from '@kysera/executor';
+
+const executor = await createExecutor(db, [softDeletePlugin()]);
+
+await db.transaction().execute(async (trx) => {
+  // Wrap transaction with same plugins as executor
+  const wrappedTrx = wrapTransaction(trx, getPlugins(executor));
+
+  // Plugins applied within transaction
+  const users = await wrappedTrx
+    .selectFrom('users')
+    .selectAll()
+    .execute();
+});
+```
+
+**Note:** Usually not needed - `executor.transaction()` automatically wraps transactions.
+
+### applyPlugins
+
+Manually apply plugins to a query builder.
+
+```typescript
+function applyPlugins<QB>(
+  qb: QB,
+  plugins: readonly Plugin[],
+  context: QueryBuilderContext
+): QB
+```
+
+**Parameters:**
+- `qb` - Query builder instance
+- `plugins` - Array of plugins to apply
+- `context` - Query context (operation, table, metadata)
+
+**Returns:** Modified query builder
+
+**Example:**
+
+```typescript
+import { applyPlugins, getPlugins } from '@kysera/executor';
+
+const executor = await createExecutor(db, [softDeletePlugin()]);
+
+// Manual plugin application for complex queries
+let query = db.selectFrom('users').selectAll();
+
+query = applyPlugins(query, getPlugins(executor), {
+  operation: 'select',
+  table: 'users',
+  metadata: {}
+});
+
+const users = await query.execute();
+```
+
+**Use Cases:**
+- Dynamic query building where automatic interception doesn't work
+- Custom query builder patterns
+- Testing plugin behavior in isolation
+
+### validatePlugins
+
+Validate plugins for conflicts, dependencies, and circular dependencies.
+
+```typescript
+function validatePlugins(plugins: readonly Plugin[]): void
+```
+
+**Parameters:**
+- `plugins` - Array of plugins to validate
+
+**Throws:** `PluginValidationError` if validation fails
+
+**Example:**
+
+```typescript
+import { validatePlugins, PluginValidationError } from '@kysera/executor';
+
+try {
+  validatePlugins([
+    { name: 'plugin-a', version: '1.0.0', dependencies: ['plugin-b'] },
+    { name: 'plugin-b', version: '1.0.0', dependencies: ['plugin-a'] }
+  ]);
+} catch (error) {
+  if (error instanceof PluginValidationError) {
+    console.log(error.type);     // 'CIRCULAR_DEPENDENCY'
+    console.log(error.details);  // { pluginName: 'plugin-a', cycle: [...] }
+  }
+}
+```
+
+**Validation Checks:**
+
+1. **Duplicate Names** - Each plugin must have a unique name
+2. **Missing Dependencies** - All dependencies must be registered
+3. **Conflicts** - Conflicting plugins cannot be loaded together
+4. **Circular Dependencies** - Dependency graph must be acyclic
+
+**Error Types:**
+
+```typescript
+type PluginValidationErrorType =
+  | 'DUPLICATE_NAME'
+  | 'MISSING_DEPENDENCY'
+  | 'CONFLICT'
+  | 'CIRCULAR_DEPENDENCY';
+```
+
+### resolvePluginOrder
+
+Resolve plugin execution order using topological sort with priority.
+
+```typescript
+function resolvePluginOrder(plugins: readonly Plugin[]): Plugin[]
+```
+
+**Parameters:**
+- `plugins` - Array of plugins to sort
+
+**Returns:** Sorted array of plugins in execution order
+
+**Example:**
+
+```typescript
+import { resolvePluginOrder } from '@kysera/executor';
+
+const sorted = resolvePluginOrder([
+  { name: 'audit', version: '1.0.0', priority: 0 },
+  { name: 'rls', version: '1.0.0', priority: 50 },
+  { name: 'soft-delete', version: '1.0.0', priority: 0 }
+]);
+
+console.log(sorted.map(p => p.name));
+// ['rls', 'audit', 'soft-delete']
+// (rls first due to priority 50, then alphabetical)
+```
+
+**Ordering Algorithm:**
+
+1. **Topological Sort** - Plugins with dependencies run after their dependencies
+2. **Priority** - Within same level, higher priority runs first (default: 0)
+3. **Tie-Breaking** - Alphabetical by name for stability
+
+**Priority Guidelines:**
+
+- **50**: Security plugins (RLS) - must filter before other plugins see data
+- **10**: Validation plugins - validate early
+- **0**: Standard plugins (default)
+- **-10**: Logging/audit plugins - capture final state
+
+## Types
+
+### Plugin
+
+Plugin interface for extending Kysera functionality.
+
+```typescript
+interface Plugin {
+  /** Unique plugin name */
+  readonly name: string;
+  /** Plugin version */
+  readonly version: string;
+  /** Plugin dependencies (must be loaded first) */
+  readonly dependencies?: readonly string[];
+  /** Higher priority = runs first (default: 0) */
+  readonly priority?: number;
+  /** Plugins that conflict with this one */
+  readonly conflictsWith?: readonly string[];
+
+  /** Lifecycle: Called once when plugin is initialized */
+  onInit?<DB>(executor: Kysely<DB>): Promise<void> | void;
+
+  /** Query interception: Modify query builder before execution */
+  interceptQuery?<QB>(qb: QB, context: QueryBuilderContext): QB;
+
+  /** Repository extensions: Add methods to repositories (Repository pattern only) */
+  extendRepository?<T extends object>(repo: T): T;
+}
+```
+
+**Plugin Hooks:**
+
+| Hook | When Called | Use Case |
+|------|-------------|----------|
+| `onInit` | Once during `createExecutor` | Setup, validation, schema checks |
+| `interceptQuery` | Before query execution | Add WHERE clauses, modify queries |
+| `extendRepository` | Repository creation (Repository pattern only) | Add custom methods |
+
+**Example:**
+
+```typescript
+import type { Plugin } from '@kysera/executor';
+
+const loggingPlugin: Plugin = {
+  name: '@myapp/logging',
+  version: '1.0.0',
+  priority: -10, // Run after other plugins
+
+  onInit: async (db) => {
+    console.log('Plugin initialized');
+  },
+
+  interceptQuery: (qb, context) => {
+    console.log(`Query: ${context.operation} on ${context.table}`);
+    return qb;
+  }
+};
+```
+
+### QueryBuilderContext
+
+Context passed to `interceptQuery` hooks.
+
+```typescript
+interface QueryBuilderContext {
+  /** Type of operation */
+  readonly operation: 'select' | 'insert' | 'update' | 'delete';
+  /** Table name */
+  readonly table: string;
+  /** Additional metadata (shared across plugin chain) */
+  readonly metadata: Record<string, unknown>;
+}
+```
+
+**Example:**
+
+```typescript
+interceptQuery: (qb, context) => {
+  // Check operation type
+  if (context.operation === 'select') {
+    return qb.where(`${context.table}.deleted_at`, 'is', null);
+  }
+
+  // Share data between plugins via metadata
+  context.metadata['processed_by_my_plugin'] = true;
+
+  return qb;
+}
+```
+
+**Metadata Usage:**
+
+Plugins can use `context.metadata` to communicate:
+
+```typescript
+// Plugin A sets metadata
+const pluginA: Plugin = {
+  name: 'plugin-a',
+  interceptQuery: (qb, context) => {
+    context.metadata['skip_plugin_b'] = true;
+    return qb;
+  }
+};
+
+// Plugin B reads metadata
+const pluginB: Plugin = {
+  name: 'plugin-b',
+  dependencies: ['plugin-a'],
+  interceptQuery: (qb, context) => {
+    if (context.metadata['skip_plugin_b']) {
+      return qb; // Skip processing
+    }
+    return qb.where('active', '=', true);
+  }
+};
+```
+
+### KyseraExecutor
+
+Plugin-aware Kysely wrapper type.
+
+```typescript
+type KyseraExecutor<DB> = Kysely<DB> & KyseraExecutorMarker<DB>;
+
+interface KyseraExecutorMarker<DB = unknown> {
+  readonly __kysera: true;
+  readonly __plugins: readonly Plugin[];
+  readonly __rawDb: Kysely<DB>;
+}
+```
+
+**Properties:**
+- `__kysera` - Type marker (always `true`)
+- `__plugins` - Registered plugins in execution order
+- `__rawDb` - Raw Kysely instance bypassing interceptors
+
+**Example:**
+
+```typescript
+const executor = await createExecutor(db, [softDeletePlugin()]);
+
+// Access marker properties
+console.log(executor.__kysera);        // true
+console.log(executor.__plugins.length); // 1
+console.log(executor.__rawDb === db);  // true
+
+// Use as normal Kysely instance
+const users = await executor.selectFrom('users').selectAll().execute();
+```
+
+### KyseraTransaction
+
+Plugin-aware Transaction wrapper type.
+
+```typescript
+type KyseraTransaction<DB> = Transaction<DB> & KyseraExecutorMarker<DB>;
+```
+
+Transactions created from `KyseraExecutor` automatically inherit plugins:
+
+```typescript
+const executor = await createExecutor(db, [softDeletePlugin()]);
+
+await executor.transaction().execute(async (trx) => {
+  // trx is KyseraTransaction<DB> with plugins
+  console.log(trx.__kysera);        // true
+  console.log(trx.__plugins.length); // 1
+
+  // Queries inside transaction have plugins applied
+  const users = await trx.selectFrom('users').selectAll().execute();
+});
+```
+
+### ExecutorConfig
+
+Configuration for executor creation.
+
+```typescript
+interface ExecutorConfig {
+  /** Enable/disable plugin interception at runtime */
+  readonly enabled?: boolean;
+}
+```
+
+**Example:**
+
+```typescript
+// Disable plugins in development
+const executor = await createExecutor(db, plugins, {
+  enabled: process.env.NODE_ENV === 'production'
+});
+
+// Conditionally enable plugins
+const executor = await createExecutor(db, plugins, {
+  enabled: featureFlags.pluginsEnabled
+});
+```
+
+### PluginValidationError
+
+Error thrown when plugin validation fails.
+
+```typescript
+class PluginValidationError extends Error {
+  constructor(
+    message: string,
+    public readonly type: PluginValidationErrorType,
+    public readonly details: PluginValidationDetails
+  );
+}
+
+type PluginValidationErrorType =
+  | 'DUPLICATE_NAME'
+  | 'MISSING_DEPENDENCY'
+  | 'CONFLICT'
+  | 'CIRCULAR_DEPENDENCY';
+
+interface PluginValidationDetails {
+  readonly pluginName: string;
+  readonly missingDependency?: string;
+  readonly conflictingPlugin?: string;
+  readonly cycle?: readonly string[];
+}
+```
+
+**Example:**
+
+```typescript
+import { validatePlugins, PluginValidationError } from '@kysera/executor';
+
+try {
+  validatePlugins(plugins);
+} catch (error) {
+  if (error instanceof PluginValidationError) {
+    switch (error.type) {
+      case 'DUPLICATE_NAME':
+        console.error(`Duplicate plugin: ${error.details.pluginName}`);
+        break;
+      case 'MISSING_DEPENDENCY':
+        console.error(
+          `Plugin "${error.details.pluginName}" requires "${error.details.missingDependency}"`
+        );
+        break;
+      case 'CONFLICT':
+        console.error(
+          `Plugin "${error.details.pluginName}" conflicts with "${error.details.conflictingPlugin}"`
+        );
+        break;
+      case 'CIRCULAR_DEPENDENCY':
+        console.error(`Circular dependency: ${error.details.cycle?.join(' -> ')}`);
+        break;
+    }
+  }
+}
+```
+
+## Usage Patterns
+
+### With Repository Pattern
+
+```typescript
+import { createExecutor } from '@kysera/executor';
+import { createORM } from '@kysera/repository';
+import { softDeletePlugin } from '@kysera/soft-delete';
+
+// Create executor with plugins
+const executor = await createExecutor(db, [softDeletePlugin()]);
+
+// Create ORM using executor (no additional plugins needed)
+const orm = await createORM(executor, []);
+
+const userRepo = orm.createRepository((exec) => {
+  const factory = createRepositoryFactory(exec);
+  return factory.create({
+    tableName: 'users',
+    mapRow: (row) => row,
+    schemas: { create: CreateUserSchema }
+  });
+});
+
+// Repository has plugin methods
+await userRepo.softDelete(userId);
+```
+
+### With DAL Pattern
+
+```typescript
+import { createExecutor } from '@kysera/executor';
+import { createQuery, withTransaction } from '@kysera/dal';
+
+// Create executor with plugins
+const executor = await createExecutor(db, [
+  softDeletePlugin(),
+  rlsPlugin({ schema: rlsSchema })
+]);
+
+// Create DAL queries
+const getUsers = createQuery((ctx) =>
+  ctx.db.selectFrom('users').selectAll().execute()
+);
+
+const createUser = createQuery((ctx, data: CreateUserInput) =>
+  ctx.db.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
+);
+
+// Plugins applied automatically
+const users = await getUsers(executor);
+
+// Plugins work in transactions
+await withTransaction(executor, async (ctx) => {
+  const user = await createUser(ctx, userData);
+  return user;
+});
+```
+
+### Transaction Propagation
+
+Plugins automatically propagate through transactions:
+
+```typescript
+const executor = await createExecutor(db, [
+  softDeletePlugin(),
+  rlsPlugin({ schema: rlsSchema })
+]);
+
+await executor.transaction().execute(async (trx) => {
+  // trx inherits all plugins from executor
+  const users = await trx.selectFrom('users').selectAll().execute();
+  // ✅ Soft-delete filter applied
+  // ✅ RLS filter applied
+
+  await trx
+    .insertInto('posts')
+    .values({ title: 'Post', user_id: 1 })
+    .execute();
+  // ✅ RLS context applied
+});
+```
+
+### Bypassing Plugins
+
+Use `getRawDb` to bypass plugin interceptors:
+
+```typescript
+const executor = await createExecutor(db, [softDeletePlugin()]);
+
+// With plugins
+const activeUsers = await executor
+  .selectFrom('users')
+  .selectAll()
+  .execute();
+// Returns only non-deleted users
+
+// Without plugins
+const rawDb = getRawDb(executor);
+const allUsers = await rawDb
+  .selectFrom('users')
+  .selectAll()
+  .execute();
+// Returns ALL users including deleted
+```
+
+### Custom Plugin Example
+
+```typescript
+import type { Plugin, QueryBuilderContext } from '@kysera/executor';
+
+const tenantPlugin = (tenantId: string): Plugin => ({
+  name: '@myapp/tenant-filter',
+  version: '1.0.0',
+  priority: 50, // High priority - run before other plugins
+
+  interceptQuery: (qb, context) => {
+    // Only apply to SELECT queries
+    if (context.operation === 'select') {
+      return qb.where('tenant_id', '=', tenantId);
+    }
+    return qb;
+  },
+
+  extendRepository: (repo: any) => ({
+    ...repo,
+    // Add method to query across all tenants
+    findAllTenants: async () => {
+      const rawDb = getRawDb(repo.executor);
+      return await rawDb
+        .selectFrom(repo.tableName)
+        .selectAll()
+        .execute();
+    }
+  })
+});
+
+// Usage
+const executor = await createExecutor(db, [tenantPlugin('tenant-123')]);
+const users = await executor.selectFrom('users').selectAll().execute();
+// Automatically filtered by tenant_id = 'tenant-123'
+```
+
+## Architecture
+
+### How It Works
+
+The executor uses different strategies based on plugin configuration:
+
+**1. Zero Overhead Path** (no plugins or disabled):
+```typescript
+// Returns augmented Kysely with marker properties only
+return Object.assign(db, {
+  __kysera: true,
+  __plugins: [],
+  __rawDb: db
+})
+```
+
+**2. Minimal Overhead Path** (no interceptors):
+```typescript
+// Plugins have no interceptQuery hooks
+// Returns augmented Kysely without Proxy
+return Object.assign(db, {
+  __kysera: true,
+  __plugins: sortedPlugins,
+  __rawDb: db
+})
+```
+
+**3. Proxy Path** (with interceptors):
+```typescript
+// Creates Proxy to intercept method calls
+return new Proxy(db, {
+  get(target, prop) {
+    if (prop === 'selectFrom') {
+      return (table) => {
+        let qb = target.selectFrom(table)
+        const context = { operation: 'select', table, metadata: {} }
+        for (const plugin of interceptors) {
+          qb = plugin.interceptQuery(qb, context)
+        }
+        return qb
+      }
+    }
+    // ... similar for insertInto, updateTable, deleteFrom
+  }
+})
+```
+
+### Intercepted Methods
+
+Only these four methods trigger plugin interception:
+
+| Method | Operation | Context |
+|--------|-----------|---------|
+| `selectFrom(table)` | `'select'` | Query builder for SELECT |
+| `insertInto(table)` | `'insert'` | Query builder for INSERT |
+| `updateTable(table)` | `'update'` | Query builder for UPDATE |
+| `deleteFrom(table)` | `'delete'` | Query builder for DELETE |
+
+All other Kysely methods (`.where()`, `.select()`, `.execute()`, etc.) pass through without interception.
+
+### Plugin Lifecycle
+
+1. **Validation** - `validatePlugins()` checks for conflicts, dependencies, circular dependencies
+2. **Ordering** - `resolvePluginOrder()` performs topological sort with priority
+3. **Initialization** - Each plugin's `onInit()` called in order (async)
+4. **Filtering** - Only plugins with `interceptQuery` are cached as interceptors
+5. **Execution** - Interceptors applied on each intercepted method call
+
+### Transaction Handling
+
+Transactions inherit plugins automatically:
+
+```typescript
+executor.transaction().execute(async (trx) => {
+  // trx is wrapped with same plugins as executor
+  // Uses createProxy() with same interceptor array
+})
+```
+
+Manual wrapping is also supported via `wrapTransaction(trx, plugins)`.
+
+## Performance
+
+### Zero Overhead Fast Paths
+
+The executor uses multiple optimization strategies:
+
+1. **No plugins:** Returns augmented Kysely instance (zero overhead)
+2. **No interceptors:** Returns augmented Kysely instance (minimal overhead)
+3. **With interceptors:** Uses optimized Proxy with:
+   - Method caching (avoid repeated `.bind()` calls)
+   - Set-based lookups (O(1) instead of O(n))
+   - Cached intercepted methods
+   - Cached transaction wrapper
+
+### Benchmarks
+
+```typescript
+// Plain Kysely
+const db = new Kysely({ ... });
+const users = await db.selectFrom('users').selectAll().execute();
+// Baseline: 1.0x
+
+// Executor with no plugins
+const executor = await createExecutor(db, []);
+const users = await executor.selectFrom('users').selectAll().execute();
+// ~1.0x (negligible overhead)
+
+// Executor with non-interceptor plugins
+const executor = await createExecutor(db, [auditPlugin()]);
+const users = await executor.selectFrom('users').selectAll().execute();
+// ~1.0x (no interception, minimal overhead)
+
+// Executor with interceptor plugins
+const executor = await createExecutor(db, [softDeletePlugin()]);
+const users = await executor.selectFrom('users').selectAll().execute();
+// ~1.1x (Proxy overhead + plugin execution)
+```
+
+## See Also
+
+- [Repository API](/docs/api/repository) - Repository pattern reference
+- [DAL API](/docs/api/dal) - Functional Data Access Layer reference
+- [Plugin Overview](/docs/plugins/overview) - Plugin system overview
+- [Plugin Authoring Guide](/docs/plugins/authoring-guide) - Creating custom plugins
+- [Soft Delete Plugin](/docs/api/soft-delete) - Soft delete functionality
+- [RLS Plugin](/docs/api/rls) - Row-Level Security

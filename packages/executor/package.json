@@ -1,7 +1,7 @@
 {
-  "name": "@kysera/rls",
+  "name": "@kysera/executor",
   "version": "0.7.0",
-  "description": "Row-Level Security plugin for Kysera ORM - declarative policies, query transformation, native RLS support",
+  "description": "Unified Execution Layer for Kysera - Plugin-aware Kysely wrapper",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,10 +9,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./native": {
-      "types": "./dist/native/index.d.ts",
-      "import": "./dist/native/index.js"
     }
   },
   "files": [
@@ -25,59 +21,36 @@
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:coverage": "vitest run --coverage",
-    "test:unit": "vitest run test/unit",
-    "test:integration": "vitest run test/integration",
-    "test:postgres": "TEST_POSTGRES=true vitest run test/integration",
-    "test:mysql": "TEST_MYSQL=true vitest run test/integration",
-    "test:all-dbs": "TEST_POSTGRES=true TEST_MYSQL=true vitest run test/integration",
-    "docker:up": "docker compose -f test/docker/docker-compose.test.yml up -d",
-    "docker:down": "docker compose -f test/docker/docker-compose.test.yml down -v",
-    "docker:logs": "docker compose -f test/docker/docker-compose.test.yml logs -f",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
   "peerDependencies": {
     "kysely": ">=0.28.8"
   },
-  "dependencies": {
-    "@kysera/core": "workspace:*",
-    "@kysera/executor": "workspace:*",
-    "@kysera/repository": "workspace:*",
-    "zod": "^4.1.13"
-  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.1",
-    "@types/pg": "^8.15.6",
     "@vitest/coverage-v8": "^4.0.15",
     "better-sqlite3": "^12.5.0",
     "kysely": "^0.28.8",
-    "mysql2": "^3.15.2",
-    "pg": "^8.16.3",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.15"
   },
   "keywords": [
     "kysely",
-    "orm",
+    "kysera",
+    "executor",
+    "plugin",
     "database",
-    "typescript",
-    "sql",
-    "rls",
-    "row-level-security",
-    "authorization",
-    "access-control",
-    "postgres",
-    "mysql",
-    "sqlite"
+    "typescript"
   ],
   "author": "Kysera Team",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kysera-dev/kysera.git",
-    "directory": "packages/kysera-rls"
+    "directory": "packages/executor"
   },
   "bugs": {
     "url": "https://github.com/kysera-dev/kysera/issues"

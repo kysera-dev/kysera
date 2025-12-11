@@ -146,12 +146,56 @@ const order = await db.transaction().execute(async (trx) => {
 })
 ```
 
+### Alternative: With Plugins (v0.7+)
+
+For automatic audit logging or soft-delete support:
+
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { auditPlugin } from '@kysera/audit'
+import { withTransaction } from '@kysera/dal'
+
+// Create executor with plugins
+const executor = await createExecutor(db, [
+  auditPlugin({
+    getUserId: () => getCurrentUserId(),
+    metadata: () => ({ ip: getCurrentRequest().ip })
+  })
+])
+
+// Use withTransaction with executor (plugins propagated)
+const order = await withTransaction(executor, async (ctx) => {
+  const transactionalProductRepo = createProductRepository(ctx.db)
+  const transactionalCartRepo = createCartRepository(ctx.db)
+  const transactionalOrderRepo = createOrderRepository(ctx.db)
+
+  // All changes automatically logged via audit plugin
+  const cartItems = await transactionalCartRepo.getCartWithProducts(userId)
+  const total = cartItems.reduce((sum, item) => sum + item.subtotal, 0)
+
+  const newOrder = await transactionalOrderRepo.create({
+    user_id: userId,
+    total_amount: total,
+    status: 'pending'
+  })
+
+  for (const item of cartItems) {
+    await transactionalProductRepo.decreaseStock(item.product_id, item.quantity)
+  }
+
+  await transactionalCartRepo.clear(userId)
+
+  return newOrder
+})
+```
+
 ### Stock Management with Optimistic Locking
 
 The `decreaseStock` method uses optimistic locking to prevent race conditions. This is the actual implementation:
 
 ```typescript
 // From examples/e-commerce/src/repositories/product.repository.ts (lines 162-180)
+// Note: validateDbResults = shouldValidate() from '@kysera/repository'
 
 /**
  * Decrease stock with optimistic locking to prevent overselling
@@ -252,6 +296,7 @@ The cart repository handles adding, updating, and managing cart items. Here are 
 
 ```typescript
 // From examples/e-commerce/src/repositories/cart.repository.ts (lines 92-125)
+// Note: validateDbResults = shouldValidate() from '@kysera/repository'
 
 async addItem(input: unknown): Promise<CartItem> {
   const validated = AddToCartSchema.parse(input)
@@ -348,6 +393,15 @@ This example demonstrates the following production-ready patterns:
 5. **Type Safety** - Full TypeScript types with runtime validation via Zod
 6. **Price Consistency** - Cart prices are always fetched via JOIN, never stored
 7. **Error Handling** - Custom error types like `InsufficientStockError` and `InvalidStatusTransitionError`
+
+### v0.7 Enhancements
+
+With v0.7, you can enhance this example with:
+
+- **Automatic Audit Logging** - Use `@kysera/audit` plugin to automatically log all inventory changes
+- **Soft Delete Support** - Use `@kysera/soft-delete` plugin for cart items or archived products
+- **Plugin-Aware Transactions** - Use `withTransaction(executor)` from `@kysera/dal` to propagate plugins
+- **CQRS-lite Pattern** - Combine Repository for writes with DAL queries for complex analytics
 
 ## Additional Patterns to Consider
 

@@ -61,8 +61,8 @@ const userRepo = factory.create({
   schemas: {
     entity: zodAdapter(UserSchema),  // Optional - validates DB results
     create: zodAdapter(CreateUserSchema)
-  },
-  validateDbResults: process.env.NODE_ENV === 'development'
+  }
+  // Output validation controlled via KYSERA_VALIDATION_MODE or NODE_ENV
 })
 ```
 

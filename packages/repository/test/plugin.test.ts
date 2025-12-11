@@ -240,7 +240,8 @@ describe('Plugin System', () => {
       await repo.findAll();
       await repo.findById(1);
 
-      expect(queryCount).toBe(0); // withPlugins wraps but doesn't auto-apply to base methods
+      // Plugins are automatically applied through the executor
+      expect(queryCount).toBe(2); // findAll() + findById() = 2 queries intercepted
     });
   });
 

@@ -92,9 +92,27 @@ export const db = withDebug(baseDb, {
 })
 ```
 
+### Alternative: With Plugins (v0.7+)
+
+For automatic soft-delete filtering and other plugin features:
+
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+// Create executor with plugins
+export const executor = await createExecutor(db, [softDeletePlugin()])
+
+// Use executor instead of db in repositories
+const userRepo = createUserRepository(executor)
+
+// Queries automatically filter deleted records
+const users = await userRepo.findAll()  // WHERE deleted_at IS NULL applied automatically
+```
+
 ## Repository Implementation
 
-This example demonstrates **hand-rolled repositories** with explicit Kysely queries rather than using factory functions:
+This example demonstrates **hand-rolled repositories** with explicit Kysely queries. The example shows manual soft-delete filtering, but you can also use plugins for automatic filtering (see Alternative Pattern below):
 
 ### User Repository
 
@@ -102,6 +120,7 @@ This example demonstrates **hand-rolled repositories** with explicit Kysely quer
 import type { Selectable } from 'kysely'
 import { z } from 'zod'
 import type { Executor } from '@kysera/core'
+import { shouldValidate } from '@kysera/repository'
 import type { Database, UsersTable } from '../db/schema.js'
 
 // Domain types
@@ -136,7 +155,7 @@ function mapUserRow(row: Selectable<UsersTable>): User {
 
 // Repository function
 export function createUserRepository(executor: Executor<Database>) {
-  const validateDbResults = process.env['NODE_ENV'] === 'development'
+  const validateDbResults = shouldValidate()  // Uses KYSERA_VALIDATION_MODE or NODE_ENV
 
   return {
     async findById(id: number): Promise<User | null> {
@@ -230,6 +249,79 @@ export function createUserRepository(executor: Executor<Database>) {
   }
 }
 ```
+
+### Alternative Pattern: With Plugins (v0.7+)
+
+For automatic soft-delete filtering using `@kysera/executor`:
+
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import type { Executor } from '@kysera/core'
+import { z } from 'zod'
+
+// Create executor with soft-delete plugin
+const executor = await createExecutor(db, [softDeletePlugin()])
+
+// Repository function (no manual deleted_at filtering needed)
+export function createUserRepository(executor: Executor<Database>) {
+  const validateDbResults = shouldValidate()
+
+  return {
+    async findById(id: number): Promise<User | null> {
+      const row = await executor
+        .selectFrom('users')
+        .selectAll()
+        .where('id', '=', id)
+        // No manual deleted_at filter needed!
+        .executeTakeFirst()
+
+      if (!row) return null
+
+      const user = mapUserRow(row)
+      return validateDbResults ? UserSchema.parse(user) : user
+    },
+
+    async findAll(): Promise<User[]> {
+      const rows = await executor
+        .selectFrom('users')
+        .selectAll()
+        // No manual deleted_at filter needed!
+        .orderBy('created_at', 'desc')
+        .execute()
+
+      const users = rows.map(mapUserRow)
+      return validateDbResults
+        ? users.map(u => UserSchema.parse(u))
+        : users
+    },
+
+    // Soft delete and restore still implemented manually
+    // (plugin only provides filtering, not extension methods)
+    async softDelete(id: number): Promise<void> {
+      await executor
+        .updateTable('users')
+        .set({ deleted_at: new Date() })
+        .where('id', '=', id)
+        .execute()
+    },
+
+    async restore(id: number): Promise<void> {
+      await executor
+        .updateTable('users')
+        .set({ deleted_at: null })
+        .where('id', '=', id)
+        .execute()
+    }
+  }
+}
+```
+
+**Key Benefits:**
+- Automatic `deleted_at IS NULL` filtering on all SELECT queries
+- No risk of forgetting the filter in new queries
+- Consistent behavior across all queries
+- Can still access raw db via `getRawDb(executor)` for internal queries
 
 ## CLI Usage
 

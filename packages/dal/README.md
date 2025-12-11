@@ -1,37 +1,48 @@
 # @kysera/dal
 
-Functional Data Access Layer for Kysera ORM - Query functions, context passing, and composition utilities.
+Functional Data Access Layer for Kysera ORM - Query functions with automatic plugin support.
 
 ## Overview
 
-`@kysera/dal` provides a functional approach to database access as an alternative to traditional repository patterns. Instead of classes and methods, you write **query functions** that are composable, type-safe, and easy to test.
+`@kysera/dal` provides a functional approach to database access as an alternative to traditional repository patterns. Write **query functions** that are composable, type-safe, and easy to test.
+
+The DAL seamlessly integrates with `@kysera/executor` to provide automatic plugin support (soft-delete, RLS, audit, etc.) while maintaining a clean functional API.
 
 ## Features
 
 - **Query Functions** - Pure functions instead of repository methods
 - **Type Inference** - Return types automatically inferred from queries
-- **Context Passing** - Explicit database context (no dependency injection containers)
-- **Transaction Support** - First-class transaction handling with automatic context propagation
+- **Context Passing** - Explicit database context (no dependency injection)
+- **Plugin Support** - Automatic plugin interception via `@kysera/executor`
+- **Transaction Support** - First-class transactions with automatic plugin propagation
 - **Composition Utilities** - Combine queries using `compose`, `chain`, `parallel`, etc.
-- **Zero Dependencies** - Only peer dependency on Kysely
+- **Zero Dependencies** - Only `@kysera/executor` dependency (peers on Kysely)
 - **Fully Typed** - Complete TypeScript support with strict mode
 
 ## Installation
 
 ```bash
-npm install @kysera/dal kysely
-# or
-pnpm add @kysera/dal kysely
-# or
-yarn add @kysera/dal kysely
-# or
-bun add @kysera/dal kysely
+npm install @kysera/dal @kysera/executor kysely
+
+# Add plugins as needed
+npm install @kysera/soft-delete @kysera/rls @kysera/audit
+
+# Using pnpm
+pnpm add @kysera/dal @kysera/executor kysely
+
+# Using yarn
+yarn add @kysera/dal @kysera/executor kysely
+
+# Using bun
+bun add @kysera/dal @kysera/executor kysely
 ```
 
 ## Quick Start
 
 ```typescript
 import { Kysely } from 'kysely';
+import { createExecutor } from '@kysera/executor';
+import { softDeletePlugin } from '@kysera/soft-delete';
 import { createQuery, withTransaction } from '@kysera/dal';
 
 // Define your database schema
@@ -40,12 +51,16 @@ interface Database {
     id: number;
     email: string;
     name: string;
+    deleted_at: Date | null;
   };
 }
 
 const db = new Kysely<Database>({ /* config */ });
 
-// Create query functions
+// Create executor with plugins
+const executor = await createExecutor(db, [softDeletePlugin()]);
+
+// Define query functions
 const getUserById = createQuery((ctx, id: number) =>
   ctx.db
     .selectFrom('users')
@@ -62,11 +77,11 @@ const createUser = createQuery((ctx, data: { email: string; name: string }) =>
     .executeTakeFirstOrThrow()
 );
 
-// Use directly
-const user = await getUserById(db, 1);
+// Use directly - soft-delete filter automatically applied
+const user = await getUserById(executor, 1);
 
-// Use in transactions
-const result = await withTransaction(db, async (ctx) => {
+// Use in transactions - plugins propagate automatically
+const result = await withTransaction(executor, async (ctx) => {
   const newUser = await createUser(ctx, {
     email: 'test@example.com',
     name: 'Test User'
@@ -94,7 +109,7 @@ const findUserByEmail = createQuery((ctx, email: string) =>
 );
 
 // Insert query
-const insertPost = createQuery((ctx, data: { title: string; body: string; userId: number }) =>
+const insertPost = createQuery((ctx, data: { title: string; body: string; user_id: number }) =>
   ctx.db
     .insertInto('posts')
     .values(data)
@@ -121,39 +136,80 @@ const deletePost = createQuery((ctx, id: number) =>
 );
 ```
 
-### Database Context
+### Plugin Integration
 
-The `DbContext` type wraps either a Kysely instance or a Transaction, providing metadata about the execution context.
+The DAL automatically integrates with `@kysera/executor` to provide seamless plugin support. When you use a `KyseraExecutor` instead of a raw Kysely instance, all queries automatically have plugins applied.
+
+#### Basic Plugin Integration
 
 ```typescript
-import { createContext, isInTransaction, withContext } from '@kysera/dal';
+import { createExecutor } from '@kysera/executor';
+import { softDeletePlugin } from '@kysera/soft-delete';
+import { rlsPlugin } from '@kysera/rls';
+import { createQuery } from '@kysera/dal';
 
-// Create a context manually
-const ctx = createContext(db);
+// Create executor with plugins
+const executor = await createExecutor(db, [
+  softDeletePlugin(),
+  rlsPlugin({
+    schema: {
+      users: { tenantIdColumn: 'tenant_id' },
+      posts: { tenantIdColumn: 'tenant_id' }
+    },
+    getCurrentTenantId: () => currentTenantId
+  })
+]);
 
-// Use with a context wrapper
-const users = await withContext(db, async (ctx) => {
-  return getAllUsers(ctx);
-});
+// Define queries - plugins apply automatically
+const getUsers = createQuery((ctx) =>
+  ctx.db.selectFrom('users').selectAll().execute()
+);
 
-// Check if in transaction
-const myQuery = createQuery((ctx, id: number) => {
-  if (isInTransaction(ctx)) {
-    console.log('Running inside transaction');
-  }
-  return ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst();
-});
+// Soft-delete filter and RLS automatically applied
+const users = await getUsers(executor);
+// Only returns users where:
+// - deleted_at IS NULL (soft-delete plugin)
+// - tenant_id = currentTenantId (RLS plugin)
+```
+
+#### How Plugin Propagation Works
+
+1. **Query Creation**: When you pass a `KyseraExecutor` to a query function, the context preserves the executor with all its plugins
+2. **Transaction Wrapping**: `withTransaction()` automatically wraps transaction instances with the same plugins as the parent executor
+3. **Automatic Interception**: All query builders (`selectFrom`, `insertInto`, etc.) are intercepted by plugins before execution
+4. **Type Safety**: Full TypeScript support - the database schema type is preserved through all transformations
+
+#### Multiple Plugins
+
+```typescript
+import { createExecutor } from '@kysera/executor';
+import { softDeletePlugin } from '@kysera/soft-delete';
+import { rlsPlugin } from '@kysera/rls';
+import { auditPlugin } from '@kysera/audit';
+
+const executor = await createExecutor(db, [
+  softDeletePlugin(),           // Priority: 100
+  rlsPlugin({ /* ... */ }),     // Priority: 90
+  auditPlugin({ /* ... */ })    // Priority: 80
+]);
+
+// All plugins apply in priority order (higher = runs first)
+const getUsers = createQuery((ctx) =>
+  ctx.db.selectFrom('users').selectAll().execute()
+);
+
+const users = await getUsers(executor);
 ```
 
 ### Transactions
 
-Execute multiple queries atomically within a transaction:
+Execute multiple queries atomically within a transaction. Plugins automatically propagate to the transaction context.
 
 ```typescript
 import { withTransaction, createTransactionalQuery } from '@kysera/dal';
 
 // Regular transaction
-const result = await withTransaction(db, async (ctx) => {
+const result = await withTransaction(executor, async (ctx) => {
   const user = await createUser(ctx, userData);
   const profile = await createProfile(ctx, { userId: user.id, ...profileData });
   return { user, profile };
@@ -179,10 +235,10 @@ const transferFunds = createTransactionalQuery(
 );
 
 // This will work
-await withTransaction(db, (ctx) => transferFunds(ctx, 1, 2, 100));
+await withTransaction(executor, (ctx) => transferFunds(ctx, 1, 2, 100));
 
 // This will throw: "Query requires a transaction"
-await transferFunds(db, 1, 2, 100);
+await transferFunds(executor, 1, 2, 100);
 ```
 
 ## Composition
@@ -210,7 +266,7 @@ const getUserWithPosts = compose(
   })
 );
 
-const result = await getUserWithPosts(db, 1);
+const result = await getUserWithPosts(executor, 1);
 // { id: 1, email: '...', name: '...', posts: [...] }
 ```
 
@@ -232,7 +288,7 @@ const getUserComplete = chain(
   async (ctx, data) => ({ ...data, stats: await getStats(ctx, data.id) })
 );
 
-const fullUser = await getUserComplete(db, 1);
+const fullUser = await getUserComplete(executor, 1);
 // { ...user, posts: [...], followers: [...], stats: {...} }
 ```
 
@@ -261,7 +317,7 @@ const getDashboardData = parallel({
   notifications: getNotifications,
 });
 
-const dashboard = await getDashboardData(db, userId);
+const dashboard = await getDashboardData(executor, userId);
 // { user: {...}, stats: {...}, notifications: [...] }
 ```
 
@@ -282,8 +338,8 @@ const getFeatures = conditional(
   []  // Fallback: empty array for non-premium users
 );
 
-const features = await getFeatures(db, userId, true);  // Executes query
-const emptyFeatures = await getFeatures(db, userId, false);  // Returns []
+const features = await getFeatures(executor, userId, true);  // Executes query
+const emptyFeatures = await getFeatures(executor, userId, false);  // Returns []
 ```
 
 ### mapResult
@@ -299,7 +355,7 @@ const getAllUsers = createQuery((ctx) =>
 
 const getUserNames = mapResult(getAllUsers, (user) => user.name);
 
-const names = await getUserNames(db);  // string[]
+const names = await getUserNames(executor);  // string[]
 ```
 
 ## API Reference
@@ -315,6 +371,26 @@ Create a typed query function.
 
 **Returns:** `QueryFunction<DB, TArgs, TResult>`
 
+**Example:**
+```typescript
+const getUserById = createQuery((ctx, id: number) =>
+  ctx.db
+    .selectFrom('users')
+    .select(['id', 'email', 'name'])
+    .where('id', '=', id)
+    .executeTakeFirst()
+);
+
+// Usage with KyseraExecutor (plugins applied)
+const user = await getUserById(executor, 1);
+
+// Usage with context (inside transaction)
+await withTransaction(executor, async (ctx) => {
+  const user = await getUserById(ctx, 1);
+  return user;
+});
+```
+
 #### `createTransactionalQuery<DB, TArgs, TResult>(queryFn)`
 
 Create a query function that requires a transaction context.
@@ -326,37 +402,98 @@ Create a query function that requires a transaction context.
 
 **Throws:** Error if called outside a transaction
 
+**Example:**
+```typescript
+const transferFunds = createTransactionalQuery(
+  async (ctx, fromId: number, toId: number, amount: number) => {
+    await ctx.db
+      .updateTable('accounts')
+      .set((eb) => ({ balance: eb('balance', '-', amount) }))
+      .where('id', '=', fromId)
+      .execute();
+
+    await ctx.db
+      .updateTable('accounts')
+      .set((eb) => ({ balance: eb('balance', '+', amount) }))
+      .where('id', '=', toId)
+      .execute();
+
+    return { success: true };
+  }
+);
+
+// This will work
+await withTransaction(executor, (ctx) => transferFunds(ctx, 1, 2, 100));
+
+// This will throw an error
+await transferFunds(executor, 1, 2, 100); // Error: Query requires transaction
+```
+
 ### Context Management
 
 #### `createContext<DB>(db)`
 
-Create a database context from a Kysely or Transaction instance.
+Create a database context from any database instance.
 
 **Parameters:**
-- `db: Kysely<DB> | Transaction<DB>` - Database instance
+- `db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>` - Database instance
 
 **Returns:** `DbContext<DB>`
+
+**Example:**
+```typescript
+import { createContext } from '@kysera/dal';
+import { createExecutor } from '@kysera/executor';
+
+const executor = await createExecutor(db, [softDeletePlugin()]);
+const ctx = createContext(executor);
+const user = await findUserById(ctx, 1); // soft-delete filter applied
+```
 
 #### `withTransaction<DB, T>(db, fn, options?)`
 
 Execute a function within a transaction.
 
 **Parameters:**
-- `db: Kysely<DB>` - Database instance
+- `db: Kysely<DB> | KyseraExecutor<DB>` - Database instance
 - `fn: (ctx: DbContext<DB>) => Promise<T>` - Function to execute
-- `options?: TransactionOptions` - Transaction options
+- `options?: TransactionOptions` - Transaction options (optional)
 
 **Returns:** `Promise<T>`
+
+**Example:**
+```typescript
+// Basic usage
+const result = await withTransaction(executor, async (ctx) => {
+  const user = await createUser(ctx, userData);
+  const profile = await createProfile(ctx, { userId: user.id, ...profileData });
+  return { user, profile };
+});
+
+// With KyseraExecutor (plugins propagated)
+const result = await withTransaction(executor, async (ctx) => {
+  // All queries in transaction have plugins applied
+  const users = await getUsers(ctx);
+  return users;
+});
+```
 
 #### `withContext<DB, T>(db, fn)`
 
 Execute a function with a database context (no transaction).
 
 **Parameters:**
-- `db: Kysely<DB>` - Database instance
+- `db: Kysely<DB> | KyseraExecutor<DB>` - Database instance
 - `fn: (ctx: DbContext<DB>) => Promise<T>` - Function to execute
 
 **Returns:** `Promise<T>`
+
+**Example:**
+```typescript
+const users = await withContext(executor, async (ctx) => {
+  return getAllUsers(ctx);
+});
+```
 
 #### `isInTransaction<DB>(ctx)`
 
@@ -366,6 +503,16 @@ Check if context is within a transaction.
 - `ctx: DbContext<DB>` - Database context
 
 **Returns:** `boolean`
+
+**Example:**
+```typescript
+const myQuery = createQuery((ctx, id: number) => {
+  if (isInTransaction(ctx)) {
+    console.log('Running inside transaction');
+  }
+  return ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst();
+});
+```
 
 ### Composition
 
@@ -429,7 +576,7 @@ Database context interface.
 
 ```typescript
 interface DbContext<DB = Record<string, unknown>> {
-  readonly db: Kysely<DB> | Transaction<DB>;
+  readonly db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>;
   readonly isTransaction: boolean;
 }
 ```
@@ -440,7 +587,7 @@ Query function signature.
 
 ```typescript
 type QueryFunction<DB, TArgs extends readonly unknown[], TResult> = (
-  ctxOrDb: DbContext<DB> | Kysely<DB>,
+  ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>,
   ...args: TArgs
 ) => Promise<TResult>;
 ```
@@ -455,7 +602,7 @@ interface TransactionOptions {
 }
 ```
 
-**Note:** Isolation level configuration is dialect-specific and should typically be set at the connection pool level. The `isolationLevel` option logs a warning as Kysely's Transaction API doesn't expose `raw()` for runtime configuration.
+**Note:** Isolation level configuration is dialect-specific and should typically be set at the connection pool level.
 
 ### Type Inference Utilities
 
@@ -484,6 +631,121 @@ type ParallelResult<
 
 ## Examples
 
+### Complete Example with Plugins
+
+```typescript
+import { Kysely, PostgresDialect } from 'kysely';
+import { Pool } from 'pg';
+import { createExecutor } from '@kysera/executor';
+import { softDeletePlugin } from '@kysera/soft-delete';
+import { rlsPlugin } from '@kysera/rls';
+import { createQuery, withTransaction, parallel } from '@kysera/dal';
+
+// Database schema
+interface Database {
+  users: {
+    id: number;
+    email: string;
+    name: string;
+    tenant_id: number;
+    deleted_at: Date | null;
+  };
+  posts: {
+    id: number;
+    user_id: number;
+    title: string;
+    body: string;
+    tenant_id: number;
+    deleted_at: Date | null;
+  };
+}
+
+// Initialize database
+const db = new Kysely<Database>({
+  dialect: new PostgresDialect({
+    pool: new Pool({ connectionString: process.env.DATABASE_URL })
+  })
+});
+
+// Create executor with plugins
+const executor = await createExecutor(db, [
+  softDeletePlugin(),
+  rlsPlugin({
+    schema: {
+      users: { tenantIdColumn: 'tenant_id' },
+      posts: { tenantIdColumn: 'tenant_id' }
+    },
+    getCurrentTenantId: () => currentTenantId
+  })
+]);
+
+// Define query functions
+const getUserById = createQuery((ctx, id: number) =>
+  ctx.db
+    .selectFrom('users')
+    .selectAll()
+    .where('id', '=', id)
+    .executeTakeFirst()
+);
+
+const getPostsByUserId = createQuery((ctx, userId: number) =>
+  ctx.db
+    .selectFrom('posts')
+    .selectAll()
+    .where('user_id', '=', userId)
+    .execute()
+);
+
+const createUser = createQuery((ctx, data: { email: string; name: string; tenant_id: number }) =>
+  ctx.db
+    .insertInto('users')
+    .values(data)
+    .returningAll()
+    .executeTakeFirstOrThrow()
+);
+
+const createPost = createQuery((ctx, data: { user_id: number; title: string; body: string; tenant_id: number }) =>
+  ctx.db
+    .insertInto('posts')
+    .values(data)
+    .returningAll()
+    .executeTakeFirstOrThrow()
+);
+
+// Use queries - plugins apply automatically
+const user = await getUserById(executor, 1);
+// Only returns if:
+// - deleted_at IS NULL (soft-delete plugin)
+// - tenant_id = currentTenantId (RLS plugin)
+
+// Atomic operations with transaction
+const result = await withTransaction(executor, async (ctx) => {
+  const newUser = await createUser(ctx, {
+    email: 'test@example.com',
+    name: 'Test User',
+    tenant_id: currentTenantId
+  });
+
+  const newPost = await createPost(ctx, {
+    user_id: newUser.id,
+    title: 'First Post',
+    body: 'Hello World',
+    tenant_id: currentTenantId
+  });
+
+  return { user: newUser, post: newPost };
+});
+
+// Parallel queries
+const getUserData = parallel({
+  user: getUserById,
+  posts: getPostsByUserId
+});
+
+const userData = await getUserData(executor, userId);
+// { user: {...}, posts: [...] }
+```
+
 ### User Management Service
 
 ```typescript
@@ -494,7 +756,7 @@ const createUser = createQuery((ctx, data: { email: string; name: string }) =>
   ctx.db.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
 );
 
-const createUserProfile = createQuery((ctx, data: { userId: number; bio: string }) =>
+const createUserProfile = createQuery((ctx, data: { user_id: number; bio: string }) =>
   ctx.db.insertInto('profiles').values(data).returningAll().executeTakeFirstOrThrow()
 );
 
@@ -507,15 +769,15 @@ const getProfileByUserId = createQuery((ctx, userId: number) =>
 );
 
 // Service function using transaction
-async function registerUser(db: Kysely<Database>, data: RegisterData) {
-  return withTransaction(db, async (ctx) => {
+async function registerUser(executor: KyseraExecutor<Database>, data: RegisterData) {
+  return withTransaction(executor, async (ctx) => {
     const user = await createUser(ctx, {
       email: data.email,
       name: data.name,
     });
 
     const profile = await createUserProfile(ctx, {
-      userId: user.id,
+      user_id: user.id,
       bio: data.bio,
     });
 
@@ -529,7 +791,7 @@ const getUserData = parallel({
   profile: getProfileByUserId,
 });
 
-const userData = await getUserData(db, userId);
+const userData = await getUserData(executor, userId);
 ```
 
 ### Blog Post with Author
@@ -553,7 +815,7 @@ const getPostWithAuthor = compose(
   })
 );
 
-const post = await getPostWithAuthor(db, postId);
+const post = await getPostWithAuthor(executor, postId);
 // { id, title, body, user_id, author: { id, name, email } }
 ```
 
@@ -561,7 +823,8 @@ const post = await getPostWithAuthor(db, postId);
 
 - **Node.js**: >=20.0.0
 - **Bun**: >=1.0.0
-- **Kysely**: >=0.28.8
+- **Kysely**: >=0.28.8 (peer dependency)
+- **@kysera/executor**: >=0.7.0 (dependency)
 
 ## License
 

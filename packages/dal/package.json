@@ -1,7 +1,7 @@
 {
   "name": "@kysera/dal",
-  "version": "0.6.1",
-  "description": "Functional Data Access Layer for Kysera ORM - query functions, context passing, composition",
+  "version": "0.7.0",
+  "description": "Functional Data Access Layer for Kysera ORM - query functions, context passing, composition, plugin integration",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -23,6 +23,9 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
+  },
+  "dependencies": {
+    "@kysera/executor": "workspace:*"
   },
   "peerDependencies": {
     "kysely": ">=0.28.8"

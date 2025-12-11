@@ -11,15 +11,18 @@ Kysera offers two approaches to data access: the **Repository pattern** (`@kyser
 ## Quick Decision Guide
 
 ```
-Do you need plugins (soft-delete, audit, timestamps, RLS)?
+Do you need repository extension plugins (audit.restore(), timestamps)?
 ├── Yes → Use Repository
 └── No
-    └── Do you prefer OOP patterns with classes and methods?
-        ├── Yes → Use Repository
+    └── Do you need query interceptor plugins (soft-delete, RLS)?
+        ├── Yes → Use DAL with KyseraExecutor OR Repository
         └── No
-            └── Do you need maximum type inference and tree-shaking?
-                ├── Yes → Use DAL
-                └── Either works - choose based on team preference
+            └── Do you prefer OOP patterns with classes and methods?
+                ├── Yes → Use Repository
+                └── No
+                    └── Do you need maximum type inference and tree-shaking?
+                        ├── Yes → Use DAL
+                        └── Either works - choose based on team preference
 ```
 
 ## Architecture Comparison
@@ -29,33 +32,49 @@ Do you need plugins (soft-delete, audit, timestamps, RLS)?
 The Repository pattern provides an **object-oriented** abstraction over database tables:
 
 ```typescript
-import { createRepositoryFactory, createORM } from '@kysera/repository';
+import { createORM } from '@kysera/repository';
 import { softDeletePlugin } from '@kysera/soft-delete';
 import { z } from 'zod';
 
-// Create factory
-const factory = createRepositoryFactory(db);
+// Create ORM with plugins
+const orm = await createORM(db, [softDeletePlugin()]);
 
-// Define repository
-const userRepo = factory.create({
+// Define repository factory function
+const createUserRepository = (executor, applyPlugins) => ({
   tableName: 'users',
-  mapRow: (row) => ({
-    id: row.id,
-    email: row.email,
-    name: row.name,
-  }),
-  schemas: {
-    create: z.object({
+  executor,
+  async findById(id) {
+    return executor
+      .selectFrom('users')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst();
+  },
+  async create(data) {
+    const validated = z.object({
       email: z.string().email(),
       name: z.string().min(1),
-    }),
+    }).parse(data);
+
+    return executor
+      .insertInto('users')
+      .values(validated)
+      .returningAll()
+      .executeTakeFirstOrThrow();
   },
+  // ... other methods
 });
 
-// Use repository methods
+// Create repository with plugin support
+const userRepo = orm.createRepository(createUserRepository);
+
+// Use repository methods (plugins automatically applied)
 const user = await userRepo.findById(1);
-const users = await userRepo.findAll();
 const newUser = await userRepo.create({ email: 'test@example.com', name: 'Test' });
+
+// Plugin extension methods also available
+await userRepo.softDelete(1);
+await userRepo.restore(1);
 ```
 
 ### Functional DAL
@@ -63,7 +82,12 @@ const newUser = await userRepo.create({ email: 'test@example.com', name: 'Test' 
 The Functional DAL provides **composable query functions** with automatic type inference:
 
 ```typescript
-import { createQuery, withTransaction, parallel } from '@kysera/dal';
+import { createQuery, withTransaction, createContext } from '@kysera/dal';
+import { createExecutor } from '@kysera/executor';
+import { softDeletePlugin } from '@kysera/soft-delete';
+
+// Create executor with plugins
+const executor = await createExecutor(db, [softDeletePlugin()]);
 
 // Define queries as functions
 const getUserById = createQuery((ctx, id: number) =>
@@ -74,14 +98,17 @@ const getPostsByUserId = createQuery((ctx, userId: number) =>
   ctx.db.selectFrom('posts').selectAll().where('user_id', '=', userId).execute()
 );
 
-// Use directly
-const user = await getUserById(db, 1);
+// Create context from executor (plugins automatically included)
+const ctx = createContext(executor);
+
+// Use queries (soft-delete filtering applied automatically)
+const user = await getUserById(ctx, 1);
 
 // Compose queries
-const getUserWithPosts = async (db, id: number) => {
-  const user = await getUserById(db, id);
+const getUserWithPosts = async (ctx, id: number) => {
+  const user = await getUserById(ctx, id);
   if (!user) return null;
-  const posts = await getPostsByUserId(db, user.id);
+  const posts = await getPostsByUserId(ctx, user.id);
   return { ...user, posts };
 };
 ```
@@ -93,7 +120,8 @@ const getUserWithPosts = async (db, id: number) => {
 | **Paradigm** | Object-Oriented | Functional |
 | **Abstraction Level** | High (Repository class) | Low (Query functions) |
 | **Type Inference** | Explicit generics | Automatic from queries |
-| **Plugin Support** | Native | None (manual integration) |
+| **Query Interceptor Plugins** | Native | Native (via KyseraExecutor) |
+| **Repository Extension Plugins** | Native | Not supported |
 | **Validation** | Built-in (Zod, Valibot, etc.) | Manual |
 | **Transaction API** | `repo.transaction()` | `withTransaction()` |
 | **Bundle Size** | ~12 KB | ~7 KB |
@@ -104,12 +132,21 @@ const getUserWithPosts = async (db, id: number) => {
 
 ## Architecture Deep Dive
 
-Understanding **why** plugins only work with Repository requires examining the internal architecture.
+Understanding how plugins work with both patterns requires examining the internal architecture.
 
-### The Plugin Interception Model
+### The Plugin System Architecture
+
+Kysera's plugin system has two distinct mechanisms:
+
+1. **Query Interceptors** (`interceptQuery`) - Modify query builders before execution
+2. **Repository Extensions** (`extendRepository`) - Add new methods to repositories
+
+Both patterns support **query interceptors** through `@kysera/executor`. Only Repository supports **repository extensions**.
+
+### Plugin Interception Model
 
 ```
-Repository Pattern:
+Repository Pattern (with KyseraExecutor):
 ┌─────────────────────────────────────────────────────────┐
 │  Application Code                                       │
 │         │                                               │
@@ -130,10 +167,34 @@ Repository Pattern:
 │  └────────│────────┘                                    │
 │           │                                             │
 │           ▼                                             │
+│    KyseraExecutor → Kysely → Database                   │
+└─────────────────────────────────────────────────────────┘
+
+Functional DAL (with KyseraExecutor):
+┌─────────────────────────────────────────────────────────┐
+│  Application Code                                       │
+│         │                                               │
+│         ▼                                               │
+│  ┌─────────────────┐                                    │
+│  │ createQuery()   │ ← User-defined function            │
+│  │       │         │                                    │
+│  │       ▼         │                                    │
+│  │  ctx.db.xxx()   │ ← KyseraExecutor access            │
+│  └────────│────────┘                                    │
+│           │                                             │
+│           ▼                                             │
+│    KyseraExecutor (Proxy) ← Interception point!         │
+│           │                                             │
+│           ▼                                             │
+│  ┌─────────────────┐                                    │
+│  │ Plugins (chain) │ interceptQuery() wraps QB          │
+│  └────────┬────────┘                                    │
+│           │                                             │
+│           ▼                                             │
 │       Kysely → Database                                 │
 └─────────────────────────────────────────────────────────┘
 
-Functional DAL:
+Functional DAL (without KyseraExecutor):
 ┌─────────────────────────────────────────────────────────┐
 │  Application Code                                       │
 │         │                                               │
@@ -150,59 +211,64 @@ Functional DAL:
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Why DAL Cannot Use Plugins
+### How KyseraExecutor Enables DAL Plugins
 
-The `createQuery` function creates standalone functions that directly access Kysely:
+The `createQuery` function accepts either raw Kysely or `KyseraExecutor`:
 
 ```typescript
 // From @kysera/dal/src/query.ts
 export function createQuery<DB, TArgs, TResult>(
   queryFn: (ctx: DbContext<DB>, ...args: TArgs) => Promise<TResult>
 ): QueryFunction<DB, TArgs, TResult> {
-  const fn = (dbOrCtx: Kysely<DB> | DbContext<DB>, ...args: TArgs) => {
+  return (dbOrCtx: Kysely<DB> | KyseraExecutor<DB> | DbContext<DB>, ...args: TArgs) => {
     const ctx = 'db' in dbOrCtx ? dbOrCtx : createContext(dbOrCtx);
-    return queryFn(ctx, ...args);  // Directly executes user's function
+    return queryFn(ctx, ...args);
   };
-  return fn;
 }
 ```
 
-The QueryBuilder is built and executed **entirely within the user's function**. There's no interception point for plugins.
-
-In contrast, Repository has `createORM` which:
+When you pass a `KyseraExecutor` to a DAL query:
 
 ```typescript
-// From @kysera/repository/src/plugin.ts
-function createRepository<T>(factory): T {
-  let repo = factory(executor, applyPlugins);  // Plugins can intercept here
+import { createExecutor } from '@kysera/executor';
+import { softDeletePlugin } from '@kysera/soft-delete';
 
-  for (const plugin of plugins) {
-    if (plugin.extendRepository) {
-      repo = plugin.extendRepository(repo);   // Plugins wrap methods here
-    }
-  }
-  return repo;
-}
+// Create executor with plugins
+const executor = await createExecutor(db, [softDeletePlugin()]);
+
+// DAL query receives the executor
+const getUsers = createQuery((ctx) =>
+  ctx.db.selectFrom('users').selectAll().execute()
+);
+
+// ctx.db is KyseraExecutor, which intercepts selectFrom() via Proxy
+await getUsers(executor);
 ```
+
+The `KyseraExecutor` is a **Proxy** that intercepts `selectFrom`, `insertInto`, `updateTable`, and `deleteFrom` calls, applying all plugin `interceptQuery` hooks before returning the query builder.
 
 ### The Technical Difference
 
-| Aspect | Repository | DAL |
-|--------|-----------|-----|
-| **Query Building** | Via repository methods that call `applyPlugins()` | Direct `ctx.db.xxx()` calls |
-| **Interception Point** | `interceptQuery` receives QB before execution | None - user controls entire flow |
-| **Method Extension** | `extendRepository` wraps CRUD methods | No methods to wrap |
-| **Centralization** | Single `createRepository` entry point | Distributed query functions |
+| Aspect | Repository | DAL with KyseraExecutor | DAL without KyseraExecutor |
+|--------|-----------|------------------------|---------------------------|
+| **Query Building** | Via repository methods | Direct `ctx.db.xxx()` calls | Direct `ctx.db.xxx()` calls |
+| **Interception Point** | KyseraExecutor Proxy | KyseraExecutor Proxy | None |
+| **Query Interceptors** | ✅ Supported | ✅ Supported | ❌ Not available |
+| **Repository Extensions** | ✅ Supported | ❌ Not available | ❌ Not available |
+| **Method Extension** | `extendRepository` wraps CRUD methods | N/A - no methods to wrap | N/A - no methods to wrap |
 
 ## Plugin System
 
-:::warning Critical Difference
-**Plugins only work with Repository pattern.** DAL queries bypass the plugin system entirely because they execute Kysely queries directly without going through the plugin interception layer.
-:::
+### Plugin Architecture
+
+Kysera plugins have two integration mechanisms:
+
+1. **Query Interceptors** (`interceptQuery`) - Work with both Repository and DAL (via `KyseraExecutor`)
+2. **Repository Extensions** (`extendRepository`) - Only work with Repository pattern
 
 ### How Plugins Work
 
-Plugins integrate with Repository through two hooks:
+Plugins are defined with the following interface:
 
 ```typescript
 interface Plugin {
@@ -217,39 +283,71 @@ interface Plugin {
   // Extend repository with new methods AFTER creation
   extendRepository?<T extends object>(repo: T): T;
 
-  // Lifecycle hooks
+  // Lifecycle hook
   onInit?<DB>(executor: Kysely<DB>): Promise<void> | void;
-  afterQuery?(context: QueryContext, result: unknown): unknown;
-  onError?(context: QueryContext, error: unknown): void;
 }
 ```
 
 ### Plugin Behavior by Pattern
 
-| Plugin | Repository | DAL |
-|--------|-----------|-----|
-| **@kysera/soft-delete** | Auto-filters `deleted_at IS NULL` | Must filter manually |
-| **@kysera/timestamps** | Auto-sets `created_at`/`updated_at` | Must set manually |
-| **@kysera/audit** | Auto-logs all changes | Must log manually |
-| **@kysera/rls** | Auto-filters by tenant, validates access | Context available, manual filters |
+| Plugin | Repository | DAL with KyseraExecutor | DAL without KyseraExecutor |
+|--------|-----------|------------------------|---------------------------|
+| **@kysera/soft-delete** | Auto-filters `deleted_at IS NULL` + extension methods | Auto-filters `deleted_at IS NULL` | Must filter manually |
+| **@kysera/timestamps** | Auto-sets `created_at`/`updated_at` | N/A (uses `extendRepository`) | Must set manually |
+| **@kysera/audit** | Auto-logs all changes + extension methods | N/A (uses `extendRepository`) | Must log manually |
+| **@kysera/rls** | Auto-filters by tenant, validates access | Auto-filters by tenant | Context available, manual filters |
+
+**Key Insight:** Plugins that only use `interceptQuery` (like soft-delete filtering and RLS filtering) work with DAL when using `KyseraExecutor`. Plugins that rely on `extendRepository` (like audit's `restore()` method or timestamps' automatic setting) only work with Repository.
 
 ### Example: Soft Delete
 
-**Repository (automatic):**
+**Repository (automatic filtering + extension methods):**
 ```typescript
+import { createORM } from '@kysera/repository';
+import { softDeletePlugin } from '@kysera/soft-delete';
+
 const orm = await createORM(db, [softDeletePlugin()]);
 const userRepo = orm.createRepository(createUserRepository);
 
-// Automatically excludes deleted records
+// Automatically excludes deleted records via interceptQuery
 const users = await userRepo.findAll();
 
-// Plugin adds these methods
+// Plugin adds these extension methods via extendRepository
 await userRepo.softDelete(1);
 await userRepo.restore(1);
 await userRepo.findAllWithDeleted();
 ```
 
-**DAL (manual):**
+**DAL with KyseraExecutor (automatic filtering only):**
+```typescript
+import { createExecutor } from '@kysera/executor';
+import { createContext, createQuery } from '@kysera/dal';
+import { softDeletePlugin } from '@kysera/soft-delete';
+
+// Create executor with soft-delete plugin
+const executor = await createExecutor(db, [softDeletePlugin()]);
+
+// Create context from executor
+const ctx = createContext(executor);
+
+// Automatically excludes deleted records via interceptQuery
+const getUsers = createQuery((ctx) =>
+  ctx.db.selectFrom('users').selectAll().execute()
+);
+
+await getUsers(ctx); // Soft-deleted records filtered automatically!
+
+// Must implement soft delete manually (no extension methods)
+const softDeleteUser = createQuery((ctx, id: number) =>
+  ctx.db
+    .updateTable('users')
+    .set({ deleted_at: new Date().toISOString() })
+    .where('id', '=', id)
+    .execute()
+);
+```
+
+**DAL without KyseraExecutor (manual filtering):**
 ```typescript
 // Must add filter manually
 const getActiveUsers = createQuery((ctx) =>
@@ -274,7 +372,7 @@ const softDeleteUser = createQuery((ctx, id: number) =>
 
 ### Repository with RLS
 
-RLS works seamlessly with Repository:
+RLS works seamlessly with Repository (automatic filtering + validation):
 
 ```typescript
 import { rlsPlugin, defineRLSSchema, filter, allow, rlsContext } from '@kysera/rls';
@@ -303,9 +401,41 @@ await rlsContext.runAsync(
 );
 ```
 
-### DAL with RLS
+### DAL with RLS (via KyseraExecutor)
 
-RLS context is available in DAL, but filtering is manual:
+RLS filtering works automatically with `KyseraExecutor`:
+
+```typescript
+import { createExecutor } from '@kysera/executor';
+import { rlsPlugin, defineRLSSchema, filter, rlsContext } from '@kysera/rls';
+
+const rlsSchema = defineRLSSchema<Database>({
+  posts: {
+    policies: [
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+    ],
+  },
+});
+
+// Create executor with RLS plugin
+const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })]);
+
+const getPosts = createQuery((ctx) =>
+  ctx.db.selectFrom('posts').selectAll().execute()
+);
+
+await rlsContext.runAsync(
+  { auth: { userId: 1, tenantId: 'acme', roles: ['user'] } },
+  async () => {
+    // Automatically filtered by tenant_id via interceptQuery
+    const posts = await getPosts(executor);
+  }
+);
+```
+
+### DAL without KyseraExecutor (manual filtering)
+
+Without `KyseraExecutor`, RLS context is available but filtering is manual:
 
 ```typescript
 import { rlsContext } from '@kysera/rls';
@@ -334,15 +464,15 @@ await rlsContext.runAsync(
 
 ### RLS Feature Support
 
-| RLS Feature | Repository | DAL |
-|-------------|-----------|-----|
-| `rlsContext.runAsync()` | Yes | Yes |
-| `rlsContext.getContextOrNull()` | Yes | Yes |
-| `rlsContext.asSystemAsync()` | Yes | Yes |
-| Auto SELECT filtering | Yes | No |
-| Auto mutation validation | Yes | No |
-| `repo.withoutRLS()` | Yes | No (method on repo) |
-| `repo.canAccess()` | Yes | No (method on repo) |
+| RLS Feature | Repository | DAL with KyseraExecutor | DAL without KyseraExecutor |
+|-------------|-----------|------------------------|---------------------------|
+| `rlsContext.runAsync()` | ✅ Yes | ✅ Yes | ✅ Yes |
+| `rlsContext.getContextOrNull()` | ✅ Yes | ✅ Yes | ✅ Yes |
+| `rlsContext.asSystemAsync()` | ✅ Yes | ✅ Yes | ✅ Yes |
+| Auto SELECT filtering | ✅ Yes | ✅ Yes | ❌ No |
+| Auto mutation validation | ✅ Yes | ❌ No (extension method) | ❌ No |
+| `repo.withoutRLS()` | ✅ Yes | ❌ No (extension method) | ❌ No |
+| `repo.canAccess()` | ✅ Yes | ❌ No (extension method) | ❌ No |
 
 ## Transaction Handling
 
@@ -369,8 +499,13 @@ await db.transaction().execute(async (trx) => {
 ### DAL Transactions
 
 ```typescript
-// Using withTransaction
-const result = await withTransaction(db, async (ctx) => {
+import { withTransaction, createContext, createQuery } from '@kysera/dal';
+import { createExecutor } from '@kysera/executor';
+
+// Using withTransaction with executor (plugins propagated)
+const executor = await createExecutor(db, [softDeletePlugin()]);
+
+const result = await withTransaction(executor, async (ctx) => {
   const user = await createUser(ctx, userData);
   const post = await createPost(ctx, { userId: user.id, ...postData });
   return { user, post };
@@ -382,22 +517,26 @@ const transferFunds = createTransactionalQuery(async (ctx, from, to, amount) => 
   await credit(ctx, to, amount);
 });
 
-await withTransaction(db, (ctx) => transferFunds(ctx, 1, 2, 100));
+await withTransaction(executor, (ctx) => transferFunds(ctx, 1, 2, 100));
 ```
 
-## Combining Both Patterns
+## Combining Both Patterns (CQRS-lite)
 
-You can use both patterns in the same application:
+You can use both patterns in the same application with the **CQRS-lite** pattern via `orm.transaction()`:
 
 ```typescript
-// Repository for CRUD with plugins
-const orm = await createORM(db, [
-  softDeletePlugin(),
-  auditPlugin(),
-]);
+import { createORM } from '@kysera/repository';
+import { createQuery } from '@kysera/dal';
+import { softDeletePlugin } from '@kysera/soft-delete';
+import { sql } from 'kysely';
+
+// Create ORM with plugins (internally uses createExecutor)
+const orm = await createORM(db, [softDeletePlugin()]);
+
+// Repository for writes (CRUD operations)
 const userRepo = orm.createRepository(createUserRepository);
 
-// DAL for complex queries
+// DAL for complex reads (analytics, reports)
 const getAnalytics = createQuery((ctx, userId: number) =>
   ctx.db
     .selectFrom('events')
@@ -409,50 +548,56 @@ const getAnalytics = createQuery((ctx, userId: number) =>
     .executeTakeFirst()
 );
 
-// Use both in same transaction
-await db.transaction().execute(async (trx) => {
-  // Repository with plugins
-  const orm = await createORM(trx, [softDeletePlugin()]);
-  const userRepo = orm.createRepository(createUserRepository);
+// Use both in same transaction with shared plugins
+await orm.transaction(async (ctx) => {
+  // Repository for writes (plugins + extension methods)
   const user = await userRepo.create({ email: 'test@example.com' });
 
-  // DAL for analytics (no plugins needed)
-  const ctx = createContext(trx);
+  // DAL for complex reads (plugins applied via context)
   const stats = await getAnalytics(ctx, user.id);
 
   return { user, stats };
 });
 ```
 
-:::caution Consistency Warning
-When mixing patterns, ensure both use the same executor (database or transaction) to maintain consistency.
+:::tip CQRS-lite Pattern
+The `orm.transaction()` method creates a `DbContext` that works with both Repository and DAL patterns. Both share the same plugin interceptors, ensuring consistent behavior. Repository additionally gets extension methods from plugins.
 :::
 
 ## When to Use Each Pattern
 
 ### Use Repository When:
 
-- You need **plugins** (soft-delete, audit, timestamps, RLS)
-- Building a **multi-tenant** application with RLS
+- You need **repository extension methods** (audit.restore(), timestamps auto-setting)
+- You need **automatic validation** (Zod, Valibot, etc.) on all operations
 - Your team prefers **OOP patterns**
-- You need **built-in validation** (Zod, Valibot, etc.)
 - You want a **consistent API** across all tables
 - You're building a **traditional layered architecture**
+- You need both query interceptors AND extension methods from plugins
 
-### Use DAL When:
+### Use DAL with KyseraExecutor When:
 
+- You need **query interceptor plugins** (soft-delete filtering, RLS filtering)
 - You need **complex, custom queries** beyond CRUD
 - You prefer **functional programming** patterns
 - You want **maximum type inference** from queries
-- **Bundle size** is critical (7 KB vs 12 KB)
+- **Bundle size** is critical (7 KB vs 12 KB for repository)
 - You're using **Vertical Slice Architecture**
-- You don't need plugins or will implement functionality manually
 - You want queries **colocated** with feature code
+- You don't need repository extension methods
+
+### Use DAL without KyseraExecutor When:
+
+- You don't need any plugins
+- You want **minimal overhead** and direct Kysely access
+- You're building simple CRUD operations
+- Plugin functionality can be implemented manually when needed
 
 ### Use Both When:
 
-- Repository for **write operations** with plugins (create, update, delete)
+- Repository for **write operations** with full plugin support (create, update, delete)
 - DAL for **complex read operations** (reports, analytics, aggregations)
+- You want to share plugins via `KyseraExecutor` across both patterns
 - Different teams have different preferences
 - Migrating from one pattern to another incrementally
 

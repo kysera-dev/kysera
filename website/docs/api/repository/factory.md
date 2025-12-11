@@ -119,8 +119,8 @@ interface RepositoryConfig<Table, Entity, PK = number> {
   // Optional
   primaryKey?: string | string[]           // Default: 'id'
   primaryKeyType?: 'number' | 'string' | 'uuid'
-  validateDbResults?: boolean              // Default: NODE_ENV === 'development'
   validationStrategy?: 'none' | 'strict'   // Default: 'strict'
+  // Output validation controlled via KYSERA_VALIDATION_MODE or NODE_ENV
 }
 ```
 
@@ -180,23 +180,23 @@ const userRepo = factory.create({
 
 ### Validation Configuration
 
-```typescript
-// Always validate (development)
-{
-  validateDbResults: true,
-  validationStrategy: 'strict'
-}
+Validation is controlled via environment variables:
 
-// Never validate (production, performance)
-{
-  validateDbResults: false
-}
+```bash
+# Always validate both inputs and outputs (development)
+KYSERA_VALIDATION_MODE=always
 
-// Conditional (environment-based)
-{
-  validateDbResults: process.env.NODE_ENV === 'development'
-}
+# Validate inputs only (production)
+KYSERA_VALIDATION_MODE=production
+
+# Never validate outputs (testing/performance)
+KYSERA_VALIDATION_MODE=never
+
+# Default: based on NODE_ENV
+KYSERA_VALIDATION_MODE=development
 ```
+
+See the [Validation API](/docs/api/repository/validation) for more details.
 
 ## Best Practices
 
