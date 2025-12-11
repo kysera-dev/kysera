@@ -160,7 +160,8 @@ describe('Migration System', () => {
         // Verify result object
         expect(result.executed).toHaveLength(3);
         expect(result.dryRun).toBe(false);
-        expect(result.duration).toBeGreaterThan(0);
+        // Duration can be 0 for very fast migrations due to Date.now() ms precision
+        expect(result.duration).toBeGreaterThanOrEqual(0);
 
         // Verify tables were created
         const tables = await db
