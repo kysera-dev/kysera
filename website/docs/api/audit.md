@@ -18,7 +18,7 @@ npm install @kysera/audit
 
 | Metric | Value |
 |--------|-------|
-| **Version** | 0.6.0 |
+| **Version** | 0.7.0 |
 | **Bundle Size** | ~8 KB (minified) |
 | **Dependencies** | @kysera/core (workspace) |
 | **Peer Dependencies** | kysely >=0.28.8, @kysera/repository |
@@ -519,13 +519,14 @@ async interceptQuery(qb, context) {
 }
 ```
 
-## Usage with createORM
+## Usage with Plugin Container
 
 ```typescript
 import { createORM, createRepositoryFactory } from '@kysera/repository'
 import { auditPlugin } from '@kysera/audit'
 import { z } from 'zod'
 
+// createORM creates a plugin container (repository manager), not a traditional ORM
 const orm = await createORM(db, [
   auditPlugin({
     getUserId: () => currentUser?.id,

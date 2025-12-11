@@ -188,13 +188,11 @@ function extractSubdomain(hostname: string): string | null {
 The actual implementation (see `src/repositories/user.repository.ts`):
 
 ```typescript
-import { shouldValidate } from '@kysera/repository'
-
 export function createUserRepository(
   executor: Executor<Database>,
   tenantContext: TenantContext
 ) {
-  const validateDbResults = shouldValidate()  // Uses KYSERA_VALIDATION_MODE or NODE_ENV
+  const validateDbResults = process.env['NODE_ENV'] === 'development'
   const getTenantId = () => tenantContext.getTenantId()
 
   return {

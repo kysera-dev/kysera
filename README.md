@@ -452,28 +452,6 @@ MIT
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Roadmap
-
-**Phase 1-4** (✅ COMPLETED):
-- Core utilities and repository pattern
-- Plugin architecture and multi-database support
-- Comprehensive documentation and examples
-- Test coverage and security improvements
-
-**Phase 5** (✅ COMPLETED):
-- Vertical Slice Architecture support
-- Package separation (dal, debug, infra, testing)
-- Validation library abstraction (Zod, Valibot, ArkType, Yup)
-- CLI improvements and new commands
-- 2500+ tests across 12 packages
-
-**Phase 6** (Next):
-- Community feedback integration
-- Additional database adapters
-- Advanced caching strategies
-- Performance benchmarks publication
-- GraphQL integration exploration
-
 ### Quick Links
 
 - 📖 [Documentation Website](./website) - Full documentation

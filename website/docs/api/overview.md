@@ -8,6 +8,10 @@ description: API reference overview for all Kysera packages
 
 Complete API documentation for all Kysera packages.
 
+:::info What is Kysera?
+Kysera is a **type-safe data access toolkit** built on Kysely, not a traditional ORM. It provides composable patterns (Repository, DAL) and plugins for common database features, while maintaining Kysely's lightweight philosophy and full SQL control.
+:::
+
 :::tip Unified Execution Layer (v0.7+)
 Kysera now features a **Unified Execution Layer** powered by `@kysera/executor`. This foundation package enables plugins to work seamlessly with both Repository and DAL patterns through query interception. [Learn more about the architecture](#architecture-overview).
 :::
@@ -343,7 +347,8 @@ const executor = await createExecutor(db, [
   softDeletePlugin()                    // Soft-delete filter (query interceptor)
 ])
 
-// Repository pattern: Gets both query interceptors + extension methods
+// createORM creates a plugin container (repository manager), not a traditional ORM
+// It gets both query interceptors + extension methods
 const orm = await createORM(executor, [
   timestampsPlugin(),                   // Repository extension only
   auditPlugin({                         // Repository extension only
@@ -362,8 +367,9 @@ const users = await getUsers(executor)
 
 **Key Points:**
 - **Query interceptor plugins** (soft-delete, RLS) → Add to executor
-- **Repository extension plugins** (timestamps, audit) → Add to createORM
+- **Repository extension plugins** (timestamps, audit) → Add to `createORM` (plugin container)
 - Both patterns share the same query interceptors for consistent behavior
+- `createORM` is a plugin container/repository manager, not a traditional ORM
 
 ### Error Handling
 

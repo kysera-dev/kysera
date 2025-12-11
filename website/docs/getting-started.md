@@ -165,6 +165,8 @@ await db.transaction().execute(async (trx) => {
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
+// Note: createORM creates a plugin container, not a traditional ORM
+// It has no entity mapping, Unit of Work, or Identity Map
 const orm = await createORM(db, [
   softDeletePlugin({ deletedAtColumn: 'deleted_at' })
 ])

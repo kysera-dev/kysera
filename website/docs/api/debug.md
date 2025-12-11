@@ -16,8 +16,13 @@ npm install @kysera/debug
 
 ## Overview
 
+**Version:** 0.7.0
 **Bundle Size:** ~5 KB (minified)
 **Dependencies:** @kysera/core (peer: kysely >=0.28.8)
+
+:::info Package Type
+This is a **utility package** providing debug and monitoring features. It's not part of the Repository/DAL pattern - it wraps Kysely instances directly.
+:::
 
 ## Key Features
 

@@ -195,7 +195,7 @@ The `decreaseStock` method uses optimistic locking to prevent race conditions. T
 
 ```typescript
 // From examples/e-commerce/src/repositories/product.repository.ts (lines 162-180)
-// Note: validateDbResults = shouldValidate() from '@kysera/repository'
+// Note: validateDbResults = process.env['NODE_ENV'] === 'development'
 
 /**
  * Decrease stock with optimistic locking to prevent overselling
@@ -296,7 +296,7 @@ The cart repository handles adding, updating, and managing cart items. Here are 
 
 ```typescript
 // From examples/e-commerce/src/repositories/cart.repository.ts (lines 92-125)
-// Note: validateDbResults = shouldValidate() from '@kysera/repository'
+// Note: validateDbResults = process.env['NODE_ENV'] === 'development'
 
 async addItem(input: unknown): Promise<CartItem> {
   const validated = AddToCartSchema.parse(input)
