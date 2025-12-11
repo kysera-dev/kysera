@@ -3,7 +3,7 @@
   "version": "0.6.1",
   "private": true,
   "type": "module",
-  "description": "Blog application example using Kysera ORM",
+  "description": "Blog application example using Kysera",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",

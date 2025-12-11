@@ -10,7 +10,7 @@ Kysera's repository pattern provides a clean abstraction over database operation
 
 ## Creating Repositories
 
-### Using ORM with Plugins
+### Using createORM with Plugins
 
 The recommended way to create repositories in v0.7:
 
@@ -217,7 +217,7 @@ const result = await userRepo.paginateCursor({
 
 ## Repository Bundles
 
-### With ORM and Plugins
+### With createORM and Plugins
 
 Create multiple repositories with shared plugins:
 
@@ -338,7 +338,7 @@ const userRepo = factory.create({
 
 Repositories work seamlessly with transactions:
 
-### With ORM (Recommended for v0.7+)
+### With createORM (Recommended for v0.7+)
 
 ```typescript
 import { createORM } from '@kysera/repository'
@@ -361,7 +361,7 @@ await orm.transaction(async (ctx) => {
 })
 ```
 
-### Without ORM (Repository Factory)
+### Without createORM (Repository Factory)
 
 ```typescript
 // Method 1: Using repository bundles (RECOMMENDED)

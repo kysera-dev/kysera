@@ -1,7 +1,7 @@
 {
   "name": "@kysera/cli",
   "version": "0.6.1",
-  "description": "Comprehensive command-line interface for Kysera ORM",
+  "description": "Comprehensive CLI for Kysera data access toolkit",
   "type": "module",
   "bin": {
     "kysera": "./dist/index.js"
@@ -34,7 +34,7 @@
   },
   "keywords": [
     "kysera",
-    "orm",
+    "data-access",
     "cli",
     "database",
     "migrations",

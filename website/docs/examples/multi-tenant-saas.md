@@ -322,7 +322,7 @@ const rlsSchema = defineRLSSchema<Database>({
   }
 })
 
-// Create ORM with RLS plugin
+// Create repository manager with RLS plugin
 const orm = await createORM(db, [rlsPlugin({ schema: rlsSchema })])
 
 // Create repositories (no manual tenant filtering needed)

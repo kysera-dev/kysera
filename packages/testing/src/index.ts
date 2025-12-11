@@ -1,5 +1,5 @@
 /**
- * @kysera/testing - Testing utilities for Kysera ORM
+ * @kysera/testing - Testing utilities for Kysera
  *
  * Provides transaction-based testing, data factories, seeding utilities,
  * and test helpers for fast, isolated database testing.

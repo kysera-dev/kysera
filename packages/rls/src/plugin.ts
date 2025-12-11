@@ -86,7 +86,7 @@ interface BaseRepository {
  *   },
  * });
  *
- * // Create ORM with RLS plugin
+ * // Create repository with RLS plugin
  * const orm = await createORM(db, [
  *   rlsPlugin({ schema }),
  * ]);

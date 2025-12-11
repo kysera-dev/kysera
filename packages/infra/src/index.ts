@@ -1,5 +1,5 @@
 /**
- * @kysera/infra - Infrastructure utilities for Kysera ORM
+ * @kysera/infra - Infrastructure utilities for Kysera
  *
  * Provides health checks, resilience patterns, and graceful shutdown
  * for production database applications.

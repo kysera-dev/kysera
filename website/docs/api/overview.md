@@ -19,7 +19,7 @@ Kysera follows a layered architecture with `@kysera/executor` as the foundation:
 ```
 ┌─────────────────────────────────────────────────────┐
 │  Application Layer (Repository / DAL Patterns)      │
-│  - @kysera/repository: ORM with validation          │
+│  - @kysera/repository: Repository with validation   │
 │  - @kysera/dal: Functional query composition        │
 ├─────────────────────────────────────────────────────┤
 │  Plugin Layer (Query Interceptors & Extensions)     │
@@ -93,7 +93,7 @@ Understanding the dependency hierarchy helps you choose the right packages:
     │       └──> Used for: Functional queries with plugin support
     │
     ├──> @kysera/repository (depends on executor + dal)
-    │       └──> Used for: ORM pattern with validation and plugin methods
+    │       └──> Used for: Repository pattern with validation and plugin methods
     │
     └──> Plugin packages (use executor's Plugin interface)
             ├──> @kysera/soft-delete (query interceptor + repository extensions)
@@ -362,7 +362,7 @@ const users = await getUsers(executor)
 
 **Key Points:**
 - **Query interceptor plugins** (soft-delete, RLS) → Add to executor
-- **Repository extension plugins** (timestamps, audit) → Add to ORM
+- **Repository extension plugins** (timestamps, audit) → Add to createORM
 - Both patterns share the same query interceptors for consistent behavior
 
 ### Error Handling

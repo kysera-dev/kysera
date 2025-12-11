@@ -1,5 +1,5 @@
 /**
- * @kysera/dal - Functional Data Access Layer for Kysera ORM
+ * @kysera/dal - Functional Data Access Layer for Kysera
  *
  * Provides a functional approach to database access with:
  * - **Query functions** instead of Repository methods

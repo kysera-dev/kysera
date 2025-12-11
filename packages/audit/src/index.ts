@@ -1028,7 +1028,7 @@ function addAuditQueryMethods<T = unknown>(
 // ============================================================================
 
 /**
- * Audit plugin for Kysera ORM
+ * Audit plugin for Kysera
  *
  * This plugin automatically tracks all database changes with comprehensive audit logging.
  * It captures old and new values for all CRUD operations and stores them in an audit table.

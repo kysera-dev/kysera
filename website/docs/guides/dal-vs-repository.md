@@ -29,7 +29,7 @@ Do you need repository extension plugins (audit.restore(), timestamps)?
 
 ### Repository Pattern
 
-The Repository pattern provides an **object-oriented** abstraction over database tables:
+The Repository pattern provides an **object-oriented** data access abstraction over database tables:
 
 ```typescript
 import { createORM } from '@kysera/repository';
@@ -118,7 +118,7 @@ const getUserWithPosts = async (ctx, id: number) => {
 | Feature | Repository | Functional DAL |
 |---------|-----------|----------------|
 | **Paradigm** | Object-Oriented | Functional |
-| **Abstraction Level** | High (Repository class) | Low (Query functions) |
+| **Abstraction Level** | High (Repository methods) | Low (Query functions) |
 | **Type Inference** | Explicit generics | Automatic from queries |
 | **Query Interceptor Plugins** | Native | Native (via KyseraExecutor) |
 | **Repository Extension Plugins** | Native | Not supported |

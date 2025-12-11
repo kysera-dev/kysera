@@ -1,7 +1,7 @@
 {
   "name": "@kysera/migrations",
   "version": "0.6.1",
-  "description": "Database migration management for Kysera ORM with dry-run support and flexible rollback capabilities",
+  "description": "Database migration management for Kysely with dry-run support and flexible rollback capabilities",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -25,7 +25,7 @@
   },
   "keywords": [
     "kysely",
-    "orm",
+    "data-access",
     "migrations",
     "database",
     "typescript",

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * @kysera/cli - Command-line interface for Kysera ORM
+ * @kysera/cli - Command-line interface for Kysera toolkit
  *
  * This is the main entry point for the CLI application.
  * It handles environment setup and launches the main CLI.

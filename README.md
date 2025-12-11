@@ -1,6 +1,6 @@
 # Kysera 🚀
 
-Production-ready TypeScript ORM built on top of Kysely with minimal core, optional everything.
+Type-safe data access toolkit for TypeScript — Repository pattern, Functional DAL, and plugins for Kysely. Not an ORM.
 
 ## Quick Start (5 Minutes to First Query)
 

@@ -13,7 +13,7 @@ import { checkDatabaseHealth } from '@kysera/infra'
  * - Preventing cross-tenant data access
  */
 async function main() {
-  console.log('🏢 Multi-Tenant SaaS Example - Kysera ORM')
+  console.log('🏢 Multi-Tenant SaaS Example - Kysera')
 
   // Check database health
   const health = await checkDatabaseHealth(db, pool)

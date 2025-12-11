@@ -1,6 +1,6 @@
 # Kysera Plugin Authoring Guide
 
-This guide explains how to create plugins for Kysera ORM using the plugin system.
+This guide explains how to create plugins for Kysera using the plugin system.
 
 ## Table of Contents
 
@@ -302,7 +302,7 @@ import { createORM } from '@kysera/repository'
 import { myPlugin } from '../src'
 
 describe('MyPlugin Integration', () => {
-  it('should work with ORM', async () => {
+  it('should work with Kysera', async () => {
     const orm = await createORM(db, [myPlugin()])
 
     const repo = orm.createRepository(createUserRepository)

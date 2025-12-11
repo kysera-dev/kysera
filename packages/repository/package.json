@@ -1,7 +1,7 @@
 {
   "name": "@kysera/repository",
   "version": "0.7.0",
-  "description": "Repository pattern for Kysera ORM with smart validation",
+  "description": "Repository pattern implementation for Kysely with smart validation",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -56,7 +56,7 @@
   },
   "keywords": [
     "kysely",
-    "orm",
+    "data-access",
     "repository",
     "pattern",
     "validation",

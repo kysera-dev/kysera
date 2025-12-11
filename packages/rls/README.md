@@ -1,6 +1,6 @@
 # @kysera/rls
 
-> **Row-Level Security Plugin for Kysera ORM** - Declarative authorization policies with automatic query transformation and AsyncLocalStorage-based context management.
+> **Row-Level Security Plugin for Kysera** - Declarative authorization policies with automatic query transformation and AsyncLocalStorage-based context management.
 
 [![npm version](https://img.shields.io/npm/v/@kysera/rls.svg)](https://www.npmjs.com/package/@kysera/rls)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -10,7 +10,7 @@
 
 ## Overview
 
-`@kysera/rls` provides Row-Level Security (RLS) for Kysera ORM through a declarative policy system. It automatically filters queries and enforces authorization rules at the database access layer, ensuring data isolation and access control without manual filtering in your application code.
+`@kysera/rls` provides Row-Level Security (RLS) for Kysera through a declarative policy system. It automatically filters queries and enforces authorization rules at the database access layer, ensuring data isolation and access control without manual filtering in your application code.
 
 ### What is Row-Level Security?
 
@@ -86,7 +86,7 @@ const rlsSchema = defineRLSSchema<Database>({
 });
 ```
 
-### 2. Create ORM with RLS Plugin
+### 2. Create Plugin Container with RLS Plugin
 
 ```typescript
 import { createORM } from '@kysera/repository';

@@ -102,7 +102,7 @@ interface BaseRepository {
 }
 
 /**
- * Soft Delete Plugin for Kysera ORM
+ * Soft Delete Plugin for Kysera
  *
  * This plugin implements soft delete functionality using the Method Override pattern:
  * - Automatically filters out soft-deleted records from SELECT queries

@@ -1,6 +1,8 @@
 # @kysera/repository
 
-Repository pattern implementation with unified plugin support for Kysera ORM.
+Repository pattern implementation with unified plugin support for Kysera.
+
+**Note:** The `createORM` function creates a plugin container for the Repository pattern - not a traditional ORM with entity mapping, Unit of Work, or Identity Map.
 
 [![Version](https://img.shields.io/npm/v/@kysera/repository.svg)](https://www.npmjs.com/package/@kysera/repository)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -8,7 +10,7 @@ Repository pattern implementation with unified plugin support for Kysera ORM.
 
 ## Overview
 
-The Repository package provides a traditional ORM-style interface for Kysely with full plugin support via [@kysera/executor](../executor). It supports flexible validation adapters (Zod, Valibot, TypeBox, or custom), CQRS-lite patterns, and works seamlessly with plugins like soft-delete and RLS.
+The Repository package provides a repository pattern interface for Kysely with full plugin support via [@kysera/executor](../executor). It supports flexible validation adapters (Zod, Valibot, TypeBox, or custom), CQRS-lite patterns, and works seamlessly with plugins like soft-delete and RLS.
 
 **Key Features:**
 - Repository pattern with CRUD operations
@@ -105,7 +107,7 @@ const user = await userRepo.create({
 
 ### createORM
 
-Create an ORM instance with unified plugin management via [@kysera/executor](../executor).
+Create a plugin container with unified plugin management via [@kysera/executor](../executor).
 
 ```typescript
 import { createORM } from '@kysera/repository';
@@ -118,7 +120,7 @@ const orm = await createORM(db, [
 ]);
 ```
 
-**ORM Interface:**
+**Plugin Container Interface:**
 
 ```typescript
 interface PluginOrm<DB> {
@@ -134,7 +136,7 @@ interface PluginOrm<DB> {
   // Registered plugins in resolved dependency order
   plugins: readonly Plugin[];
 
-  // Create a DAL context with ORM plugins
+  // Create a DAL context with plugins
   createContext(): DbContext<DB>;
 
   // Execute a transaction with both Repository and DAL patterns
@@ -165,9 +167,9 @@ const userRepo = factory.create({
 
 ## Plugin Integration
 
-Plugins work by intercepting queries and extending repository interfaces. The ORM uses [@kysera/executor](../executor) internally for unified plugin management.
+Plugins work by intercepting queries and extending repository interfaces. The plugin container uses [@kysera/executor](../executor) internally for unified plugin management.
 
-### Using Plugins with ORM
+### Using Plugins
 
 ```typescript
 import { createORM } from '@kysera/repository';

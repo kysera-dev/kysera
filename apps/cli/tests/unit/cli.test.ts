@@ -37,7 +37,7 @@ function createTestProgram(): Command {
   const program = new Command();
   program
     .name('kysera')
-    .description('Comprehensive command-line interface for Kysera ORM')
+    .description('Comprehensive command-line interface for Kysera toolkit')
     .version('0.1.0', '-v, --version', 'Show CLI version')
     .helpCommand('help [command]', 'Display help for command')
     .helpOption('-h, --help', 'Display help')
@@ -102,7 +102,7 @@ describe('CLI', () => {
     });
 
     it('should have correct description', () => {
-      expect(program.description()).toBe('Comprehensive command-line interface for Kysera ORM');
+      expect(program.description()).toBe('Comprehensive command-line interface for Kysera toolkit');
     });
 
     it('should have version set', () => {

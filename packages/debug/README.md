@@ -1,6 +1,6 @@
 # @kysera/debug
 
-Debug utilities for Kysera ORM - query logging, profiling, SQL formatting, and performance analysis.
+Debug utilities for Kysera - query logging, profiling, SQL formatting, and performance analysis.
 
 ## Installation
 

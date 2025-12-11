@@ -1,6 +1,6 @@
 # @kysera/infra
 
-Infrastructure utilities for Kysera ORM - production-ready health monitoring, resilience patterns, and graceful shutdown for database applications.
+Infrastructure utilities for Kysera - production-ready health monitoring, resilience patterns, and graceful shutdown for database applications.
 
 ## Installation
 

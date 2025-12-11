@@ -18,7 +18,7 @@ data:
     - id: 2
       user_id: 2
       title: "Getting Started with Kysera"
-      content: "Kysera is a powerful TypeScript ORM that makes database operations easy."
+      content: "Kysera is a powerful type-safe data access toolkit that makes database operations easy."
       published: true
       created_at: "2024-01-02T10:00:00Z"
     - id: 3

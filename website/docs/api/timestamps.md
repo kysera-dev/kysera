@@ -6,7 +6,7 @@ description: Automatic timestamps plugin API reference
 
 # @kysera/timestamps
 
-Automatic timestamp management plugin for Kysera ORM - Automatically manage `created_at` and `updated_at` timestamps on your entities.
+Automatic timestamp management plugin for Kysera - Automatically manage `created_at` and `updated_at` timestamps on your entities.
 
 ## Installation
 

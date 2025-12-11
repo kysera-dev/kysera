@@ -1,16 +1,16 @@
 ---
 sidebar_position: 1
 title: Introduction
-description: Production-ready TypeScript ORM built on Kysely with zero compromises
+description: Production-ready type-safe data access toolkit built on Kysely with zero compromises
 ---
 
 # Kysera
 
-**Production-ready TypeScript ORM built on top of Kysely with zero compromises on reliability, type safety, and performance.**
+**Production-ready type-safe data access toolkit built on top of Kysely with zero compromises on reliability, type safety, and performance.**
 
 ## What is Kysera?
 
-Kysera is a lightweight, modular ORM layer that builds upon [Kysely](https://kysely.dev) - the type-safe SQL query builder. It provides:
+Kysera is a lightweight, modular data access toolkit that builds upon [Kysely](https://kysely.dev) - the type-safe SQL query builder. Unlike traditional ORMs with entity mapping, Unit of Work, and Identity Map, Kysera provides lightweight patterns on top of Kysely. It provides:
 
 - **Repository Pattern** with validation-agnostic design (Zod, Valibot, TypeBox, or native)
 - **Functional DAL** for type-inferred queries and context-based transactions

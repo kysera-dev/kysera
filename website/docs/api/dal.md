@@ -6,7 +6,7 @@ description: Functional Data Access Layer API reference
 
 # @kysera/dal
 
-Functional Data Access Layer for Kysera ORM - Query functions, context passing, plugin support, and composition utilities.
+Functional Data Access Layer for Kysera - Query functions, context passing, plugin support, and composition utilities.
 
 ## Installation
 
@@ -997,7 +997,7 @@ You can use both patterns in the same application for different purposes. This i
 
 ### Approach 1: Shared KyseraExecutor (Recommended)
 
-Use a single `KyseraExecutor` for both DAL queries and Repository ORM. This ensures consistent plugin behavior:
+Use a single `KyseraExecutor` for both DAL queries and Repository patterns. This ensures consistent plugin behavior:
 
 ```typescript
 import { createExecutor } from '@kysera/executor';
@@ -1008,7 +1008,7 @@ import { withTransaction, createQuery } from '@kysera/dal';
 // Create executor with plugins
 const executor = await createExecutor(db, [softDeletePlugin()]);
 
-// Create ORM - pass raw db, plugins already initialized via executor
+// Create repository manager - pass raw db, plugins already initialized via executor
 const orm = await createORM(db, [softDeletePlugin()]);
 
 // Define DAL queries - use executor for plugin support
@@ -1033,16 +1033,16 @@ await withTransaction(executor, async (ctx) => {
 });
 ```
 
-### Approach 2: ORM Transaction Context (Simpler)
+### Approach 2: createORM Transaction Context (Simpler)
 
-Use the ORM's transaction context directly for both Repository and DAL queries. The ORM transaction context is a `DbContext`, which DAL queries can accept:
+Use the repository manager's transaction context directly for both Repository and DAL queries. The transaction context is a `DbContext`, which DAL queries can accept:
 
 ```typescript
 import { createORM } from '@kysera/repository';
 import { softDeletePlugin } from '@kysera/soft-delete';
 import { createQuery } from '@kysera/dal';
 
-// Create ORM with plugins
+// Create repository manager with plugins
 const orm = await createORM(db, [softDeletePlugin()]);
 
 // Define DAL query functions
@@ -1054,7 +1054,7 @@ const getUserStats = createQuery((ctx, userId: number) =>
     .executeTakeFirst()
 );
 
-// Use ORM transaction - context works with both Repository and DAL
+// Use orm.transaction() - context works with both Repository and DAL
 await orm.transaction(async (ctx) => {
   // Repository for writes (with extension methods)
   const userRepo = orm.createRepository(createUserRepository);

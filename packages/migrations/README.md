@@ -1,6 +1,6 @@
 # @kysera/migrations
 
-> Lightweight, type-safe database migration management for Kysera ORM with dry-run support, flexible rollback capabilities, and plugin system.
+> Lightweight, type-safe database migration management for Kysera with dry-run support, flexible rollback capabilities, and plugin system.
 
 [![npm version](https://img.shields.io/npm/v/@kysera/migrations.svg)](https://www.npmjs.com/package/@kysera/migrations)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)

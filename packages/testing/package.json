@@ -1,7 +1,7 @@
 {
   "name": "@kysera/testing",
   "version": "0.6.1",
-  "description": "Testing utilities for Kysera ORM - transaction isolation, factories, seeding",
+  "description": "Testing utilities for Kysely - transaction isolation, factories, seeding",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -39,7 +39,7 @@
   },
   "keywords": [
     "kysely",
-    "orm",
+    "data-access",
     "database",
     "testing",
     "transaction",

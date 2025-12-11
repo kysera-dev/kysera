@@ -4,7 +4,7 @@ import { paginate } from '@kysera/core'
 import { checkDatabaseHealth } from '@kysera/infra'
 
 async function main() {
-  console.log('🚀 Blog App Example - Kysera ORM')
+  console.log('🚀 Blog App Example - Kysera')
 
   // Check database health
   const health = await checkDatabaseHealth(db, pool)

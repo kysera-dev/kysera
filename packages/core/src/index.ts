@@ -1,5 +1,5 @@
 /**
- * @kysera/core - Core utilities for Kysera ORM
+ * @kysera/core - Core utilities for Kysera
  *
  * Minimal core package containing essential utilities:
  * - Error handling (DatabaseError, error codes)

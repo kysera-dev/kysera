@@ -6,7 +6,7 @@ description: Soft delete plugin API reference
 
 # @kysera/soft-delete
 
-Soft delete plugin for Kysera ORM - Mark records as deleted without permanently removing them from the database.
+Soft delete plugin for Kysera - Mark records as deleted without permanently removing them from the database.
 
 ## Installation
 

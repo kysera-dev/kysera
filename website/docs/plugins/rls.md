@@ -43,7 +43,7 @@ const rlsSchema = defineRLSSchema<Database>({
   },
 })
 
-// Create ORM with RLS
+// Create repository manager with RLS
 const orm = await createORM(db, [
   rlsPlugin({ schema: rlsSchema })
 ])
@@ -930,7 +930,7 @@ const rlsSchema = defineRLSSchema<Database>({
   }
 })
 
-// Create ORM with RLS
+// Create repository manager with RLS
 const orm = await createORM(db, [
   rlsPlugin({ schema: rlsSchema })
 ])

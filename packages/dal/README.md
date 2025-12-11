@@ -1,6 +1,6 @@
 # @kysera/dal
 
-Functional Data Access Layer for Kysera ORM - Query functions with automatic plugin support.
+Functional Data Access Layer for Kysera - Query functions with automatic plugin support.
 
 ## Overview
 

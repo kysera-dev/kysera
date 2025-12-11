@@ -701,7 +701,7 @@ import { softDeletePlugin } from '@kysera/soft-delete';
 // Create executor with plugins
 const executor = await createExecutor(db, [softDeletePlugin()]);
 
-// Create ORM using executor (no additional plugins needed)
+// Create repository manager using executor (no additional plugins needed)
 const orm = await createORM(executor, []);
 
 const userRepo = orm.createRepository((exec) => {
