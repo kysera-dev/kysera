@@ -439,6 +439,239 @@ describe('@kysera/executor', () => {
     });
   });
 
+  describe('method caching', () => {
+    it('caches intercepted methods on repeated access', async () => {
+      const plugin: Plugin = {
+        name: 'test',
+        version: '1.0.0',
+        interceptQuery<QB>(qb: QB): QB {
+          return qb;
+        },
+      };
+
+      const executor = await createExecutor(db, [plugin]);
+
+      // Access selectFrom multiple times - should use cached intercepted method
+      const selectFrom1 = executor.selectFrom;
+      const selectFrom2 = executor.selectFrom;
+      const selectFrom3 = executor.selectFrom;
+
+      // All should be the same function reference (cached)
+      expect(selectFrom1).toBe(selectFrom2);
+      expect(selectFrom2).toBe(selectFrom3);
+
+      // Same for insertInto
+      const insertInto1 = executor.insertInto;
+      const insertInto2 = executor.insertInto;
+      expect(insertInto1).toBe(insertInto2);
+
+      // Same for updateTable
+      const updateTable1 = executor.updateTable;
+      const updateTable2 = executor.updateTable;
+      expect(updateTable1).toBe(updateTable2);
+
+      // Same for deleteFrom
+      const deleteFrom1 = executor.deleteFrom;
+      const deleteFrom2 = executor.deleteFrom;
+      expect(deleteFrom1).toBe(deleteFrom2);
+
+      // Should still work correctly
+      const users = await executor.selectFrom('users').selectAll().execute();
+      expect(users).toHaveLength(3);
+    });
+
+    it('caches query builder methods on repeated access', async () => {
+      const plugin: Plugin = {
+        name: 'test',
+        version: '1.0.0',
+        interceptQuery<QB>(qb: QB): QB {
+          return qb;
+        },
+      };
+
+      const executor = await createExecutor(db, [plugin]);
+
+      // Access selectFrom multiple times - should use cached method
+      const selectFrom1 = executor.selectFrom;
+      const selectFrom2 = executor.selectFrom;
+
+      // Both should be the same function reference (cached)
+      expect(selectFrom1).toBe(selectFrom2);
+
+      // Should still work correctly
+      const users = await executor.selectFrom('users').selectAll().execute();
+      expect(users).toHaveLength(3);
+    });
+
+    it('caches transaction method', async () => {
+      const plugin: Plugin = {
+        name: 'test',
+        version: '1.0.0',
+        interceptQuery<QB>(qb: QB): QB {
+          return qb;
+        },
+      };
+
+      const executor = await createExecutor(db, [plugin]);
+
+      // Access transaction multiple times - should use cached wrapper
+      const transaction1 = executor.transaction;
+      const transaction2 = executor.transaction;
+
+      expect(transaction1).toBe(transaction2);
+    });
+
+    it('caches non-query methods (bound functions)', async () => {
+      const plugin: Plugin = {
+        name: 'test',
+        version: '1.0.0',
+        interceptQuery<QB>(qb: QB): QB {
+          return qb;
+        },
+      };
+
+      const executor = await createExecutor(db, [plugin]);
+
+      // Access insertInto multiple times
+      const insertInto1 = executor.insertInto;
+      const insertInto2 = executor.insertInto;
+
+      expect(insertInto1).toBe(insertInto2);
+
+      // Access updateTable multiple times
+      const updateTable1 = executor.updateTable;
+      const updateTable2 = executor.updateTable;
+
+      expect(updateTable1).toBe(updateTable2);
+
+      // Access deleteFrom multiple times
+      const deleteFrom1 = executor.deleteFrom;
+      const deleteFrom2 = executor.deleteFrom;
+
+      expect(deleteFrom1).toBe(deleteFrom2);
+    });
+  });
+
+  describe('proxy has trap', () => {
+    it('supports "in" operator for marker properties', async () => {
+      const plugin: Plugin = {
+        name: 'test',
+        version: '1.0.0',
+        interceptQuery<QB>(qb: QB): QB {
+          return qb;
+        },
+      };
+
+      const executor = await createExecutor(db, [plugin]);
+
+      // Marker properties should be detected
+      expect('__kysera' in executor).toBe(true);
+      expect('__plugins' in executor).toBe(true);
+      expect('__rawDb' in executor).toBe(true);
+    });
+
+    it('supports "in" operator for regular properties', async () => {
+      const plugin: Plugin = {
+        name: 'test',
+        version: '1.0.0',
+        interceptQuery<QB>(qb: QB): QB {
+          return qb;
+        },
+      };
+
+      const executor = await createExecutor(db, [plugin]);
+
+      // Regular Kysely methods should be detected via Reflect.has
+      expect('selectFrom' in executor).toBe(true);
+      expect('insertInto' in executor).toBe(true);
+      expect('transaction' in executor).toBe(true);
+      expect('destroy' in executor).toBe(true);
+
+      // Non-existent properties should return false
+      expect('nonExistent' in executor).toBe(false);
+    });
+  });
+
+  describe('non-query method access', () => {
+    it('accesses and caches bound function methods through methodCache', async () => {
+      const plugin: Plugin = {
+        name: 'test',
+        version: '1.0.0',
+        interceptQuery<QB>(qb: QB): QB {
+          return qb;
+        },
+      };
+
+      const executor = await createExecutor(db, [plugin]);
+
+      // Access with method - should be cached (it's a function, not a getter)
+      const with1 = executor.with;
+      const with2 = executor.with;
+      expect(with1).toBe(with2);
+
+      // Access withRecursive method - should be cached
+      const withRecursive1 = executor.withRecursive;
+      const withRecursive2 = executor.withRecursive;
+      expect(withRecursive1).toBe(withRecursive2);
+
+      // Verify they work (they are functions)
+      expect(typeof executor.with).toBe('function');
+      expect(typeof executor.withRecursive).toBe('function');
+    });
+
+    it('returns non-function properties without caching', async () => {
+      const plugin: Plugin = {
+        name: 'test',
+        version: '1.0.0',
+        interceptQuery<QB>(qb: QB): QB {
+          return qb;
+        },
+      };
+
+      const executor = await createExecutor(db, [plugin]);
+
+      // dynamic is a getter that returns a new object each time
+      // It should still be accessible via the proxy
+      expect(executor.dynamic).toBeDefined();
+      expect(typeof executor.dynamic).toBe('object');
+    });
+  });
+
+  describe('createExecutorSync with validation', () => {
+    it('validates plugins synchronously', () => {
+      const plugins: Plugin[] = [
+        { name: 'plugin1', version: '1.0.0' },
+        { name: 'plugin2', version: '1.0.0' },
+      ];
+
+      const executor = createExecutorSync(db, plugins);
+
+      expect(isKyseraExecutor(executor)).toBe(true);
+      expect(getPlugins(executor)).toHaveLength(2);
+    });
+
+    it('throws on duplicate plugins synchronously', () => {
+      const plugins: Plugin[] = [
+        { name: 'test', version: '1.0.0' },
+        { name: 'test', version: '2.0.0' },
+      ];
+
+      expect(() => createExecutorSync(db, plugins)).toThrow(PluginValidationError);
+    });
+
+    it('creates executor with plugins without interceptQuery (fast path)', () => {
+      const plugins: Plugin[] = [
+        { name: 'no-intercept-1', version: '1.0.0' },
+        { name: 'no-intercept-2', version: '1.0.0' },
+      ];
+
+      const executor = createExecutorSync(db, plugins);
+
+      expect(isKyseraExecutor(executor)).toBe(true);
+      expect(getPlugins(executor)).toHaveLength(2);
+    });
+  });
+
   describe('wrapTransaction', () => {
     it('wraps transaction with plugins explicitly', async () => {
       const interceptCalls: string[] = [];
