@@ -90,29 +90,29 @@ const users = await db
 
 ### Core Packages
 
-| Package | Description | Version |
-|---------|-------------|---------|
-| `@kysera/core` | Core utilities - errors, pagination, types, logger | 0.6.0 |
-| `@kysera/repository` | Repository pattern with smart validation | 0.6.0 |
-| `@kysera/dal` | Functional Data Access Layer - query composition | 0.6.0 |
+| Package | Description |
+|---------|-------------|
+| `@kysera/core` | Core utilities - errors, pagination, types, logger |
+| `@kysera/repository` | Repository pattern with smart validation |
+| `@kysera/dal` | Functional Data Access Layer - query composition |
 
 ### Infrastructure
 
-| Package | Description | Version |
-|---------|-------------|---------|
-| `@kysera/infra` | Health checks, retry, circuit breaker, graceful shutdown | 0.6.0 |
-| `@kysera/debug` | Query logging, profiling, SQL formatting | 0.6.0 |
-| `@kysera/testing` | Test utilities - transaction isolation, factories, seeding | 0.6.0 |
-| `@kysera/migrations` | Migration system with dry-run support | 0.6.0 |
+| Package | Description |
+|---------|-------------|
+| `@kysera/infra` | Health checks, retry, circuit breaker, graceful shutdown |
+| `@kysera/debug` | Query logging, profiling, SQL formatting |
+| `@kysera/testing` | Test utilities - transaction isolation, factories, seeding |
+| `@kysera/migrations` | Migration system with dry-run support |
 
 ### Plugins
 
-| Package | Description | Version |
-|---------|-------------|---------|
-| `@kysera/soft-delete` | Soft delete with auto-filtering | 0.6.0 |
-| `@kysera/audit` | Audit logging with bulk optimization | 0.6.0 |
-| `@kysera/timestamps` | Auto created_at/updated_at | 0.6.0 |
-| `@kysera/rls` | Row-Level Security policies | 0.6.0 |
+| Package | Description |
+|---------|-------------|
+| `@kysera/soft-delete` | Soft delete with auto-filtering |
+| `@kysera/audit` | Audit logging with bulk optimization |
+| `@kysera/timestamps` | Auto created_at/updated_at |
+| `@kysera/rls` | Row-Level Security policies |
 
 ## Development
 
@@ -391,10 +391,8 @@ MIT
 
 ## Project Status
 
-**Current Version**: 0.6.0 (Stable)
 **Total Packages**: 12
-**Test Coverage**: 2500+ tests passing
-**Phase 5**: ✅ COMPLETED
+**Status**: Production Ready
 
 ### Completed Features
 
@@ -413,25 +411,7 @@ MIT
 - [x] Multi-database support - PostgreSQL, MySQL, SQLite
 - [x] Vertical Slice Architecture support
 
-### Test Statistics
-
-| Package | Tests | Status |
-|---------|-------|--------|
-| @kysera/cli | 1400 | ✅ Production Ready |
-| @kysera/rls | 303 | ✅ Production Ready |
-| @kysera/repository | 200+ | ✅ Production Ready |
-| @kysera/testing | 117 | ✅ Production Ready |
-| @kysera/audit | 109 | ✅ Production Ready |
-| @kysera/migrations | 64 | ✅ Production Ready |
-| @kysera/infra | 50+ | ✅ Production Ready |
-| @kysera/soft-delete | 39+ | ✅ Production Ready |
-| @kysera/dal | 37 | ✅ Production Ready |
-| @kysera/debug | 30+ | ✅ Production Ready |
-| @kysera/core | 30+ | ✅ Production Ready |
-| @kysera/timestamps | 16+ | ✅ Production Ready |
-| **Total** | **2500+** | **All Passing** |
-
-### Architecture (v0.6.0)
+### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
