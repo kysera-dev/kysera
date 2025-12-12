@@ -5,8 +5,9 @@ A quick-start guide to using Kysera - a type-safe data access toolkit built on t
 ## Installation
 
 ```bash
-# Install core packages (zod is required for @kysera/repository)
-pnpm add kysely @kysera/core @kysera/repository zod
+# Install core packages (zod is optional for validation)
+pnpm add kysely @kysera/core @kysera/repository
+pnpm add zod  # Optional: for schema validation
 
 # Install database driver (choose one)
 pnpm add pg              # PostgreSQL

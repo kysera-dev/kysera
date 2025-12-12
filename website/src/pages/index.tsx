@@ -45,7 +45,7 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 
 const db = new Kysely({ dialect: new PostgresDialect({ pool }) })
 
-// Create ORM with plugins - soft delete applied automatically
+// Create plugin container with soft delete - not a traditional ORM
 const orm = await createORM(db, [softDeletePlugin()])
 
 const userRepo = orm.createRepository({
