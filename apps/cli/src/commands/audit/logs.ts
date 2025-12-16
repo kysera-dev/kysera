@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { prism, spinner, table } from '@xec-sh/kit';
+import { prism, table } from '@xec-sh/kit';
+import { spinner } from '../../utils/spinner.js';
 import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
 
@@ -133,7 +134,7 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
         console.log(prism.gray('-'.repeat(50)));
         console.log(`  Timestamp: ${formatDate(log['created_at'])}`);
         console.log(`  Table: ${prism.cyan(log['table_name'])}`);
-        console.log(`  Action: ${formatAction(log['action'])}`);
+        console.log(`  Action: ${formatAction(String(log['action']))}`);
         console.log(`  Entity ID: ${log['entity_id']}`);
         console.log(`  User: ${log['user_id'] || prism.gray('system')}`);
 

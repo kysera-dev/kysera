@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { prism, spinner, table, confirm } from '@xec-sh/kit';
+import { prism, table, confirm } from '@xec-sh/kit';
+import { spinner } from '../../utils/spinner.js';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
@@ -154,7 +155,7 @@ async function validateRepositories(options: ValidateRepositoryOptions): Promise
     // Fix issues if requested
     if (options.fix && validationResults.some((r) => r.issues.some((i) => i.fixable))) {
       console.log('');
-      const shouldFix = await confirm('Do you want to attempt automatic fixes?');
+      const shouldFix = await confirm({ message: 'Do you want to attempt automatic fixes?' });
 
       if (shouldFix) {
         await attemptFixes(validationResults, db, options);

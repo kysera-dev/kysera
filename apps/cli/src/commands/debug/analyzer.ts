@@ -1,5 +1,7 @@
 import { Command } from 'commander';
-import { prism, spinner, table } from '@xec-sh/kit';
+import { prism } from '@xec-sh/kit';
+import { displayTable as table } from '../../utils/table-helper.js';
+import { spinner } from '../../utils/spinner.js';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
@@ -195,11 +197,12 @@ async function analyzePostgresQuery(
       if (analysis.executionPlan && analysis.executionPlan[0]) {
         const planData = analysis.executionPlan[0];
 
-        if (planData.Plan) {
+        // Type guard for PostgresExplainOutput
+        if ('Plan' in planData && planData.Plan) {
           analysis.estimatedCost = planData.Plan['Total Cost'];
           analysis.rowsReturned = planData.Plan['Plan Rows'];
 
-          if (planData['Execution Time']) {
+          if ('Execution Time' in planData && planData['Execution Time']) {
             analysis.actualTime = planData['Execution Time'];
           }
 
@@ -227,27 +230,28 @@ async function analyzeMysqlQuery(
     const explainResult = await db.executeQuery(db.raw(`EXPLAIN ${query}`));
 
     if (explainResult.rows && explainResult.rows.length > 0) {
-      analysis.executionPlan = explainResult.rows;
+      analysis.executionPlan = explainResult.rows as MySQLPlan[];
 
       // Extract metrics from plan
       for (const row of explainResult.rows) {
-        if (row.key) {
-          analysis.indexesUsed.push(row.key);
+        const mysqlRow = row as any; // MySQL EXPLAIN row structure
+        if (mysqlRow.key) {
+          analysis.indexesUsed.push(String(mysqlRow.key));
         }
 
-        if (row.rows) {
-          analysis.rowsExamined = (analysis.rowsExamined || 0) + Number(row.rows);
+        if (mysqlRow.rows) {
+          analysis.rowsExamined = (analysis.rowsExamined || 0) + Number(mysqlRow.rows);
         }
 
         // Check for warnings
-        if (row.Extra) {
-          if (row.Extra.includes('Using filesort')) {
+        if (mysqlRow.Extra) {
+          if (String(mysqlRow.Extra).includes('Using filesort')) {
             analysis.warnings.push('Query uses filesort (consider adding index)');
           }
-          if (row.Extra.includes('Using temporary')) {
+          if (String(mysqlRow.Extra).includes('Using temporary')) {
             analysis.warnings.push('Query uses temporary table (may impact performance)');
           }
-          if (row.Extra.includes('Using where')) {
+          if (String(mysqlRow.Extra).includes('Using where')) {
             analysis.warnings.push('Using WHERE without index');
           }
         }
@@ -272,11 +276,12 @@ async function analyzeSqliteQuery(
     const explainResult = await db.executeQuery(db.raw(`EXPLAIN QUERY PLAN ${query}`));
 
     if (explainResult.rows && explainResult.rows.length > 0) {
-      analysis.executionPlan = explainResult.rows;
+      analysis.executionPlan = explainResult.rows as SQLitePlan[];
 
       // Extract index usage from plan
       for (const row of explainResult.rows) {
-        const detail = row.detail || '';
+        const sqliteRow = row as any; // SQLite EXPLAIN row structure
+        const detail = String(sqliteRow.detail || '');
 
         if (detail.includes('USING INDEX')) {
           const indexMatch = detail.match(/USING INDEX (\w+)/);
@@ -413,10 +418,12 @@ async function getTableStatistics(db: DatabaseInstance, tables: string[], dialec
         );
 
         for (const idx of indexResult.rows) {
+          const pgIdx = idx as any; // PostgreSQL index row
           tableStats.indexes.push({
-            name: idx.indexname,
-            columns: extractColumnsFromIndexDef(idx.indexdef),
-            unique: idx.indexdef.includes('UNIQUE'),
+            name: String(pgIdx.indexname),
+            columns: extractColumnsFromIndexDef(String(pgIdx.indexdef)),
+            isUnique: String(pgIdx.indexdef).includes('UNIQUE'),
+            isPrimary: String(pgIdx.indexname).endsWith('_pkey') || String(pgIdx.indexdef).includes('PRIMARY KEY'),
           });
         }
       }
@@ -570,7 +577,7 @@ function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzerOption
       if (stats.indexes.length > 0) {
         console.log(`    Indexes (${stats.indexes.length}):`);
         for (const idx of stats.indexes) {
-          const uniqueLabel = idx.unique ? ' (unique)' : '';
+          const uniqueLabel = idx.isUnique ? ' (unique)' : '';
           console.log(`      - ${idx.name}${uniqueLabel}: ${idx.columns.join(', ')}`);
         }
       }

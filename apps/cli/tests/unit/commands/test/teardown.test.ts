@@ -53,6 +53,17 @@ vi.mock('kysely', async () => {
 });
 
 vi.mock('@xec-sh/kit', () => ({
+  log: {
+    message: vi.fn(),
+    info: vi.fn(),
+    success: vi.fn(),
+    step: vi.fn(),
+    warn: vi.fn(),
+    message: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+  },
+  strip: (s: string) => s,
   prism: {
     cyan: (s: string) => s,
     green: (s: string) => s,
@@ -68,6 +79,7 @@ vi.mock('@xec-sh/kit', () => ({
     succeed: vi.fn(),
     fail: vi.fn(),
     warn: vi.fn(),
+    message: vi.fn(),
     stop: vi.fn(),
     text: '',
   })),
@@ -77,6 +89,7 @@ vi.mock('../../../../src/utils/logger.js', () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
+    message: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
   },

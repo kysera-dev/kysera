@@ -86,7 +86,7 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
 
         console.log('');
         console.log(prism.bold('Executed Migrations'));
-        console.log(table(tableData as any));
+        table(tableData as any);
       } else {
         // Simple list
         for (const migration of executed) {
@@ -113,7 +113,7 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
 
         console.log('');
         console.log(prism.bold('Pending Migrations'));
-        console.log(table(tableData as any));
+        table(tableData as any);
       } else {
         // Simple list
         for (const migration of pending) {

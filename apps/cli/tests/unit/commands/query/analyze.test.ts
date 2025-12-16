@@ -15,6 +15,16 @@ vi.mock('../../../../src/config/loader.js', () => ({
 }));
 
 vi.mock('@xec-sh/kit', () => ({
+  log: {
+    message: vi.fn(),
+    info: vi.fn(),
+    success: vi.fn(),
+    step: vi.fn(),
+    warn: vi.fn(),
+    message: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+  },
   prism: {
     cyan: (s: string) => s,
     green: (s: string) => s,
@@ -27,12 +37,14 @@ vi.mock('@xec-sh/kit', () => ({
     magenta: (s: string) => s,
     underline: (s: string) => s,
   },
+  strip: (s: string) => s,
   table: vi.fn(() => ''),
   spinner: vi.fn(() => ({
     start: vi.fn(),
     succeed: vi.fn(),
     fail: vi.fn(),
     warn: vi.fn(),
+    message: vi.fn(),
     stop: vi.fn(),
   })),
 }));
@@ -41,6 +53,7 @@ vi.mock('../../../../src/utils/logger.js', () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
+    message: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
   },

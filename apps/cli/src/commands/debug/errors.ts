@@ -1,5 +1,7 @@
 import { Command } from 'commander';
-import { prism, spinner, table } from '@xec-sh/kit';
+import { prism } from '@xec-sh/kit';
+import { displayTable as table } from '../../utils/table-helper.js';
+import { spinner } from '../../utils/spinner.js';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';

@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { prism, spinner, confirm } from '@xec-sh/kit';
+import { prism, confirm } from '@xec-sh/kit';
+import { spinner } from '../../utils/spinner.js';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';

@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { prism, table } from '@xec-sh/kit';
+import { prism } from '@xec-sh/kit';
+import { displayTable as table } from '../../utils/table-helper.js';
 import { readdirSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { logger } from '../../utils/logger.js';
@@ -161,7 +162,19 @@ async function listMigrations(options: ListOptions): Promise<void> {
       });
 
       try {
-        console.log(table(plainTableData));
+        // Configure columns with proper widths to avoid truncation
+        const columns = [
+          { key: 'Status', header: 'Status', width: 10 },
+          { key: 'Name', header: 'Name', width: 'auto' as const },
+          { key: 'Timestamp', header: 'Timestamp', width: 20 },
+        ];
+
+        // Add Executed At column if any migration has it
+        if (plainTableData.some((row) => 'Executed At' in row)) {
+          columns.push({ key: 'Executed At', header: 'Executed At', width: 20 });
+        }
+
+        table(plainTableData, { columns });
       } catch (tableError) {
         logger.error('Table rendering error:', tableError);
         logger.debug('plainTableData:', plainTableData);

@@ -231,7 +231,6 @@ const ERROR_MESSAGES: Record<string, { message: string; suggestion?: string }> =
     message: 'An unexpected error occurred',
     suggestion: 'Try running with --verbose for more details',
   },
-
   // Legacy code mappings (for backward compatibility)
   DB_CONNECTION_ERROR: {
     message: 'Failed to connect to the database',
@@ -248,46 +247,6 @@ const ERROR_MESSAGES: Record<string, { message: string; suggestion?: string }> =
   PERMISSION_DENIED: {
     message: 'Permission denied',
     suggestion: 'Check file permissions or run with appropriate privileges',
-  },
-  FILE_EXISTS: {
-    message: 'File already exists',
-    suggestion: 'Use --force to overwrite or choose a different name',
-  },
-  CONFIG_NOT_FOUND: {
-    message: 'Configuration file not found',
-    suggestion: 'Run "kysera init" to create a configuration file or specify one with --config',
-  },
-  CONFIG_INVALID: {
-    message: 'Invalid configuration file',
-    suggestion: 'Check your configuration file for syntax errors or missing required fields',
-  },
-  CONFIG_VALIDATION_ERROR: {
-    message: 'Configuration validation failed',
-    suggestion: 'Review the validation errors and update your configuration accordingly',
-  },
-  MIGRATION_NOT_FOUND: {
-    message: 'Migration file not found',
-    suggestion: 'Check that the migration exists in your migrations directory',
-  },
-  MIGRATION_INVALID: {
-    message: 'Invalid migration file',
-    suggestion: 'Ensure the migration exports valid up() and down() functions',
-  },
-  MIGRATION_FAILED: {
-    message: 'Migration execution failed',
-    suggestion: 'Check the migration file for errors or database compatibility issues',
-  },
-  MIGRATION_LOCKED: {
-    message: 'Migrations are locked',
-    suggestion: 'Another migration process might be running. Wait or manually unlock migrations',
-  },
-  PLUGIN_NOT_FOUND: {
-    message: 'Plugin not found',
-    suggestion: 'Check the plugin name or run "kysera plugin list --available" to see available plugins',
-  },
-  PLUGIN_DEPENDENCY_ERROR: {
-    message: 'Plugin has unmet dependencies',
-    suggestion: 'Install the required dependencies or enable dependent plugins first',
   },
 };
 

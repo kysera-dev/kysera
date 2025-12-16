@@ -51,7 +51,7 @@ kysera/
 | @kysera/executor | 0.7.0 |
 | @kysera/dal | 0.7.0 |
 | @kysera/repository | 0.7.0 |
-| Kysely (peer) | >=0.28.8 |
+| Kysely (peer) | >=0.28.9 |
 | TypeScript | ^5.9.2 |
 | Turbo | ^2.6.3 |
 | Vitest | ^4.0.15 |

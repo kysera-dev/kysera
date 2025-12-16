@@ -45,7 +45,7 @@
     "@types/pg": "^8.15.6",
     "@vitest/coverage-v8": "^4.0.15",
     "better-sqlite3": "^12.5.0",
-    "kysely": "^0.28.8",
+    "kysely": "^0.28.9",
     "mysql2": "^3.15.3",
     "pg": "^8.16.3",
     "tsup": "^8.5.1",

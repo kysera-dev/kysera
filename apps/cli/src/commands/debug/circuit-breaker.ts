@@ -1,10 +1,11 @@
 import { Command } from 'commander';
-import { prism, spinner, table, confirm, select } from '@xec-sh/kit';
+import { prism, spinner, confirm, select } from '@xec-sh/kit';
+import { displayTable as table } from '../../utils/table-helper.js';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
-import { type CircuitBreakerState } from '@kysera/infra';
+import { type CircuitState } from '@kysera/infra';
 
 export interface CircuitBreakerOptions {
   action?: 'status' | 'reset' | 'open' | 'close';
@@ -18,7 +19,7 @@ export interface CircuitBreakerOptions {
 
 interface CircuitBreakerStatus {
   service: string;
-  state: CircuitBreakerState;
+  state: CircuitState;
   failureCount: number;
   successCount: number;
   lastFailure?: Date;
@@ -106,7 +107,7 @@ async function getCircuitBreakers(config: any): Promise<Map<string, CircuitBreak
       for (const state of states) {
         breakers.set(state.service as string, {
           service: state.service as string,
-          state: state.state as CircuitBreakerState,
+          state: state.state as CircuitState,
           failureCount: Number(state.failure_count),
           successCount: Number(state.success_count),
           lastFailure: state.last_failure ? new Date(state.last_failure as string) : undefined,

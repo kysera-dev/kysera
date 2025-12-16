@@ -44,11 +44,11 @@ export async function loadConfig(configPath?: string): Promise<KyseraConfig> {
   if (!validation.success) {
     logger.debug('Validation failed:', validation.error);
 
-    if (!validation.error || !validation.error.errors || !Array.isArray(validation.error.errors)) {
+    if (!validation.error || !validation.error.issues || !Array.isArray(validation.error.issues)) {
       throw new ConfigurationError(`Configuration validation failed: ${JSON.stringify(validation.error)}`);
     }
 
-    const errors = validation.error.errors.map((e) => `  - ${e.path.join('.')}: ${e.message}`).join('\n');
+    const errors = validation.error.issues.map((e) => `  - ${e.path.join('.')}: ${e.message}`).join('\n');
     throw new ConfigurationError(`Configuration validation failed:\n${errors}`);
   }
 
@@ -122,11 +122,11 @@ export function validateConfig(config: unknown): { valid: boolean; errors?: stri
     return { valid: true };
   }
 
-  if (!result.error || !result.error.errors || !Array.isArray(result.error.errors)) {
+  if (!result.error || !result.error.issues || !Array.isArray(result.error.issues)) {
     return { valid: false, errors: ['Validation failed'] };
   }
 
-  const errors = result.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`);
+  const errors = result.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`);
   return { valid: false, errors };
 }
 
@@ -180,11 +180,11 @@ export async function saveConfig(config: KyseraConfig, configPath?: string): Pro
   // Validate configuration before saving
   const validation = KyseraConfigSchema.safeParse(config);
   if (!validation.success) {
-    if (!validation.error || !validation.error.errors || !Array.isArray(validation.error.errors)) {
+    if (!validation.error || !validation.error.issues || !Array.isArray(validation.error.issues)) {
       throw new ConfigurationError(`Configuration validation failed: ${JSON.stringify(validation.error)}`);
     }
 
-    const errors = validation.error.errors.map((e) => `  - ${e.path.join('.')}: ${e.message}`).join('\n');
+    const errors = validation.error.issues.map((e) => `  - ${e.path.join('.')}: ${e.message}`).join('\n');
     throw new ConfigurationError(`Configuration validation failed:\n${errors}`);
   }
 

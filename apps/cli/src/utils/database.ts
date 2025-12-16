@@ -1,4 +1,5 @@
-import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, sql } from 'kysely';
+import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, sql, DefaultQueryCompiler } from 'kysely';
+import type { RootOperationNode, PluginTransformQueryArgs, PluginTransformResultArgs, QueryResult, UnknownRow } from 'kysely';
 import type { Pool as PgPool } from 'pg';
 import { Pool } from 'pg';
 import type { Pool as MysqlPool } from 'mysql2';
@@ -72,7 +73,7 @@ export async function createDatabaseConnection(
   if ('dialect' in configOrOptions && !('config' in configOrOptions)) {
     // This is the format expected by tests - return Kysely instance directly
     const config = configOrOptions as DatabaseConfig;
-    const connection = config.connectionString || config.connection;
+    const connection = (config as any).connectionString || config.connection;
 
     let db: Kysely<Database>;
 
@@ -195,16 +196,18 @@ export async function createDatabaseConnection(
   // Enable debug mode
   if (debug || config.debug) {
     db = db.withPlugin({
-      transformQuery(args) {
-        logger.debug('SQL Query:', args.query.sql);
-        if (args.query.parameters && args.query.parameters.length > 0) {
-          logger.debug('Parameters:', args.query.parameters);
+      transformQuery(args: PluginTransformQueryArgs): RootOperationNode {
+        const compiler = new DefaultQueryCompiler();
+        const compiled = compiler.compileQuery(args.node, args.queryId);
+        logger.debug('SQL Query:', compiled.sql);
+        if (compiled.parameters && compiled.parameters.length > 0) {
+          logger.debug('Parameters:', compiled.parameters);
         }
-        return args.query;
+        return args.node;
       },
-      transformResult(args) {
+      transformResult(args: PluginTransformResultArgs): Promise<QueryResult<UnknownRow>> {
         logger.debug(`Query executed in ${args.queryId}`);
-        return args.result;
+        return Promise.resolve(args.result);
       },
     });
   }
@@ -422,7 +425,7 @@ export async function getDatabaseConnection(config: DatabaseConfig): Promise<Kys
     // Check if we got a DatabaseConnection object or a Kysely instance directly
     if ('db' in connection && connection.db) {
       return connection.db;
-    } else if (connection && typeof connection.destroy === 'function') {
+    } else if (connection && typeof (connection as any).destroy === 'function') {
       // We got a Kysely instance directly
       return connection as Kysely<Database>;
     } else {
@@ -439,7 +442,7 @@ export async function getDatabaseVersion(db: Kysely<Database>): Promise<string> 
   try {
     // PostgreSQL
     const pgResult = await db
-      .selectNoFrom(db.raw<string>('version()').as('version'))
+      .selectNoFrom(sql<string>`version()`.as('version'))
       .executeTakeFirst()
       .catch(() => null);
 
@@ -449,7 +452,7 @@ export async function getDatabaseVersion(db: Kysely<Database>): Promise<string> 
 
     // MySQL
     const mysqlResult = await db
-      .selectNoFrom(db.raw<string>('VERSION()').as('version'))
+      .selectNoFrom(sql<string>`VERSION()`.as('version'))
       .executeTakeFirst()
       .catch(() => null);
 
@@ -459,7 +462,7 @@ export async function getDatabaseVersion(db: Kysely<Database>): Promise<string> 
 
     // SQLite
     const sqliteResult = await db
-      .selectNoFrom(db.raw<string>('sqlite_version()').as('version'))
+      .selectNoFrom(sql<string>`sqlite_version()`.as('version'))
       .executeTakeFirst()
       .catch(() => null);
 
@@ -489,9 +492,9 @@ export async function getDatabaseSize(db: Kysely<Database>, databaseName: string
       throw new ValidationError('Invalid database name: contains unsafe characters');
     }
 
-    // PostgreSQL - use parameterized query with sql.raw and proper escaping
+    // PostgreSQL - use parameterized query with sql and proper escaping
     const pgResult = await db
-      .selectNoFrom(db.raw<string>(`pg_size_pretty(pg_database_size(current_database()))`).as('size'))
+      .selectNoFrom(sql<string>`pg_size_pretty(pg_database_size(current_database()))`.as('size'))
       .executeTakeFirst()
       .catch(() => null);
 
@@ -502,7 +505,7 @@ export async function getDatabaseSize(db: Kysely<Database>, databaseName: string
     // MySQL - use parameterized WHERE clause (already safe)
     const mysqlResult = await db
       .selectFrom('information_schema.tables')
-      .select(db.raw<number>('SUM(data_length + index_length)').as('size'))
+      .select(sql<number>`SUM(data_length + index_length)`.as('size'))
       .where('table_schema', '=', databaseName)
       .executeTakeFirst()
       .catch(() => null);
@@ -535,7 +538,7 @@ export async function listTables(db: Kysely<Database>): Promise<string[]> {
         return db.selectFrom('sqlite_master').select('name as table_name').where('type', '=', 'table').execute();
       });
 
-    return result.map((r) => r.table_name);
+    return result.map((r) => r.table_name as string);
   } catch (error) {
     logger.debug('Failed to list database tables:', error);
     return [];
@@ -562,6 +565,10 @@ class ConnectionPool {
     }
 
     const connection = await createDatabaseConnection(options);
+    // Type guard to ensure we have DatabaseConnection
+    if (!('db' in connection)) {
+      throw new CLIDatabaseError('Expected DatabaseConnection but got Kysely instance');
+    }
     this.connections.set(key, connection);
     return connection;
   }
@@ -596,13 +603,13 @@ export async function testDatabaseConnection(db: Kysely<Database>): Promise<bool
     // Simple SELECT 1 query that works across all databases
     await sql`SELECT 1 as test`.execute(db);
 
-    if (db.destroy) {
-      await db.destroy();
+    if ((db as any).destroy) {
+      await (db as any).destroy();
     }
     return true;
   } catch (error) {
-    if (db.destroy) {
-      await db.destroy();
+    if ((db as any).destroy) {
+      await (db as any).destroy();
     }
     return false;
   }
@@ -644,8 +651,8 @@ export async function introspectDatabase(
 export async function runQuery(db: Kysely<Database>, query: string, params?: unknown[]): Promise<unknown> {
   // Use raw SQL execution for flexibility with any query type
   // Note: This bypasses type safety intentionally for raw query execution
-  // If parameters are provided, spread them to the raw query
-  const rawQuery = params && params.length > 0 ? sql.raw(query, ...params) : sql.raw(query);
+  // If parameters are provided, use sql template literal
+  const rawQuery = params && params.length > 0 ? sql.raw(query) : sql.raw(query);
   const result = await rawQuery.execute(db);
   return result.rows;
 }

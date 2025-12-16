@@ -1,11 +1,12 @@
 import { Command } from 'commander';
-import { prism, spinner } from '@xec-sh/kit';
+import { prism } from '@xec-sh/kit';
+import { spinner } from '../../utils/spinner.js';
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
-import { DatabaseIntrospector, TableInfo } from './introspector.js';
+import { DatabaseIntrospector, type TableInfo } from './introspector.js';
 import { toCamelCase, toPascalCase, toKebabCase } from '../../utils/templates.js';
 
 export interface SchemaOptions {

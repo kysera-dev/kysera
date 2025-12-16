@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { prism, spinner } from '@xec-sh/kit';
+import { prism } from '@xec-sh/kit';
+import { spinner } from '../../utils/spinner.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { CLIError } from '../../utils/errors.js';

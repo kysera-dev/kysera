@@ -17,7 +17,7 @@
     "@kysera/infra": "workspace:*",
     "@kysera/repository": "workspace:*",
     "@kysera/soft-delete": "workspace:*",
-    "kysely": "^0.28.8",
+    "kysely": "^0.28.9",
     "pg": "^8.16.3",
     "zod": "^4.1.13",
     "dotenv": "^17.2.3"

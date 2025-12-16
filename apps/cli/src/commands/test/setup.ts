@@ -1,9 +1,11 @@
 import { Command } from 'commander';
-import { prism, spinner, confirm } from '@xec-sh/kit';
+import { prism, confirm } from '@xec-sh/kit';
+import { spinner } from '../../utils/spinner.js';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
+import { sql } from 'kysely';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -197,7 +199,7 @@ async function createDatabase(config: any): Promise<void> {
     const adminConfig = { ...config, database: 'postgres' };
     const db = await getDatabaseConnection(adminConfig);
     if (db) {
-      await db.schema.createDatabase(dbName).ifNotExists().execute();
+      await sql.raw(`CREATE DATABASE IF NOT EXISTS ${sql.id(dbName)}`).execute(db);
       await db.destroy();
     }
   } else if (dialect === 'sqlite') {
@@ -215,7 +217,7 @@ async function dropDatabase(config: any): Promise<void> {
     const adminConfig = { ...config, database: 'postgres' };
     const db = await getDatabaseConnection(adminConfig);
     if (db) {
-      await db.schema.dropDatabase(dbName).ifExists().execute();
+      await sql.raw(`DROP DATABASE IF EXISTS ${sql.id(dbName)}`).execute(db);
       await db.destroy();
     }
   } else if (dialect === 'sqlite') {

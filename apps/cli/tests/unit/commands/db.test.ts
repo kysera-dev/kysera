@@ -19,6 +19,16 @@ vi.mock('node:path', async (importOriginal) => {
 });
 
 vi.mock('@xec-sh/kit', () => ({
+  log: {
+    message: vi.fn(),
+    info: vi.fn(),
+    success: vi.fn(),
+    step: vi.fn(),
+    warn: vi.fn(),
+    message: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+  },
   prism: {
     cyan: (s: string) => s,
     green: (s: string) => s,
@@ -28,11 +38,13 @@ vi.mock('@xec-sh/kit', () => ({
     red: (s: string) => s,
     bold: (s: string) => s,
   },
+  strip: (s: string) => s,
   spinner: vi.fn(() => ({
     start: vi.fn(),
     succeed: vi.fn(),
     fail: vi.fn(),
     warn: vi.fn(),
+    message: vi.fn(),
     stop: vi.fn(),
     text: '',
   })),
@@ -44,6 +56,7 @@ vi.mock('../../../src/utils/logger.js', () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
+    message: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
   },
