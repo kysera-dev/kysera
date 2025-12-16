@@ -102,14 +102,14 @@ async function configurePlugin(name: string | undefined, options: ConfigPluginOp
         return;
       }
 
-      name = await select(
-        'Select plugin to configure:',
-        plugins.map((p) => ({
+      name = (await select({
+        message: 'Select plugin to configure:',
+        options: plugins.map((p) => ({
           label: p,
           value: p,
-          description: config.plugins[p].enabled ? 'Enabled' : 'Disabled',
-        }))
-      );
+          hint: config.plugins[p].enabled ? 'Enabled' : 'Disabled',
+        })),
+      })) as string;
     }
 
     // Initialize plugin config if not exists
@@ -163,7 +163,7 @@ async function configurePlugin(name: string | undefined, options: ConfigPluginOp
     if (options.reset) {
       const defaultConfig = await getDefaultConfig(name);
 
-      const shouldReset = options.json || (await confirm(`Reset ${name} to default configuration?`));
+      const shouldReset = options.json || (await confirm({ message: `Reset ${name} to default configuration?` }));
 
       if (shouldReset) {
         config.plugins[name] = {
@@ -501,17 +501,17 @@ async function editConfigInteractive(
     const currentValue = config[key] ?? spec.default;
 
     if (spec.type === 'boolean') {
-      const newValue = await confirm(`${key} (current: ${currentValue}):`, currentValue);
+      const newValue = await confirm({ message: `${key} (current: ${currentValue}):`, initialValue: currentValue });
       updatedConfig[key] = newValue;
     } else if (spec.enum) {
-      const newValue = await select(
-        `${key}:`,
-        spec.enum.map((v) => ({
+      const newValue = await select({
+        message: `${key}:`,
+        options: spec.enum.map((v) => ({
           label: String(v),
           value: v,
-          description: v === currentValue ? '(current)' : undefined,
-        }))
-      );
+          hint: v === currentValue ? '(current)' : undefined,
+        })),
+      });
       updatedConfig[key] = newValue;
     } else if (spec.type === 'number') {
       const prompt =
@@ -523,7 +523,7 @@ async function editConfigInteractive(
               ? `${key} (<=${spec.max}):`
               : `${key}:`;
 
-      const newValue = await text(prompt, { defaultValue: String(currentValue) });
+      const newValue = await text({ message: prompt, defaultValue: String(currentValue) });
       const parsed = parseFloat(newValue as string);
 
       if (!isNaN(parsed)) {
@@ -532,14 +532,14 @@ async function editConfigInteractive(
     } else if (spec.type === 'array') {
       const currentStr = Array.isArray(currentValue) ? currentValue.join(', ') : '';
 
-      const newValue = await text(`${key} (comma-separated):`, { defaultValue: currentStr });
+      const newValue = await text({ message: `${key} (comma-separated):`, defaultValue: currentStr });
 
       updatedConfig[key] = (newValue as string)
         .split(',')
         .map((v) => v.trim())
         .filter(Boolean);
     } else {
-      const newValue = await text(`${key}:`, { defaultValue: currentValue || '' });
+      const newValue = await text({ message: `${key}:`, defaultValue: currentValue || '' });
       updatedConfig[key] = newValue;
     }
   }
@@ -554,7 +554,7 @@ async function editConfigInteractive(
       console.log(`  • ${error}`);
     }
 
-    const shouldSave = await confirm('Save anyway?');
+    const shouldSave = await confirm({ message: 'Save anyway?' });
     if (!shouldSave) {
       console.log(prism.gray('Configuration not saved'));
       return;

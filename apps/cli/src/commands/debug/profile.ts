@@ -1,5 +1,7 @@
 import { Command } from 'commander';
-import { prism, spinner, table } from '@xec-sh/kit';
+import { prism } from '@xec-sh/kit';
+import { displayTable as table } from '../../utils/table-helper.js';
+import { spinner } from '../../utils/spinner.js';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
@@ -203,6 +205,7 @@ async function getQueryPlan(db: DatabaseInstance, query: string, dialect: string
       const result = await db.executeQuery(db.raw(`EXPLAIN QUERY PLAN ${query}`));
       return result.rows;
     }
+    return null;
   } catch (error) {
     logger.debug(`Failed to get query plan: ${error}`);
     return null;
@@ -265,7 +268,7 @@ function displayProfileResults(result: ProfileResult, compareResult: ProfileResu
         console.log(`  ${row['QUERY PLAN'] || JSON.stringify(row)}`);
       }
     } else {
-      console.log(table(result.queryPlan));
+      console.log(table(result.queryPlan as any[]));
     }
   }
 

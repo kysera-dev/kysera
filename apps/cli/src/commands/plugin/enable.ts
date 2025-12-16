@@ -89,9 +89,9 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
 
       // Confirm action
       if (!options.force && !options.json) {
-        const shouldEnable = await confirm(
-          `Enable ${installedPlugins.length} plugin${installedPlugins.length !== 1 ? 's' : ''}?`
-        );
+        const shouldEnable = await confirm({
+          message: `Enable ${installedPlugins.length} plugin${installedPlugins.length !== 1 ? 's' : ''}?`,
+        });
 
         if (!shouldEnable) {
           console.log(prism.gray('Operation cancelled'));
@@ -144,25 +144,25 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
         return;
       }
 
-      const selected = await select(
-        'Select plugin to enable:',
-        disabledPlugins.map((p) => ({
+      const selected = await select({
+        message: 'Select plugin to enable:',
+        options: disabledPlugins.map((p) => ({
           label: p,
           value: p,
-          description: getPluginDescription(p),
-        }))
-      );
+          hint: getPluginDescription(p),
+        })),
+      });
 
-      enableSpinner.start(`Enabling plugin: ${selected}...`);
-      const result = await enableSinglePlugin(selected, config, options);
+      enableSpinner.start(`Enabling plugin: ${selected as string}...`);
+      const result = await enableSinglePlugin(selected as string, config, options);
       results.push(result);
 
       if (result.status === 'enabled') {
         enableSpinner.stop();
-        console.log(prism.green(`✓ Plugin enabled: ${selected}`));
+        console.log(prism.green(`✓ Plugin enabled: ${selected as string}`));
       } else {
         enableSpinner.stop();
-        console.log(prism.red(`Failed to enable plugin: ${selected}`));
+        console.log(prism.red(`Failed to enable plugin: ${selected as string}`));
       }
     }
 

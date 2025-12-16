@@ -1,12 +1,14 @@
 import { Command } from 'commander';
-import { prism, spinner, table } from '@xec-sh/kit';
+import { prism } from '@xec-sh/kit';
+import { displayTable as table } from '../../utils/table-helper.js';
+import { spinner } from '../../utils/spinner.js';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection, type Database } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
-import type { Kysely } from 'kysely';
+import type { Kysely, CompiledQuery as KyselyCompiledQuery } from 'kysely';
 
 export interface SqlDebugOptions {
   watch?: boolean;
@@ -137,12 +139,12 @@ async function debugSql(options: SqlDebugOptions): Promise<void> {
         if (options.filter) {
           const regex = new RegExp(options.filter, 'i');
           if (!regex.test(queryLog.query)) {
-            return originalExecuteQuery(compiledQuery);
+            return originalExecuteQuery(compiledQuery as KyselyCompiledQuery<unknown>);
           }
         }
 
         try {
-          const result = await originalExecuteQuery(compiledQuery);
+          const result = await originalExecuteQuery(compiledQuery as KyselyCompiledQuery<unknown>);
 
           queryLog.duration = Date.now() - startTime;
           queryLog.rowCount = result.rows?.length || 0;
@@ -351,7 +353,7 @@ async function analyzeRecentQueries(db: Kysely<Database>, options: SqlDebugOptio
     console.log(table(patternData));
 
     // Show slow queries
-    const slowQueries = (queries as QueryLogRecord[]).filter((q) => (q.duration_ms ?? 0) > 1000).slice(0, 5);
+    const slowQueries = (queries as unknown as QueryLogRecord[]).filter((q) => (q.duration_ms ?? 0) > 1000).slice(0, 5);
 
     if (slowQueries.length > 0) {
       console.log('');
@@ -365,7 +367,7 @@ async function analyzeRecentQueries(db: Kysely<Database>, options: SqlDebugOptio
     }
 
     // Show error queries
-    const errorQueries = (queries as QueryLogRecord[]).filter((q) => q.error !== null).slice(0, 5);
+    const errorQueries = (queries as unknown as QueryLogRecord[]).filter((q) => q.error !== null).slice(0, 5);
 
     if (errorQueries.length > 0) {
       console.log('');

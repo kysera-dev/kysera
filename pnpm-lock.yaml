@@ -66,8 +66,8 @@ importers:
         specifier: ^11.0.3
         version: 11.0.3
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       mysql2:
         specifier: ^3.15.3
         version: 3.15.3
@@ -165,8 +165,8 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       mysql2:
         specifier: ^3.15.3
         version: 3.15.3
@@ -226,8 +226,8 @@ importers:
         specifier: ^17.2.3
         version: 17.2.3
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       pg:
         specifier: ^8.16.3
         version: 8.16.3
@@ -269,8 +269,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/timestamps
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       pg:
         specifier: ^8.16.3
         version: 8.16.3
@@ -312,8 +312,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/timestamps
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       pg:
         specifier: ^8.16.3
         version: 8.16.3
@@ -356,8 +356,8 @@ importers:
         specifier: ^12.5.0
         version: 12.5.0
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.1)
@@ -389,8 +389,8 @@ importers:
         specifier: ^12.5.0
         version: 12.5.0
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       mysql2:
         specifier: ^3.15.3
         version: 3.15.3
@@ -426,8 +426,8 @@ importers:
         specifier: ^12.5.0
         version: 12.5.0
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.1)
@@ -451,8 +451,8 @@ importers:
         specifier: ^4.0.15
         version: 4.0.15(vitest@4.0.15(@opentelemetry/api@1.9.0)(@types/node@24.10.1)(jiti@2.6.1)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.1))
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.1)
@@ -478,8 +478,8 @@ importers:
         specifier: ^12.5.0
         version: 12.5.0
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.1)
@@ -512,8 +512,8 @@ importers:
         specifier: ^12.5.0
         version: 12.5.0
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       mysql2:
         specifier: ^3.15.3
         version: 3.15.3
@@ -549,8 +549,8 @@ importers:
         specifier: ^12.5.0
         version: 12.5.0
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.1)
@@ -592,8 +592,8 @@ importers:
         specifier: ^12.5.0
         version: 12.5.0
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       mysql2:
         specifier: ^3.15.3
         version: 3.15.3
@@ -647,8 +647,8 @@ importers:
         specifier: ^12.5.0
         version: 12.5.0
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       mysql2:
         specifier: ^3.15.2
         version: 3.15.3
@@ -693,8 +693,8 @@ importers:
         specifier: ^12.5.0
         version: 12.5.0
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.1)
@@ -723,8 +723,8 @@ importers:
         specifier: ^12.5.0
         version: 12.5.0
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.1)
@@ -757,8 +757,8 @@ importers:
         specifier: ^12.5.0
         version: 12.5.0
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
+        specifier: ^0.28.9
+        version: 0.28.9
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.1)
@@ -5482,8 +5482,8 @@ packages:
     resolution: {integrity: sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w==}
     engines: {node: '>=6'}
 
-  kysely@0.28.8:
-    resolution: {integrity: sha512-QUOgl5ZrS9IRuhq5FvOKFSsD/3+IA6MLE81/bOOTRA/YQpKDza2sFdN5g6JCB9BOpqMJDGefLCQ9F12hRS13TA==}
+  kysely@0.28.9:
+    resolution: {integrity: sha512-3BeXMoiOhpOwu62CiVpO6lxfq4eS6KMYfQdMsN/2kUCRNuF2YiEr7u0HLHaQU+O4Xu8YXE3bHVkwaQ85i72EuA==}
     engines: {node: '>=20.0.0'}
 
   latest-version@7.0.0:
@@ -14033,7 +14033,7 @@ snapshots:
 
   kleur@3.0.3: {}
 
-  kysely@0.28.8: {}
+  kysely@0.28.9: {}
 
   latest-version@7.0.0:
     dependencies:

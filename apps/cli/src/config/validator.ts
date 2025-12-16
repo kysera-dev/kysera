@@ -32,7 +32,7 @@ export function validateConfiguration(config: unknown): ValidationResult {
     KyseraConfigSchema.parse(config);
   } catch (error) {
     if (error instanceof ZodError) {
-      for (const issue of error.errors) {
+      for (const issue of error.issues) {
         errors.push({
           path: issue.path.join('.'),
           message: issue.message,

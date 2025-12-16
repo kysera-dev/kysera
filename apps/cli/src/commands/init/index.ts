@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { prism, text, select, confirm, multiselect, spinner, box, group, isCancel } from '@xec-sh/kit';
+import { prism, text, select, confirm, multiselect, box, group, isCancel } from '@xec-sh/kit';
+import { spinner } from '../../utils/spinner.js';
 import { join, resolve, dirname } from 'node:path';
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { logger } from '../../utils/logger.js';
@@ -411,13 +412,7 @@ async function initProject(projectName: string | undefined, options: InitOptions
       console.log(successMessage);
     } else {
       // Use box in interactive mode
-      console.log(
-        box({
-          title: '✨ Project created successfully!',
-          body: successMessage,
-          color: 'green',
-        })
-      );
+      box(successMessage, '✨ Project created successfully!');
     }
   } catch (error) {
     if (createSpinner) {
@@ -455,8 +450,8 @@ async function generateProjectFiles(
   }
 
   const devDependencies = new Set([
-    ...(template.devDependencies || []),
-    ...(database.devDependencies || []),
+    ...('devDependencies' in template ? template.devDependencies : []),
+    ...('devDependencies' in database ? database.devDependencies : []),
     'typescript',
     '@types/node',
     'tsx',

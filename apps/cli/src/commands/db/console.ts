@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { prism, table as displayTable, confirm } from '@xec-sh/kit';
+import { prism, confirm } from '@xec-sh/kit';
+import { displayTable } from '../../utils/table-helper.js';
 import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector } from '../generate/introspector.js';

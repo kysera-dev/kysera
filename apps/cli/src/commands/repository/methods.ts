@@ -1,5 +1,7 @@
 import { Command } from 'commander';
-import { prism, spinner, table, select } from '@xec-sh/kit';
+import { prism, select } from '@xec-sh/kit';
+import { displayTable as table } from '../../utils/table-helper.js';
+import { spinner } from '../../utils/spinner.js';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { loadConfig } from '../../config/loader.js';
@@ -121,16 +123,16 @@ async function showMethods(options: ShowMethodsOptions): Promise<void> {
         return;
       }
 
-      const selected = await select(
-        'Select a repository to analyze:',
-        files.map((f) => ({
+      const selected = await select({
+        message: 'Select a repository to analyze:',
+        options: files.map((f) => ({
           label: path.basename(f),
           value: f,
-          description: path.relative(process.cwd(), f),
-        }))
-      );
+          hint: path.relative(process.cwd(), f),
+        })),
+      });
 
-      filePath = selected;
+      filePath = selected as string;
       methodsSpinner.start(`Analyzing ${path.basename(filePath)}...`);
     }
 

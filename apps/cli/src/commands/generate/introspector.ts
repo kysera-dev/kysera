@@ -1,4 +1,4 @@
-import { Kysely } from 'kysely';
+import { Kysely, sql } from 'kysely';
 import { logger } from '../../utils/logger.js';
 import { validateIdentifier } from '../../utils/sql-sanitizer.js';
 import { CLIError, CLIErrorCodes } from '../../utils/errors.js';
@@ -197,7 +197,7 @@ export class DatabaseIntrospector {
     const result = (await this.db
       .selectFrom('information_schema.tables')
       .select('table_name')
-      .where('table_schema', '=', this.db.raw('DATABASE()'))
+      .where('table_schema', '=', sql.raw('DATABASE()'))
       .where('table_type', '=', 'BASE TABLE')
       .execute()) as any[];
 
@@ -218,7 +218,7 @@ export class DatabaseIntrospector {
         'numeric_scale',
         'column_key',
       ])
-      .where('table_schema', '=', this.db.raw('DATABASE()'))
+      .where('table_schema', '=', sql.raw('DATABASE()'))
       .where('table_name', '=', tableName)
       .orderBy('ordinal_position')
       .execute()) as any[];
@@ -239,7 +239,7 @@ export class DatabaseIntrospector {
     const indexes = (await this.db
       .selectFrom('information_schema.statistics')
       .select(['index_name', 'column_name', 'non_unique'])
-      .where('table_schema', '=', this.db.raw('DATABASE()'))
+      .where('table_schema', '=', sql.raw('DATABASE()'))
       .where('table_name', '=', tableName)
       .orderBy(['index_name', 'seq_in_index'])
       .execute()) as any[];
@@ -291,7 +291,7 @@ export class DatabaseIntrospector {
     // We'll use raw SQL for introspection
     // Validate table name to prevent SQL injection
     const validTableName = validateIdentifier(tableName, 'table');
-    const columns = (await this.db.raw(`PRAGMA table_info(${validTableName})`).execute()) as any;
+    const columns = (await sql.raw(`PRAGMA table_info(${validTableName})`).execute(this.db)) as any;
 
     const tableColumns: TableColumn[] = columns.rows.map((col: any) => ({
       name: col.name,
@@ -303,7 +303,7 @@ export class DatabaseIntrospector {
     }));
 
     // Get foreign keys
-    const foreignKeys = (await this.db.raw(`PRAGMA foreign_key_list(${validTableName})`).execute()) as any;
+    const foreignKeys = (await sql.raw(`PRAGMA foreign_key_list(${validTableName})`).execute(this.db)) as any;
 
     for (const fk of foreignKeys.rows || []) {
       const column = tableColumns.find((c) => c.name === fk.from);
@@ -315,13 +315,13 @@ export class DatabaseIntrospector {
     }
 
     // Get indexes
-    const indexList = (await this.db.raw(`PRAGMA index_list(${validTableName})`).execute()) as any;
+    const indexList = (await sql.raw(`PRAGMA index_list(${validTableName})`).execute(this.db)) as any;
     const tableIndexes: TableIndex[] = [];
 
     for (const idx of indexList.rows || []) {
       // Validate index name to prevent SQL injection
       const validIndexName = validateIdentifier(idx.name, 'index');
-      const indexInfo = (await this.db.raw(`PRAGMA index_info(${validIndexName})`).execute()) as any;
+      const indexInfo = (await sql.raw(`PRAGMA index_info(${validIndexName})`).execute(this.db)) as any;
       const columns = indexInfo.rows.map((info: any) => info.name);
 
       tableIndexes.push({

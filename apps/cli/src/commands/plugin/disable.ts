@@ -88,9 +88,9 @@ async function disablePlugin(name: string | undefined, options: DisablePluginOpt
           console.log(`  • ${plugin}`);
         }
 
-        const shouldDisable = await confirm(
-          `Disable ${enabledPlugins.length} plugin${enabledPlugins.length !== 1 ? 's' : ''}?`
-        );
+        const shouldDisable = await confirm({
+          message: `Disable ${enabledPlugins.length} plugin${enabledPlugins.length !== 1 ? 's' : ''}?`,
+        });
 
         if (!shouldDisable) {
           console.log(prism.gray('Operation cancelled'));
@@ -135,25 +135,25 @@ async function disablePlugin(name: string | undefined, options: DisablePluginOpt
         return;
       }
 
-      const selected = await select(
-        'Select plugin to disable:',
-        enabledPlugins.map((p) => ({
+      const selected = await select({
+        message: 'Select plugin to disable:',
+        options: enabledPlugins.map((p) => ({
           label: p,
           value: p,
-          description: getPluginDescription(p),
-        }))
-      );
+          hint: getPluginDescription(p),
+        })),
+      });
 
-      disableSpinner.start(`Disabling plugin: ${selected}...`);
-      const result = await disableSinglePlugin(selected, config, options);
+      disableSpinner.start(`Disabling plugin: ${selected as string}...`);
+      const result = await disableSinglePlugin(selected as string, config, options);
       results.push(result);
 
       if (result.status === 'disabled') {
         disableSpinner.stop();
-        console.log(prism.green(`✓ Plugin disabled: ${selected}`));
+        console.log(prism.green(`✓ Plugin disabled: ${selected as string}`));
       } else {
         disableSpinner.stop();
-        console.log(prism.red(`Failed to disable plugin: ${selected}`));
+        console.log(prism.red(`Failed to disable plugin: ${selected as string}`));
       }
     }
 
@@ -223,7 +223,7 @@ async function disableSinglePlugin(
             console.log(`  • ${dep}`);
           }
 
-          const shouldContinue = await confirm('Disable anyway?');
+          const shouldContinue = await confirm({ message: 'Disable anyway?' });
           if (!shouldContinue) {
             return result;
           }

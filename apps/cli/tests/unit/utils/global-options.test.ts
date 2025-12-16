@@ -13,6 +13,16 @@ const originalConsole = {
 
 // Mock dependencies
 vi.mock('@xec-sh/kit', () => ({
+  log: {
+    message: vi.fn(),
+    info: vi.fn(),
+    success: vi.fn(),
+    step: vi.fn(),
+    warn: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+  },
+  strip: (s: string) => s,
   prism: {
     yellow: (s: string) => `[yellow]${s}[/yellow]`,
     cyan: (s: string) => `[cyan]${s}[/cyan]`,

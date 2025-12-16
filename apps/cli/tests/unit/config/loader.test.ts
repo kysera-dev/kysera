@@ -277,9 +277,7 @@ describe('validateConfig', () => {
     expect(result.errors!.length).toBeGreaterThan(0);
   });
 
-  it('should return fallback error due to Zod 4 API change', () => {
-    // NOTE: In Zod 4.x, result.error.errors is undefined (it's result.error.issues)
-    // The validateConfig function falls back to a generic error message
+  it('should return validation errors for invalid config', () => {
     const invalidConfig = {
       database: {
         dialect: 'invalid_dialect', // Invalid dialect will always fail
@@ -292,8 +290,8 @@ describe('validateConfig', () => {
     expect(result.valid).toBe(false);
     expect(result.errors).toBeDefined();
     expect(result.errors!.length).toBeGreaterThan(0);
-    // Due to Zod 4 API change, error falls back to generic message
-    expect(result.errors!).toContain('Validation failed');
+    // Should contain specific validation error about invalid dialect
+    expect(result.errors!.some((e) => e.includes('dialect'))).toBe(true);
   });
 
   it('should return generic error for unknown validation failures', () => {

@@ -52,10 +52,7 @@ describe('validateConfiguration', () => {
       expect(result.errors).toHaveLength(0);
     });
 
-    it('should throw when validation fails due to Zod 4 API incompatibility', () => {
-      // NOTE: The validateConfiguration function has a bug - it uses error.errors
-      // instead of error.issues which is the correct property in Zod 4.x
-      // This test documents the current behavior
+    it('should return validation errors for invalid dialect', () => {
       const config = {
         database: {
           dialect: 'invalid_dialect',
@@ -63,12 +60,14 @@ describe('validateConfiguration', () => {
         },
       };
 
-      // Current behavior throws due to Zod 4.x API mismatch
-      expect(() => validateConfiguration(config)).toThrow('error.errors is not iterable');
+      const result = validateConfiguration(config);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors.some((e) => e.path.includes('dialect'))).toBe(true);
     });
 
-    it('should throw for missing required database connection due to Zod 4 API issue', () => {
-      // NOTE: Zod 4.x uses error.issues, not error.errors
+    it('should return validation errors for missing required database connection', () => {
       const config = {
         database: {
           dialect: 'postgres',
@@ -76,27 +75,33 @@ describe('validateConfiguration', () => {
         },
       };
 
-      expect(() => validateConfiguration(config)).toThrow('error.errors is not iterable');
+      const result = validateConfiguration(config);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should throw for validation errors due to Zod 4 API issue', () => {
-      // NOTE: Zod 4.x uses error.issues, not error.errors
+    it('should return validation errors for invalid config', () => {
       const config = {
         database: {
           dialect: 'invalid',
         },
       };
 
-      expect(() => validateConfiguration(config)).toThrow('error.errors is not iterable');
+      const result = validateConfiguration(config);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should throw for undefined config due to Zod 4 API issue', () => {
-      // NOTE: Zod 4.x uses error.issues, not error.errors
-      expect(() => validateConfiguration(undefined)).toThrow('error.errors is not iterable');
+    it('should return validation errors for undefined config', () => {
+      const result = validateConfiguration(undefined);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should throw for invalid pool config due to Zod 4 API issue', () => {
-      // NOTE: Zod 4.x uses error.issues, not error.errors
+    it('should return validation errors for invalid pool config', () => {
       const config = {
         database: {
           dialect: 'postgres',
@@ -108,13 +113,15 @@ describe('validateConfiguration', () => {
         },
       };
 
-      expect(() => validateConfiguration(config)).toThrow('error.errors is not iterable');
+      const result = validateConfiguration(config);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
     });
   });
 
   describe('deprecation warnings', () => {
-    it('should throw for plugins array format due to Zod 4 API issue', () => {
-      // NOTE: Zod 4.x uses error.issues, not error.errors
+    it('should return validation errors for plugins array format', () => {
       // The schema validation fails before deprecation warnings can be added
       const config = {
         database: {
@@ -124,11 +131,13 @@ describe('validateConfiguration', () => {
         plugins: ['audit', 'timestamps'] as any,
       };
 
-      expect(() => validateConfiguration(config)).toThrow('error.errors is not iterable');
+      const result = validateConfiguration(config);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should throw for empty plugins array due to Zod 4 API issue', () => {
-      // NOTE: Zod 4.x uses error.issues, not error.errors
+    it('should return validation errors for empty plugins array', () => {
       const config = {
         database: {
           dialect: 'postgres',
@@ -137,7 +146,10 @@ describe('validateConfiguration', () => {
         plugins: [] as any,
       };
 
-      expect(() => validateConfiguration(config)).toThrow('error.errors is not iterable');
+      const result = validateConfiguration(config);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
     });
   });
 
@@ -555,14 +567,18 @@ describe('validateConfiguration', () => {
   });
 
   describe('edge cases', () => {
-    it('should throw for null config due to Zod 4 API issue', () => {
-      // NOTE: Zod 4.x uses error.issues, not error.errors
-      expect(() => validateConfiguration(null)).toThrow('error.errors is not iterable');
+    it('should return validation errors for null config', () => {
+      const result = validateConfiguration(null);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should throw for undefined config due to Zod 4 API issue', () => {
-      // NOTE: Zod 4.x uses error.issues, not error.errors
-      expect(() => validateConfiguration(undefined)).toThrow('error.errors is not iterable');
+    it('should return validation errors for undefined config', () => {
+      const result = validateConfiguration(undefined);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
     });
 
     it('should handle empty object config', () => {
@@ -574,14 +590,18 @@ describe('validateConfiguration', () => {
       expect(result.warnings.length).toBeGreaterThan(0);
     });
 
-    it('should throw for non-object config due to Zod 4 API issue', () => {
-      // NOTE: Zod 4.x uses error.issues, not error.errors
-      expect(() => validateConfiguration('not an object')).toThrow('error.errors is not iterable');
+    it('should return validation errors for non-object config', () => {
+      const result = validateConfiguration('not an object');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should throw for array config due to Zod 4 API issue', () => {
-      // NOTE: Zod 4.x uses error.issues, not error.errors
-      expect(() => validateConfiguration([1, 2, 3])).toThrow('error.errors is not iterable');
+    it('should return validation errors for array config', () => {
+      const result = validateConfiguration([1, 2, 3]);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
     });
   });
 });

@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { prism, spinner, select, confirm } from '@xec-sh/kit';
+import { prism, select, confirm } from '@xec-sh/kit';
+import { spinner } from '../../utils/spinner.js';
 import { logger } from '../../utils/logger.js';
 import { CLIError, ValidationError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
@@ -96,7 +97,8 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
   if (options.seed) {
     faker.seed(options.seed);
   }
-  faker.locale = options.locale || 'en';
+  // Note: Faker v8+ doesn't support runtime locale changes
+  // Locale is set at import time (e.g., import { faker } from '@faker-js/faker/locale/en')
 
   const seedSpinner = spinner();
   seedSpinner.start('Connecting to database...');
@@ -434,7 +436,7 @@ function generateColumnValue(column: TableSchema['columns'][0], strategy: string
     return faker.internet.email().toLowerCase();
   }
   if (name === 'username' || name.includes('username')) {
-    return faker.internet.userName();
+    return faker.internet.username();
   }
   if (name === 'password' || name.includes('password')) {
     return faker.internet.password();
@@ -493,7 +495,7 @@ function generateColumnValue(column: TableSchema['columns'][0], strategy: string
   }
 
   if (type.includes('decimal') || type.includes('float') || type.includes('double')) {
-    return faker.number.float({ min: 0, max: 1000, precision: 2 });
+    return faker.number.float({ min: 0, max: 1000, fractionDigits: 2 });
   }
 
   if (type.includes('bool')) {

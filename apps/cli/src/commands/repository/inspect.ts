@@ -1,5 +1,7 @@
 import { Command } from 'commander';
-import { prism, spinner, table, select } from '@xec-sh/kit';
+import { prism, select } from '@xec-sh/kit';
+import { displayTable as table } from '../../utils/table-helper.js';
+import { spinner } from '../../utils/spinner.js';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
@@ -161,16 +163,16 @@ async function inspectRepository(options: InspectRepositoryOptions): Promise<voi
         return;
       }
 
-      const selected = await select(
-        'Select a repository to inspect:',
-        files.map((f) => ({
+      const selected = await select({
+        message: 'Select a repository to inspect:',
+        options: files.map((f) => ({
           label: path.basename(f),
           value: f,
-          description: path.relative(process.cwd(), f),
-        }))
-      );
+          hint: path.relative(process.cwd(), f),
+        })),
+      });
 
-      filePath = selected;
+      filePath = selected as string;
       inspectSpinner.start(`Inspecting ${path.basename(filePath)}...`);
     }
 
