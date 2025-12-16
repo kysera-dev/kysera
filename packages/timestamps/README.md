@@ -6,19 +6,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
 
-## 📦 Package Information
-
-| Metric | Value |
-|--------|-------|
-| **Version** | 0.5.1 |
-| **Bundle Size** | ~4 KB (minified) |
-| **Test Coverage** | 16+ tests passing |
-| **Dependencies** | @kysera/core (workspace) |
-| **Peer Dependencies** | kysely >=0.28.8, @kysera/repository, zod ^4.1.13 |
-| **Target Runtimes** | Node.js 20+, Bun 1.0+, Deno |
-| **Module System** | ESM only |
-| **Database Support** | PostgreSQL, MySQL, SQLite |
-
 ## 🎯 Features
 
 - ✅ **Zero Configuration** - Works out of the box with sensible defaults
