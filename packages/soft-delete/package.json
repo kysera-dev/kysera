@@ -1,6 +1,6 @@
 {
   "name": "@kysera/soft-delete",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Soft delete plugin for Kysely repositories",
   "type": "module",
   "main": "./dist/index.js",
