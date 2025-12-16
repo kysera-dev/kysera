@@ -6,19 +6,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
 
-## Package Information
-
-| Property | Value |
-|----------|-------|
-| **Package** | `@kysera/migrations` |
-| **Version** | `0.5.1` |
-| **Bundle Size** | ~12 KB (minified) |
-| **Dependencies** | @kysera/core (workspace) |
-| **Peer Dependencies** | kysely >=0.28.8, zod ^4.1.13 |
-| **Test Coverage** | 64 tests, comprehensive |
-| **Supported Databases** | PostgreSQL, MySQL, SQLite |
-| **Type Safety** | Full TypeScript support |
-
 ## Features
 
 ### Core Migration Management

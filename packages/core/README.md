@@ -6,18 +6,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
 
-## 📦 Package Information
-
-| Metric | Value |
-|--------|-------|
-| **Version** | 0.5.1 |
-| **Bundle Size** | ~8 KB (minified) |
-| **Test Coverage** | Comprehensive coverage |
-| **Runtime Dependencies** | 0 (peer: kysely >=0.28.8) |
-| **Target Runtimes** | Node.js 20+, Bun 1.0+, Deno |
-| **Module System** | ESM only |
-| **Database Support** | PostgreSQL, MySQL, SQLite |
-
 ## 🎯 Features
 
 - ✅ **Zero Runtime Dependencies** - Only peer dependency on Kysely
