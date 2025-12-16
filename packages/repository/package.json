@@ -1,6 +1,6 @@
 {
   "name": "@kysera/repository",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Repository pattern implementation for Kysely with smart validation",
   "type": "module",
   "main": "./dist/index.js",

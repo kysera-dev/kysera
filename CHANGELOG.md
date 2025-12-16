@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.7.1] - 2025-12-16
+
+### 📝 Other Changes
+
+- chore(deps): upgrade Kysely to 0.28.9
+- docs: clarify Kysera is not a traditional ORM
+- docs: remove version numbers from README package tables
+- docs(website): update homepage with accurate, stable metrics
+
+
 ## [0.7.0] - 2025-12-11
 
 ### ✨ Features
