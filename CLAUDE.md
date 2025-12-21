@@ -227,12 +227,10 @@ export default defineConfig({
 
 ## Release Process
 
-Uses Changesets for versioning:
 ```bash
-pnpm changeset              # Create changeset
-pnpm changeset:version      # Bump versions
 pnpm release                # Full release
 pnpm release:dry            # Dry run
+pnpm release:ci             # CI release (skip tests, force)
 ```
 
 ## CI/CD
