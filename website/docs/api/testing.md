@@ -18,8 +18,6 @@ npm install --save-dev @kysera/testing
 
 ## Overview
 
-**Version:** 0.7.0
-**Bundle Size:** ~6 KB (minified)
 **Dependencies:** None (peer: kysely >=0.28.8)
 
 :::info Package Type

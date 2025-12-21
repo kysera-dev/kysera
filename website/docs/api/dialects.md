@@ -16,8 +16,6 @@ npm install @kysera/dialects kysely
 
 ## Overview
 
-**Version:** 0.7.2
-**Bundle Size:** ~5 KB (minified)
 **Dependencies:** None (peer: kysely >=0.28.8)
 **Database Support:** PostgreSQL, MySQL, SQLite
 
