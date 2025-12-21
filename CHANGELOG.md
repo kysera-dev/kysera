@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.7.3] - 2025-12-21
+
+### ✨ Features
+
+- feat(dialects): add @kysera/dialects package with dialect-specific utilities
+
+
 ## [0.7.2] - 2025-12-21
 
 ### ✨ Features
