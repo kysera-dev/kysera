@@ -259,3 +259,129 @@ export function applyDateRange<DB, TB extends keyof DB, O>(
 
   return q;
 }
+
+/**
+ * Execute a count query and return the number directly.
+ *
+ * This is a convenience helper that eliminates the boilerplate of extracting
+ * the count from a Kysely query result. It handles the common pattern of:
+ * - Clearing existing selects
+ * - Adding COUNT(*) aggregate
+ * - Executing and extracting the numeric result
+ * - Handling null/undefined safely
+ *
+ * **Performance characteristics:**
+ * - Single COUNT(*) query
+ * - Clears existing selects to minimize data transfer
+ * - Returns primitive number, not object
+ *
+ * @param query - The Kysely SelectQueryBuilder to count
+ * @returns The count as a number (0 if no results)
+ *
+ * @example
+ * Count all active users:
+ * ```typescript
+ * const count = await executeCount(
+ *   db.selectFrom('users').where('status', '=', 'active')
+ * );
+ * // Returns: 42
+ * ```
+ *
+ * @example
+ * Count with complex joins:
+ * ```typescript
+ * const count = await executeCount(
+ *   db.selectFrom('orders')
+ *     .innerJoin('users', 'users.id', 'orders.user_id')
+ *     .where('users.country', '=', 'US')
+ *     .where('orders.status', '=', 'completed')
+ * );
+ * // Returns: 156
+ * ```
+ *
+ * @example
+ * Use in pagination to get total:
+ * ```typescript
+ * const [data, total] = await Promise.all([
+ *   applyOffset(query, { limit: 20, offset: 0 }).execute(),
+ *   executeCount(query)
+ * ]);
+ * ```
+ */
+export async function executeCount<DB, TB extends keyof DB, O>(
+  query: SelectQueryBuilder<DB, TB, O>
+): Promise<number> {
+  const result = await query
+    .clearSelect()
+    .select((eb: any) => eb.fn.countAll().as('count'))
+    .executeTakeFirst();
+
+  return Number((result as any)?.count ?? 0);
+}
+
+/**
+ * Execute a grouped count query and return a Record.
+ *
+ * This is a convenience helper for common "count by category" patterns.
+ * It groups rows by a column and returns a Record mapping each unique
+ * value to its count.
+ *
+ * **Performance characteristics:**
+ * - Single GROUP BY query
+ * - Returns all groups in one query
+ * - Result is typed as Record<string, number>
+ *
+ * @param query - The Kysely SelectQueryBuilder to count
+ * @param groupColumn - The column to group by
+ * @returns Record mapping group values to counts
+ *
+ * @example
+ * Count orders by status:
+ * ```typescript
+ * const byStatus = await executeGroupedCount(
+ *   db.selectFrom('orders'),
+ *   'status'
+ * );
+ * // Returns: { pending: 5, completed: 10, cancelled: 2 }
+ * ```
+ *
+ * @example
+ * Count users by country with filtering:
+ * ```typescript
+ * const byCountry = await executeGroupedCount(
+ *   db.selectFrom('users').where('is_active', '=', true),
+ *   'country'
+ * );
+ * // Returns: { US: 100, UK: 50, DE: 30 }
+ * ```
+ *
+ * @example
+ * Count fraud alerts by level (from PaySys):
+ * ```typescript
+ * const byLevel = await executeGroupedCount(
+ *   db.selectFrom('fraud_alerts').where('reviewed', '=', false),
+ *   'level'
+ * );
+ * // Returns: { low: 10, medium: 5, high: 2, critical: 1 }
+ * ```
+ */
+export async function executeGroupedCount<DB, TB extends keyof DB, O>(
+  query: SelectQueryBuilder<DB, TB, O>,
+  groupColumn: string
+): Promise<Record<string, number>> {
+  const results = await query
+    .clearSelect()
+    .select([groupColumn as any])
+    .select((eb: any) => eb.fn.countAll().as('count'))
+    .groupBy(groupColumn as any)
+    .execute();
+
+  return (results as Array<{ [key: string]: unknown; count: string | number }>).reduce(
+    (acc, row) => {
+      const key = String(row[groupColumn]);
+      acc[key] = Number(row.count);
+      return acc;
+    },
+    {} as Record<string, number>
+  );
+}

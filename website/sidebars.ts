@@ -119,6 +119,11 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'doc',
+          id: 'api/dialects',
+          label: '@kysera/dialects',
+        },
+        {
+          type: 'doc',
           id: 'api/debug',
           label: '@kysera/debug',
         },
