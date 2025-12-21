@@ -69,6 +69,13 @@ export type { BaseRepository, RepositoryConfig, TableOperations } from './base-r
 // Table operations
 export { createTableOperations } from './table-operations'
 
+// Context-aware repository
+export { ContextAwareRepository } from './context-aware'
+
+// Upsert helpers
+export { upsert, upsertMany } from './upsert'
+export type { UpsertOptions } from './upsert'
+
 // Re-export executor types
 export type { Plugin, QueryBuilderContext } from '@kysera/executor'
 export { PluginValidationError, validatePlugins, resolvePluginOrder } from '@kysera/executor'
@@ -631,6 +638,152 @@ await userRepo.restore(2)
 - Creating multiple repositories with shared plugins
 - You need DAL integration (`createContext`, `transaction`)
 - You want CQRS-lite pattern support
+
+## ContextAwareRepository
+
+Abstract base class for repositories that need clean transaction handling via executor switching.
+
+```typescript
+abstract class ContextAwareRepository<DB, Table extends string> {
+  constructor(executor: Executor<DB>, tableName: Table)
+
+  /** Create a new repository instance with a different executor (e.g., transaction) */
+  withExecutor(executor: Executor<DB>): this
+
+  /** Protected accessor for the current executor */
+  protected get db(): Executor<DB>
+
+  /** The table name this repository operates on */
+  readonly tableName: Table
+}
+```
+
+### Example Usage
+
+```typescript
+import { ContextAwareRepository } from '@kysera/repository'
+import type { Executor } from '@kysera/core'
+
+class UserRepository extends ContextAwareRepository<Database, 'users'> {
+  async create(data: { email: string; name: string }): Promise<User> {
+    return this.db
+      .insertInto(this.tableName)
+      .values(data)
+      .returningAll()
+      .executeTakeFirstOrThrow()
+  }
+
+  async findById(id: number): Promise<User | null> {
+    return this.db
+      .selectFrom(this.tableName)
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst() ?? null
+  }
+}
+
+// Normal usage
+const userRepo = new UserRepository(db, 'users')
+const user = await userRepo.findById(1)
+
+// Transaction usage - clean executor switching!
+await db.transaction().execute(async (trx) => {
+  const txUserRepo = userRepo.withExecutor(trx)
+  const txPostRepo = postRepo.withExecutor(trx)
+
+  const user = await txUserRepo.create({ email: 'test@example.com', name: 'Test' })
+  await txPostRepo.create({ userId: user.id, title: 'Hello' })
+  // Both operations in same transaction
+})
+```
+
+**Benefits:**
+- Clean API: No `executor` parameter in every method
+- Type-safe: `withExecutor()` returns same repository type with all methods
+- Preserves instance: Custom properties and methods are preserved
+
+## Upsert Helpers
+
+Functions for INSERT ... ON CONFLICT DO UPDATE operations.
+
+### upsert
+
+Insert a single record, updating on conflict.
+
+```typescript
+async function upsert<DB, Table, Row>(
+  db: Kysely<DB>,
+  table: Table,
+  data: Insertable<Row>,
+  options: UpsertOptions<Insertable<Row>>
+): Promise<Selectable<Row> | void>
+
+interface UpsertOptions<T> {
+  /** Columns that define the conflict constraint */
+  conflictColumns: (keyof T)[]
+  /** Columns to update on conflict (default: all except conflictColumns) */
+  updateColumns?: (keyof T)[]
+  /** Whether to return the upserted record */
+  returning?: boolean
+}
+```
+
+### upsertMany
+
+Batch upsert multiple records.
+
+```typescript
+async function upsertMany<DB, Table, Row>(
+  db: Kysely<DB>,
+  table: Table,
+  data: Insertable<Row>[],
+  options: UpsertOptions<Insertable<Row>>
+): Promise<Selectable<Row>[] | void>
+```
+
+### Upsert Examples
+
+```typescript
+import { upsert, upsertMany } from '@kysera/repository'
+
+// Single record upsert
+const wallet = await upsert(db, 'wallets', {
+  name: 'Main Wallet',
+  balance: 1000
+}, {
+  conflictColumns: ['name'],
+  returning: true
+})
+
+// Upsert with specific update columns
+await upsert(db, 'users', {
+  email: 'alice@example.com',
+  name: 'Alice Updated',
+  role: 'admin'
+}, {
+  conflictColumns: ['email'],
+  updateColumns: ['name'],  // Only update name, not role
+  returning: true
+})
+
+// Batch upsert
+const prices = await upsertMany(db, 'price_history', [
+  { pair: 'BTC/USD', timestamp: now, price: 50000 },
+  { pair: 'ETH/USD', timestamp: now, price: 3000 },
+], {
+  conflictColumns: ['pair', 'timestamp'],
+  updateColumns: ['price'],
+  returning: true
+})
+
+// Upsert in transaction
+await db.transaction().execute(async (trx) => {
+  await upsertMany(trx, 'inventory', items, {
+    conflictColumns: ['sku'],
+    updateColumns: ['quantity', 'updated_at']
+  })
+})
+```
 
 ## TableOperations
 

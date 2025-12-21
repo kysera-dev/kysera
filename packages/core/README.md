@@ -306,6 +306,74 @@ if (!email.includes('@')) {
 
 ---
 
+## 🔧 Query Helpers
+
+Lightweight utility functions for common query patterns.
+
+### applyOffset
+
+Lightweight limit/offset pagination without COUNT(*) query (~50% faster than `paginate`):
+
+```typescript
+import { applyOffset } from '@kysera/core'
+
+// Simple offset pagination
+const users = await applyOffset(
+  db.selectFrom('users').selectAll().orderBy('id'),
+  { limit: 20, offset: 0 }
+).execute()
+
+// Infinite scroll pattern
+async function loadMore(offset: number) {
+  const posts = await applyOffset(
+    db.selectFrom('posts')
+      .selectAll()
+      .where('published', '=', true)
+      .orderBy('created_at', 'desc'),
+    { limit: 20, offset }
+  ).execute()
+  return {
+    posts,
+    hasMore: posts.length === 20
+  }
+}
+```
+
+**Options:**
+- `limit`: 1-100 (default: 20)
+- `offset`: >= 0 (default: 0)
+
+### applyDateRange
+
+Apply date range filter to a query:
+
+```typescript
+import { applyDateRange } from '@kysera/core'
+
+// Date range filtering
+const posts = await applyDateRange(
+  db.selectFrom('posts').selectAll(),
+  'created_at',
+  { from: new Date('2024-01-01'), to: new Date('2024-12-31') }
+).execute()
+
+// Combine with offset
+const analytics = await applyOffset(
+  applyDateRange(
+    db.selectFrom('events').selectAll().orderBy('created_at', 'desc'),
+    'created_at',
+    { from: startDate, to: endDate }
+  ),
+  { limit: 100 }
+).execute()
+```
+
+**Options:**
+- `from`: Start date (inclusive)
+- `to`: End date (inclusive)
+
+---
+
 ## 📄 Pagination
 
 Two pagination strategies: offset-based (simple) and cursor-based (scalable).

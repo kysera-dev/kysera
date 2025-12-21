@@ -8,9 +8,44 @@ description: Pagination strategies and implementation
 
 Implementing efficient pagination with Kysera.
 
+## Lightweight Offset (applyOffset)
+
+When you don't need total count, use `applyOffset` for a ~50% performance boost:
+
+```typescript
+import { applyOffset } from '@kysera/core'
+
+// Simple pagination without COUNT(*)
+const users = await applyOffset(
+  db.selectFrom('users').selectAll().orderBy('id'),
+  { limit: 20, offset: 0 }
+).execute()
+
+// Infinite scroll pattern
+async function loadMore(offset: number) {
+  const posts = await applyOffset(
+    db.selectFrom('posts')
+      .selectAll()
+      .where('published', '=', true)
+      .orderBy('created_at', 'desc'),
+    { limit: 20, offset }
+  ).execute()
+
+  return {
+    posts,
+    hasMore: posts.length === 20  // If full page, might be more
+  }
+}
+```
+
+**Key features:**
+- No COUNT(*) query
+- Limit: 1-100 (auto-bounded)
+- SQLite compatible
+
 ## Offset Pagination
 
-Traditional page-based pagination.
+Traditional page-based pagination with total count.
 
 ```typescript
 import { paginate } from '@kysera/core'
@@ -187,6 +222,42 @@ app.get('/posts', async (req, res) => {
     }
   })
 })
+```
+
+## Date Range Filtering
+
+Combine with pagination for filtered results:
+
+```typescript
+import { applyOffset, applyDateRange } from '@kysera/core'
+
+// Get posts from last month, paginated
+const result = await applyOffset(
+  applyDateRange(
+    db.selectFrom('posts')
+      .selectAll()
+      .orderBy('created_at', 'desc'),
+    'created_at',
+    {
+      from: new Date('2024-01-01'),
+      to: new Date('2024-01-31')
+    }
+  ),
+  { limit: 50 }
+).execute()
+
+// Last N days helper
+function getLastNDays(days: number) {
+  const now = new Date()
+  const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+  return { from, to: now }
+}
+
+const recentPosts = await applyDateRange(
+  db.selectFrom('posts').selectAll(),
+  'created_at',
+  getLastNDays(7)
+).execute()
 ```
 
 ## Database Optimization

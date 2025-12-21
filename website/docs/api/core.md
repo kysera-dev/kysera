@@ -31,6 +31,9 @@ export * from './error-codes'
 // Pagination
 export * from './pagination'
 
+// Query Helpers
+export * from './helpers'
+
 // Types and Logger
 export * from './types'
 export * from './logger'
@@ -74,6 +77,37 @@ const result = await paginateCursor(query, {
   orderBy: [{ column: 'created_at', direction: 'desc' }],
   limit: 20
 })
+```
+
+### Query Helpers
+
+Lightweight utility functions for common query patterns.
+
+```typescript
+import { applyOffset, applyDateRange } from '@kysera/core'
+
+// Lightweight offset pagination (without COUNT(*))
+const users = await applyOffset(
+  db.selectFrom('users').selectAll().orderBy('id'),
+  { limit: 20, offset: 0 }
+).execute()
+
+// Date range filtering
+const posts = await applyDateRange(
+  db.selectFrom('posts').selectAll(),
+  'created_at',
+  { from: new Date('2024-01-01'), to: new Date('2024-12-31') }
+).execute()
+
+// Combine helpers for paginated date-filtered results
+const analytics = await applyOffset(
+  applyDateRange(
+    db.selectFrom('events').selectAll().orderBy('created_at', 'desc'),
+    'created_at',
+    { from: startDate, to: endDate }
+  ),
+  { limit: 100, offset: 0 }
+).execute()
 ```
 
 ### [Logger](/docs/api/core/logger)
@@ -122,6 +156,62 @@ interface KyseraLogger {
   error(message: string, ...args: unknown[]): void
 }
 ```
+
+### Query Helper Interfaces
+
+```typescript
+interface OffsetOptions {
+  /** Maximum rows to return (default: 20, max: 100) */
+  limit?: number
+  /** Rows to skip (default: 0) */
+  offset?: number
+}
+
+interface DateRangeOptions {
+  /** Start of date range (inclusive) */
+  from?: Date
+  /** End of date range (inclusive) */
+  to?: Date
+}
+```
+
+## Query Helpers API
+
+### applyOffset
+
+Apply limit/offset to a query without counting total. Lightweight alternative to `paginate()`.
+
+```typescript
+function applyOffset<DB, TB, O>(
+  query: SelectQueryBuilder<DB, TB, O>,
+  options?: OffsetOptions
+): SelectQueryBuilder<DB, TB, O>
+```
+
+**Features:**
+- No COUNT(*) query (~50% faster than paginate on large tables)
+- Limit bounds: 1-100 (prevents accidental large queries)
+- Offset must be non-negative
+- SQLite compatible (auto-adds LIMIT when OFFSET is used)
+
+**Use cases:** Infinite scroll, "Load More" buttons, simple lists without total count.
+
+### applyDateRange
+
+Apply date range filter to a query.
+
+```typescript
+function applyDateRange<DB, TB, O>(
+  query: SelectQueryBuilder<DB, TB, O>,
+  column: string,
+  options?: DateRangeOptions
+): SelectQueryBuilder<DB, TB, O>
+```
+
+**Features:**
+- Both boundaries inclusive (`>=` and `<=`)
+- Handles Date objects (converts to ISO string)
+- Returns unchanged query if neither from nor to provided
 
 ## Migration Guide
 

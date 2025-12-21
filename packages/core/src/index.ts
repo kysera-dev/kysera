@@ -4,6 +4,7 @@
  * Minimal core package containing essential utilities:
  * - Error handling (DatabaseError, error codes)
  * - Pagination (offset and cursor-based)
+ * - Helpers (applyOffset, applyDateRange)
  * - Types (Executor, Timestamps, etc.)
  * - Logger interface
  *
@@ -22,6 +23,9 @@ export * from './error-codes.js';
 
 // Pagination
 export * from './pagination.js';
+
+// Helpers
+export * from './helpers.js';
 
 // Types
 export * from './types.js';
