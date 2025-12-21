@@ -22,8 +22,6 @@ npm install zod           # Popular schema validation
 
 ## Overview
 
-**Version:** 0.7.0
-**Bundle Size:** ~12 KB (minified)
 **Dependencies:** @kysera/executor, @kysera/dal, @kysera/core
 **Peer Dependencies:** kysely >=0.28.8, zod ^4.x (optional)
 

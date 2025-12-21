@@ -74,13 +74,44 @@ th {
   margin-bottom: 1rem;
 }
 
-/* Footer */
+/* Footer - adapts to theme */
 .footer {
-  background: var(--ifm-background-surface-color);
+  background: var(--ifm-footer-background-color);
+  border-top: 1px solid var(--ifm-toc-border-color);
 }
 
 .footer__title {
   color: var(--ifm-color-primary);
+}
+
+/* Light theme footer */
+:root {
+  --ifm-footer-background-color: #f8f9fa;
+  --ifm-footer-link-color: #444950;
+  --ifm-footer-title-color: var(--ifm-color-primary);
+}
+
+/* Dark theme footer */
+[data-theme='dark'] {
+  --ifm-footer-background-color: #1a1a2e;
+  --ifm-footer-link-color: #dadde1;
+  --ifm-footer-title-color: var(--ifm-color-primary);
+}
+
+/* Footer links */
+.footer__link-item {
+  color: var(--ifm-footer-link-color) !important;
+}
+
+.footer__link-item:hover {
+  color: var(--ifm-color-primary) !important;
+  text-decoration: underline;
+}
+
+/* Copyright text */
+.footer__copyright {
+  color: var(--ifm-footer-link-color);
+  opacity: 0.8;
 }
 
 /* Responsive improvements */

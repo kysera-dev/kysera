@@ -23,10 +23,8 @@ npm install @kysera/soft-delete @kysera/rls @kysera/audit
 
 ## Overview
 
-**Bundle Size:** ~7 KB (minified)
 **Dependencies:** `@kysera/executor` (peer: kysely >=0.28.8)
 **Zero Runtime Dependencies** in core package
-**Version:** 0.7.0+ (with native plugin support)
 
 `@kysera/dal` provides a functional approach to database access as an alternative to traditional repository patterns. Instead of classes and methods, you write **query functions** that are composable, type-safe, and easy to test.
 
