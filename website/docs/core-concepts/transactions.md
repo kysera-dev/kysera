@@ -89,7 +89,65 @@ await db.transaction().execute(async (trx) => {
 })
 ```
 
-### Method 2: withTransaction Method
+### Method 2: ContextAwareRepository Pattern
+
+The cleanest approach using the `ContextAwareRepository` abstract class:
+
+```typescript
+import { ContextAwareRepository } from '@kysera/repository'
+
+class UserRepository extends ContextAwareRepository<Database, 'users'> {
+  async create(data: { email: string; name: string }): Promise<User> {
+    return this.db
+      .insertInto(this.tableName)
+      .values(data)
+      .returningAll()
+      .executeTakeFirstOrThrow()
+  }
+
+  async findById(id: number): Promise<User | null> {
+    return this.db
+      .selectFrom(this.tableName)
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst() ?? null
+  }
+}
+
+class PostRepository extends ContextAwareRepository<Database, 'posts'> {
+  async create(data: { user_id: number; title: string }): Promise<Post> {
+    return this.db
+      .insertInto(this.tableName)
+      .values(data)
+      .returningAll()
+      .executeTakeFirstOrThrow()
+  }
+}
+
+// Create base repository instances
+const userRepo = new UserRepository(db, 'users')
+const postRepo = new PostRepository(db, 'posts')
+
+// Normal usage
+const user = await userRepo.findById(1)
+
+// Transaction usage - switch executor cleanly
+await db.transaction().execute(async (trx) => {
+  const txUserRepo = userRepo.withExecutor(trx)
+  const txPostRepo = postRepo.withExecutor(trx)
+
+  const user = await txUserRepo.create({ email: 'test@example.com', name: 'Test' })
+  await txPostRepo.create({ user_id: user.id, title: 'First Post' })
+  // Both operations in same transaction
+})
+```
+
+**Benefits:**
+- No `executor` parameter in every method
+- Type-safe: `withExecutor()` returns same type
+- Custom properties preserved
+
+### Method 3: withTransaction Method (Legacy)
 
 ```typescript
 const userRepo = createUserRepository(db)
@@ -100,7 +158,7 @@ await db.transaction().execute(async (trx) => {
 })
 ```
 
-### Method 3: Repository's transaction Method
+### Method 4: Repository's transaction Method
 
 ```typescript
 await userRepo.transaction(async (trx) => {

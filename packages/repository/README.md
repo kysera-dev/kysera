@@ -537,6 +537,93 @@ const userRole = await repo.findById({ user_id: 1, role_id: 2 });
 await repo.delete({ user_id: 1, role_id: 2 });
 ```
 
+## ContextAwareRepository
+
+Abstract base class for repositories that need clean transaction handling via executor switching:
+
+```typescript
+import { ContextAwareRepository } from '@kysera/repository';
+import type { Executor } from '@kysera/core';
+
+class UserRepository extends ContextAwareRepository<Database, 'users'> {
+  async create(data: { email: string; name: string }): Promise<User> {
+    return this.db
+      .insertInto(this.tableName)
+      .values(data)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  async findById(id: number): Promise<User | null> {
+    return this.db
+      .selectFrom(this.tableName)
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst() ?? null;
+  }
+}
+
+// Normal usage
+const userRepo = new UserRepository(db, 'users');
+const user = await userRepo.findById(1);
+
+// Transaction usage - switch executor cleanly
+await db.transaction().execute(async (trx) => {
+  const txUserRepo = userRepo.withExecutor(trx);
+  const txPostRepo = postRepo.withExecutor(trx);
+
+  const user = await txUserRepo.create({ email: 'test@example.com', name: 'Test' });
+  await txPostRepo.create({ userId: user.id, title: 'Hello' });
+});
+```
+
+**Benefits:**
+- Clean API: No `executor` parameter in every method
+- Type-safe: `withExecutor()` returns same repository type
+- Preserves instance: Custom properties preserved
+
+## Upsert Helpers
+
+Functions for INSERT ... ON CONFLICT DO UPDATE operations:
+
+```typescript
+import { upsert, upsertMany } from '@kysera/repository';
+
+// Single record upsert
+const wallet = await upsert(db, 'wallets', {
+  name: 'Main Wallet',
+  balance: 1000
+}, {
+  conflictColumns: ['name'],
+  returning: true
+});
+
+// Batch upsert
+const prices = await upsertMany(db, 'price_history', [
+  { pair: 'BTC/USD', timestamp: now, price: 50000 },
+  { pair: 'ETH/USD', timestamp: now, price: 3000 },
+], {
+  conflictColumns: ['pair', 'timestamp'],
+  updateColumns: ['price'],
+  returning: true
+});
+
+// Upsert with specific update columns
+await upsert(db, 'users', {
+  email: 'alice@example.com',
+  name: 'Alice Updated',
+  role: 'admin'
+}, {
+  conflictColumns: ['email'],
+  updateColumns: ['name'],  // Only update name, not role
+});
+```
+
+**UpsertOptions:**
+- `conflictColumns`: Columns defining the conflict constraint
+- `updateColumns`: Columns to update (default: all except conflictColumns)
+- `returning`: Whether to return upserted record(s)
+
 ## Helper Functions
 
 ### withPlugins
