@@ -83,7 +83,7 @@ function Stats() {
       <div className="container">
         <div className={styles.statsGrid}>
           <div className={styles.stat}>
-            <div className={styles.statValue}>12</div>
+            <div className={styles.statValue}>13</div>
             <div className={styles.statLabel}>Packages</div>
           </div>
           <div className={styles.stat}>

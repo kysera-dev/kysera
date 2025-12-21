@@ -59,6 +59,7 @@ Kysera follows a layered architecture with `@kysera/executor` as the foundation:
 | Package | Description | Bundle Size |
 |---------|-------------|-------------|
 | [@kysera/infra](/docs/api/infra) | Health checks, retry, circuit breaker, shutdown | ~12 KB |
+| [@kysera/dialects](/docs/api/dialects) | Dialect-specific utilities - PostgreSQL, MySQL, SQLite | ~5 KB |
 | [@kysera/debug](/docs/api/debug) | Query logging, profiling, SQL formatting | ~5 KB |
 | [@kysera/testing](/docs/api/testing) | Testing utilities and factories | ~6 KB |
 | [@kysera/migrations](/docs/api/migrations) | Database migration system | ~12 KB |
@@ -107,6 +108,9 @@ Understanding the dependency hierarchy helps you choose the right packages:
 
 @kysera/core (standalone - 0 dependencies)
     └──> Used by: All packages for errors, pagination, logging
+
+@kysera/dialects (standalone - 0 dependencies)
+    └──> Used by: All packages for dialect-specific operations, error detection, introspection
 ```
 
 **Plugin Capabilities:**
@@ -181,6 +185,54 @@ import { createQuery, withTransaction, createContext, compose, parallel } from '
 ```
 
 **Plugin Integration:** Works with `@kysera/executor` to support query interceptor plugins (soft-delete, RLS, etc.). Repository extension plugins are not available in DAL.
+
+## @kysera/dialects
+
+Dialect-specific utilities for PostgreSQL, MySQL, and SQLite. [Full Documentation →](/docs/api/dialects)
+
+```typescript
+import {
+  getAdapter,
+  parseConnectionUrl,
+  buildConnectionUrl,
+  tableExists,
+  escapeIdentifier,
+  isUniqueConstraintError
+} from '@kysera/dialects'
+```
+
+**Core Concept:** Provides a unified adapter interface for dialect-specific operations, enabling portable code that works across PostgreSQL, MySQL, and SQLite.
+
+**Key Features:**
+- Unified adapter interface for all supported dialects
+- Connection URL parsing and building
+- Database introspection (tableExists, getTableColumns, getTables)
+- Error detection (unique, foreign key, not-null constraints)
+- Dialect-specific SQL helpers (escapeIdentifier, getCurrentTimestamp, formatDate)
+- Testing utilities (truncateAllTables, getDatabaseSize)
+
+**Quick Example:**
+```typescript
+import { getAdapter, parseConnectionUrl } from '@kysera/dialects'
+
+// Parse connection URL
+const config = parseConnectionUrl('postgresql://user:pass@localhost:5432/mydb')
+
+// Get dialect adapter
+const adapter = getAdapter('postgres')
+
+// Check table existence
+const exists = await adapter.tableExists(db, 'users')
+
+// Detect constraint errors
+try {
+  await db.insertInto('users').values({ email: 'duplicate@example.com' }).execute()
+} catch (error) {
+  if (adapter.isUniqueConstraintError(error)) {
+    console.log('Email already exists')
+  }
+}
+```
 
 ## @kysera/infra
 
@@ -490,6 +542,7 @@ await executor.transaction().execute(async (trx) => {
 | @kysera/executor | 0.7.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
 | @kysera/repository | 0.7.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
 | @kysera/dal | 0.7.0 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| @kysera/dialects | 0.7.2 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
 | @kysera/infra | 0.6.1 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
 | @kysera/debug | 0.6.1 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
 | @kysera/testing | 0.6.1 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |

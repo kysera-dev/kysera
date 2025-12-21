@@ -516,4 +516,455 @@ describe('ContextAwareRepository', () => {
       expect(users).toHaveLength(1);
     });
   });
+
+  describe('findOneBy and findManyBy', () => {
+    // Test repository that exposes protected methods for testing
+    class TestUserRepository extends ContextAwareRepository<TestDatabase, 'users'> {
+      async create(data: { email: string; name: string }): Promise<User> {
+        const result = await this.db
+          .insertInto(this.tableName)
+          .values(data)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+
+        return result as User;
+      }
+
+      async findAll(): Promise<User[]> {
+        const results = await this.db.selectFrom(this.tableName).selectAll().execute();
+
+        return results as User[];
+      }
+
+      // Expose protected findOneBy for testing
+      async testFindOneBy<K extends keyof User>(field: K, value: User[K]): Promise<User | null> {
+        return this.findOneBy(field, value) as Promise<User | null>;
+      }
+
+      // Expose protected findManyBy for testing
+      async testFindManyBy<K extends keyof User>(
+        field: K,
+        value: User[K],
+        options?: { limit?: number; offset?: number; orderBy?: string; direction?: 'asc' | 'desc' }
+      ): Promise<User[]> {
+        return this.findManyBy(field, value, options) as Promise<User[]>;
+      }
+    }
+
+    class TestPostRepository extends ContextAwareRepository<TestDatabase, 'posts'> {
+      async create(data: {
+        user_id: number;
+        title: string;
+        content: string;
+        published?: number;
+      }): Promise<Post> {
+        const result = await this.db
+          .insertInto(this.tableName)
+          .values({ published: 0, ...data })
+          .returningAll()
+          .executeTakeFirstOrThrow();
+
+        return result as Post;
+      }
+
+      // Expose protected findOneBy for testing
+      async testFindOneBy<K extends keyof Post>(field: K, value: Post[K]): Promise<Post | null> {
+        return this.findOneBy(field, value) as Promise<Post | null>;
+      }
+
+      // Expose protected findManyBy for testing
+      async testFindManyBy<K extends keyof Post>(
+        field: K,
+        value: Post[K],
+        options?: { limit?: number; offset?: number; orderBy?: string; direction?: 'asc' | 'desc' }
+      ): Promise<Post[]> {
+        return this.findManyBy(field, value, options) as Promise<Post[]>;
+      }
+    }
+
+    describe('findOneBy', () => {
+      it('should find entity by primary key', async () => {
+        const userRepo = new TestUserRepository(db, 'users');
+
+        const createdUser = await userRepo.create({
+          email: 'findone@example.com',
+          name: 'FindOne User',
+        });
+
+        const foundUser = await userRepo.testFindOneBy('id', createdUser.id);
+
+        expect(foundUser).toBeDefined();
+        expect(foundUser?.id).toBe(createdUser.id);
+        expect(foundUser?.email).toBe('findone@example.com');
+        expect(foundUser?.name).toBe('FindOne User');
+      });
+
+      it('should find entity by unique field (email)', async () => {
+        const userRepo = new TestUserRepository(db, 'users');
+
+        await userRepo.create({
+          email: 'unique@example.com',
+          name: 'Unique User',
+        });
+
+        const foundUser = await userRepo.testFindOneBy('email', 'unique@example.com');
+
+        expect(foundUser).toBeDefined();
+        expect(foundUser?.email).toBe('unique@example.com');
+        expect(foundUser?.name).toBe('Unique User');
+      });
+
+      it('should find entity by foreign key', async () => {
+        const userRepo = new TestUserRepository(db, 'users');
+        const postRepo = new TestPostRepository(db, 'posts');
+
+        const user = await userRepo.create({
+          email: 'fk-test@example.com',
+          name: 'FK Test User',
+        });
+
+        const post = await postRepo.create({
+          user_id: user.id,
+          title: 'FK Test Post',
+          content: 'Foreign key test content',
+        });
+
+        const foundPost = await postRepo.testFindOneBy('user_id', user.id);
+
+        expect(foundPost).toBeDefined();
+        expect(foundPost?.id).toBe(post.id);
+        expect(foundPost?.user_id).toBe(user.id);
+        expect(foundPost?.title).toBe('FK Test Post');
+      });
+
+      it('should return null when entity not found', async () => {
+        const userRepo = new TestUserRepository(db, 'users');
+
+        const notFoundById = await userRepo.testFindOneBy('id', 99999);
+        expect(notFoundById).toBeNull();
+
+        const notFoundByEmail = await userRepo.testFindOneBy('email', 'nonexistent@example.com');
+        expect(notFoundByEmail).toBeNull();
+      });
+
+      it('should work with transactions via withExecutor', async () => {
+        const baseUserRepo = new TestUserRepository(db, 'users');
+
+        await db.transaction().execute(async (trx) => {
+          const txUserRepo = baseUserRepo.withExecutor(trx);
+
+          // Create user inside transaction
+          const createdUser = await txUserRepo.create({
+            email: 'tx-findone@example.com',
+            name: 'TX FindOne User',
+          });
+
+          // Find inside same transaction (should work)
+          const foundUser = await txUserRepo.testFindOneBy('id', createdUser.id);
+          expect(foundUser).toBeDefined();
+          expect(foundUser?.email).toBe('tx-findone@example.com');
+        });
+
+        // Verify committed
+        const committedUser = await baseUserRepo.testFindOneBy('email', 'tx-findone@example.com');
+        expect(committedUser).toBeDefined();
+      });
+    });
+
+    describe('findManyBy', () => {
+      it('should find all entities by foreign key', async () => {
+        const userRepo = new TestUserRepository(db, 'users');
+        const postRepo = new TestPostRepository(db, 'posts');
+
+        const user = await userRepo.create({
+          email: 'many-posts@example.com',
+          name: 'Many Posts User',
+        });
+
+        // Create multiple posts for the same user
+        await postRepo.create({
+          user_id: user.id,
+          title: 'Post 1',
+          content: 'Content 1',
+        });
+
+        await postRepo.create({
+          user_id: user.id,
+          title: 'Post 2',
+          content: 'Content 2',
+        });
+
+        await postRepo.create({
+          user_id: user.id,
+          title: 'Post 3',
+          content: 'Content 3',
+        });
+
+        const posts = await postRepo.testFindManyBy('user_id', user.id);
+
+        expect(posts).toHaveLength(3);
+        expect(posts.every((p) => p.user_id === user.id)).toBe(true);
+      });
+
+      it('should find with limit option', async () => {
+        const userRepo = new TestUserRepository(db, 'users');
+        const postRepo = new TestPostRepository(db, 'posts');
+
+        const user = await userRepo.create({
+          email: 'limit-test@example.com',
+          name: 'Limit Test User',
+        });
+
+        // Create 5 posts
+        for (let i = 1; i <= 5; i++) {
+          await postRepo.create({
+            user_id: user.id,
+            title: `Post ${i}`,
+            content: `Content ${i}`,
+          });
+        }
+
+        const limitedPosts = await postRepo.testFindManyBy('user_id', user.id, { limit: 3 });
+
+        expect(limitedPosts).toHaveLength(3);
+      });
+
+      it('should find with offset option', async () => {
+        const userRepo = new TestUserRepository(db, 'users');
+        const postRepo = new TestPostRepository(db, 'posts');
+
+        const user = await userRepo.create({
+          email: 'offset-test@example.com',
+          name: 'Offset Test User',
+        });
+
+        // Create 5 posts with identifiable titles
+        for (let i = 1; i <= 5; i++) {
+          await postRepo.create({
+            user_id: user.id,
+            title: `Offset Post ${i}`,
+            content: `Content ${i}`,
+          });
+        }
+
+        // Get all posts first to verify total count
+        const allPosts = await postRepo.testFindManyBy('user_id', user.id);
+        expect(allPosts).toHaveLength(5);
+
+        // Get posts with offset
+        const offsetPosts = await postRepo.testFindManyBy('user_id', user.id, { offset: 2 });
+        expect(offsetPosts).toHaveLength(3);
+      });
+
+      it('should find with limit and offset combined', async () => {
+        const userRepo = new TestUserRepository(db, 'users');
+        const postRepo = new TestPostRepository(db, 'posts');
+
+        const user = await userRepo.create({
+          email: 'pagination@example.com',
+          name: 'Pagination User',
+        });
+
+        // Create 10 posts
+        for (let i = 1; i <= 10; i++) {
+          await postRepo.create({
+            user_id: user.id,
+            title: `Pagination Post ${i}`,
+            content: `Content ${i}`,
+          });
+        }
+
+        // Page 2 of size 3 (offset 3, limit 3)
+        const page2Posts = await postRepo.testFindManyBy('user_id', user.id, {
+          limit: 3,
+          offset: 3,
+        });
+
+        expect(page2Posts).toHaveLength(3);
+      });
+
+      it('should find with orderBy and direction (descending)', async () => {
+        const userRepo = new TestUserRepository(db, 'users');
+        const postRepo = new TestPostRepository(db, 'posts');
+
+        const user = await userRepo.create({
+          email: 'orderby-test@example.com',
+          name: 'OrderBy Test User',
+        });
+
+        // Create posts with different titles (will be ordered by id or title)
+        await postRepo.create({
+          user_id: user.id,
+          title: 'AAA First',
+          content: 'Content A',
+        });
+
+        await postRepo.create({
+          user_id: user.id,
+          title: 'ZZZ Last',
+          content: 'Content Z',
+        });
+
+        await postRepo.create({
+          user_id: user.id,
+          title: 'MMM Middle',
+          content: 'Content M',
+        });
+
+        // Order by title descending
+        const descPosts = await postRepo.testFindManyBy('user_id', user.id, {
+          orderBy: 'title',
+          direction: 'desc',
+        });
+
+        expect(descPosts).toHaveLength(3);
+        expect(descPosts[0]?.title).toBe('ZZZ Last');
+        expect(descPosts[1]?.title).toBe('MMM Middle');
+        expect(descPosts[2]?.title).toBe('AAA First');
+      });
+
+      it('should find with orderBy and direction (ascending)', async () => {
+        const userRepo = new TestUserRepository(db, 'users');
+        const postRepo = new TestPostRepository(db, 'posts');
+
+        const user = await userRepo.create({
+          email: 'orderby-asc@example.com',
+          name: 'OrderBy Asc User',
+        });
+
+        await postRepo.create({
+          user_id: user.id,
+          title: 'ZZZ First in order',
+          content: 'Content Z',
+        });
+
+        await postRepo.create({
+          user_id: user.id,
+          title: 'AAA Last in order',
+          content: 'Content A',
+        });
+
+        // Order by title ascending
+        const ascPosts = await postRepo.testFindManyBy('user_id', user.id, {
+          orderBy: 'title',
+          direction: 'asc',
+        });
+
+        expect(ascPosts).toHaveLength(2);
+        expect(ascPosts[0]?.title).toBe('AAA Last in order');
+        expect(ascPosts[1]?.title).toBe('ZZZ First in order');
+      });
+
+      it('should default to descending order when direction is omitted', async () => {
+        const userRepo = new TestUserRepository(db, 'users');
+        const postRepo = new TestPostRepository(db, 'posts');
+
+        const user = await userRepo.create({
+          email: 'default-order@example.com',
+          name: 'Default Order User',
+        });
+
+        await postRepo.create({
+          user_id: user.id,
+          title: 'AAA Post',
+          content: 'Content A',
+        });
+
+        await postRepo.create({
+          user_id: user.id,
+          title: 'ZZZ Post',
+          content: 'Content Z',
+        });
+
+        // Order by title without direction (should default to desc)
+        const posts = await postRepo.testFindManyBy('user_id', user.id, {
+          orderBy: 'title',
+        });
+
+        expect(posts).toHaveLength(2);
+        expect(posts[0]?.title).toBe('ZZZ Post');
+        expect(posts[1]?.title).toBe('AAA Post');
+      });
+
+      it('should return empty array when none found', async () => {
+        const postRepo = new TestPostRepository(db, 'posts');
+
+        const posts = await postRepo.testFindManyBy('user_id', 99999);
+
+        expect(posts).toHaveLength(0);
+        expect(posts).toEqual([]);
+      });
+
+      it('should work with transactions via withExecutor', async () => {
+        const baseUserRepo = new TestUserRepository(db, 'users');
+        const basePostRepo = new TestPostRepository(db, 'posts');
+
+        await db.transaction().execute(async (trx) => {
+          const txUserRepo = baseUserRepo.withExecutor(trx);
+          const txPostRepo = basePostRepo.withExecutor(trx);
+
+          // Create user and posts inside transaction
+          const user = await txUserRepo.create({
+            email: 'tx-findmany@example.com',
+            name: 'TX FindMany User',
+          });
+
+          await txPostRepo.create({
+            user_id: user.id,
+            title: 'TX Post 1',
+            content: 'Content 1',
+          });
+
+          await txPostRepo.create({
+            user_id: user.id,
+            title: 'TX Post 2',
+            content: 'Content 2',
+          });
+
+          // Find inside same transaction (should work)
+          const posts = await txPostRepo.testFindManyBy('user_id', user.id);
+          expect(posts).toHaveLength(2);
+          expect(posts.every((p) => p.user_id === user.id)).toBe(true);
+        });
+
+        // Verify committed
+        const committedUser = await baseUserRepo.testFindOneBy('email', 'tx-findmany@example.com');
+        expect(committedUser).toBeDefined();
+
+        const committedPosts = await basePostRepo.testFindManyBy('user_id', committedUser!.id);
+        expect(committedPosts).toHaveLength(2);
+      });
+
+      it('should combine orderBy with limit for top-N queries', async () => {
+        const userRepo = new TestUserRepository(db, 'users');
+        const postRepo = new TestPostRepository(db, 'posts');
+
+        const user = await userRepo.create({
+          email: 'topn@example.com',
+          name: 'TopN User',
+        });
+
+        // Create posts with different IDs (will have sequential IDs)
+        for (let i = 1; i <= 5; i++) {
+          await postRepo.create({
+            user_id: user.id,
+            title: `TopN Post ${i}`,
+            content: `Content ${i}`,
+          });
+        }
+
+        // Get top 2 latest posts (ordered by id desc, limit 2)
+        const topPosts = await postRepo.testFindManyBy('user_id', user.id, {
+          orderBy: 'id',
+          direction: 'desc',
+          limit: 2,
+        });
+
+        expect(topPosts).toHaveLength(2);
+        // The last created posts should have higher IDs
+        expect(topPosts[0]?.title).toBe('TopN Post 5');
+        expect(topPosts[1]?.title).toBe('TopN Post 4');
+      });
+    });
+  });
 });

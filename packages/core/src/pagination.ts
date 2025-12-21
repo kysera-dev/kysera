@@ -236,19 +236,28 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
   const hasNext = data.length > limit;
   if (hasNext) data.pop();
 
-  // Encode cursor from last row (optimized for single-column cursors)
+  // Encode cursors from first and last rows (optimized for single-column cursors)
   const nextCursor = hasNext && data.length > 0 ? encodeCursor(orderBy, data[data.length - 1] as O) : undefined;
+
+  // prevCursor is the first row of current page - allows going back
+  // Only set if we have a cursor (meaning we're not on first page) and we have data
+  const prevCursor = cursor && data.length > 0 ? encodeCursor(orderBy, data[0] as O) : undefined;
 
   const result: PaginatedResult<O> = {
     data,
     pagination: {
       limit,
       hasNext,
+      hasPrev: !!cursor, // We have a previous page if we got here via a cursor
     },
   };
 
   if (nextCursor !== undefined) {
     result.pagination.nextCursor = nextCursor;
+  }
+
+  if (prevCursor !== undefined) {
+    result.pagination.prevCursor = prevCursor;
   }
 
   return result;

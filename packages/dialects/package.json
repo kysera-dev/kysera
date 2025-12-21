@@ -1,7 +1,7 @@
 {
-  "name": "@kysera/infra",
+  "name": "@kysera/dialects",
   "version": "0.7.2",
-  "description": "Infrastructure utilities for Kysely - health checks, retry, circuit breaker, graceful shutdown",
+  "description": "Dialect-specific utilities for Kysely - PostgreSQL, MySQL, SQLite support",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,22 +9,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./health": {
-      "types": "./dist/health/index.d.ts",
-      "import": "./dist/health/index.js"
-    },
-    "./resilience": {
-      "types": "./dist/resilience/index.d.ts",
-      "import": "./dist/resilience/index.js"
-    },
-    "./pool": {
-      "types": "./dist/pool/index.d.ts",
-      "import": "./dist/pool/index.js"
-    },
-    "./shutdown": {
-      "types": "./dist/shutdown.d.ts",
-      "import": "./dist/shutdown.js"
     }
   },
   "files": [
@@ -43,9 +27,6 @@
   "peerDependencies": {
     "kysely": ">=0.28.8"
   },
-  "dependencies": {
-    "@kysera/core": "workspace:*"
-  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.0.3",
@@ -61,20 +42,19 @@
   },
   "keywords": [
     "kysely",
-    "data-access",
+    "dialect",
+    "postgres",
+    "mysql",
+    "sqlite",
     "database",
-    "health",
-    "retry",
-    "circuit-breaker",
-    "resilience",
-    "infrastructure"
+    "sql"
   ],
   "author": "Kysera Team",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kysera-dev/kysera.git",
-    "directory": "packages/infra"
+    "directory": "packages/dialects"
   },
   "bugs": {
     "url": "https://github.com/kysera-dev/kysera/issues"
