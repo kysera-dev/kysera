@@ -63,6 +63,7 @@ kysera migrate up
 --dry-run                 Preview without executing
 --force                   Force execution
 -v, --verbose             Detailed output
+-c, --config <path>       Path to configuration file
 ```
 
 **Examples:**
@@ -162,6 +163,8 @@ kysera migrate reset
 **Options:**
 ```
 --force                   Skip confirmation prompt
+--run                     Re-run migrations after reset
+--seed                    Run seeds after reset
 -c, --config <path>       Path to configuration file
 -v, --verbose             Show detailed output
 ```
