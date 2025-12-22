@@ -136,35 +136,90 @@ kysera db dump --data-only --format json -o data.json
 Restore database from dump.
 
 ```bash
-kysera db restore
+kysera db restore <file>
 ```
 
 **Options:**
 ```
--f, --file <path>         Dump file to restore
---clean                   Drop tables before restore
---verify                  Verify after restore
+--force                   Skip confirmation prompt
+-c, --config <path>       Path to configuration file
+```
+
+**Examples:**
+```bash
+# Restore from SQL dump
+kysera db restore backup.sql
+
+# Restore from JSON dump
+kysera db restore data.json
+
+# Restore without confirmation
+kysera db restore backup.sql --force
 ```
 
 ### introspect
 
-Analyze database schema.
+Introspect database schema and generate TypeScript types.
 
 ```bash
-kysera db introspect
+kysera db introspect [table]
 ```
 
-Generates TypeScript interfaces from existing database.
+**Options:**
+```
+--json                    Output as JSON
+--detailed                Show detailed information with TypeScript types
+-c, --config <path>       Path to configuration file
+```
+
+**Examples:**
+```bash
+# List all tables with summary
+kysera db introspect
+
+# Introspect specific table
+kysera db introspect users
+
+# Show detailed information with TypeScript types
+kysera db introspect users --detailed
+
+# Output as JSON
+kysera db introspect --json
+```
 
 ### console
 
-Interactive database console.
+Interactive database console (REPL).
 
 ```bash
 kysera db console
 ```
 
-Opens a REPL for executing SQL queries.
+**Options:**
+```
+-q, --query <sql>         Execute SQL query and exit
+-c, --config <path>       Path to configuration file
+```
+
+**Console Commands:**
+```
+.help, .h                 Show help
+.exit, .quit, .q          Exit the console
+.tables, .t               List all tables
+.describe, .d <table>     Describe table structure
+.indexes, .i <table>      Show table indexes
+.count, .c <table>        Count rows in table
+.clear, .cls              Clear the screen
+```
+
+**Examples:**
+```bash
+# Open interactive console
+kysera db console
+
+# Execute single query
+kysera db console -q "SELECT * FROM users LIMIT 5"
+```
 
 ## Seed File Structure
 

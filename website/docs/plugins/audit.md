@@ -111,6 +111,8 @@ interface AuditLogEntry {
 | `getAuditHistory(entityId, options?)` | Get change history for an entity |
 | `getAuditLogs(entityId, options?)` | Alias for getAuditHistory |
 | `getAuditLog(auditId)` | Get specific audit log entry |
+| `getTableAuditLogs(filters?)` | Query audit logs across the table with filters |
+| `getUserChanges(userId, options?)` | Get all changes made by a specific user |
 | `restoreFromAudit(auditId)` | Restore entity to previous state |
 
 ## Querying Audit Logs
@@ -131,6 +133,56 @@ const entry = await userRepo.getAuditLog(auditLogId)
 // Access parsed values
 console.log(history[0].old_values)  // Parsed object
 console.log(history[0].new_values)  // Parsed object
+```
+
+### Table-Wide Queries
+
+```typescript
+// Query audit logs across the entire table with filters
+const logs = await userRepo.getTableAuditLogs({
+  operation: 'UPDATE',
+  since: new Date('2025-01-01'),
+  until: new Date('2025-01-31'),
+  limit: 100
+})
+
+// Filter by specific operations
+const deletions = await userRepo.getTableAuditLogs({
+  operation: 'DELETE',
+  limit: 50
+})
+```
+
+### User Activity Tracking
+
+```typescript
+// Get all changes made by a specific user
+const userActivity = await userRepo.getUserChanges('admin-123', {
+  limit: 100,
+  offset: 0
+})
+
+// Track what a user modified
+for (const change of userActivity) {
+  console.log(`${change.operation} on ${change.entity_id} at ${change.changed_at}`)
+}
+```
+
+### Filter Types
+
+```typescript
+interface AuditFilters {
+  operation?: 'INSERT' | 'UPDATE' | 'DELETE'
+  since?: Date | string
+  until?: Date | string
+  limit?: number
+  offset?: number
+}
+
+interface AuditPaginationOptions {
+  limit?: number
+  offset?: number
+}
 ```
 
 ## Restoring from Audit

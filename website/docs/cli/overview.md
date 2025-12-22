@@ -88,10 +88,13 @@ kysera generate crud User
 Database utilities.
 
 ```bash
-kysera db seed
-kysera db tables
-kysera db dump
-kysera db restore
+kysera db seed               # Run seeders
+kysera db reset              # Reset database
+kysera db tables             # List tables
+kysera db dump               # Export data
+kysera db restore            # Restore from backup
+kysera db introspect         # Introspect schema
+kysera db console            # Interactive SQL console
 ```
 
 ### [health](/docs/cli/health)

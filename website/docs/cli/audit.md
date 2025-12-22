@@ -196,6 +196,7 @@ kysera audit restore <audit-id> [options]
 |--------|-------------|
 | `--dry-run` | Preview restore without executing |
 | `--force` | Skip confirmation prompt |
+| `--json` | Output as JSON |
 | `-c, --config <path>` | Path to configuration file |
 
 ### Examples
@@ -239,23 +240,32 @@ kysera audit stats [options]
 
 | Option | Description |
 |--------|-------------|
-| `--since <datetime>` | Statistics since datetime |
-| `--until <datetime>` | Statistics until datetime |
-| `-t, --table <name>` | Statistics for specific table |
-| `--json` | Output as JSON |
+| `-t, --table <name>` | Filter statistics by table name |
+| `-u, --user <id>` | Filter statistics by user ID |
+| `-p, --period <duration>` | Time period: 1h, 1d, 1w, 1m (default: 1d) |
+| `-f, --format <type>` | Output format: table, json, chart (default: table) |
 | `-c, --config <path>` | Path to configuration file |
 
 ### Examples
 
 ```bash
-# Overall statistics
+# Overall statistics for last day
 kysera audit stats
 
-# Statistics for last 30 days
-kysera audit stats --since "2024-12-15"
+# Statistics for last week
+kysera audit stats --period 1w
 
 # Statistics for specific table
 kysera audit stats --table users
+
+# Statistics for specific user
+kysera audit stats --user "admin-123"
+
+# Output as JSON
+kysera audit stats --format json
+
+# Statistics for last month as chart
+kysera audit stats --period 1m --format chart
 ```
 
 ### Output
@@ -304,27 +314,30 @@ kysera audit cleanup [options]
 
 | Option | Description |
 |--------|-------------|
-| `--before <datetime>` | Delete logs before datetime |
-| `--keep-days <n>` | Keep logs from last N days |
+| `--older-than <duration>` | Delete logs older than duration (30d, 3m, 1y) |
 | `-t, --table <name>` | Clean specific table only |
-| `--dry-run` | Preview without deleting |
-| `--force` | Skip confirmation |
+| `--dry-run` | Preview cleanup without deleting |
+| `--force` | Skip confirmation prompt |
+| `--batch-size <n>` | Delete in batches (default: 1000) |
 | `-c, --config <path>` | Path to configuration file |
 
 ### Examples
 
 ```bash
 # Preview cleanup of logs older than 90 days
-kysera audit cleanup --keep-days 90 --dry-run
+kysera audit cleanup --older-than 90d --dry-run
 
-# Clean logs before a specific date
-kysera audit cleanup --before "2024-01-01"
+# Clean logs older than 3 months
+kysera audit cleanup --older-than 3m
 
 # Clean specific table
-kysera audit cleanup --table users --keep-days 30
+kysera audit cleanup --table users --older-than 30d
 
-# Force cleanup
-kysera audit cleanup --keep-days 90 --force
+# Force cleanup without confirmation
+kysera audit cleanup --older-than 90d --force
+
+# Cleanup in smaller batches
+kysera audit cleanup --older-than 1y --batch-size 500
 ```
 
 ### Output
@@ -351,14 +364,35 @@ Entries to delete:
 Compare two versions of an entity.
 
 ```bash
-kysera audit compare <audit-id-1> <audit-id-2> [options]
+kysera audit compare <id1> <id2> [options]
 ```
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `id1` | First audit log ID |
+| `id2` | Second audit log ID |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output as JSON |
+| `--show-values` | Show full field values |
+| `-c, --config <path>` | Path to configuration file |
 
 ### Examples
 
 ```bash
 # Compare two audit entries
 kysera audit compare 100 123
+
+# Compare with full values
+kysera audit compare 100 123 --show-values
+
+# Output as JSON
+kysera audit compare 100 123 --json
 ```
 
 ## diff
@@ -366,24 +400,41 @@ kysera audit compare 100 123
 Show differences between entity versions.
 
 ```bash
-kysera audit diff <table> <id> [options]
+kysera audit diff <table> <id> [from] [to] [options]
 ```
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `table` | Table name |
+| `id` | Entity ID |
+| `from` | From audit log ID or timestamp (optional) |
+| `to` | To audit log ID or timestamp (optional, default: current) |
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
-| `--from <audit-id>` | Starting version |
-| `--to <audit-id>` | Ending version (default: current) |
+| `--json` | Output as JSON |
+| `-u, --unified` | Show unified diff format |
+| `--no-color` | Disable colored output |
+| `-c, --config <path>` | Path to configuration file |
 
 ### Examples
 
 ```bash
 # Diff from specific audit to current
-kysera audit diff users user-123 --from 100
+kysera audit diff users user-123 100
 
 # Diff between two versions
-kysera audit diff users user-123 --from 100 --to 123
+kysera audit diff users user-123 100 123
+
+# Unified diff format
+kysera audit diff users user-123 100 --unified
+
+# Output as JSON
+kysera audit diff users user-123 100 123 --json
 ```
 
 ## Requirements

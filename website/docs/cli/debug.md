@@ -184,8 +184,11 @@ kysera debug circuit-breaker [options]
 
 | Option | Description |
 |--------|-------------|
-| `--status` | Show current circuit breaker status |
-| `--reset` | Reset circuit breaker |
+| `-a, --action <type>` | Action: status, reset, open, close (default: status) |
+| `-s, --service <name>` | Service name: database, cache, api |
+| `-t, --threshold <n>` | Error threshold for opening circuit (default: 5) |
+| `--timeout <ms>` | Reset timeout in milliseconds (default: 30000) |
+| `-w, --watch` | Watch mode - monitor in real-time |
 | `--json` | Output as JSON |
 | `-c, --config <path>` | Path to configuration file |
 
@@ -193,10 +196,25 @@ kysera debug circuit-breaker [options]
 
 ```bash
 # Check circuit breaker status
-kysera debug circuit-breaker --status
+kysera debug circuit-breaker --action status
+
+# Check specific service
+kysera debug circuit-breaker --service database
 
 # Reset circuit breaker
-kysera debug circuit-breaker --reset
+kysera debug circuit-breaker --action reset
+
+# Manually open circuit breaker
+kysera debug circuit-breaker --action open --service database
+
+# Close circuit breaker
+kysera debug circuit-breaker --action close
+
+# Watch mode - real-time monitoring
+kysera debug circuit-breaker --watch
+
+# Configure threshold and timeout
+kysera debug circuit-breaker --threshold 10 --timeout 60000
 ```
 
 ### Circuit Breaker States
@@ -209,7 +227,7 @@ kysera debug circuit-breaker --reset
 
 ## analyzer
 
-Query pattern analyzer for identifying optimization opportunities.
+Query analyzer for identifying optimization opportunities, index usage, and performance insights.
 
 ```bash
 kysera debug analyzer [options]
@@ -219,20 +237,59 @@ kysera debug analyzer [options]
 
 | Option | Description |
 |--------|-------------|
-| `--since <datetime>` | Analyze queries since datetime |
-| `--top <n>` | Show top N patterns (default: 10) |
+| `-q, --query <sql>` | SQL query to analyze |
+| `-t, --table <name>` | Analyze queries for specific table |
+| `-e, --explain` | Show execution plan |
+| `-s, --suggestions` | Show optimization suggestions (default: true) |
+| `-i, --indexes` | Analyze index usage |
+| `--statistics` | Show table statistics |
 | `--json` | Output as JSON |
 | `-c, --config <path>` | Path to configuration file |
 
 ### Examples
 
 ```bash
-# Analyze query patterns
-kysera debug analyzer
+# Analyze a specific query
+kysera debug analyzer --query "SELECT * FROM users WHERE email = 'test@example.com'"
 
-# Show top 20 patterns
-kysera debug analyzer --top 20
+# Analyze with execution plan
+kysera debug analyzer --query "SELECT * FROM orders" --explain
+
+# Analyze table indexes
+kysera debug analyzer --table users --indexes
+
+# Show table statistics
+kysera debug analyzer --table orders --statistics
+
+# Get optimization suggestions
+kysera debug analyzer --query "SELECT * FROM users" --suggestions
+
+# Full analysis with all features
+kysera debug analyzer --table users --indexes --statistics --suggestions
+
+# Output as JSON
+kysera debug analyzer --table users --json
 ```
+
+### Output
+
+**Query Analysis:**
+- Estimated cost and rows
+- Index recommendations
+- Missing indexes detection
+- Query complexity score
+
+**Index Analysis (with `--indexes`):**
+- Index usage statistics
+- Unused indexes
+- Duplicate indexes
+- Recommended indexes
+
+**Table Statistics (with `--statistics`):**
+- Row count
+- Table size
+- Index size
+- Average row size
 
 ## Configuration
 
