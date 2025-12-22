@@ -422,11 +422,11 @@ interface AuditFilters {
   /** Filter by operation type */
   operation?: AuditOperation
   /** Filter by user who made the change */
-  changedBy?: string | number
+  userId?: string
   /** Filter changes from this date */
-  fromDate?: Date | string
+  startDate?: Date | string
   /** Filter changes until this date */
-  toDate?: Date | string
+  endDate?: Date | string
   /** Maximum number of entries to return */
   limit?: number
   /** Number of entries to skip */

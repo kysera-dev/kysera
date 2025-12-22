@@ -125,7 +125,24 @@ const slowQueries = profiler.getSlowQueries(50);
 
 // Get top 10 slowest
 const top10 = profiler.getSlowestQueries(10);
+
+// Get count of recorded queries
+console.log(`Recorded: ${profiler.count} queries`);
+
+// Clear all recorded queries
+profiler.clear();
 ```
+
+### QueryProfiler Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `record(metrics)` | `void` | Record a query execution |
+| `getSummary()` | `ProfilerSummary` | Get aggregated statistics |
+| `getSlowQueries(threshold)` | `QueryMetrics[]` | Get queries slower than threshold (ms) |
+| `getSlowestQueries(n)` | `QueryMetrics[]` | Get top N slowest queries |
+| `clear()` | `void` | Clear all recorded queries |
+| `count` (getter) | `number` | Get the number of recorded queries |
 
 ### ProfilerSummary
 

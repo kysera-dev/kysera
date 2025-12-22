@@ -211,6 +211,72 @@ function applyDateRange<DB, TB, O>(
 - Handles Date objects (converts to ISO string)
 - Returns unchanged query if neither from nor to provided
 
+### executeCount
+
+Execute a count query and return the numeric result.
+
+```typescript
+async function executeCount<DB, TB extends keyof DB, O>(
+  query: SelectQueryBuilder<DB, TB, O>
+): Promise<number>
+```
+
+**Example:**
+```typescript
+import { executeCount } from '@kysera/core'
+
+// Count all active users
+const count = await executeCount(
+  db.selectFrom('users').where('status', '=', 'active')
+)
+console.log(`Active users: ${count}`)
+```
+
+### executeGroupedCount
+
+Execute a grouped count query and return counts by group.
+
+```typescript
+async function executeGroupedCount<DB, TB extends keyof DB, O>(
+  query: SelectQueryBuilder<DB, TB, O>,
+  groupColumn: string
+): Promise<Record<string, number>>
+```
+
+**Example:**
+```typescript
+import { executeGroupedCount } from '@kysera/core'
+
+// Count users by status
+const countsByStatus = await executeGroupedCount(
+  db.selectFrom('users'),
+  'status'
+)
+// { active: 150, inactive: 23, pending: 12 }
+```
+
+### paginateCursorSimple
+
+Simple cursor-based pagination without complex ordering requirements.
+
+```typescript
+async function paginateCursorSimple<DB, TB extends keyof DB, O>(
+  query: SelectQueryBuilder<DB, TB, O>,
+  options: SimpleCursorOptions
+): Promise<CursorPaginatedResult<O>>
+```
+
+**Example:**
+```typescript
+import { paginateCursorSimple } from '@kysera/core'
+
+const result = await paginateCursorSimple(
+  db.selectFrom('posts').selectAll(),
+  { limit: 20, cursor: lastCursor, cursorColumn: 'id' }
+)
+// { items: [...], nextCursor: '...', hasMore: true }
+```
+
 ## Migration Guide
 
 If you're upgrading from an earlier version where these utilities were in `@kysera/core`:

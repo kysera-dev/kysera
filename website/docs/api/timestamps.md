@@ -347,19 +347,20 @@ for (const userId of userIds) {
 Update only the `updated_at` timestamp for a record.
 
 ```typescript
-async touch(id: number | string): Promise<T>
+async touch(id: number): Promise<void>
 ```
 
 **Parameters:**
-- `id` - Primary key of the record
+- `id` - Primary key of the record (numeric)
 
-**Returns:** The updated record
+**Returns:** Nothing (updates the record in place)
 
 **Example:**
 ```typescript
-// Update user's last activity
+// Update user's last activity timestamp
 await userRepo.touch(userId)
 
+// Fetch the user to see the updated timestamp
 const user = await userRepo.findById(userId)
 console.log(`User last active: ${user.updated_at}`)
 ```
