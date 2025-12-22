@@ -3,6 +3,7 @@ import type { Kysely, SelectQueryBuilder } from 'kysely';
 import { silentLogger } from '@kysera/core';
 import type { KyseraLogger } from '@kysera/core';
 import { z } from 'zod';
+import { VERSION } from './version.js';
 
 /**
  * Database schema with timestamp columns
@@ -241,7 +242,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
 
   return {
     name: '@kysera/timestamps',
-    version: '0.5.1',
+    version: VERSION,
 
     interceptQuery(qb, _context) {
       // The interceptQuery method can't modify INSERT/UPDATE values in Kysely
@@ -474,14 +475,14 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
           await executor
             .updateTable(baseRepo.tableName as never)
             .set(dataWithTimestamp as never)
-            .where('id' as never, 'in', ids as never)
+            .where(primaryKeyColumn as never, 'in', ids as never)
             .execute();
 
           // Fetch and return updated records
           const result = await executor
             .selectFrom(baseRepo.tableName as never)
             .selectAll()
-            .where('id' as never, 'in', ids as never)
+            .where(primaryKeyColumn as never, 'in', ids as never)
             .execute();
 
           return result;
@@ -504,7 +505,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
           await executor
             .updateTable(baseRepo.tableName as never)
             .set(updateData as never)
-            .where('id' as never, 'in', ids as never)
+            .where(primaryKeyColumn as never, 'in', ids as never)
             .execute();
         },
       };

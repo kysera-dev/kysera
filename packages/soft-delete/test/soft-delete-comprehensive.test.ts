@@ -1254,7 +1254,7 @@ describe('Soft Delete Plugin - Additional Edge Cases', () => {
     it('should have correct name and version', () => {
       const plugin = softDeletePlugin();
       expect(plugin.name).toBe('@kysera/soft-delete');
-      expect(plugin.version).toBe('0.7.0');
+      expect(plugin.version).toMatch(/^\d+\.\d+\.\d+$|^__VERSION__$/);
     });
   });
 

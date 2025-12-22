@@ -18,6 +18,7 @@ import { PolicyRegistry } from './policy/registry.js';
 import { SelectTransformer } from './transformer/select.js';
 import { MutationGuard } from './transformer/mutation.js';
 import { rlsContext } from './context/manager.js';
+import { VERSION } from './version.js';
 import { RLSContextError, RLSPolicyViolation, RLSError, RLSErrorCodes } from './errors.js';
 import { silentLogger, type KyseraLogger } from '@kysera/core';
 
@@ -125,7 +126,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
 
   return {
     name: '@kysera/rls',
-    version: '0.7.0',
+    version: VERSION,
 
     // Run after soft-delete (priority 0), before audit
     priority: 50,

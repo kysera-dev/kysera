@@ -96,7 +96,7 @@ describe('Audit Plugin - Primary Key Configuration', () => {
 
       expect(audit).toBeDefined();
       expect(audit.name).toBe('@kysera/audit');
-      expect(audit.version).toBe('0.5.1');
+      expect(audit.version).toMatch(/^\d+\.\d+\.\d+$|^__VERSION__$/);
     });
 
     it('should default to "id" when primaryKeyColumn not specified', async () => {
