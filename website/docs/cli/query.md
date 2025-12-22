@@ -82,43 +82,39 @@ Results are displayed in a formatted table showing all columns from the queried 
 Manage soft-deleted records in tables using the @kysera/soft-delete plugin.
 
 ```bash
-kysera query soft-deleted <table> [options]
+kysera query soft-deleted [options]
 ```
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
-| `--action <type>` | Action: list, restore, purge |
-| `--id <id>` | Specific record ID |
-| `--before <date>` | Records deleted before date |
-| `--after <date>` | Records deleted after date |
-| `-l, --limit <n>` | Limit results |
+| `-t, --table <name>` | Table name to query (required) |
+| `-c, --column <name>` | Soft delete column name (default: deleted_at) |
+| `-r, --restore <id>` | Restore a soft-deleted record by ID |
+| `--purge` | Permanently delete all soft-deleted records |
+| `--force` | Skip confirmation for purge |
+| `-l, --limit <n>` | Limit results (default: 100) |
 | `--json` | Output as JSON |
 | `--config <path>` | Path to configuration file |
-
-### Actions
-
-| Action | Description |
-|--------|-------------|
-| `list` | List soft-deleted records |
-| `restore` | Restore soft-deleted records |
-| `purge` | Permanently delete soft-deleted records |
 
 ### Examples
 
 ```bash
 # List soft-deleted users
-kysera query soft-deleted users --action list
+kysera query soft-deleted -t users
 
-# List with date filter
-kysera query soft-deleted users --action list --before "2025-01-01"
+# List soft-deleted records with custom column
+kysera query soft-deleted -t users -c deleted_at
 
 # Restore a specific record
-kysera query soft-deleted users --action restore --id 123
+kysera query soft-deleted -t users --restore 123
 
-# Purge old soft-deleted records
-kysera query soft-deleted users --action purge --before "2024-01-01"
+# Purge all soft-deleted records (with confirmation)
+kysera query soft-deleted -t users --purge
+
+# Purge without confirmation
+kysera query soft-deleted -t users --purge --force
 ```
 
 ## analyze
@@ -217,11 +213,14 @@ kysera query by-timestamp --table users --column updated_at --last 24h
 ### Managing Soft Deletes
 
 ```bash
-# Review what would be permanently deleted
-kysera query soft-deleted orders --action list --before "2024-06-01"
+# Review soft-deleted records
+kysera query soft-deleted -t orders
 
-# Clean up old soft-deleted records
-kysera query soft-deleted orders --action purge --before "2024-06-01"
+# Restore a specific record
+kysera query soft-deleted -t orders --restore 123
+
+# Permanently delete all soft-deleted records
+kysera query soft-deleted -t orders --purge --force
 ```
 
 ### Performance Troubleshooting

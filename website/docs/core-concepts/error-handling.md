@@ -43,8 +43,8 @@ Thrown when a UNIQUE constraint is violated:
 ```typescript
 class UniqueConstraintError extends DatabaseError {
   constraint: string    // e.g., 'users_email_unique'
+  table: string         // e.g., 'users'
   columns: string[]     // e.g., ['email']
-  value?: unknown       // The duplicate value
 }
 ```
 
@@ -54,10 +54,9 @@ Thrown when a FOREIGN KEY constraint is violated:
 
 ```typescript
 class ForeignKeyError extends DatabaseError {
-  constraint: string
-  table: string
-  column: string
-  referencedTable?: string
+  constraint: string      // e.g., 'posts_user_id_fkey'
+  table: string           // e.g., 'posts'
+  referencedTable: string // e.g., 'users'
 }
 ```
 
@@ -67,9 +66,14 @@ Thrown when an entity is not found:
 
 ```typescript
 class NotFoundError extends DatabaseError {
-  entity?: string
-  id?: unknown
+  // Message includes entity name and optional filter details
+  // Example: "User not found" with detail: {"id": 123}
 }
+```
+
+**Constructor:**
+```typescript
+new NotFoundError(entity: string, filters?: Record<string, unknown>)
 ```
 
 ### NotNullError
@@ -247,16 +251,16 @@ try {
 All errors support JSON serialization for API responses:
 
 ```typescript
-const error = new UniqueConstraintError('users_email_unique', ['email'], 'test@example.com')
+const error = new UniqueConstraintError('users_email_unique', 'users', ['email'])
 
 console.log(error.toJSON())
 // {
 //   name: 'UniqueConstraintError',
-//   message: 'Unique constraint violation',
+//   message: 'UNIQUE constraint violation on users',
 //   code: 'VALIDATION_UNIQUE_VIOLATION',
 //   constraint: 'users_email_unique',
-//   columns: ['email'],
-//   value: 'test@example.com'
+//   table: 'users',
+//   columns: ['email']
 // }
 ```
 

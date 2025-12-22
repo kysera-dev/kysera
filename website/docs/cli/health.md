@@ -21,9 +21,10 @@ kysera health check
 **Options:**
 ```
 --json                    Output as JSON
---watch                   Continuous monitoring
---interval <ms>           Check interval (default: 5000)
--v, --verbose             Detailed metrics
+--watch                   Continuous monitoring mode
+--interval <ms>           Check interval in ms (default: 5000)
+-v, --verbose             Show detailed metrics
+-c, --config <path>       Path to configuration file
 ```
 
 **Output:**
@@ -54,7 +55,7 @@ Last Check: 2024-01-15 10:30:00
 
 ### watch
 
-Continuous monitoring mode.
+Continuous monitoring mode. Clears screen and updates results at each interval.
 
 ```bash
 kysera health check --watch
@@ -62,11 +63,12 @@ kysera health check --watch
 
 **Options:**
 ```
---interval <ms>           Check interval (default: 5000)
---alert <threshold>       Alert on latency above threshold
+--interval <ms>           Check interval in ms (default: 5000)
+--json                    Output as JSON
+-v, --verbose             Show detailed metrics
 ```
 
-Press `Ctrl+C` to stop.
+Press `Ctrl+C` to stop monitoring.
 
 ### metrics
 

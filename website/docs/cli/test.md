@@ -29,6 +29,8 @@ kysera test setup
 --parallel                Enable parallel test execution
 --isolation <type>        Isolation strategy (default: transaction)
 -v, --verbose             Verbose output
+--json                    Output as JSON
+--config <path>           Path to configuration file
 ```
 
 **Isolation Strategies:**
