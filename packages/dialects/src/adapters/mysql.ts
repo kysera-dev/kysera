@@ -96,19 +96,20 @@ export class MySQLAdapter implements DialectAdapter {
     try {
       const dbName =
         databaseName ||
-        (await sql
-          .raw('SELECT DATABASE() as name')
-          .execute(db)
-          .then((r) => (r.rows?.[0] as { name?: string })?.name));
+        (await sql<{ name: string }>`SELECT DATABASE() as name`.execute(db).then((r) => r.rows?.[0]?.name));
 
-      const result = await sql
-        .raw(
-          `SELECT SUM(data_length + index_length) as size FROM information_schema.tables WHERE table_schema = '${dbName}'`
-        )
-        .execute(db)
-        .then((r) => r.rows?.[0]);
+      if (!dbName) {
+        return 0;
+      }
 
-      return (result as { size?: number })?.size || 0;
+      // Use parameterized query to prevent SQL injection
+      const result = await sql<{ size: number }>`
+        SELECT SUM(data_length + index_length) as size
+        FROM information_schema.tables
+        WHERE table_schema = ${dbName}
+      `.execute(db);
+
+      return (result.rows?.[0] as { size?: number })?.size || 0;
     } catch {
       return 0;
     }

@@ -2,6 +2,7 @@ import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 import type { KyseraLogger } from '@kysera/core';
 import { DatabaseError, NotFoundError, BadRequestError, silentLogger } from '@kysera/core';
+import { VERSION } from './version.js';
 
 // ============================================================================
 // Schema Exports
@@ -978,7 +979,7 @@ export function createLoggingPlugin<DB = unknown>(
 ): MigrationPlugin<DB> {
   return {
     name: '@kysera/migrations/logging',
-    version: '0.5.1',
+    version: VERSION,
     beforeMigration(migration, operation) {
       logger.info(`Starting ${operation} for ${migration.name}`);
     },
@@ -1003,7 +1004,7 @@ export function createMetricsPlugin<DB = unknown>(): MigrationPlugin<DB> & {
 
   return {
     name: '@kysera/migrations/metrics',
-    version: '0.5.1',
+    version: VERSION,
     afterMigration(migration, operation, duration) {
       metrics.push({ name: migration.name, operation, duration, success: true });
     },

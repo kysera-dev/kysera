@@ -90,11 +90,11 @@ export class PostgresAdapter implements DialectAdapter {
 
   async getDatabaseSize(db: Kysely<any>, databaseName?: string): Promise<number> {
     try {
-      const result = await sql
-        .raw(`SELECT pg_database_size(${databaseName ? `'${databaseName}'` : 'current_database()'}) as size`)
-        .execute(db)
-        .then((r) => r.rows?.[0]);
-      return (result as { size?: number })?.size || 0;
+      // Use parameterized query to prevent SQL injection
+      const result = databaseName
+        ? await sql<{ size: number }>`SELECT pg_database_size(${databaseName}) as size`.execute(db)
+        : await sql<{ size: number }>`SELECT pg_database_size(current_database()) as size`.execute(db);
+      return (result.rows?.[0] as { size?: number })?.size || 0;
     } catch {
       return 0;
     }

@@ -4,5 +4,5 @@
     "composite": false
   },
   "include": ["src/**/*"],
-  "exclude": ["**/*.test.ts", "test/**/*"]
+  "exclude": ["node_modules", "dist", "test", "**/*.test.ts"]
 }

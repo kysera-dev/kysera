@@ -100,7 +100,7 @@ describe('rlsPlugin', () => {
       const plugin = rlsPlugin({ schema });
 
       expect(plugin.name).toBe('@kysera/rls');
-      expect(plugin.version).toBe('0.7.0');
+      expect(plugin.version).toMatch(/^\d+\.\d+\.\d+$|^__VERSION__$/);
     });
 
     it('should have correct priority', () => {

@@ -774,7 +774,7 @@ describe('Audit Plugin - Database-Specific Plugins', () => {
 
     expect(plugin).toBeDefined();
     expect(plugin.name).toBe('@kysera/audit');
-    expect(plugin.version).toBe('0.5.1');
+    expect(plugin.version).toMatch(/^\d+\.\d+\.\d+$|^__VERSION__$/);
     expect(plugin.onInit).toBeDefined();
     expect(plugin.extendRepository).toBeDefined();
   });
@@ -799,7 +799,7 @@ describe('Audit Plugin - Database-Specific Plugins', () => {
 
     expect(plugin).toBeDefined();
     expect(plugin.name).toBe('@kysera/audit');
-    expect(plugin.version).toBe('0.5.1');
+    expect(plugin.version).toMatch(/^\d+\.\d+\.\d+$|^__VERSION__$/);
     expect(plugin.onInit).toBeDefined();
     expect(plugin.extendRepository).toBeDefined();
   });
@@ -822,7 +822,7 @@ describe('Audit Plugin - Database-Specific Plugins', () => {
 
     expect(plugin).toBeDefined();
     expect(plugin.name).toBe('@kysera/audit');
-    expect(plugin.version).toBe('0.5.1');
+    expect(plugin.version).toMatch(/^\d+\.\d+\.\d+$|^__VERSION__$/);
   });
 
   it('generic auditPlugin should create valid plugin', () => {
@@ -833,7 +833,7 @@ describe('Audit Plugin - Database-Specific Plugins', () => {
 
     expect(plugin).toBeDefined();
     expect(plugin.name).toBe('@kysera/audit');
-    expect(plugin.version).toBe('0.5.1');
+    expect(plugin.version).toMatch(/^\d+\.\d+\.\d+$|^__VERSION__$/);
   });
 
   it('all plugins should accept all AuditOptions', () => {

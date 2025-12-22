@@ -442,7 +442,7 @@ describe('Soft Delete Plugin - Edge Cases and Security', () => {
 
         // Plugin should be created without error
         expect(plugin.name).toBe('@kysera/soft-delete');
-        expect(plugin.version).toBe('0.7.0');
+        expect(plugin.version).toMatch(/^\d+\.\d+\.\d+$|^__VERSION__$/);
       }
     });
 

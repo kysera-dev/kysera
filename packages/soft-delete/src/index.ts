@@ -5,6 +5,7 @@ import { sql } from 'kysely';
 import { NotFoundError, silentLogger } from '@kysera/core';
 import type { KyseraLogger } from '@kysera/core';
 import { z } from 'zod';
+import { VERSION } from './version.js';
 
 /**
  * Configuration options for the soft delete plugin.
@@ -204,7 +205,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
   return {
     name: '@kysera/soft-delete',
-    version: '0.7.0',
+    version: VERSION,
 
     /**
      * Intercept queries to automatically filter soft-deleted records.

@@ -1,8 +1,9 @@
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 import type { Plugin } from '@kysera/repository';
-import { NotFoundError, BadRequestError, type KyseraLogger, consoleLogger } from '../../core/dist';
+import { NotFoundError, BadRequestError, type KyseraLogger, consoleLogger } from '@kysera/core';
 import { z } from 'zod';
+import { VERSION } from './version.js';
 
 // ============================================================================
 // Types
@@ -1162,7 +1163,7 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
 
   return {
     name: '@kysera/audit',
-    version: '0.5.1',
+    version: VERSION,
 
     async onInit<DB>(executor: Kysely<DB>): Promise<void> {
       const exists = await checkAuditTableExists(executor, auditTable);
