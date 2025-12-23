@@ -12,9 +12,9 @@ import type {
   PrimaryKeyInput,
   CompositeKeyValue,
   PrimaryKeyValue,
-  Dialect,
-  DialectConfig
+  Dialect
 } from './types.js'
+import type { DialectConfig } from './types.js'
 import { getPrimaryKeyColumns, normalizePrimaryKeyInput, isCompositeKey } from './types.js'
 import { DatabaseError } from '@kysera/core'
 
@@ -80,12 +80,7 @@ function detectDialectFromInternals<DB>(db: Executor<DB>): Dialect | null {
 
     if (adapter?.constructor?.name) {
       // Warn about deprecated internal API usage
-      if (typeof console !== 'undefined' && console.warn) {
-        console.warn(
-          '[@kysera/repository] Dialect detection via Kysely internals is deprecated. ' +
-            'Please provide dialectConfig option explicitly.'
-        )
-      }
+      // Deprecation warning is now handled via the dialectConfig parameter
       const adapterName = adapter.constructor.name.toLowerCase()
       if (adapterName.includes('mysql')) return 'mysql'
       if (adapterName.includes('postgres') || adapterName.includes('pg')) return 'postgres'
@@ -124,6 +119,7 @@ function detectDialectFromInternals<DB>(db: Executor<DB>): Dialect | null {
  * const ops = createTableOperations(db, 'users', pkConfig);
  * ```
  */
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- DialectConfig kept for backwards compatibility
 function requiresMySQLBehavior<DB>(db: Executor<DB>, dialectConfig?: DialectConfig): boolean {
   if (dialectConfig) {
     return dialectConfig.dialect === 'mysql'
@@ -377,13 +373,15 @@ function extractPrimaryKeyFromRow<T>(row: T, pkConfig: PrimaryKeyConfig): Primar
  * @param pkConfig - Primary key configuration
  * @param dialectConfig - Optional dialect configuration (recommended for production)
  */
-// eslint-disable-next-line max-lines-per-function -- Complex table operations require comprehensive implementation
+/* eslint-disable @typescript-eslint/no-deprecated -- DialectConfig kept for backwards compatibility */
+// eslint-disable-next-line max-lines-per-function -- Complex table operations
 export function createTableOperations<DB, TableName extends keyof DB & string>(
   db: Executor<DB>,
   tableName: TableName,
   pkConfig: PrimaryKeyConfig = { columns: 'id', type: 'number' },
   dialectConfig?: DialectConfig
 ): TableOperations<DB[TableName]> {
+  /* eslint-enable @typescript-eslint/no-deprecated */
   type Table = DB[TableName]
   type SelectTable = Selectable<Table>
 
@@ -549,7 +547,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       /**
        * INTENTIONAL TYPE ASSERTION (documented and safe)
        *
-       * Why `any` is used here:
+       * Why type assertions are used here:
        * UpdateQueryBuilder.set() cannot be typed statically because the data structure
        * is validated at runtime by Zod schemas. We need to bridge the gap between:
        * 1. Runtime-validated user input (unknown type at compile time)
@@ -559,7 +557,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
        * - ✓ Data is validated by Zod schemas in the repository layer BEFORE reaching this code
        * - ✓ Kysely's runtime checks ensure column names exist in the database schema
        * - ✓ The query builder maintains runtime type safety throughout the chain
-       * - ✓ We only use `any` for the intermediate query builder, NOT the result
+       * - ✓ We only use type assertions for the intermediate query builder, NOT the result
        * - ✓ Return type is properly typed as SelectTable | undefined
        *
        * Alternative approaches considered and rejected:
@@ -572,9 +570,19 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
        * while maintaining a clean repository API that doesn't leak Kysely internals.
        */
 
-      const baseQuery: any = db.updateTable(tableName)
+      type UpdateQueryBuilder = {
+        where: (column: string, op: string, value: unknown) => UpdateQueryBuilder
+        execute: () => Promise<unknown>
+        returningAll: () => { executeTakeFirst: () => Promise<unknown> }
+      }
 
-      let query: any = baseQuery.set(data)
+      type UpdateQuery = {
+        set: (data: unknown) => UpdateQueryBuilder
+      }
+
+      const baseQuery = db.updateTable(tableName) as unknown as UpdateQuery
+
+      let query: UpdateQueryBuilder = baseQuery.set(data)
 
       // Add where conditions for primary key
       for (const [column, value] of Object.entries(keyRecord)) {
@@ -632,7 +640,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       /**
        * INTENTIONAL TYPE ASSERTION (documented and safe)
        *
-       * Why `any` is used here:
+       * Why type assertions are used here:
        * Kysely's fn.countAll() creates complex union types that are difficult to type
        * precisely in dynamic contexts with runtime-determined conditions.
        *
@@ -653,9 +661,18 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
        * dynamic queries. See: https://kysely.dev/docs/recipes/dynamic-queries
        */
 
-      const baseQuery: any = db.selectFrom(tableName)
+      type CountQueryBuilder = {
+        where: (key: string, op: string, value: unknown) => CountQueryBuilder
+        executeTakeFirst: () => Promise<{ count: number | bigint } | undefined>
+      }
 
-      let query: any = baseQuery.select(db.fn.countAll().as('count'))
+      type CountQuery = {
+        select: (countExpression: unknown) => CountQueryBuilder
+      }
+
+      const baseQuery = db.selectFrom(tableName) as unknown as CountQuery
+
+      let query: CountQueryBuilder = baseQuery.select(db.fn.countAll().as('count'))
 
       if (conditions) {
         for (const [key, value] of Object.entries(conditions)) {

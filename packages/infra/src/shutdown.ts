@@ -198,11 +198,13 @@ export function registerShutdownHandlers<DB>(
     return
   }
 
-  let isShuttingDown = false
+  // Use object to ensure reference stability and prevent race conditions
+  const shutdownState = { inProgress: false }
 
   const handleShutdown = async (signal: NodeJS.Signals): Promise<void> => {
-    if (isShuttingDown) return
-    isShuttingDown = true
+    // Atomic check-and-set pattern to prevent race conditions
+    if (shutdownState.inProgress) return
+    shutdownState.inProgress = true
 
     logger.info(`Received ${signal}, starting graceful shutdown...`)
 
@@ -260,7 +262,8 @@ export function createShutdownController<DB>(
   registerSignals: () => void
   isShuttingDown: () => boolean
 } {
-  let shuttingDown = false
+  // Use object to ensure reference stability and prevent race conditions
+  const shutdownState = { inProgress: false }
   const {
     logger = consoleLogger,
     signals: _signals = ['SIGTERM', 'SIGINT'],
@@ -269,8 +272,9 @@ export function createShutdownController<DB>(
 
   return {
     execute: async (): Promise<void> => {
-      if (shuttingDown) return
-      shuttingDown = true
+      // Atomic check-and-set pattern to prevent race conditions
+      if (shutdownState.inProgress) return
+      shutdownState.inProgress = true
 
       logger.info('Starting graceful shutdown...')
       await gracefulShutdown(db, { ...shutdownOpts, logger })
@@ -281,6 +285,6 @@ export function createShutdownController<DB>(
       registerShutdownHandlers(db, options)
     },
 
-    isShuttingDown: (): boolean => shuttingDown
+    isShuttingDown: (): boolean => shutdownState.inProgress
   }
 }

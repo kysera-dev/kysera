@@ -530,7 +530,7 @@ interface Plugin {
   readonly conflictsWith?: readonly string[]
 
   /** Lifecycle: Called once when plugin is initialized */
-  onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
+  onInit?<DB>(db: Kysely<DB>): Promise<void> | void
 
   /** Lifecycle: Called when plugin is destroyed (cleanup) */
   onDestroy?(): Promise<void> | void
@@ -580,7 +580,7 @@ Context passed to `interceptQuery` hooks.
 ```typescript
 interface QueryBuilderContext {
   /** Type of operation */
-  readonly operation: 'select' | 'insert' | 'update' | 'delete'
+  readonly operation: 'select' | 'insert' | 'update' | 'delete' | 'replace' | 'merge'
   /** Table name */
   readonly table: string
   /** Additional metadata (shared across plugin chain) */

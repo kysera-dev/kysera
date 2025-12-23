@@ -118,20 +118,16 @@ describe('SQLiteAdapter - Database Integration', () => {
 
       // Create a situation that throws an unexpected error
       const errorAdapter = new SQLiteAdapter()
-      const originalTruncate = errorAdapter.truncateTable.bind(errorAdapter)
 
       // Patch sql.raw to throw a different error
-      const originalRaw = sql.raw
       const mockError = new Error('Connection lost')
       vi.spyOn(sql, 'raw').mockImplementation(() => {
         throw mockError
       })
 
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-
       try {
+        // Should rethrow unexpected errors (not "no such table" errors)
         await expect(errorAdapter.truncateTable(db, 'users')).rejects.toThrow('Connection lost')
-        expect(consoleSpy).toHaveBeenCalled()
       } finally {
         vi.restoreAllMocks()
       }

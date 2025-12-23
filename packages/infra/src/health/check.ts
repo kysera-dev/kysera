@@ -71,8 +71,18 @@ export async function checkDatabaseHealth<DB>(
   const start = Date.now()
 
   try {
-    // Simple query to check connection
-    await db.selectNoFrom(eb => eb.val(1).as('ping')).execute()
+    // Simple query to check connection with timeout
+    const timeoutMs = 5000 // 5 second timeout for health checks
+    const queryPromise = db.selectNoFrom(eb => eb.val(1).as('ping')).execute()
+
+    await Promise.race([
+      queryPromise,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Health check timed out after ${String(timeoutMs)}ms`))
+        }, timeoutMs)
+      })
+    ])
 
     const latency = Date.now() - start
     const status = getStatusFromLatency(latency)

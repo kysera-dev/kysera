@@ -155,43 +155,59 @@ export function validatePlugins(plugins: readonly Plugin[]): void {
 }
 
 /**
- * Detect circular dependencies using DFS
+ * Detect circular dependencies using iterative DFS
+ * Prevents stack overflow with deep dependency chains
  */
 function detectCircularDependencies(plugins: readonly Plugin[]): void {
-  const visited = new Set<string>()
-  const stack = new Set<string>()
-  const path: string[] = []
   const map = new Map(plugins.map(p => [p.name, p]))
-
-  function dfs(name: string): void {
-    visited.add(name)
-    stack.add(name)
-    path.push(name)
-
-    const plugin = map.get(name)
-    if (plugin?.dependencies) {
-      for (const dep of plugin.dependencies) {
-        if (!visited.has(dep)) {
-          dfs(dep)
-        } else if (stack.has(dep)) {
-          const start = path.indexOf(dep)
-          const cycle = [...path.slice(start), dep]
-          throw new PluginValidationError(
-            `Circular dependency: ${cycle.join(' -> ')}`,
-            'CIRCULAR_DEPENDENCY',
-            { pluginName: name, cycle }
-          )
-        }
-      }
-    }
-
-    path.pop()
-    stack.delete(name)
-  }
+  const visited = new Set<string>()
 
   for (const plugin of plugins) {
-    if (!visited.has(plugin.name)) {
-      dfs(plugin.name)
+    if (visited.has(plugin.name)) continue
+
+    // Iterative DFS using explicit stack
+    const stack: { name: string; deps: readonly string[]; depIndex: number }[] = []
+    const inStack = new Set<string>()
+    const path: string[] = []
+
+    stack.push({ name: plugin.name, deps: plugin.dependencies ?? [], depIndex: 0 })
+    inStack.add(plugin.name)
+    path.push(plugin.name)
+
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1]!
+
+      if (frame.depIndex >= frame.deps.length) {
+        // Done with this node, backtrack
+        stack.pop()
+        inStack.delete(frame.name)
+        path.pop()
+        visited.add(frame.name)
+        continue
+      }
+
+      const dep = frame.deps[frame.depIndex]!
+      frame.depIndex++
+
+      if (inStack.has(dep)) {
+        // Cycle detected
+        const start = path.indexOf(dep)
+        const cycle = [...path.slice(start), dep]
+        throw new PluginValidationError(
+          `Circular dependency: ${cycle.join(' -> ')}`,
+          'CIRCULAR_DEPENDENCY',
+          { pluginName: frame.name, cycle }
+        )
+      }
+
+      if (!visited.has(dep)) {
+        const depPlugin = map.get(dep)
+        if (depPlugin) {
+          stack.push({ name: dep, deps: depPlugin.dependencies ?? [], depIndex: 0 })
+          inStack.add(dep)
+          path.push(dep)
+        }
+      }
     }
   }
 }
@@ -223,15 +239,39 @@ export function resolvePluginOrder(plugins: readonly Plugin[]): Plugin[] {
   const result: Plugin[] = []
   const available = plugins.filter(p => (inDegree.get(p.name) ?? 0) === 0)
 
-  while (available.length > 0) {
-    // Sort by priority (higher first), then by name for stability
-    available.sort((a, b) => {
-      const pA = a.priority ?? 0
-      const pB = b.priority ?? 0
-      return pA !== pB ? pB - pA : a.name.localeCompare(b.name)
-    })
+  // Helper to maintain sorted order efficiently (descending priority, then alphabetical)
+  const insertSorted = (arr: Plugin[], plugin: Plugin): void => {
+    const priority = plugin.priority ?? 0
+    let left = 0
+    let right = arr.length
 
-    const current = available.shift()!
+    // Binary search for insertion point (O(log n))
+    // We want descending priority (high to low), then alphabetical
+    while (left < right) {
+      const mid = (left + right) >>> 1
+      const midPriority = arr[mid]!.priority ?? 0
+      // If mid has higher priority, or same priority but earlier name, insert after mid
+      if (midPriority > priority || (midPriority === priority && arr[mid]!.name < plugin.name)) {
+        left = mid + 1
+      } else {
+        right = mid
+      }
+    }
+    arr.splice(left, 0, plugin)
+  }
+
+  // Initial sort: descending priority (high to low), then alphabetical
+  available.sort((a, b) => {
+    const pA = a.priority ?? 0
+    const pB = b.priority ?? 0
+    return pA !== pB ? pB - pA : a.name.localeCompare(b.name)
+  })
+
+  while (available.length > 0) {
+    // Take first element (highest priority): O(1) with shift
+    const current = available.shift()
+    // Safety: available.length > 0 check ensures current is defined
+    if (!current) break
     result.push(current)
 
     const deps = dependents.get(current.name)
@@ -241,7 +281,9 @@ export function resolvePluginOrder(plugins: readonly Plugin[]): Plugin[] {
         inDegree.set(dep, newDegree)
         if (newDegree === 0) {
           const plugin = map.get(dep)
-          if (plugin) available.push(plugin)
+          // Insert maintaining sorted order: O(log n) search + O(n) splice
+          // Overall complexity: O(n log n) instead of O(n²)
+          if (plugin) insertSorted(available, plugin)
         }
       }
     }
@@ -302,9 +344,55 @@ function createInterceptedMethod<DB>(
 /** Marker properties Set for fast O(1) lookup */
 const MARKER_PROPS = new Set<string | symbol>(['__kysera', '__plugins', '__rawDb'])
 
+/** Maximum size for LRU caches to prevent unbounded growth */
+const MAX_CACHE_SIZE = 100
+
+/**
+ * Simple LRU cache implementation to prevent unbounded cache growth
+ */
+class LRUCache<K, V> {
+  private cache: Map<K, V>
+  private readonly maxSize: number
+
+  constructor(maxSize: number) {
+    this.cache = new Map()
+    this.maxSize = maxSize
+  }
+
+  get(key: K): V | undefined {
+    const value = this.cache.get(key)
+    if (value !== undefined) {
+      // Move to end (most recently used)
+      this.cache.delete(key)
+      this.cache.set(key, value)
+    }
+    return value
+  }
+
+  set(key: K, value: V): void {
+    // Delete if exists to move to end
+    if (this.cache.has(key)) {
+      this.cache.delete(key)
+    }
+    this.cache.set(key, value)
+
+    // Evict oldest (first) entry if size exceeded
+    if (this.cache.size > this.maxSize) {
+      const firstKey = this.cache.keys().next().value
+      if (firstKey !== undefined) {
+        this.cache.delete(firstKey)
+      }
+    }
+  }
+
+  has(key: K): boolean {
+    return this.cache.has(key)
+  }
+}
+
 /**
  * Create plugin-aware executor using Proxy
- * Optimized with method caching and Set-based lookups
+ * Optimized with LRU caching and Set-based lookups
  */
 function createProxy<DB>(
   db: Kysely<DB>,
@@ -322,8 +410,8 @@ function createProxy<DB>(
     | (() => { execute: <T>(fn: (trx: Transaction<DB>) => Promise<T>) => Promise<T> })
     | null = null
 
-  // Cached withSchema wrapper (created once per schema, reused)
-  const schemaProxyCache = new Map<string, KyseraExecutor<DB>>()
+  // LRU cache for withSchema to prevent unbounded growth (max 100 schemas)
+  const schemaProxyCache = new LRUCache<string, KyseraExecutor<DB>>(MAX_CACHE_SIZE)
 
   const handler: ProxyHandler<Kysely<DB>> = {
     // Handle 'in' operator for type guards
@@ -351,13 +439,14 @@ function createProxy<DB>(
       // Intercept withSchema to maintain plugin proxy
       if (prop === 'withSchema') {
         return (schema: string) => {
-          let cachedSchemaProxy = schemaProxyCache.get(schema)
-          if (!cachedSchemaProxy) {
-            const schemaDb = target.withSchema(schema)
-            cachedSchemaProxy = createProxy(schemaDb, interceptors, allPlugins)
-            schemaProxyCache.set(schema, cachedSchemaProxy)
+          const cachedSchemaProxy = schemaProxyCache.get(schema)
+          if (cachedSchemaProxy) {
+            return cachedSchemaProxy
           }
-          return cachedSchemaProxy
+          const schemaDb = target.withSchema(schema)
+          const newProxy = createProxy(schemaDb, interceptors, allPlugins)
+          schemaProxyCache.set(schema, newProxy)
+          return newProxy
         }
       }
 

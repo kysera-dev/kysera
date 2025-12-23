@@ -233,10 +233,16 @@ export const ErrorCodes = {
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes]
 
 /**
+ * Cache of valid error codes for performance
+ * Created once and reused to avoid creating new array on every call
+ */
+const VALID_ERROR_CODES = Object.values(ErrorCodes)
+
+/**
  * Type guard to check if a string is a valid error code
  */
 export function isValidErrorCode(code: string): code is ErrorCode {
-  return Object.values(ErrorCodes).includes(code as ErrorCode)
+  return VALID_ERROR_CODES.includes(code as ErrorCode)
 }
 
 /**

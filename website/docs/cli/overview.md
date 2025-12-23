@@ -207,4 +207,4 @@ See [Configuration](/docs/cli/configuration) for full options.
 
 - **Node.js** 20+
 - **Bun** 1.0+
-- **Database**: PostgreSQL, MySQL, SQLite
+- **Database**: PostgreSQL, MySQL, SQLite, MSSQL

@@ -6,6 +6,41 @@ import type { SelectQueryBuilder } from 'kysely'
  */
 const SQLITE_MAX_ROWS = 2147483647
 
+/**
+ * Cross-runtime environment variable access
+ * Works in Node.js, Bun, and Deno
+ *
+ * @param key - Environment variable name
+ * @returns Environment variable value or undefined
+ *
+ * @example
+ * ```typescript
+ * const nodeEnv = getEnv('NODE_ENV');
+ * const apiKey = getEnv('API_KEY');
+ * ```
+ */
+export function getEnv(key: string): string | undefined {
+  // Node.js / Bun
+  if (globalThis.process?.env) {
+    return globalThis.process.env[key]
+  }
+  // Deno
+  if (
+    typeof (globalThis as { Deno?: { env?: { get(key: string): string | undefined } } }).Deno !==
+    'undefined'
+  ) {
+    try {
+      return (
+        globalThis as { Deno?: { env?: { get(key: string): string | undefined } } }
+      ).Deno?.env?.get(key)
+    } catch {
+      return undefined
+    }
+  }
+  // Browser / other - no env vars
+  return undefined
+}
+
 // Module-level type guards for better performance
 function isCountResult(val: unknown): val is { count: string | number } {
   return typeof val === 'object' && val !== null && 'count' in val
@@ -120,24 +155,21 @@ export function applyOffset<DB, TB extends keyof DB, O>(
 ): SelectQueryBuilder<DB, TB, O> {
   let q = query
 
+  // Apply offset first (no upper bound, but must be non-negative)
+  if (options?.offset !== undefined) {
+    const boundedOffset = Math.max(0, options.offset)
+    q = q.offset(boundedOffset)
+  }
+
   // Apply limit with bounds checking
   if (options?.limit !== undefined) {
     // Ensure limit is between 1 and 100
     const boundedLimit = Math.min(100, Math.max(1, options.limit))
     q = q.limit(boundedLimit)
-  }
-
-  // Apply offset (no upper bound, but must be non-negative)
-  if (options?.offset !== undefined) {
-    const boundedOffset = Math.max(0, options.offset)
-
+  } else if (options?.offset !== undefined) {
     // SQLite requires LIMIT when OFFSET is used
-    // If no limit was specified, use SQLite max rows constant
-    if (options?.limit === undefined) {
-      q = q.limit(SQLITE_MAX_ROWS)
-    }
-
-    q = q.offset(boundedOffset)
+    // If no limit was specified but offset was, use SQLite max rows constant
+    q = q.limit(SQLITE_MAX_ROWS)
   }
 
   return q

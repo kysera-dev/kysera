@@ -2,7 +2,7 @@
  * Connection URL utilities
  */
 
-import type { DatabaseDialect, ConnectionConfig } from './types.js'
+import type { Dialect, ConnectionConfig } from './types.js'
 import { getAdapter } from './factory.js'
 
 /**
@@ -33,9 +33,9 @@ export function parseConnectionUrl(url: string): ConnectionConfig {
  * const url = buildConnectionUrl('postgres', { host: 'localhost', database: 'mydb' });
  * // 'postgresql://localhost:5432/mydb'
  */
-export function buildConnectionUrl(dialect: DatabaseDialect, config: ConnectionConfig): string {
+export function buildConnectionUrl(dialect: Dialect, config: ConnectionConfig): string {
   // Map dialect to protocol
-  const protocolMap: Record<DatabaseDialect, string> = {
+  const protocolMap: Record<Dialect, string> = {
     postgres: 'postgresql',
     mysql: 'mysql',
     sqlite: 'sqlite',
@@ -71,6 +71,6 @@ export function buildConnectionUrl(dialect: DatabaseDialect, config: ConnectionC
  * getDefaultPort('mysql')    // 3306
  * getDefaultPort('sqlite')   // null
  */
-export function getDefaultPort(dialect: DatabaseDialect): number | null {
+export function getDefaultPort(dialect: Dialect): number | null {
   return getAdapter(dialect).getDefaultPort()
 }

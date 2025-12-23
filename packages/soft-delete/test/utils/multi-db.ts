@@ -1,9 +1,12 @@
 import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, sql, type Generated } from 'kysely'
+import type { Dialect } from '@kysera/core'
 import { Pool } from 'pg'
 import { createPool } from 'mysql2'
 import betterSqlite3 from 'better-sqlite3'
 
-export type DatabaseType = 'postgres' | 'mysql' | 'sqlite'
+// For test utilities, we support all dialects but only implement postgres/mysql/sqlite
+// MSSQL tests are handled separately due to different setup requirements
+export type DatabaseType = Exclude<Dialect, 'mssql'>
 
 export interface MultiDbTestDatabase {
   users: {

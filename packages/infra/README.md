@@ -259,10 +259,11 @@ const result = await withRetry(() => db.insertInto('orders').values(orderData).e
 
 The `isTransientError` function recognizes these error codes:
 
-- **Network:** `ECONNREFUSED`, `ETIMEDOUT`, `ECONNRESET`, `EPIPE`
-- **PostgreSQL:** `57P03`, `08006`, `08001`, `08003`, `08004`, `40001`, `40P01`
+- **Network:** `ECONNREFUSED`, `ETIMEDOUT`, `ECONNRESET`, `EPIPE`, `PROTOCOL_CONNECTION_LOST`
+- **PostgreSQL:** `57P01`, `57P02`, `57P03`, `08000`, `08001`, `08003`, `08004`, `08006`, `40001`, `40P01`
 - **MySQL:** `ER_LOCK_DEADLOCK`, `ER_LOCK_WAIT_TIMEOUT`, `ER_CON_COUNT_ERROR`
 - **SQLite:** `SQLITE_BUSY`, `SQLITE_LOCKED`
+- **MSSQL:** `-1` (connection error), `-2` (timeout), `233` (connection closed), `1205` (deadlock), `1222` (lock timeout), `10053`, `10054`
 
 ### Reusable Retry Wrapper
 
@@ -310,19 +311,19 @@ try {
   }
 }
 
-// Check circuit state
-console.log(breaker.getState())
+// Check circuit state (async)
+console.log(await breaker.getState())
 // {
 //   state: 'open',
 //   failures: 5,
 //   lastFailureTime: 1678901234567
 // }
 
-// Manual control
-breaker.reset() // Reset to closed
-breaker.forceOpen() // Force open for maintenance
-console.log(breaker.isOpen()) // true
-console.log(breaker.isClosed()) // false
+// Manual control (async)
+await breaker.reset() // Reset to closed
+await breaker.forceOpen() // Force open for maintenance
+console.log(await breaker.isOpen()) // true
+console.log(await breaker.isClosed()) // false
 ```
 
 **Circuit States:**
@@ -595,11 +596,11 @@ interface MetricsResult {
 - `CircuitBreaker` - Circuit breaker pattern
   - `constructor(thresholdOrOptions: number | CircuitBreakerOptions, resetTimeMs?: number)`
   - `execute<T>(fn: () => Promise<T>): Promise<T>`
-  - `reset(): void`
-  - `getState(): CircuitBreakerState`
-  - `isOpen(): boolean`
-  - `isClosed(): boolean`
-  - `forceOpen(): void`
+  - `reset(): Promise<void>` - Thread-safe reset with mutex protection
+  - `getState(): Promise<CircuitBreakerState>` - Thread-safe state read
+  - `isOpen(): Promise<boolean>` - Thread-safe check if circuit is open
+  - `isClosed(): Promise<boolean>` - Thread-safe check if circuit is closed
+  - `forceOpen(): Promise<void>` - Thread-safe force open with mutex protection
 
 #### Types
 
@@ -607,7 +608,9 @@ interface MetricsResult {
 interface RetryOptions {
   maxAttempts?: number // Default: 3
   delayMs?: number // Default: 1000
+  maxDelayMs?: number // Default: 30000 (caps exponential backoff)
   backoff?: boolean // Default: true
+  jitterFactor?: number // Default: 0.25 (prevents thundering herd)
   shouldRetry?: (error: unknown) => boolean
   onRetry?: (attempt: number, error: unknown) => void
 }

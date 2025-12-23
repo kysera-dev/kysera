@@ -125,13 +125,16 @@ export function chain<DB, TArgs extends readonly unknown[]>(
 
 /**
  * Result type for parallel query execution.
+ *
+ * Uses mapped types to infer the result type of each query function,
+ * maintaining full type safety across all database schemas.
  */
 export type ParallelResult<
-  T extends Record<string, QueryFunction<Record<string, unknown>, readonly unknown[], unknown>>
+  DB,
+  TArgs extends readonly unknown[],
+  T extends Record<string, QueryFunction<DB, TArgs, unknown>>
 > = {
-  [K in keyof T]: T[K] extends QueryFunction<Record<string, unknown>, readonly unknown[], infer R>
-    ? R
-    : never
+  [K in keyof T]: T[K] extends QueryFunction<DB, TArgs, infer R> ? R : never
 }
 
 /**

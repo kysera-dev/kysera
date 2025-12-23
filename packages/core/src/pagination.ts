@@ -104,7 +104,23 @@ function encodeCursor<T>(orderBy: Array<{ column: keyof T & string }>, lastRow: 
  * ```
  */
 function decodeCursor(cursor: string): Record<string, unknown> {
-  // Check for single-column format (has colon separator)
+  // Try multi-column format first (more reliable detection)
+  // Multi-column format: base64(JSON.stringify({...}))
+  // Single-column format: base64(column):base64(value)
+
+  // First, try to decode as multi-column JSON object
+  try {
+    const decoded: unknown = JSON.parse(decodeBase64(cursor))
+    // Type guard: ensure decoded is an object
+    if (typeof decoded === 'object' && decoded !== null && !Array.isArray(decoded)) {
+      return decoded as Record<string, unknown>
+    }
+    // If not a valid object, fall through to single-column format
+  } catch {
+    // Not a valid JSON, try single-column format
+  }
+
+  // Try single-column format (has colon separator at base64 level, not decoded level)
   if (cursor.includes(':') && cursor.split(':').length === 2) {
     try {
       const [columnB64, valueB64] = cursor.split(':') as [string, string]
@@ -112,16 +128,12 @@ function decodeCursor(cursor: string): Record<string, unknown> {
       const value: unknown = JSON.parse(decodeBase64(valueB64))
       return { [column]: value }
     } catch (singleColumnError) {
-      // Single-column decoding failed, try multi-column format
-      // This is expected when format is ambiguous
-      if (!(singleColumnError instanceof SyntaxError)) {
-        // Re-throw unexpected errors (corruption, etc.)
-        throw new BadRequestError(`Invalid cursor format: ${String(singleColumnError)}`)
-      }
+      // Single-column decoding failed
+      throw new BadRequestError(`Invalid cursor format: ${String(singleColumnError)}`)
     }
   }
 
-  // Multi-column format (or single-column fallback)
+  // If we got here, multi-column decode succeeded but wasn't an object
   const decoded: unknown = JSON.parse(decodeBase64(cursor))
 
   // Type guard: ensure decoded is an object
@@ -228,8 +240,9 @@ export async function paginate<DB, TB extends keyof DB, O>(
   if (dialect === 'mssql') {
     // MSSQL uses OFFSET/FETCH syntax which requires ORDER BY
     // Use modifyEnd to add MSSQL-compatible pagination
+    // Use sql.val() instead of sql.literal() for MSSQL compatibility
     data = await query
-      .modifyEnd(sql`offset ${sql.literal(offset)} rows fetch next ${sql.literal(limit)} rows only`)
+      .modifyEnd(sql`offset ${sql.val(offset)} rows fetch next ${sql.val(limit)} rows only`)
       .execute()
   } else {
     // Standard LIMIT/OFFSET for PostgreSQL, MySQL, SQLite

@@ -8,6 +8,7 @@ import type { Kysely, Transaction } from 'kysely'
 import { sql } from 'kysely'
 import type { KyseraExecutor, KyseraTransaction } from '@kysera/executor'
 import { isKyseraExecutor, getPlugins, wrapTransaction } from '@kysera/executor'
+import { silentLogger, type KyseraLogger } from '@kysera/core'
 import type { DbContext, TransactionOptions } from './types.js'
 import {
   DB_CONTEXT_SYMBOL,
@@ -15,6 +16,30 @@ import {
   SAVEPOINT_COUNTER_SYMBOL,
   isDbContext
 } from './types.js'
+
+/**
+ * Detect if a database instance is currently in a transaction.
+ *
+ * Uses a unified detection mechanism that checks:
+ * 1. Internal IN_TRANSACTION_SYMBOL marker (set by withTransaction)
+ * 2. Kysely's isTransaction property (for raw Transaction instances)
+ *
+ * The internal marker takes precedence to ensure reliable detection
+ * across nested transactions and savepoints.
+ *
+ * @internal
+ */
+function detectTransaction<DB>(
+  db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>
+): boolean {
+  // Check internal marker first (most reliable, set by withTransaction)
+  if (hasInTransactionMarker(db)) {
+    return true
+  }
+
+  // Fallback to Kysely's isTransaction property (for raw Transaction instances)
+  return 'isTransaction' in db && db.isTransaction
+}
 
 /**
  * Create a database context from any database instance.
@@ -40,9 +65,8 @@ export function createContext<DB>(
   db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>,
   isTransaction?: boolean
 ): DbContext<DB> {
-  // If explicitly provided, use that value; otherwise detect from db
-  const inTransaction =
-    isTransaction ?? (('isTransaction' in db && db.isTransaction) || hasInTransactionMarker(db))
+  // If explicitly provided, use that value; otherwise use unified detection
+  const inTransaction = isTransaction ?? detectTransaction(db)
 
   return {
     [DB_CONTEXT_SYMBOL]: true,
@@ -85,11 +109,22 @@ function incrementSavepointCounter<DB>(
   // CRITICAL: Explicit validation to prevent SQL injection
   // Savepoint ID must be a positive integer to ensure safe identifier construction
   if (!Number.isInteger(nextId) || nextId < 1 || nextId > 1_000_000) {
-    throw new Error(`Invalid savepoint counter: expected positive integer, got ${String(nextId)}`)
+    throw new Error('Invalid savepoint counter: expected positive integer, got ' + String(nextId))
   }
 
   obj[SAVEPOINT_COUNTER_SYMBOL] = nextId
   return nextId
+}
+
+/**
+ * Extended transaction options with logger support.
+ */
+export interface TransactionOptionsWithLogger extends TransactionOptions {
+  /**
+   * Logger for transaction operations.
+   * Defaults to silentLogger (no-op).
+   */
+  logger?: KyseraLogger
 }
 
 /**
@@ -105,7 +140,7 @@ function incrementSavepointCounter<DB>(
  *
  * @param db - Database instance (Kysely or KyseraExecutor) or DbContext
  * @param fn - Function to execute within transaction
- * @param options - Transaction options (isolation level, only applies to top-level transaction)
+ * @param options - Transaction options (isolation level, logger)
  * @returns Result of the function
  *
  * @example Basic usage
@@ -160,12 +195,23 @@ function incrementSavepointCounter<DB>(
  *   return await criticalOperation(ctx);
  * }, { isolationLevel: "serializable" });
  * ```
+ *
+ * @example With custom logger
+ * ```typescript
+ * import { consoleLogger } from "@kysera/core";
+ *
+ * await withTransaction(db, async (ctx) => {
+ *   return await operation(ctx);
+ * }, { logger: consoleLogger });
+ * ```
  */
 export async function withTransaction<DB, T>(
   db: Kysely<DB> | KyseraExecutor<DB> | DbContext<DB>,
   fn: (ctx: DbContext<DB>) => Promise<T>,
-  options: TransactionOptions = {}
+  options: TransactionOptionsWithLogger = {}
 ): Promise<T> {
+  const { logger = silentLogger } = options
+
   // Handle DbContext input - extract the db instance
   const actualDb: Kysely<DB> | KyseraExecutor<DB> = isDbContext<DB>(db)
     ? (db.db as Kysely<DB> | KyseraExecutor<DB>)
@@ -177,7 +223,7 @@ export async function withTransaction<DB, T>(
     const savepointId = incrementSavepointCounter(actualDb)
     // CRITICAL: Strict validation ensures savepointId is a positive integer (1-1000000)
     // This prevents SQL injection through savepoint name construction
-    const savepointName = `kysera_sp_${String(savepointId)}`
+    const savepointName = 'kysera_sp_' + String(savepointId)
 
     try {
       // Create savepoint - use Kysely sql template literal
@@ -204,9 +250,9 @@ export async function withTransaction<DB, T>(
           actualDb as Transaction<DB>
         )
       } catch (rollbackError) {
-        // HIGH: Log rollback failure to prevent silent errors
-        // Original error is more important, so we don't throw here
-        console.error(`[Kysera DAL] Savepoint rollback failed for ${savepointName}:`, rollbackError)
+        // Log rollback failure to prevent silent errors
+        // Original error is more important, so we do not throw here
+        logger.error('Savepoint rollback failed for ' + savepointName + ':', rollbackError)
       }
       throw error
     }

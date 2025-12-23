@@ -6,6 +6,7 @@
 
 import type { Kysely, Transaction } from 'kysely'
 import { sql } from 'kysely'
+import { silentLogger, type KyseraLogger } from '@kysera/core'
 
 /**
  * Internal error class used to trigger transaction rollback.
@@ -71,6 +72,7 @@ export async function testInTransaction<DB, T>(
  *
  * @param db - Kysely database instance
  * @param fn - Test function that receives a transaction
+ * @param logger - Optional logger for warnings (defaults to silentLogger)
  *
  * @example
  * ```typescript
@@ -90,7 +92,8 @@ export async function testInTransaction<DB, T>(
  */
 export async function testWithSavepoints<DB, T>(
   db: Kysely<DB>,
-  fn: (trx: Transaction<DB>) => Promise<T>
+  fn: (trx: Transaction<DB>) => Promise<T>,
+  logger: KyseraLogger = silentLogger
 ): Promise<void> {
   try {
     await db.transaction().execute(async trx => {
@@ -110,7 +113,7 @@ export async function testWithSavepoints<DB, T>(
             errorMessage.toLowerCase().includes('transaction') ||
             errorMessage.toLowerCase().includes('aborted')
           if (!isExpectedError) {
-            console.warn('Unexpected savepoint rollback error:', error)
+            logger.warn('Unexpected savepoint rollback error:', error)
           }
         }
       }

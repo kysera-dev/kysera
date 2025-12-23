@@ -44,25 +44,31 @@ const users = await userRepo.findAll() // Automatically filters deleted records
 | Package | Description |
 |---------|-------------|
 | `@kysera/core` | Errors, pagination, types, logger |
-| `@kysera/executor` | Unified Execution Layer - plugin foundation |
-| `@kysera/repository` | Repository pattern with validation |
-| `@kysera/dal` | Functional Data Access Layer |
+| `@kysera/executor` | Unified Execution Layer - plugin-aware Kysely wrapper |
+| `@kysera/repository` | Repository pattern with smart validation |
+| `@kysera/dal` | Functional Data Access Layer with plugin integration |
+| `@kysera/dialects` | Dialect-specific utilities for PostgreSQL, MySQL, SQLite |
 
 ### Plugins
 | Package | Description |
 |---------|-------------|
 | `@kysera/soft-delete` | Soft delete with auto-filtering |
 | `@kysera/audit` | Audit logging |
-| `@kysera/timestamps` | Auto created_at/updated_at |
-| `@kysera/rls` | Row-Level Security |
+| `@kysera/timestamps` | Automatic created_at/updated_at management |
+| `@kysera/rls` | Row-Level Security with native RLS support |
 
 ### Infrastructure
 | Package | Description |
 |---------|-------------|
-| `@kysera/infra` | Health checks, retry, circuit breaker |
-| `@kysera/debug` | Query logging and profiling |
-| `@kysera/testing` | Test utilities and factories |
-| `@kysera/migrations` | Migration system |
+| `@kysera/infra` | Health checks, retry, circuit breaker, graceful shutdown |
+| `@kysera/debug` | Query logging, profiling, SQL formatting |
+| `@kysera/testing` | Transaction isolation, factories, seeding |
+| `@kysera/migrations` | Migration system with dry-run support |
+
+### CLI
+| Package | Description |
+|---------|-------------|
+| `@kysera/cli` | Command-line tool for migrations, codegen, and more |
 
 ## Core Features
 
@@ -149,10 +155,11 @@ pnpm dev         # Development mode
 ```
 kysera/
 ├── packages/
-│   ├── core/          # Core utilities
+│   ├── core/          # Errors, pagination, types, logger
 │   ├── executor/      # Unified Execution Layer
 │   ├── repository/    # Repository pattern
 │   ├── dal/           # Functional DAL
+│   ├── dialects/      # Dialect-specific utilities
 │   ├── soft-delete/   # Soft delete plugin
 │   ├── audit/         # Audit plugin
 │   ├── timestamps/    # Timestamps plugin
@@ -161,8 +168,12 @@ kysera/
 │   ├── debug/         # Query debugging
 │   ├── testing/       # Test utilities
 │   └── migrations/    # Migration system
-├── examples/          # Example applications
-└── website/           # Documentation
+├── apps/
+│   └── cli/           # @kysera/cli
+├── examples/          # blog-app, e-commerce, multi-tenant-saas
+├── website/           # Docusaurus documentation site
+├── docs/              # Additional documentation
+└── scripts/           # Release and automation scripts
 ```
 
 ## Philosophy
@@ -175,11 +186,10 @@ kysera/
 
 ## Documentation
 
-See [website/docs](./website/docs) for full documentation including:
-- [Getting Started](./website/docs/getting-started.md)
-- [API Reference](./website/docs/api/)
-- [Migration Guide](./website/docs/guides/migration-v07.md)
-- [Troubleshooting](./website/docs/guides/troubleshooting.md)
+Full documentation available at **[kysera.dev](https://kysera.dev)**:
+- [Getting Started](https://kysera.dev/docs/getting-started)
+- [API Reference](https://kysera.dev/docs/api)
+- [Guides](https://kysera.dev/docs/guides)
 
 ## Contributing
 

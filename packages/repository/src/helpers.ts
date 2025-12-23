@@ -39,7 +39,7 @@ export type RepositoryFactoryMap<DB, Repos> = {
  * @param factories - Map of table names to repository factory functions
  * @returns A function that creates all repositories from an executor
  */
-export function createRepositoriesFactory<DB, Repos extends Record<string, any>>(
+export function createRepositoriesFactory<DB, Repos extends Record<string, unknown>>(
   factories: RepositoryFactoryMap<DB, Repos>
 ): (executor: Executor<DB>) => Repos {
   return (executor: Executor<DB>): Repos => {
@@ -56,4 +56,4 @@ export function createRepositoriesFactory<DB, Repos extends Record<string, any>>
 /**
  * Type helper to extract repository types from a factory map
  */
-export type RepositoriesFromFactory<T extends (...args: any[]) => any> = ReturnType<T>
+export type RepositoriesFromFactory<T extends (...args: never[]) => unknown> = ReturnType<T>

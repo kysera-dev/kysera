@@ -171,6 +171,68 @@ function createTimestampQuery(
 }
 
 /**
+ * Get the dialect name from executor
+ * Used to determine if RETURNING clause is supported
+ */
+function getDialectName<DB>(executor: Kysely<DB>): string {
+  try {
+    // Try to detect dialect from executor's internal adapter
+    const executorInternal = executor as unknown as { getExecutor?: () => { adapter?: { constructor?: { name?: string } } } }
+    const dialect = executorInternal.getExecutor?.()?.adapter?.constructor?.name
+    
+    if (dialect) {
+      const dialectLower = dialect.toLowerCase()
+      if (dialectLower.includes('postgres')) return 'postgres'
+      if (dialectLower.includes('mysql')) return 'mysql'
+      if (dialectLower.includes('sqlite')) return 'sqlite'
+      if (dialectLower.includes('mssql')) return 'mssql'
+    }
+    
+    // Fallback: check for known properties via type assertion
+    const execAny = executor as unknown as Record<string, unknown>
+    if (execAny['dialect']) {
+      const dialectObj = execAny['dialect'] as Record<string, unknown>
+      const dialectCtor = dialectObj['constructor'] as Record<string, unknown> | undefined
+      const dialectName = String(dialectCtor?.['name'] ?? '').toLowerCase()
+      if (dialectName.includes('postgres')) return 'postgres'
+      if (dialectName.includes('mysql')) return 'mysql'
+      if (dialectName.includes('sqlite')) return 'sqlite'
+      if (dialectName.includes('mssql')) return 'mssql'
+    }
+    
+    return 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+/**
+ * Check if dialect supports RETURNING clause
+ *
+ * Database compatibility:
+ * - PostgreSQL: Full RETURNING support ✅
+ * - SQLite: RETURNING supported in 3.35+ ✅ (most modern versions)
+ * - MySQL: No RETURNING support ❌
+ * - MSSQL: Uses OUTPUT clause ❌ (different syntax, not compatible with returningAll())
+ *
+ * **Implementation Notes:**
+ * - We only check for MySQL since it's the only major dialect without RETURNING
+ * - SQLite 3.35+ is widely deployed (released 2021-03-12)
+ * - MSSQL support is minimal in Kysera ecosystem, treated as unsupported here
+ * - If MSSQL full support is needed, this function should be extended to detect MSSQL
+ *
+ * @param executor - Kysely database executor
+ * @returns true if RETURNING clause is supported
+ */
+function supportsReturning<DB>(executor: Kysely<DB>): boolean {
+  const dialectName = getDialectName(executor)
+  // Return false for MySQL (doesn't support RETURNING)
+  // Return false for MSSQL (uses OUTPUT, not RETURNING)
+  // Return true for PostgreSQL and SQLite
+  return dialectName !== 'mysql' && dialectName !== 'mssql'
+}
+
+/**
  * Timestamps Plugin
  *
  * Automatically manages created_at and updated_at timestamps for database records.
@@ -184,6 +246,7 @@ function createTimestampQuery(
  * - Configurable timestamp format (ISO, Unix, Date)
  * - Query helpers: findCreatedAfter, findUpdatedAfter, etc.
  * - Bulk operations: createMany, updateMany, touchMany
+ * - **Cross-database support**: Works with PostgreSQL, MySQL, SQLite, and MSSQL
  *
  * ## Transaction Behavior
  *
@@ -249,6 +312,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
   return {
     name: '@kysera/timestamps',
     version: VERSION,
+    priority: 50, // Run in the middle, after filtering but before audit
 
     extendRepository<T extends object>(repo: T): T {
       // Check if it's actually a repository (has required properties)
@@ -422,7 +486,8 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
 
         /**
          * Create multiple records with timestamps
-         * Uses efficient bulk INSERT with automatic timestamp injection
+         * Uses efficient bulk INSERT with automatic timestamp injection.
+         * Supports PostgreSQL, MySQL, SQLite, and MSSQL with appropriate fallbacks.
          */
         async createMany(inputs: unknown[]): Promise<unknown[]> {
           // Handle empty arrays gracefully
@@ -449,14 +514,39 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             `Creating ${inputs.length} records in ${baseRepo.tableName} with timestamp ${timestamp}`
           )
 
-          // Use Kysely's insertInto for efficient bulk insert
-          const result = await executor
-            .insertInto(baseRepo.tableName as never)
-            .values(dataWithTimestamps as never)
-            .returningAll()
-            .execute()
+          // Check if dialect supports RETURNING
+          if (supportsReturning(executor)) {
+            // Use RETURNING for PostgreSQL/SQLite - most efficient
+            const result = await executor
+              .insertInto(baseRepo.tableName as never)
+              .values(dataWithTimestamps as never)
+              .returningAll()
+              .execute()
 
-          return result
+            return result
+          } else {
+            // Fallback for MySQL/MSSQL - insert then select
+            // This approach works for auto-increment primary keys
+            await executor
+              .insertInto(baseRepo.tableName as never)
+              .values(dataWithTimestamps as never)
+              .execute()
+
+            // Fetch inserted records by matching on unique columns
+            // For simplicity, we fetch the most recently created records
+            // This works well when created_at is set to the same timestamp
+            const insertedCount = dataWithTimestamps.length
+            const result = await executor
+              .selectFrom(baseRepo.tableName as never)
+              .selectAll()
+              .where(createdAtColumn as never, '=', timestamp as never)
+              .orderBy(primaryKeyColumn as never, 'desc')
+              .limit(insertedCount)
+              .execute()
+
+            // Reverse to maintain insertion order
+            return result.reverse()
+          }
         },
 
         /**

@@ -34,6 +34,13 @@ export interface RetryOptions {
   backoff?: boolean
 
   /**
+   * Jitter factor for randomizing delays (0 to 1).
+   * Helps prevent thundering herd problem.
+   * @default 0.25
+   */
+  jitterFactor?: number
+
+  /**
    * Custom function to determine if error should be retried.
    * @default isTransientError
    */
@@ -53,6 +60,7 @@ export interface RetryOptions {
  * - PostgreSQL transient errors (connection failures, deadlocks)
  * - MySQL transient errors (deadlocks, lock timeouts)
  * - SQLite transient errors (busy, locked)
+ * - MSSQL transient errors (timeout, deadlock, connection issues)
  */
 const TRANSIENT_ERROR_CODES = new Set([
   // Network errors
@@ -67,24 +75,37 @@ const TRANSIENT_ERROR_CODES = new Set([
   '08001', // Unable to connect
   '08003', // Connection does not exist
   '08004', // Connection rejected
+  '08000', // Connection exception
   '40001', // Serialization failure
   '40P01', // Deadlock detected
+  '57P01', // Admin shutdown
+  '57P02', // Crash shutdown
 
   // MySQL
   'ER_LOCK_DEADLOCK',
   'ER_LOCK_WAIT_TIMEOUT',
   'ER_CON_COUNT_ERROR',
+  'PROTOCOL_CONNECTION_LOST',
 
   // SQLite
   'SQLITE_BUSY',
-  'SQLITE_LOCKED'
+  'SQLITE_LOCKED',
+
+  // MSSQL (SQL Server)
+  '-2', // Timeout
+  '1205', // Deadlock
+  '1222', // Lock timeout
+  '-1', // Connection error
+  '233', // Connection closed
+  '10054', // Connection reset
+  '10053' // Connection aborted
 ])
 
 /**
  * Check if error is transient (can be retried).
  *
  * Examines the error code against known transient error codes
- * from PostgreSQL, MySQL, SQLite, and network errors.
+ * from PostgreSQL, MySQL, SQLite, MSSQL, and network errors.
  *
  * @param error - Error to check
  * @returns True if error is transient and can be retried
@@ -106,10 +127,57 @@ export function isTransientError(error: unknown): boolean {
   if (error === null || error === undefined || typeof error !== 'object') {
     return false
   }
-  const code = (error as { code?: string }).code
-  if (!code) return false
 
-  return TRANSIENT_ERROR_CODES.has(code)
+  // Check 'code' property (common in Node.js and most database drivers)
+  const code = (error as { code?: string | number }).code
+  if (code !== undefined) {
+    const codeStr = String(code)
+    if (TRANSIENT_ERROR_CODES.has(codeStr)) {
+      return true
+    }
+  }
+
+  // Check 'number' property (MSSQL uses this for error numbers)
+  const number = (error as { number?: number }).number
+  if (number !== undefined) {
+    const numberStr = String(number)
+    if (TRANSIENT_ERROR_CODES.has(numberStr)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+/**
+ * Calculate delay with exponential backoff and jitter.
+ *
+ * Jitter helps prevent the thundering herd problem where multiple
+ * clients retry at exactly the same time after a failure.
+ *
+ * @param attempt - Current attempt number (0-indexed)
+ * @param baseDelay - Base delay in milliseconds
+ * @param maxDelay - Maximum delay cap in milliseconds
+ * @param jitterFactor - Jitter factor (0 to 1), default 0.25
+ * @returns Calculated delay in milliseconds
+ */
+function calculateDelay(
+  attempt: number,
+  baseDelay: number,
+  maxDelay: number,
+  jitterFactor = 0.25
+): number {
+  // Exponential backoff: baseDelay * 2^attempt
+  const exponentialDelay = baseDelay * Math.pow(2, attempt)
+
+  // Cap at maxDelay
+  const cappedDelay = Math.min(exponentialDelay, maxDelay)
+
+  // Add random jitter: delay * (1 - jitter + random * 2 * jitter)
+  // This gives us delay * (0.75 to 1.25) for jitterFactor = 0.25
+  const jitter = cappedDelay * jitterFactor * (2 * Math.random() - 1)
+
+  return Math.max(0, cappedDelay + jitter)
 }
 
 /**
@@ -143,8 +211,9 @@ export function isTransientError(error: unknown): boolean {
  *     delayMs: 500,
  *     maxDelayMs: 10000,
  *     backoff: true,
+ *     jitterFactor: 0.3,
  *     onRetry: (attempt, error) => {
- *       console.log(`Retry ${attempt}, error:`, error);
+ *       console.log('Retry attempt:', attempt, 'error:', error);
  *     },
  *   }
  * );
@@ -156,6 +225,7 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
     delayMs = 1000,
     maxDelayMs = 30000,
     backoff = true,
+    jitterFactor = 0.25,
     shouldRetry = isTransientError,
     onRetry
   } = options
@@ -163,7 +233,7 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
   // Validate maxDelayMs is not less than delayMs
   if (maxDelayMs < delayMs) {
     throw new Error(
-      `maxDelayMs (${String(maxDelayMs)}) must be greater than or equal to delayMs (${String(delayMs)})`
+      'maxDelayMs (' + String(maxDelayMs) + ') must be greater than or equal to delayMs (' + String(delayMs) + ')'
     )
   }
 
@@ -175,16 +245,18 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
     } catch (error) {
       lastError = error
 
-      // Don't retry if this is the last attempt or error is not retryable
+      // Do not retry if this is the last attempt or error is not retryable
       if (attempt === maxAttempts || !shouldRetry(error)) {
         throw error
       }
 
       onRetry?.(attempt, error)
 
-      // Calculate delay with optional exponential backoff, capped at maxDelayMs
-      const rawDelay = backoff ? delayMs * Math.pow(2, attempt - 1) : delayMs
-      const delay = Math.min(rawDelay, maxDelayMs)
+      // Calculate delay with optional exponential backoff and jitter
+      const delay = backoff
+        ? calculateDelay(attempt - 1, delayMs, maxDelayMs, jitterFactor)
+        : delayMs
+
       await new Promise(resolve => setTimeout(resolve, delay))
     }
   }

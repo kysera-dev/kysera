@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- DatabaseDialect kept for backwards compatibility */
 /**
  * Database cleanup utilities.
  *
@@ -6,6 +7,7 @@
 
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
+import { silentLogger, type Dialect, type KyseraLogger } from '@kysera/core'
 
 /**
  * Database cleanup strategies.
@@ -14,8 +16,9 @@ export type CleanupStrategy = 'truncate' | 'transaction' | 'delete'
 
 /**
  * Supported database dialects.
+ * @deprecated Use `Dialect` from '@kysera/core' instead.
  */
-export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite'
+export type DatabaseDialect = Dialect
 
 /**
  * Options for database cleanup operations.
@@ -30,6 +33,11 @@ export interface CleanupOptions {
    * List of tables to clean (in deletion order for 'delete' strategy).
    */
   tables?: string[]
+  /**
+   * Logger for warnings and errors.
+   * Defaults to silentLogger (no output).
+   */
+  logger?: KyseraLogger
 }
 
 /**
@@ -113,6 +121,7 @@ export async function cleanDatabase<DB>(
     ? { tables: tablesOrOptions }
     : (tablesOrOptions ?? {})
 
+  const logger = options.logger ?? silentLogger
   const tables = options.tables
 
   if (!tables || tables.length === 0) {
@@ -124,7 +133,7 @@ export async function cleanDatabase<DB>(
   if (strategy === 'delete') {
     await cleanUsingDelete(db, tables)
   } else {
-    await cleanUsingTruncate(db, tables, options.dialect)
+    await cleanUsingTruncate(db, tables, options.dialect, logger)
   }
 }
 
@@ -185,20 +194,21 @@ interface DatabaseExecutorWithAdapter {
  *
  * @internal
  */
-function detectDialect<DB>(db: Kysely<DB>, providedDialect?: DatabaseDialect): DatabaseDialect {
+function detectDialect<DB>(
+  db: Kysely<DB>,
+  providedDialect?: DatabaseDialect,
+  logger: KyseraLogger = silentLogger
+): DatabaseDialect {
   // Use provided dialect if available (recommended approach)
   if (providedDialect) {
     return providedDialect
   }
 
   // Warn about deprecated internal API usage
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- typeof check is necessary for cross-runtime compatibility
-  if (typeof console !== 'undefined' && console.warn) {
-    console.warn(
-      '[@kysera/testing] Dialect detection via Kysely internals is deprecated and may fail in future versions. ' +
-        'Please provide dialect option explicitly in CleanupOptions: { dialect: "postgres", tables: [...] }'
-    )
-  }
+  logger.warn(
+    'Dialect detection via Kysely internals is deprecated and may fail in future versions. ' +
+      'Please provide dialect option explicitly in CleanupOptions: { dialect: "postgres", tables: [...] }'
+  )
 
   try {
     // Attempt multiple detection strategies for robustness
@@ -208,23 +218,17 @@ function detectDialect<DB>(db: Kysely<DB>, providedDialect?: DatabaseDialect): D
     }
 
     // If all detection strategies fail, fall back to SQLite as safe default
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- typeof check is necessary for cross-runtime compatibility
-    if (typeof console !== 'undefined' && console.warn) {
-      console.warn(
-        '[@kysera/testing] Could not detect database dialect, falling back to SQLite. ' +
-          'For better reliability, provide explicit dialect in CleanupOptions: { dialect: "postgres"|"mysql"|"sqlite", tables: [...] }'
-      )
-    }
+    logger.warn(
+      'Could not detect database dialect, falling back to SQLite. ' +
+        'For better reliability, provide explicit dialect in CleanupOptions: { dialect: "postgres"|"mysql"|"sqlite"|"mssql", tables: [...] }'
+    )
     return 'sqlite'
   } catch (error) {
     // For unexpected errors, fall back to SQLite with warning
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- typeof check is necessary for cross-runtime compatibility
-    if (typeof console !== 'undefined' && console.warn) {
-      console.warn(
-        '[@kysera/testing] Error during dialect detection, falling back to SQLite: ' +
-          (error instanceof Error ? error.message : String(error))
-      )
-    }
+    logger.warn(
+      'Error during dialect detection, falling back to SQLite: ' +
+        (error instanceof Error ? error.message : String(error))
+    )
     return 'sqlite'
   }
 }
@@ -369,10 +373,11 @@ async function truncateTableCascade<DB>(db: Kysely<DB>, tableName: string): Prom
 async function cleanUsingTruncate<DB>(
   db: Kysely<DB>,
   tables: string[],
-  providedDialect?: DatabaseDialect
+  providedDialect?: DatabaseDialect,
+  logger: KyseraLogger = silentLogger
 ): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- Internal use for backward compatibility
-  const dialect = detectDialect(db, providedDialect)
+  const dialect = detectDialect(db, providedDialect, logger)
 
   if (dialect === 'postgres') {
     await cleanPostgres(db, tables)

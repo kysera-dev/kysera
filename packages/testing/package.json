@@ -24,6 +24,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
+  "dependencies": {
+    "@kysera/core": "workspace:*"
+  },
   "peerDependencies": {
     "kysely": ">=0.28.8"
   },

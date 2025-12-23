@@ -118,7 +118,8 @@ const url = buildConnectionUrl('postgres', {
 ```typescript
 // Types
 export type {
-  DatabaseDialect, // 'postgres' | 'mysql' | 'sqlite'
+  Dialect, // 'postgres' | 'mysql' | 'sqlite' | 'mssql' (from @kysera/core)
+  DatabaseDialect, // @deprecated - use Dialect instead
   ConnectionConfig, // Connection configuration interface
   DialectAdapter, // Adapter interface
   DatabaseErrorLike // Error object shape
@@ -145,6 +146,11 @@ export {
   SQLiteAdapter, // SQLite adapter class
   sqliteAdapter // SQLite singleton
 } from './adapters/sqlite'
+
+export {
+  MSSQLAdapter, // MSSQL adapter class
+  mssqlAdapter // MSSQL singleton
+} from './adapters/mssql'
 
 // Connection utilities
 export {
@@ -225,7 +231,7 @@ const adapter = getAdapter('postgres')
 console.log(adapter.getDefaultPort()) // 5432
 ```
 
-**Supported dialects:** `postgres`, `mysql`, `sqlite`
+**Supported dialects:** `postgres`, `mysql`, `sqlite`, `mssql`
 
 #### `createDialectAdapter(dialect)`
 
@@ -263,7 +269,7 @@ Each adapter implements the full `DialectAdapter` interface:
 ```typescript
 // Get default port
 adapter.getDefaultPort()
-// postgres: 5432, mysql: 3306, sqlite: null
+// postgres: 5432, mysql: 3306, sqlite: null, mssql: 1433
 
 // Get current timestamp SQL expression
 adapter.getCurrentTimestamp()
@@ -416,6 +422,7 @@ function getDefaultPort(dialect: DatabaseDialect): number | null
 getDefaultPort('postgres') // 5432
 getDefaultPort('mysql') // 3306
 getDefaultPort('sqlite') // null
+getDefaultPort('mssql') // 1433
 ```
 
 ### Helper Functions
@@ -449,12 +456,23 @@ Use the adapter interface (`getAdapter()`) instead of helper functions for bette
 
 ## Types
 
-### `DatabaseDialect`
+### `Dialect`
 
-Supported database dialects.
+Supported database dialects. Imported from `@kysera/core`.
 
 ```typescript
-type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite'
+type Dialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql'
+```
+
+### `DatabaseDialect` (Deprecated)
+
+:::warning Deprecated
+Use `Dialect` from `@kysera/core` instead. `DatabaseDialect` is kept for backwards compatibility.
+:::
+
+```typescript
+/** @deprecated Use Dialect from @kysera/core */
+type DatabaseDialect = Dialect
 ```
 
 ### `ConnectionConfig`
@@ -755,6 +773,32 @@ adapter.isNotNullError(e) // message includes 'NOT NULL constraint'
 // DELETE FROM for truncation (SQLite has no TRUNCATE)
 // Error handling: Gracefully handles permission errors during truncate
 ```
+
+### MSSQL (SQL Server)
+
+```typescript
+const adapter = getAdapter('mssql')
+
+adapter.getDefaultPort() // 1433
+adapter.getCurrentTimestamp() // 'CURRENT_TIMESTAMP'
+adapter.escapeIdentifier('my-table') // [my-table]
+adapter.formatDate(new Date()) // ISO string
+adapter.isUniqueConstraintError(e) // number === 2627 or 2601
+adapter.isForeignKeyError(e) // number === 547
+adapter.isNotNullError(e) // number === 515
+
+// Uses INFORMATION_SCHEMA.TABLES for introspection
+// Uses sp_spaceused for database size
+// TRUNCATE TABLE with IDENTITY reset
+// Error handling: Uses error numbers instead of string codes
+```
+
+**MSSQL-specific error codes:**
+
+- `2627` - Unique constraint violation (PRIMARY KEY)
+- `2601` - Unique constraint violation (UNIQUE INDEX)
+- `547` - Foreign key constraint violation
+- `515` - NOT NULL constraint violation
 
 ## Integration with Other Packages
 

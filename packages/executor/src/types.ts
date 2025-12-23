@@ -40,8 +40,9 @@ export interface Plugin {
 
   /**
    * Lifecycle: Called once when plugin is initialized
+   * @param db - Kysely database instance (not the executor wrapper)
    */
-  onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
+  onInit?<DB>(db: Kysely<DB>): Promise<void> | void
 
   /**
    * Lifecycle: Called when executor is being destroyed
@@ -150,3 +151,77 @@ export type PluginValidationErrorType =
   | 'CONFLICT'
   | 'CIRCULAR_DEPENDENCY'
   | 'INITIALIZATION_FAILED'
+
+/**
+ * Base repository interface for plugin extensions.
+ * Plugins should use this interface to type-check repository objects.
+ *
+ * This interface represents the minimum contract that a repository-like object
+ * must fulfill to be extended by plugins. It's designed to work with both
+ * the @kysera/repository pattern and custom repository implementations.
+ *
+ * @template DB - The database schema type (defaults to unknown for flexibility)
+ *
+ * @example
+ * ```typescript
+ * import type { BaseRepositoryLike } from '@kysera/executor'
+ *
+ * // In a plugin's extendRepository method:
+ * extendRepository<T extends object>(repo: T): T {
+ *   if (!isRepositoryLike(repo)) {
+ *     return repo // Not a repository, skip extension
+ *   }
+ *
+ *   // Now we can safely access repo.tableName and repo.executor
+ *   const { tableName, executor } = repo
+ *   // ... extend the repository
+ * }
+ * ```
+ */
+export interface BaseRepositoryLike<DB = unknown> {
+  /** The name of the database table this repository manages */
+  readonly tableName: string
+  /** The Kysely executor (database or transaction) */
+  readonly executor: Kysely<DB>
+  /** Find a record by its primary key */
+  findById?: (id: unknown) => Promise<unknown>
+  /** Find all records in the table */
+  findAll?: () => Promise<unknown[]>
+  /** Create a new record */
+  create?: (data: unknown) => Promise<unknown>
+  /** Update an existing record by primary key */
+  update?: (id: unknown, data: unknown) => Promise<unknown>
+  /** Delete a record by primary key (returns deleted record or boolean) */
+  delete?: (id: unknown) => Promise<unknown>
+}
+
+/**
+ * Type guard to check if an object is a repository-like object.
+ *
+ * This function checks for the minimum required properties of a repository:
+ * - `tableName`: A string identifying the database table
+ * - `executor`: A Kysely instance for database operations
+ *
+ * @param obj - The object to check
+ * @returns True if the object is repository-like, false otherwise
+ *
+ * @example
+ * ```typescript
+ * import { isRepositoryLike } from '@kysera/executor'
+ *
+ * function processRepo(maybeRepo: unknown) {
+ *   if (isRepositoryLike(maybeRepo)) {
+ *     console.log(`Repository for table: ${maybeRepo.tableName}`)
+ *   }
+ * }
+ * ```
+ */
+export function isRepositoryLike<DB = unknown>(obj: unknown): obj is BaseRepositoryLike<DB> {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    'tableName' in obj &&
+    'executor' in obj &&
+    typeof (obj as Record<string, unknown>)['tableName'] === 'string'
+  )
+}

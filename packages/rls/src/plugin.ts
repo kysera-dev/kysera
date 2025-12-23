@@ -10,9 +10,10 @@
  * @module @kysera/rls
  */
 
-import type { Plugin, QueryBuilderContext } from '@kysera/executor'
-import { getRawDb } from '@kysera/executor'
+import type { Plugin, QueryBuilderContext, BaseRepositoryLike } from '@kysera/executor'
+import { getRawDb, isRepositoryLike } from '@kysera/executor'
 import type { Kysely } from 'kysely'
+import { z } from 'zod'
 import type { RLSSchema, Operation } from './policy/types.js'
 import { PolicyRegistry } from './policy/registry.js'
 import { SelectTransformer } from './transformer/select.js'
@@ -52,20 +53,33 @@ export interface RLSPluginOptions<DB = unknown> {
 
   /** Custom error handler for policy violations */
   onViolation?: (violation: RLSPolicyViolation) => void
+
+  /**
+   * Primary key column name for row lookups.
+   * @default 'id'
+   */
+  primaryKeyColumn?: string
 }
 
 /**
- * Base repository interface for type safety
+ * Zod schema for RLSPluginOptions
+ * Used for validation and configuration in the kysera-cli.
+ * Note: 'schema' and 'onViolation' are not included as they are complex runtime objects.
+ */
+export const RLSPluginOptionsSchema = z.object({
+  skipTables: z.array(z.string()).optional(),
+  bypassRoles: z.array(z.string()).optional(),
+  requireContext: z.boolean().optional(),
+  auditDecisions: z.boolean().optional(),
+  primaryKeyColumn: z.string().optional()
+})
+
+/**
+ * Base repository interface for type safety.
+ * Type alias for BaseRepositoryLike from @kysera/executor with concrete DB type.
  * @internal
  */
-interface BaseRepository {
-  tableName: string
-  executor: Kysely<Record<string, unknown>>
-  findById?: (id: unknown) => Promise<unknown>
-  create?: (data: unknown) => Promise<unknown>
-  update?: (id: unknown, data: unknown) => Promise<unknown>
-  delete?: (id: unknown) => Promise<unknown>
-}
+type BaseRepository = BaseRepositoryLike<Record<string, unknown>>
 
 /**
  * Create RLS plugin for Kysera
@@ -122,7 +136,8 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     logger = silentLogger,
     requireContext = false,
     auditDecisions = false,
-    onViolation
+    onViolation,
+    primaryKeyColumn = 'id'
   } = options
 
   // Registry and transformers (initialized in onInit)
@@ -249,12 +264,12 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
      * Also adds utility methods for bypassing RLS and checking access.
      */
     extendRepository<T extends object>(repo: T): T {
-      const baseRepo = repo as unknown as BaseRepository
-
-      // Check if it's a valid repository
-      if (!('tableName' in baseRepo) || !('executor' in baseRepo)) {
+      // Use the shared type guard from @kysera/executor
+      if (!isRepositoryLike(repo)) {
         return repo
       }
+
+      const baseRepo = repo as unknown as BaseRepository
 
       const table = baseRepo.tableName
 
@@ -353,7 +368,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
             if (hasRawDbInstance) {
               // Use raw db to bypass RLS filtering
               const query = selectFromDynamicTable(rawDb, table)
-              existingRow = await whereIdEquals(query, id).executeTakeFirst()
+              existingRow = await whereIdEquals(query, id, primaryKeyColumn).executeTakeFirst()
             } else if (originalFindById) {
               // Fallback to originalFindById for tests/mocks
               existingRow = await originalFindById(id)
@@ -423,7 +438,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
             if (hasRawDbInstance) {
               // Use raw db to bypass RLS filtering
               const query = selectFromDynamicTable(rawDb, table)
-              existingRow = await whereIdEquals(query, id).executeTakeFirst()
+              existingRow = await whereIdEquals(query, id, primaryKeyColumn).executeTakeFirst()
             } else if (originalFindById) {
               // Fallback to originalFindById for tests/mocks
               existingRow = await originalFindById(id)
