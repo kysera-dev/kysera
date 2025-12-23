@@ -1,6 +1,6 @@
 # @kysera/soft-delete
 
-Soft delete plugin for Kysera (v0.7.3). Implements soft delete functionality through @kysera/executor's Unified Execution Layer with automatic filtering of deleted records.
+Soft delete plugin for Kysera. Implements soft delete functionality through @kysera/executor's Unified Execution Layer with automatic filtering of deleted records.
 
 ## Features
 

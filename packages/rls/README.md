@@ -1,6 +1,6 @@
 # @kysera/rls
 
-> **Row-Level Security Plugin for Kysera (v0.7.3)** - Declarative authorization policies with automatic query transformation through @kysera/executor's Unified Execution Layer and AsyncLocalStorage-based context management.
+> **Row-Level Security Plugin for Kysera** - Declarative authorization policies with automatic query transformation through @kysera/executor's Unified Execution Layer and AsyncLocalStorage-based context management.
 
 [![npm version](https://img.shields.io/npm/v/@kysera/rls.svg)](https://www.npmjs.com/package/@kysera/rls)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)

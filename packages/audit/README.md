@@ -1,6 +1,6 @@
 # @kysera/audit
 
-> Comprehensive audit logging plugin for Kysera (v0.7.3) with automatic change tracking through @kysera/executor's Unified Execution Layer, user attribution, and transaction support.
+> Comprehensive audit logging plugin for Kysera with automatic change tracking through @kysera/executor's Unified Execution Layer, user attribution, and transaction support.
 
 [![npm version](https://img.shields.io/npm/v/@kysera/audit.svg)](https://www.npmjs.com/package/@kysera/audit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
