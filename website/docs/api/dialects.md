@@ -1,12 +1,12 @@
 ---
 sidebar_position: 5
 title: '@kysera/dialects'
-description: Dialect-specific utilities for PostgreSQL, MySQL, and SQLite
+description: Dialect-specific utilities for PostgreSQL, MySQL, SQLite, and MSSQL
 ---
 
 # @kysera/dialects
 
-Dialect-specific utilities for Kysely database operations. Provides a unified adapter interface for PostgreSQL, MySQL, and SQLite with connection management, error detection, and database introspection.
+Dialect-specific utilities for Kysely database operations. Provides a unified adapter interface for PostgreSQL, MySQL, SQLite, and MSSQL with connection management, error detection, and database introspection.
 
 ## Installation
 
@@ -17,7 +17,7 @@ npm install @kysera/dialects kysely
 ## Overview
 
 **Dependencies:** None (peer: kysely >=0.28.8)
-**Database Support:** PostgreSQL, MySQL, SQLite
+**Database Support:** PostgreSQL, MySQL, SQLite, MSSQL
 
 :::info Package Type
 This is a **utility package** providing dialect-specific abstractions. It works with Kysely instances directly and is used internally by other Kysera packages (executor, repository, DAL) for cross-database compatibility.

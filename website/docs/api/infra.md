@@ -28,7 +28,7 @@ This is a **utility package** providing infrastructure and resilience features. 
 - **Retry Logic** - Automatic retries with exponential backoff
 - **Circuit Breaker** - Prevent cascading failures
 - **Graceful Shutdown** - Clean database connection termination
-- **Pool Metrics** - Connection pool monitoring (PostgreSQL, MySQL, SQLite)
+- **Pool Metrics** - Connection pool monitoring (PostgreSQL, MySQL, SQLite, MSSQL)
 
 ## Quick Start
 

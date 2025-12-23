@@ -55,8 +55,8 @@ const FeatureList: FeatureItem[] = [
     icon: '🗄️',
     description: (
       <>
-        Support for PostgreSQL, MySQL, and SQLite. Database-specific optimizations and unified error
-        handling.
+        Support for PostgreSQL, MySQL, SQLite, and MSSQL. Database-specific optimizations and unified
+        error handling.
       </>
     )
   },

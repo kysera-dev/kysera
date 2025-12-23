@@ -59,7 +59,7 @@ Kysera follows a layered architecture with `@kysera/executor` as the foundation:
 | Package                                    | Description                                            | Bundle Size |
 | ------------------------------------------ | ------------------------------------------------------ | ----------- |
 | [@kysera/infra](/docs/api/infra)           | Health checks, retry, circuit breaker, shutdown        | ~12 KB      |
-| [@kysera/dialects](/docs/api/dialects)     | Dialect-specific utilities - PostgreSQL, MySQL, SQLite | ~5 KB       |
+| [@kysera/dialects](/docs/api/dialects)     | Dialect-specific utilities - PostgreSQL, MySQL, SQLite, MSSQL | ~5 KB       |
 | [@kysera/debug](/docs/api/debug)           | Query logging, profiling, SQL formatting               | ~5 KB       |
 | [@kysera/testing](/docs/api/testing)       | Testing utilities and factories                        | ~6 KB       |
 | [@kysera/migrations](/docs/api/migrations) | Database migration system                              | ~12 KB      |
@@ -218,7 +218,7 @@ import { createQuery, withTransaction, createContext, compose, parallel } from '
 
 ## @kysera/dialects
 
-Dialect-specific utilities for PostgreSQL, MySQL, and SQLite. [Full Documentation →](/docs/api/dialects)
+Dialect-specific utilities for PostgreSQL, MySQL, SQLite, and MSSQL. [Full Documentation →](/docs/api/dialects)
 
 ```typescript
 import {
@@ -231,7 +231,7 @@ import {
 } from '@kysera/dialects'
 ```
 
-**Core Concept:** Provides a unified adapter interface for dialect-specific operations, enabling portable code that works across PostgreSQL, MySQL, and SQLite.
+**Core Concept:** Provides a unified adapter interface for dialect-specific operations, enabling portable code that works across PostgreSQL, MySQL, SQLite, and MSSQL.
 
 **Key Features:**
 
@@ -571,10 +571,11 @@ await executor.transaction().execute(async trx => {
 
 ## Database Support
 
-| Feature            | PostgreSQL   | MySQL     | SQLite    |
-| ------------------ | ------------ | --------- | --------- |
-| RETURNING clause   | Native       | Emulated  | Native    |
-| JSONB columns      | Native       | JSON type | TEXT      |
-| Partial indexes    | Supported    | Limited   | Supported |
-| Row-level security | Native + App | App-level | App-level |
-| Boolean type       | true/false   | 1/0       | 1/0       |
+| Feature            | PostgreSQL   | MySQL     | SQLite    | MSSQL        |
+| ------------------ | ------------ | --------- | --------- | ------------ |
+| RETURNING clause   | Native       | Emulated  | Native    | OUTPUT       |
+| JSONB columns      | Native       | JSON type | TEXT      | NVARCHAR     |
+| Partial indexes    | Supported    | Limited   | Supported | Filtered     |
+| Row-level security | Native + App | App-level | App-level | App-level    |
+| Boolean type       | true/false   | 1/0       | 1/0       | BIT (1/0)    |
+| Pagination         | LIMIT/OFFSET | LIMIT/OFFSET | LIMIT/OFFSET | OFFSET/FETCH |
