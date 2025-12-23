@@ -1,6 +1,6 @@
 # @kysera/rls
 
-> **Row-Level Security Plugin for Kysera** - Declarative authorization policies with automatic query transformation and AsyncLocalStorage-based context management.
+> **Row-Level Security Plugin for Kysera (v0.7.3)** - Declarative authorization policies with automatic query transformation through @kysera/executor's Unified Execution Layer and AsyncLocalStorage-based context management.
 
 [![npm version](https://img.shields.io/npm/v/@kysera/rls.svg)](https://www.npmjs.com/package/@kysera/rls)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -19,13 +19,14 @@ RLS controls access to individual rows in database tables based on user context.
 **Key Features:**
 
 - **Declarative Policy DSL** - Define rules with `allow`, `deny`, `filter`, and `validate` builders
-- **Automatic Query Transformation** - SELECT queries are filtered automatically via `interceptQuery`
-- **Repository Extensions** - Wraps mutation methods via `extendRepository` for policy enforcement
-- **Type-Safe Context** - Full TypeScript inference for user context and policies
+- **Automatic Query Transformation** - SELECT queries are filtered automatically via `interceptQuery` hook
+- **Repository Extensions** - Wraps mutation methods via `extendRepository` hook for policy enforcement
+- **Type-Safe Context** - Full TypeScript inference with reduced `any` usage through type utilities
 - **Multi-Tenant Isolation** - Built-in patterns for SaaS tenant separation
-- **Plugin Architecture** - Works with both Repository and DAL patterns via `@kysera/executor`
+- **Plugin Architecture** - Works with both Repository and DAL patterns via @kysera/executor's Unified Execution Layer
 - **Zero Runtime Overhead** - Policies compiled at initialization
 - **AsyncLocalStorage Context** - Request-scoped context without prop drilling
+- **Optional Dependency** - Listed in peerDependencies with `optional: true` for @kysera/repository
 
 ---
 
@@ -42,9 +43,11 @@ yarn add @kysera/rls kysely
 **Dependencies:**
 
 - `kysely` >= 0.28.8 (peer dependency)
-- `@kysera/core` - Core utilities (auto-installed)
-- `@kysera/executor` - Plugin execution layer (auto-installed)
-- `@kysera/repository` or `@kysera/dal` - For Repository or DAL patterns (install as needed)
+- `@kysera/core` >= 0.7.0 - Core utilities (auto-installed)
+- `@kysera/executor` >= 0.7.0 - Unified Execution Layer (auto-installed)
+- `@kysera/repository` >= 0.7.0 or `@kysera/dal` >= 0.7.0 - For Repository or DAL patterns (install as needed)
+
+**Note:** @kysera/rls is listed in peerDependencies with `optional: true` for @kysera/repository, allowing flexible installation based on your needs.
 
 ---
 
@@ -83,9 +86,10 @@ const rlsSchema = defineRLSSchema<Database>({
 })
 ```
 
-### 2. Create Plugin Container with RLS Plugin
+### 2. Register Plugin with Unified Execution Layer
 
 ```typescript
+import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
 import { rlsPlugin, rlsContext } from '@kysera/rls'
 import { Kysely, PostgresDialect } from 'kysely'
@@ -96,7 +100,13 @@ const db = new Kysely<Database>({
   })
 })
 
-const orm = await createORM(db, [rlsPlugin({ schema: rlsSchema })])
+// Step 1: Create executor with RLS plugin
+const executor = await createExecutor(db, [
+  rlsPlugin({ schema: rlsSchema })
+])
+
+// Step 2: Create ORM with plugin-enabled executor
+const orm = await createORM(executor, [])
 ```
 
 ### 3. Execute Queries within RLS Context
@@ -131,34 +141,46 @@ app.use(async (req, res, next) => {
 
 ## Plugin Architecture
 
-### Integration with @kysera/executor
+### Integration with @kysera/executor's Unified Execution Layer
 
-The RLS plugin is built on `@kysera/executor`, which provides a unified plugin system that works with both Repository and DAL patterns.
+The RLS plugin is built on @kysera/executor's Unified Execution Layer, which provides seamless plugin support that works with both Repository and DAL patterns.
 
 **Plugin Metadata:**
 
 ```typescript
 {
   name: '@kysera/rls',
-  version: '0.7.0',
+  version: '0.7.3',
   priority: 50,  // Runs after soft-delete (0), before audit (100)
   dependencies: [],
 }
 ```
 
+**Type Utilities:**
+
+The plugin uses type utilities to reduce `any` usage and improve type safety:
+- Conditional types for precise type inference
+- Generic constraints for database schemas
+- Utility types for context and policy definitions
+
 ### How It Works
 
-The RLS plugin implements two key hooks from the `@kysera/executor` plugin system:
+The RLS plugin implements two key hooks from @kysera/executor's plugin system:
 
 #### 1. `interceptQuery` - Query Filtering (SELECT)
 
-The `interceptQuery` hook intercepts all query builder operations to apply RLS filtering:
+Registered via `createExecutor()`, the `interceptQuery` hook intercepts all query builder operations to apply RLS filtering:
 
 ```typescript
-// When you execute a SELECT query:
+// Step 1: Register plugin with Unified Execution Layer
+const executor = await createExecutor(db, [
+  rlsPlugin({ schema: rlsSchema })
+])
+
+// Step 2: Execute a SELECT query
 const posts = await orm.posts.findAll()
 
-// The plugin interceptQuery hook:
+// Step 3: The plugin interceptQuery hook:
 // 1. Checks for RLS context (rlsContext.getContextOrNull())
 // 2. Checks if system user (ctx.auth.isSystem) or bypass role
 // 3. Applies filter policies as WHERE conditions via SelectTransformer
@@ -174,13 +196,16 @@ const posts = await orm.posts.findAll()
 
 #### 2. `extendRepository` - Mutation Enforcement (CREATE/UPDATE/DELETE)
 
-The `extendRepository` hook wraps repository mutation methods to enforce RLS policies:
+Registered via `createExecutor()`, the `extendRepository` hook wraps repository mutation methods to enforce RLS policies:
 
 ```typescript
-// When you call a mutation:
+// Step 1: Plugin registered with Unified Execution Layer
+const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })])
+
+// Step 2: Call a mutation
 await repo.update(postId, { title: 'New Title' })
 
-// The plugin extendRepository hook:
+// Step 3: The plugin extendRepository hook:
 // 1. Wraps create/update/delete methods
 // 2. Fetches existing row using getRawDb() (bypasses RLS filtering)
 // 3. Evaluates allow/deny policies via MutationGuard
@@ -189,7 +214,7 @@ await repo.update(postId, { title: 'New Title' })
 // 6. Adds withoutRLS() and canAccess() utility methods
 ```
 
-**Why use `getRawDb()`?** To prevent infinite recursion - we need to fetch the existing row without triggering RLS filtering. The `getRawDb()` function from `@kysera/executor` returns the original Kysely instance that bypasses all plugin hooks.
+**Why use `getRawDb()`?** To prevent infinite recursion - we need to fetch the existing row without triggering RLS filtering. The `getRawDb()` function from @kysera/executor returns the original Kysely instance that bypasses all plugin hooks.
 
 ---
 
@@ -688,7 +713,7 @@ for (const op of operations) {
 
 ## DAL Pattern Support
 
-RLS works seamlessly with the DAL pattern:
+RLS works seamlessly with the DAL pattern through @kysera/executor's Unified Execution Layer:
 
 ```typescript
 import { createExecutor } from '@kysera/executor'
@@ -702,13 +727,13 @@ const rlsSchema = defineRLSSchema<Database>({
   }
 })
 
-// Create executor with RLS
+// Step 1: Register RLS plugin with Unified Execution Layer
 const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })])
 
-// Create DAL context
+// Step 2: Create DAL context - plugins automatically apply
 const dalCtx = createContext(executor)
 
-// Define queries - RLS applied automatically
+// Step 3: Define queries - RLS applied automatically
 const getPosts = createQuery(ctx => ctx.db.selectFrom('posts').selectAll().execute())
 
 // Execute within RLS context

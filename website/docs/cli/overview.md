@@ -8,6 +8,8 @@ description: Kysera CLI tool overview and installation
 
 Command-line interface for Kysera - database management, migrations, code generation, and more.
 
+**Version:** 0.7.3
+
 ## Installation
 
 ```bash
@@ -172,23 +174,6 @@ kysera plugin list             # List available plugins
 kysera plugin enable <name>    # Enable a plugin
 kysera plugin disable <name>   # Disable a plugin
 kysera plugin config <name>    # Configure plugin
-```
-
-### hello
-
-Test command to verify CLI setup and configuration.
-
-```bash
-kysera hello                   # Basic greeting
-kysera hello --name John       # Custom greeting
-```
-
-### stats
-
-Show CLI performance statistics including command load times, cache hit rates, and usage patterns.
-
-```bash
-kysera stats                   # Display performance stats
 ```
 
 ## Configuration

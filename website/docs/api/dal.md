@@ -311,6 +311,11 @@ function createContext<DB>(
 - Supports raw Kysely instances and plugin-aware KyseraExecutor
 - When using KyseraExecutor, plugins are automatically preserved in the context
 - Transaction state is detected via the `isTransaction` property on the database instance
+- The context is immutable - any modifications return a new context
+
+**Integration with @kysera/executor:**
+
+When you pass a `KyseraExecutor` to `createContext()`, the executor's plugin interceptors are automatically available to all queries that use the context. This enables DAL queries to benefit from automatic filtering (soft-delete, RLS) without any additional configuration.
 
 **Example:**
 
@@ -456,7 +461,7 @@ function withTransaction<DB, T>(
 
 - `db` - Database instance (Kysely or KyseraExecutor)
 - `fn` - Function to execute within the transaction context
-- `options` - Optional transaction options (currently accepted but not implemented due to Kysely API limitations)
+- `options` - Optional transaction options (isolation level - see below)
 
 **Returns:** `Promise<T>` - Result of the function
 
@@ -466,6 +471,36 @@ function withTransaction<DB, T>(
 - For plain Kysely instances, creates a standard Kysely transaction without plugins
 - The function receives a `DbContext<DB>` with `isTransaction: true`
 - Follows Kysely's transaction semantics (auto-commit on success, auto-rollback on error)
+
+**Savepoint Validation:**
+
+`withTransaction()` validates that you're not creating nested transactions incorrectly. If you need nested transactions, use savepoints explicitly via Kysely's API:
+
+```typescript
+await withTransaction(executor, async ctx => {
+  // ❌ This will throw - nested transaction not allowed
+  await withTransaction(ctx.db, async innerCtx => {
+    // ...
+  })
+
+  // ✅ Use savepoints for nested logic instead
+  await ctx.db.transaction().execute(async trx => {
+    // This is a savepoint, which is supported
+  })
+})
+```
+
+**Transaction Options:**
+
+The `options` parameter allows specifying isolation level:
+
+```typescript
+interface TransactionOptions {
+  isolationLevel?: 'read uncommitted' | 'read committed' | 'repeatable read' | 'serializable'
+}
+```
+
+**Note:** The `isolationLevel` option is passed to Kysely but may not be supported by all database drivers. Check your database and driver documentation for isolation level support.
 
 **Example:**
 
@@ -733,9 +768,10 @@ type ParallelResult<
 
 ### Re-exported Executor Types
 
-For convenience, `@kysera/dal` re-exports types from `@kysera/executor`:
+For convenience, `@kysera/dal` re-exports types and functions from `@kysera/executor`:
 
 ```typescript
+// Types
 import type {
   Plugin,
   KyseraExecutor,
@@ -743,7 +779,20 @@ import type {
   AnyKyseraExecutor,
   QueryBuilderContext
 } from '@kysera/dal'
+
+// Functions
+import {
+  createExecutor,
+  destroyExecutor,
+  isKyseraExecutor,
+  getPlugins,
+  getRawDb,
+  wrapTransaction,
+  withSchema
+} from '@kysera/dal'
 ```
+
+**Re-exported Types:**
 
 - **`Plugin`** - Plugin interface for creating custom plugins
 - **`KyseraExecutor<DB>`** - Plugin-aware Kysely wrapper type
@@ -751,7 +800,17 @@ import type {
 - **`AnyKyseraExecutor<DB>`** - Union of KyseraExecutor or KyseraTransaction
 - **`QueryBuilderContext`** - Context passed to `interceptQuery` hooks
 
-See [@kysera/executor documentation](/docs/api/executor) for full details on these types.
+**Re-exported Functions:**
+
+- **`createExecutor()`** - Create plugin-aware executor
+- **`destroyExecutor()`** - Destroy executor and call plugin cleanup hooks
+- **`isKyseraExecutor()`** - Type guard for KyseraExecutor
+- **`getPlugins()`** - Get plugins from executor
+- **`getRawDb()`** - Get raw Kysely instance (bypasses plugins)
+- **`wrapTransaction()`** - Wrap transaction with plugins
+- **`withSchema()`** - Switch schema while maintaining plugins
+
+See [@kysera/executor documentation](/docs/api/executor) for full details on these types and functions.
 
 ## Plugin Integration
 

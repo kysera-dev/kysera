@@ -168,20 +168,67 @@ const userRepo = factory.create({
 
 ## Repository Methods
 
+All repository methods are type-safe and integrate with your configured validation library (Zod, Valibot, TypeBox, or native TypeScript).
+
 ### Single Record Operations
 
 ```typescript
 // Find by ID
 async findById(id: PK): Promise<Entity | null>
 
-// Create
+// Create - validates input with create schema
 async create(input: unknown): Promise<Entity>
 
-// Update
+// Update - validates input with update schema (or create.partial())
 async update(id: PK, input: unknown): Promise<Entity>
 
-// Delete
+// Delete - soft delete if plugin enabled, hard delete otherwise
 async delete(id: PK): Promise<boolean>
+```
+
+**Validation Integration:**
+
+The `create` and `update` methods automatically validate input using your configured schemas:
+
+```typescript
+import { createRepositoryFactory, zodAdapter } from '@kysera/repository'
+import { z } from 'zod'
+
+const CreateUserSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1),
+  age: z.number().min(18)
+})
+
+const factory = createRepositoryFactory(db)
+const userRepo = factory.create({
+  tableName: 'users',
+  mapRow: row => row,
+  schemas: {
+    create: zodAdapter(CreateUserSchema)
+    // update automatically uses CreateUserSchema.partial()
+  }
+})
+
+// ✅ Valid input - passes validation
+const user = await userRepo.create({
+  email: 'alice@example.com',
+  name: 'Alice',
+  age: 25
+})
+
+// ❌ Invalid input - throws validation error
+await userRepo.create({
+  email: 'not-an-email',
+  name: '',
+  age: 15
+})
+// ValidationError: email must be valid email, name must not be empty, age must be >= 18
+
+// Update validation (all fields optional by default)
+await userRepo.update(user.id, {
+  name: 'Alice Updated' // Only updating name - valid!
+})
 ```
 
 ### Batch Operations
@@ -303,14 +350,17 @@ await db.transaction().execute(async trx => {
 Create a plugin container (repository manager) with plugin support. Despite its name, `createORM` is not a traditional ORM - it's a lightweight plugin container that manages repositories and provides unified plugin execution via `@kysera/executor`.
 
 ```typescript
-async function createORM<DB>(db: Kysely<DB>, plugins?: Plugin[]): Promise<PluginOrm<DB>>
+async function createORM<DB>(
+  db: Kysely<DB> | KyseraExecutor<DB>,
+  plugins?: Plugin[]
+): Promise<PluginOrm<DB>>
 
 interface PluginOrm<DB> {
   /** Plugin-aware executor from @kysera/executor */
-  executor: Kysely<DB>
+  executor: KyseraExecutor<DB>
   /** Create a repository with plugin support */
   createRepository: <T extends object>(
-    factory: (executor: Kysely<DB>, applyPlugins: ApplyPluginsFunction) => T
+    factory: (executor: KyseraExecutor<DB>, applyPlugins: ApplyPluginsFunction) => T
   ) => T
   /** Apply plugin interceptors to query builders */
   applyPlugins: ApplyPluginsFunction
@@ -329,6 +379,13 @@ type ApplyPluginsFunction = <QB extends AnyQueryBuilder>(
   metadata?: Record<string, unknown>
 ) => QB
 ```
+
+**Parameters:**
+
+- `db` - Kysely database instance or KyseraExecutor (if executor passed, its plugins are used)
+- `plugins` - Optional array of plugins to apply (merged with executor plugins if executor is passed)
+
+**Returns:** `Promise<PluginOrm<DB>>` - Plugin container with executor and repository factory
 
 **What is createORM?**
 

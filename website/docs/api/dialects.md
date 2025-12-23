@@ -8,6 +8,8 @@ description: Dialect-specific utilities for PostgreSQL, MySQL, and SQLite
 
 Dialect-specific utilities for Kysely database operations. Provides a unified adapter interface for PostgreSQL, MySQL, and SQLite with connection management, error detection, and database introspection.
 
+**Version:** 0.7.3
+
 ## Installation
 
 ```bash
@@ -715,6 +717,7 @@ adapter.isNotNullError(e) // code === '23502'
 // Uses information_schema.tables for introspection
 // Uses pg_database_size() for database size
 // TRUNCATE with RESTART IDENTITY CASCADE
+// Error handling: Gracefully handles permission errors during truncate
 ```
 
 ### MySQL
@@ -733,6 +736,7 @@ adapter.isNotNullError(e) // code === 'ER_BAD_NULL_ERROR'
 // Uses information_schema.tables for introspection
 // Uses SUM(data_length + index_length) for database size
 // TRUNCATE with foreign key checks disabled
+// Error handling: Gracefully handles permission errors during truncate
 ```
 
 ### SQLite
@@ -751,6 +755,7 @@ adapter.isNotNullError(e) // message includes 'NOT NULL constraint'
 // Uses sqlite_master for introspection
 // Uses page_count * page_size for database size
 // DELETE FROM for truncation (SQLite has no TRUNCATE)
+// Error handling: Gracefully handles permission errors during truncate
 ```
 
 ## Integration with Other Packages

@@ -80,7 +80,7 @@ import { createQuery, withTransaction, createContext } from '@kysera/dal'
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
-// Create executor with plugins
+// Create executor with plugins (v0.7.3+)
 const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Define queries as functions
@@ -92,37 +92,42 @@ const getPostsByUserId = createQuery((ctx, userId: number) =>
   ctx.db.selectFrom('posts').selectAll().where('user_id', '=', userId).execute()
 )
 
-// Create context from executor (plugins automatically included)
-const ctx = createContext(executor)
+// Pass executor directly to queries (plugins automatically included)
+const user = await getUserById(executor, 1)
 
-// Use queries (soft-delete filtering applied automatically)
-const user = await getUserById(ctx, 1)
+// Or create context for multiple queries
+const ctx = createContext(executor)
+const user2 = await getUserById(ctx, 2)
 
 // Compose queries
-const getUserWithPosts = async (ctx, id: number) => {
+const getUserWithPosts = createQuery(async (ctx, id: number) => {
   const user = await getUserById(ctx, id)
   if (!user) return null
   const posts = await getPostsByUserId(ctx, user.id)
   return { ...user, posts }
-}
+})
+
+// Use composed query
+const userWithPosts = await getUserWithPosts(executor, 1)
 ```
 
 ## Feature Comparison
 
-| Feature                          | Repository                    | Functional DAL              |
-| -------------------------------- | ----------------------------- | --------------------------- |
-| **Paradigm**                     | Object-Oriented               | Functional                  |
-| **Abstraction Level**            | High (Repository methods)     | Low (Query functions)       |
-| **Type Inference**               | Explicit generics             | Automatic from queries      |
-| **Query Interceptor Plugins**    | Native                        | Native (via KyseraExecutor) |
-| **Repository Extension Plugins** | Native                        | Not supported               |
-| **Validation**                   | Built-in (Zod, Valibot, etc.) | Manual                      |
-| **Transaction API**              | `repo.transaction()`          | `withTransaction()`         |
-| **Bundle Size**                  | ~12 KB                        | ~7 KB                       |
-| **Learning Curve**               | Moderate                      | Steep                       |
-| **Boilerplate**                  | More                          | Less                        |
-| **Tree-Shaking**                 | Medium                        | Excellent                   |
-| **Testing**                      | Mock repositories             | Mock functions/context      |
+| Feature                          | Repository                    | Functional DAL                  |
+| -------------------------------- | ----------------------------- | ------------------------------- |
+| **Paradigm**                     | Object-Oriented               | Functional                      |
+| **Abstraction Level**            | High (Repository methods)     | Low (Query functions)           |
+| **Type Inference**               | Explicit generics             | Automatic from queries          |
+| **Query Interceptor Plugins**    | ✅ Native                     | ✅ Native (via createExecutor)  |
+| **Repository Extension Plugins** | ✅ Native                     | ❌ Not supported                |
+| **Validation**                   | Built-in (Zod, Valibot, etc.) | Manual                          |
+| **Transaction API**              | `repo.transaction()`          | `withTransaction()`             |
+| **Bundle Size**                  | ~12 KB                        | ~7 KB                           |
+| **Learning Curve**               | Moderate                      | Steep                           |
+| **Boilerplate**                  | More                          | Less                            |
+| **Tree-Shaking**                 | Medium                        | Excellent                       |
+| **Testing**                      | Mock repositories             | Mock functions/context          |
+| **Version**                      | 0.7.3                         | 0.7.3                           |
 
 ## Architecture Deep Dive
 
@@ -241,7 +246,7 @@ The `KyseraExecutor` is a **Proxy** that intercepts `selectFrom`, `insertInto`, 
 
 ### The Technical Difference
 
-| Aspect                    | Repository                            | DAL with KyseraExecutor     | DAL without KyseraExecutor  |
+| Aspect                    | Repository                            | DAL with createExecutor     | DAL without createExecutor  |
 | ------------------------- | ------------------------------------- | --------------------------- | --------------------------- |
 | **Query Building**        | Via repository methods                | Direct `ctx.db.xxx()` calls | Direct `ctx.db.xxx()` calls |
 | **Interception Point**    | KyseraExecutor Proxy                  | KyseraExecutor Proxy        | None                        |
@@ -311,23 +316,21 @@ await userRepo.restore(1)
 await userRepo.findAllWithDeleted()
 ```
 
-**DAL with KyseraExecutor (automatic filtering only):**
+**DAL with createExecutor (automatic filtering only):**
 
 ```typescript
 import { createExecutor } from '@kysera/executor'
-import { createContext, createQuery } from '@kysera/dal'
+import { createQuery } from '@kysera/dal'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
-// Create executor with soft-delete plugin
+// Create executor with soft-delete plugin (v0.7.3+)
 const executor = await createExecutor(db, [softDeletePlugin()])
 
-// Create context from executor
-const ctx = createContext(executor)
-
-// Automatically excludes deleted records via interceptQuery
+// Define query function
 const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
 
-await getUsers(ctx) // Soft-deleted records filtered automatically!
+// Pass executor directly - soft-deleted records filtered automatically!
+const users = await getUsers(executor)
 
 // Must implement soft delete manually (no extension methods)
 const softDeleteUser = createQuery((ctx, id: number) =>
@@ -337,17 +340,21 @@ const softDeleteUser = createQuery((ctx, id: number) =>
     .where('id', '=', id)
     .execute()
 )
+
+await softDeleteUser(executor, 1)
 ```
 
-**DAL without KyseraExecutor (manual filtering):**
+**DAL without createExecutor (manual filtering):**
 
 ```typescript
-// Must add filter manually
+import { createQuery } from '@kysera/dal'
+
+// Must add filter manually - no plugin interception
 const getActiveUsers = createQuery(ctx =>
   ctx.db
     .selectFrom('users')
     .selectAll()
-    .where('deleted_at', 'is', null) // Manual!
+    .where('deleted_at', 'is', null) // Manual filtering required!
     .execute()
 )
 
@@ -359,6 +366,10 @@ const softDeleteUser = createQuery((ctx, id: number) =>
     .where('id', '=', id)
     .execute()
 )
+
+// Pass raw Kysely db instance
+await getActiveUsers(db)
+await softDeleteUser(db, 1)
 ```
 
 ## RLS (Row-Level Security) Compatibility
@@ -391,12 +402,13 @@ await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: ['user']
 })
 ```
 
-### DAL with RLS (via KyseraExecutor)
+### DAL with RLS (via createExecutor)
 
-RLS filtering works automatically with `KyseraExecutor`:
+RLS filtering works automatically with `createExecutor` (v0.7.3+):
 
 ```typescript
 import { createExecutor } from '@kysera/executor'
+import { createQuery } from '@kysera/dal'
 import { rlsPlugin, defineRLSSchema, filter, rlsContext } from '@kysera/rls'
 
 const rlsSchema = defineRLSSchema<Database>({
@@ -416,11 +428,12 @@ await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: ['user']
 })
 ```
 
-### DAL without KyseraExecutor (manual filtering)
+### DAL without createExecutor (manual filtering)
 
-Without `KyseraExecutor`, RLS context is available but filtering is manual:
+Without `createExecutor`, RLS context is available but filtering is manual:
 
 ```typescript
+import { createQuery } from '@kysera/dal'
 import { rlsContext } from '@kysera/rls'
 
 const getPostsByTenant = createQuery(ctx => {
@@ -428,7 +441,7 @@ const getPostsByTenant = createQuery(ctx => {
 
   let query = ctx.db.selectFrom('posts').selectAll()
 
-  // Must apply filter manually
+  // Must apply filter manually - no automatic interception
   if (rlsCtx && !rlsCtx.auth.isSystem && rlsCtx.auth.tenantId) {
     query = query.where('tenant_id', '=', rlsCtx.auth.tenantId)
   }
@@ -436,7 +449,7 @@ const getPostsByTenant = createQuery(ctx => {
   return query.execute()
 })
 
-// Context still works
+// Context still works, but filtering is manual
 await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: ['user'] } }, async () => {
   const posts = await getPostsByTenant(db) // Manually filtered
 })
@@ -444,7 +457,7 @@ await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: ['user']
 
 ### RLS Feature Support
 
-| RLS Feature                     | Repository | DAL with KyseraExecutor  | DAL without KyseraExecutor |
+| RLS Feature                     | Repository | DAL with createExecutor  | DAL without createExecutor |
 | ------------------------------- | ---------- | ------------------------ | -------------------------- |
 | `rlsContext.runAsync()`         | ✅ Yes     | ✅ Yes                   | ✅ Yes                     |
 | `rlsContext.getContextOrNull()` | ✅ Yes     | ✅ Yes                   | ✅ Yes                     |
@@ -552,7 +565,7 @@ The `orm.transaction()` method creates a `DbContext` that works with both Reposi
 - You're building a **traditional layered architecture**
 - You need both query interceptors AND extension methods from plugins
 
-### Use DAL with KyseraExecutor When:
+### Use DAL with createExecutor When:
 
 - You need **query interceptor plugins** (soft-delete filtering, RLS filtering)
 - You need **complex, custom queries** beyond CRUD
@@ -563,7 +576,7 @@ The `orm.transaction()` method creates a `DbContext` that works with both Reposi
 - You want queries **colocated** with feature code
 - You don't need repository extension methods
 
-### Use DAL without KyseraExecutor When:
+### Use DAL without createExecutor When:
 
 - You don't need any plugins
 - You want **minimal overhead** and direct Kysely access
@@ -574,7 +587,7 @@ The `orm.transaction()` method creates a `DbContext` that works with both Reposi
 
 - Repository for **write operations** with full plugin support (create, update, delete)
 - DAL for **complex read operations** (reports, analytics, aggregations)
-- You want to share plugins via `KyseraExecutor` across both patterns
+- You want to share plugins via `createExecutor` across both patterns
 - Different teams have different preferences
 - Migrating from one pattern to another incrementally
 

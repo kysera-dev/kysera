@@ -6,7 +6,9 @@ description: Audit logging plugin for Kysera
 
 # Audit Plugin
 
-Automatically track all database changes with comprehensive audit logging.
+**Version:** 0.7.3
+
+Automatically track all database changes with comprehensive audit logging. Works through **@kysera/executor's** Unified Execution Layer for consistent behavior.
 
 ## Installation
 
@@ -15,6 +17,8 @@ npm install @kysera/audit
 ```
 
 ## Basic Usage
+
+### With Repository Pattern
 
 ```typescript
 import { createORM } from '@kysera/repository'
@@ -40,6 +44,27 @@ await userRepo.delete(userId)
 
 // Get audit history
 const history = await userRepo.getAuditHistory(userId)
+```
+
+### With Executor Directly
+
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { auditPlugin } from '@kysera/audit'
+
+const executor = await createExecutor(db, [
+  auditPlugin({
+    getUserId: () => currentUser?.id || null
+  })
+])
+
+// Audit logging works with direct executor usage
+const user = await executor
+  .insertInto('users')
+  .values({ email: 'john@example.com', name: 'John' })
+  .returningAll()
+  .executeTakeFirst()
+// Audit log entry created automatically
 ```
 
 ## Configuration

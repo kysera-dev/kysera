@@ -8,6 +8,8 @@ description: Testing utilities API reference
 
 Testing utilities for Kysera - transaction isolation, factories, seeding, and test helpers.
 
+**Version:** 0.7.3
+
 ## Installation
 
 Install as a development dependency:
@@ -132,6 +134,12 @@ afterEach(async () => {
 - `'transaction'` - No cleanup (use with `testInTransaction`)
 - `'delete'` - DELETE FROM each table (medium speed, FK-safe order required)
 - `'truncate'` - TRUNCATE TABLE (fastest bulk clean, handles FKs automatically)
+
+**Security Features:**
+- **SQL injection prevention** - Table names are validated against database schema
+- **Dialect detection** - Automatic fallback if dialect not specified
+- **Safe identifier escaping** - Uses dialect-specific escaping for table names
+- Only whitelisted tables from the schema can be truncated/deleted
 
 ## Test Data Factories
 

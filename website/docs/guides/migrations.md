@@ -142,6 +142,7 @@ export async function up(db: Kysely<any>): Promise<void> {
 
 ```typescript
 import { createMigrationRunner, runMigrations } from '@kysera/migrations'
+import type { Kysely } from 'kysely'
 
 // Full control
 const runner = createMigrationRunner(db, migrations)
@@ -151,6 +152,12 @@ await runner.down(1)
 
 // One-liner
 await runMigrations(db, migrations)
+
+// With options
+const runner = createMigrationRunner(db, migrations, {
+  useTransactions: true, // Wrap each migration in transaction
+  logger: console // Enable logging
+})
 ```
 
 ### Using CLI

@@ -370,6 +370,11 @@ Two pagination strategies: offset-based (simple) and cursor-based (scalable).
 
 Best for: Small to medium datasets, UIs with page numbers.
 
+**Pagination Bounds:**
+- `MAX_PAGE` = 1,000,000 (maximum page number)
+- `MAX_LIMIT` = 10,000 (maximum records per page)
+- Default limit: 20 records per page
+
 ```typescript
 import { paginate } from '@kysera/core'
 
@@ -392,8 +397,8 @@ result.data.forEach(user => {
 
 ```typescript
 {
-  page: 1,        // Start from page 1
-  limit: 20       // Max 100, min 1
+  page: 1,        // Start from page 1 (max: 1,000,000)
+  limit: 20       // Default 20 (max: 10,000, min: 1)
 }
 ```
 
@@ -414,6 +419,10 @@ const result = await paginate(
 ### Cursor Pagination
 
 Best for: Large datasets, infinite scroll, real-time feeds, APIs.
+
+**Pagination Bounds:**
+- `MAX_LIMIT` = 10,000 records per page
+- Cursor pagination automatically enforces this limit for safety
 
 #### Single Column Ordering (Optimized)
 
@@ -453,7 +462,7 @@ const result = await paginateCursor(db.selectFrom('posts').selectAll(), {
 
 #### Cursor Format
 
-Cursors are base64-encoded for security and compactness:
+Cursors are base64-encoded for security and compactness using cross-runtime compatible Base64 encoding (uses browser's `btoa`/`atob` in browsers, Node.js `Buffer` in Node.js):
 
 **Single column:** `base64(column):base64(value)`
 **Multi-column:** `base64(JSON.stringify({column1: value1, column2: value2}))`

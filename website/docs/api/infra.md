@@ -8,6 +8,8 @@ description: Infrastructure utilities API reference
 
 Infrastructure utilities for Kysera - health monitoring, resilience patterns, and graceful shutdown.
 
+**Version:** 0.7.3
+
 ## Installation
 
 ```bash
@@ -176,6 +178,11 @@ breaker.forceOpen() // Force open for maintenance
 - `closed` - Normal operation
 - `open` - Too many failures, requests fail immediately
 - `half-open` - Testing recovery, allows one request
+
+**Thread Safety:**
+- Circuit breaker uses mutex for thread-safe state transitions
+- Prevents race conditions in concurrent environments
+- Safe to use across multiple requests simultaneously
 
 ### Combined Resilience
 

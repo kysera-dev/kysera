@@ -6,7 +6,9 @@ description: Transaction management in Kysera
 
 # Transactions
 
-Kysera provides clean transaction support through the Executor pattern, making it easy to ensure atomic operations.
+**Version 0.7.3**
+
+Kysera provides clean transaction support through the Executor pattern, making it easy to ensure atomic operations. In v0.7+, the **@kysera/executor** foundation layer ensures plugins automatically work in transactions through plugin propagation.
 
 ## Basic Transaction Usage
 
@@ -232,27 +234,33 @@ try {
 }
 ```
 
-## Nested Transactions
+## Nested Transactions (Savepoints)
 
-Kysely supports savepoints for nested transactions:
+Kysely supports savepoints for nested transactions. Kysera validates savepoint names (must be positive integers):
 
 ```typescript
 await db.transaction().execute(async (trx) => {
   await repos.users.create({ ... })
 
   try {
-    // Inner "transaction" uses savepoint
+    // Inner "transaction" uses savepoint (auto-named with valid positive integer)
     await trx.transaction().execute(async (innerTrx) => {
       await innerRepos.posts.create({ ... })
       throw new Error('Rollback inner only')
     })
   } catch (error) {
     // Inner operations rolled back, outer continues
+    // Note: Rollback errors are automatically logged for debugging
   }
 
   // User creation still committed
 })
 ```
+
+**Savepoint Validation (v0.7.3):**
+- Savepoint names must be positive integers (validated by executor)
+- Invalid savepoint names throw descriptive errors
+- Rollback errors are logged with full context for debugging
 
 ## Transaction Isolation Levels
 
@@ -273,6 +281,32 @@ Available levels:
 - `read committed` (default for most databases)
 - `repeatable read`
 - `serializable`
+
+## Transaction Escape Hatch
+
+Sometimes you need to bypass plugin interception in a transaction:
+
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+const executor = await createExecutor(db, [softDeletePlugin()])
+
+await executor.transaction().execute(async (trx) => {
+  // Normal query - soft-delete filter applied
+  const activeUsers = await trx.selectFrom('users').selectAll().execute()
+
+  // Escape hatch - bypass plugins to get ALL users (including soft-deleted)
+  const allUsers = await trx.__rawDb.selectFrom('users').selectAll().execute()
+
+  console.log(`Active: ${activeUsers.length}, Total: ${allUsers.length}`)
+})
+```
+
+**When to use `__rawDb`:**
+- Admin operations that need to see all data (including soft-deleted)
+- Debugging and data migration scripts
+- Audit queries that need complete data visibility
 
 ## Testing with Transactions
 

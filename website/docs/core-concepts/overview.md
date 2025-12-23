@@ -6,6 +6,8 @@ description: Core concepts and architecture of Kysera
 
 # Core Concepts Overview
 
+**Version 0.7.3**
+
 Kysera is a **type-safe data access toolkit** built on a layered architecture that allows you to use only what you need while maintaining full type safety and production readiness.
 
 :::info What Kysera Is NOT
@@ -26,14 +28,14 @@ Instead, Kysera provides lightweight patterns (Repository, DAL) and plugins on t
 │  Layer 4: Plugins                                               │
 │  (@kysera/soft-delete, @kysera/audit, @kysera/timestamps, etc.) │
 ├─────────────────────────────────────────────────────────────────┤
-│  Layer 3: Data Access (choose your style)                       │
+│  Layer 3: Data Access Patterns (choose your style)              │
 │  @kysera/repository (CRUD + validation + plugin extensions)     │
 │  @kysera/dal (Functional queries + type inference)              │
 ├─────────────────────────────────────────────────────────────────┤
-│  Layer 2.5: Unified Execution Layer (@kysera/executor ~8KB)     │
-│  Plugin-aware Kysely wrapper, query interception               │
+│  Layer 2: Foundation Layer (@kysera/executor ~8KB)              │
+│  Unified Execution Layer - plugin interception & propagation    │
 ├─────────────────────────────────────────────────────────────────┤
-│  Layer 2: Infrastructure (opt-in)                               │
+│  Layer 1.5: Infrastructure (opt-in)                             │
 │  @kysera/infra (health, retry, circuit breaker)                 │
 │  @kysera/debug (logging, profiling)                             │
 │  @kysera/testing (test utilities)                               │
@@ -80,9 +82,9 @@ try {
 const page = await paginate(db.selectFrom('users').selectAll(), { page: 1, limit: 20 })
 ```
 
-### Layer 2.5: Unified Execution Layer (v0.7+)
+### Layer 2: Foundation Layer - Unified Execution (v0.7+)
 
-The `@kysera/executor` package provides a plugin-aware wrapper around Kysely:
+The `@kysera/executor` package is the **foundation** for Kysera's plugin system, providing a plugin-aware wrapper around Kysely:
 
 ```typescript
 import { createExecutor } from '@kysera/executor'
@@ -114,13 +116,14 @@ await executor.transaction().execute(async trx => {
 - **Transaction Propagation** - Plugins automatically work in transactions
 - **Plugin Validation** - Detects conflicts, missing dependencies, and circular dependencies
 
-**Why use `@kysera/executor`?**
+**Why `@kysera/executor` is the Foundation:**
 
-- Enables plugins to work with **both** Repository and DAL patterns
-- Provides automatic filtering (soft-delete, RLS) without code changes
-- Foundation for unified plugin architecture across Kysera
+- **Enables Unified Plugin System** - Plugins work with both Repository and DAL patterns
+- **Query Interception** - Automatic filtering (soft-delete, RLS) without code changes
+- **Zero Dependencies** - Minimal, focused package that both `@kysera/dal` and `@kysera/repository` depend on
+- **Transaction Propagation** - Plugins automatically work in nested transactions
 
-### Layer 2: Infrastructure (Opt-in)
+### Layer 1.5: Infrastructure (Opt-in)
 
 Add production utilities from separate packages:
 

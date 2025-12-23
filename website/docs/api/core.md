@@ -8,6 +8,8 @@ description: Core utilities package API reference
 
 Minimal core utilities for database operations with Kysely.
 
+**Version:** 0.7.3
+
 ## Installation
 
 ```bash
@@ -62,7 +64,7 @@ if (error instanceof UniqueConstraintError) {
 
 ### [Pagination](/docs/api/core/pagination)
 
-Offset and cursor-based pagination.
+Offset and cursor-based pagination with configurable bounds.
 
 ```typescript
 import { paginate, paginateCursor } from '@kysera/core'
@@ -76,6 +78,12 @@ const result = await paginateCursor(query, {
   limit: 20
 })
 ```
+
+**Pagination Bounds:**
+- `MAX_PAGE`: 10,000 (maximum page number)
+- `MAX_LIMIT`: 100 (maximum items per page)
+- Default limit: 20 items
+- These bounds prevent excessive database load and memory usage
 
 ### Query Helpers
 

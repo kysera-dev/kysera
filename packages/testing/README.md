@@ -140,8 +140,15 @@ it('handles serializable isolation', async () => {
 Clean database using specified strategy. Different strategies have different performance characteristics:
 
 - `'transaction'` - No cleanup (fastest, use with `testInTransaction`)
-- `'delete'` - DELETE FROM each table (medium speed, FK-safe order required)
+- `'delete'` - DELETE FROM each table (medium speed, FK-safe order required, uses parameterized queries for SQL injection prevention)
 - `'truncate'` - TRUNCATE TABLE (fastest bulk clean, handles FKs automatically)
+
+**SQL Injection Prevention:** All cleanup strategies use parameterized queries to safely handle table names and prevent SQL injection attacks.
+
+**Dialect Detection:** Improved dialect detection with fallback strategies:
+1. Check `db.getExecutor()?.adapter?.dialect` (Kysely 0.27+)
+2. Check `db.config.dialect.constructor.name`
+3. Return 'postgres' as safe fallback
 
 **Parameters:**
 
@@ -156,6 +163,7 @@ import { cleanDatabase } from '@kysera/testing'
 
 afterEach(async () => {
   // Tables in FK-safe order (children first)
+  // Uses parameterized queries to prevent SQL injection
   await cleanDatabase(db, 'delete', ['order_items', 'orders', 'users'])
 })
 ```

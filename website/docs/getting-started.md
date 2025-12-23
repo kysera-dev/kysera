@@ -10,30 +10,70 @@ Get up and running with Kysera in 5 minutes.
 
 ## Installation
 
+**Current Version: 0.7.3**
+
+### Prerequisites
+
+- **Runtime**: Node.js >=20.0.0, Bun >=1.0.0, or Deno (experimental)
+- **TypeScript**: ^5.9.2 (recommended)
+- **Module System**: ESM-only (no CommonJS)
+
+### Step 1: Install Core Dependencies
+
 ```bash
-# Install Kysely (required) and database driver
-npm install kysely pg
+# Install Kysely (peer dependency) and database driver
+npm install kysely@^0.28.9 pg
 
-# Install Kysera packages (pick what you need)
+# For other databases:
+# npm install kysely@^0.28.9 mysql2      # MySQL
+# npm install kysely@^0.28.9 better-sqlite3  # SQLite
+```
+
+### Step 2: Install Kysera Foundation
+
+```bash
+# Install in order - executor first (foundation layer)
 npm install @kysera/core           # Errors, pagination, types, logger (~8KB)
-npm install @kysera/repository     # Repository pattern with validation adapters
-npm install @kysera/dal            # Functional DAL with type inference
+npm install @kysera/executor       # Unified Execution Layer - plugin foundation (~6KB)
+```
 
-# Optional validation library (choose one or none)
-npm install zod                    # Popular schema validation
-# or: npm install valibot           # Lightweight alternative
-# or: npm install @sinclair/typebox # JSON Schema based
+### Step 3: Choose Your Pattern (or use both)
 
-# Infrastructure (opt-in)
-npm install @kysera/infra          # Health checks, retry, circuit breaker
-npm install @kysera/debug          # Query logging and profiling
-npm install @kysera/testing        # Test utilities (dev dependency)
+```bash
+# Repository pattern (structured CRUD with validation)
+npm install @kysera/repository     # Repository pattern (~12KB)
 
-# Plugins
-npm install @kysera/soft-delete    # Soft delete plugin
-npm install @kysera/audit          # Audit logging plugin
-npm install @kysera/timestamps     # Auto timestamps plugin
-npm install @kysera/migrations     # Migration system
+# Functional DAL (type-inferred queries with context)
+npm install @kysera/dal            # Functional DAL (~7KB)
+
+# Or install both for CQRS-lite pattern
+```
+
+### Step 4: Add Validation (Optional)
+
+```bash
+# Choose one validation library or none
+npm install zod@^4.1.13                    # Popular schema validation (recommended)
+# OR: npm install valibot                  # Lightweight alternative
+# OR: npm install @sinclair/typebox        # JSON Schema based
+```
+
+### Step 5: Add Plugins (Optional)
+
+```bash
+npm install @kysera/soft-delete    # Soft delete plugin (~4KB)
+npm install @kysera/audit          # Audit logging plugin (~11KB)
+npm install @kysera/timestamps     # Auto timestamps plugin (~4KB)
+npm install @kysera/rls            # Row-level security plugin (~44KB)
+```
+
+### Step 6: Add Infrastructure (Optional)
+
+```bash
+npm install @kysera/infra          # Health checks, retry, circuit breaker (~12KB)
+npm install @kysera/debug          # Query logging and profiling (~5KB)
+npm install @kysera/testing        # Test utilities (~6KB) - dev dependency
+npm install @kysera/migrations     # Migration system (~11KB)
 ```
 
 ## Quick Start
@@ -79,10 +119,26 @@ const db = new Kysely<Database>({
 })
 ```
 
-### 3. Create Repositories
+### 3. Create Executor with Plugins
 
 ```typescript
-import { createRepositoryFactory } from '@kysera/repository'
+import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { timestampsPlugin } from '@kysera/timestamps'
+
+// Create executor with plugins (foundation layer)
+const executor = await createExecutor(db, [
+  softDeletePlugin({ deletedAtColumn: 'deleted_at' }),
+  timestampsPlugin({ createdAtColumn: 'created_at', updatedAtColumn: 'updated_at' })
+])
+
+// Plugins now apply to ALL queries through this executor
+```
+
+### 4. Option A: Repository Pattern
+
+```typescript
+import { createORM, createRepositoryFactory } from '@kysera/repository'
 import { z } from 'zod'
 
 // Define validation schemas
@@ -91,112 +147,168 @@ const userSchema = z.object({
   name: z.string().min(1)
 })
 
-// Create factory
-const factory = createRepositoryFactory(db)
+// Create ORM (plugin container, not traditional ORM)
+const orm = await createORM(executor, [])
 
 // Create repository
-const userRepo = factory.create({
-  tableName: 'users' as const,
-  mapRow: row => row,
-  schemas: {
-    create: userSchema,
-    update: userSchema.partial()
-  }
+const userRepo = orm.createRepository(exec => {
+  const factory = createRepositoryFactory(exec)
+  return factory.create({
+    tableName: 'users' as const,
+    mapRow: row => row,
+    schemas: {
+      create: userSchema,
+      update: userSchema.partial()
+    }
+  })
 })
 ```
 
-### 4. Use Repositories
+### 4. Option B: Functional DAL Pattern
 
 ```typescript
-// Create a user
+import { createQuery, createContext } from '@kysera/dal'
+
+// Define queries with type inference
+const getUser = createQuery((ctx, id: number) =>
+  ctx.db.selectFrom('users').where('id', '=', id).selectAll().executeTakeFirst()
+)
+
+const listUsers = createQuery((ctx, limit = 10) =>
+  ctx.db.selectFrom('users').selectAll().limit(limit).execute()
+)
+
+const createUser = createQuery((ctx, data: { email: string; name: string }) =>
+  ctx.db.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
+)
+
+// Create context with executor (plugins apply automatically)
+const ctx = createContext(executor)
+```
+
+### 5. Use Your Chosen Pattern
+
+#### Using Repository Pattern
+
+```typescript
+// Create a user (timestamps added automatically)
 const user = await userRepo.create({
   email: 'john@example.com',
   name: 'John Doe'
 })
+// Result: { id: 1, email: '...', name: '...', created_at: Date, updated_at: Date, deleted_at: null }
 
 // Find user by ID
 const foundUser = await userRepo.findById(user.id)
 
-// Update user
+// Update user (updated_at set automatically)
 const updated = await userRepo.update(user.id, {
   name: 'John Smith'
 })
 
-// List users with pagination
+// List users with pagination (soft-deleted automatically excluded)
 const { data, hasNext } = await userRepo.findAll({
   limit: 10,
   offset: 0
 })
 
-// Delete user
-await userRepo.delete(user.id)
+// Soft delete user (sets deleted_at instead of removing)
+await userRepo.softDelete(user.id)
+
+// Include soft-deleted records
+const allUsers = await userRepo.findAllWithDeleted()
+
+// Restore soft-deleted user
+await userRepo.restore(user.id)
+```
+
+#### Using Functional DAL Pattern
+
+```typescript
+// All queries automatically filtered by plugins
+const user = await createUser(ctx, {
+  email: 'john@example.com',
+  name: 'John Doe'
+})
+// Timestamps added automatically by timestampsPlugin
+
+const foundUser = await getUser(ctx, user.id)
+// Returns null if soft-deleted
+
+const users = await listUsers(ctx, 20)
+// Automatically excludes soft-deleted records
 ```
 
 ## Using Transactions
 
-```typescript
-await db.transaction().execute(async trx => {
-  // Create repositories with transaction executor
-  const txFactory = createRepositoryFactory(trx)
-  const txUserRepo = txFactory.create({
-    /* ... */
-  })
-  const txPostRepo = txFactory.create({
-    /* ... */
-  })
+### Repository Pattern with Transactions
 
-  // All operations are atomic
+```typescript
+// Transactions with plugins preserved
+await orm.transaction(async (txCtx) => {
+  // Create repositories with transaction context
+  const txUserRepo = orm.createRepository(createUserRepository)
+  const txPostRepo = orm.createRepository(createPostRepository)
+
+  // All operations are atomic, plugins still apply
   const user = await txUserRepo.create({
     email: 'jane@example.com',
     name: 'Jane Doe'
   })
+  // Timestamps added automatically in transaction
 
   await txPostRepo.create({
     user_id: user.id,
     title: 'First Post',
     content: 'Hello World!'
   })
+  // Timestamps added automatically
 
   // If error occurs, both operations roll back
 })
 ```
 
-## Adding Plugins
-
-### Soft Delete
+### Functional DAL with Transactions
 
 ```typescript
-import { createORM } from '@kysera/repository'
-import { softDeletePlugin } from '@kysera/soft-delete'
+import { withTransaction } from '@kysera/dal'
 
-// Note: createORM creates a plugin container, not a traditional ORM
-// It has no entity mapping, Unit of Work, or Identity Map
-const orm = await createORM(db, [softDeletePlugin({ deletedAtColumn: 'deleted_at' })])
+// Transactions preserve plugins
+await withTransaction(executor, async (txCtx) => {
+  // All queries use the same transaction
+  const user = await createUser(txCtx, {
+    email: 'jane@example.com',
+    name: 'Jane Doe'
+  })
 
-const userRepo = orm.createRepository(executor => {
-  const factory = createRepositoryFactory(executor)
-  return factory.create({ tableName: 'users' /* ... */ })
+  const post = await createPost(txCtx, {
+    user_id: user.id,
+    title: 'First Post',
+    content: 'Hello World!'
+  })
+
+  // Plugins (soft-delete, timestamps) still work in transaction
+  // If error occurs, both operations roll back
 })
-
-// Soft delete (sets deleted_at timestamp)
-await userRepo.softDelete(userId)
-
-// Find only non-deleted records (automatic)
-const activeUsers = await userRepo.findAll()
-
-// Include deleted records
-const allUsers = await userRepo.findAllWithDeleted()
-
-// Restore soft-deleted record
-await userRepo.restore(userId)
 ```
 
-### Audit Logging
+## Combining Multiple Plugins
+
+Plugins work with both Repository and DAL patterns through the Unified Execution Layer:
 
 ```typescript
+import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
 import { auditPlugin } from '@kysera/audit'
+import { timestampsPlugin } from '@kysera/timestamps'
 
-const orm = await createORM(db, [
+// Create executor with multiple plugins
+const executor = await createExecutor(db, [
+  softDeletePlugin({ deletedAtColumn: 'deleted_at' }),
+  timestampsPlugin({
+    createdAtColumn: 'created_at',
+    updatedAtColumn: 'updated_at'
+  }),
   auditPlugin({
     getUserId: () => currentUser?.id || null,
     captureOldValues: true,
@@ -204,33 +316,37 @@ const orm = await createORM(db, [
   })
 ])
 
-// All CRUD operations are now audited automatically
-const user = await userRepo.create({ email: 'test@example.com', name: 'Test' })
+// Now use with Repository pattern
+const orm = await createORM(executor, [])
+const userRepo = orm.createRepository(createUserRepository)
 
-// Get audit history
-const history = await userRepo.getAuditHistory(user.id)
+// OR use with DAL pattern
+const ctx = createContext(executor)
+
+// ALL queries through executor get:
+// - Automatic timestamps (created_at, updated_at)
+// - Soft delete filtering (deleted_at)
+// - Audit logging on mutations
 ```
 
-### Timestamps
+### Plugin-Specific Methods
+
+Some plugins add methods to repositories:
 
 ```typescript
-import { timestampsPlugin } from '@kysera/timestamps'
+// Soft delete methods (Repository pattern only)
+await userRepo.softDelete(userId)        // Sets deleted_at timestamp
+await userRepo.restore(userId)           // Clears deleted_at
+await userRepo.findAllWithDeleted()      // Include soft-deleted records
+await userRepo.findDeletedOnly()         // Only soft-deleted records
 
-const orm = await createORM(db, [
-  timestampsPlugin({
-    createdAtColumn: 'created_at',
-    updatedAtColumn: 'updated_at'
-  })
-])
+// Audit methods (Repository pattern only)
+const history = await userRepo.getAuditHistory(userId)
+const entry = await userRepo.getAuditEntry(auditId)
+await userRepo.restoreFromAudit(auditId) // Restore old values
 
-// created_at and updated_at are set automatically
-const post = await postRepo.create({
-  title: 'My Post',
-  content: 'Content'
-})
-
-// updated_at is updated automatically on every update
-await postRepo.update(post.id, { title: 'Updated Title' })
+// Query filtering (works in both Repository and DAL)
+const users = await getUsers(ctx)        // Automatically excludes soft-deleted
 ```
 
 ## Health Checks
@@ -303,10 +419,57 @@ const nextPage = await paginateCursor(db.selectFrom('users').selectAll(), {
 })
 ```
 
+## CQRS-lite Pattern (Repository + DAL)
+
+Combine both patterns for commands and queries:
+
+```typescript
+import { createORM } from '@kysera/repository'
+import { createQuery, createContext } from '@kysera/dal'
+
+// Create executor with plugins
+const executor = await createExecutor(db, [
+  softDeletePlugin(),
+  timestampsPlugin()
+])
+
+// Create ORM for writes
+const orm = await createORM(executor, [])
+
+// Define complex read queries with DAL
+const getDashboardStats = createQuery((ctx, userId: number) =>
+  ctx.db
+    .selectFrom('users')
+    .leftJoin('posts', 'users.id', 'posts.user_id')
+    .select(({ fn }) => [
+      'users.id',
+      'users.name',
+      fn.count('posts.id').as('post_count')
+    ])
+    .where('users.id', '=', userId)
+    .groupBy('users.id')
+    .executeTakeFirst()
+)
+
+// Use in transaction - both patterns work together
+await orm.transaction(async (txCtx) => {
+  // Repository for writes
+  const userRepo = orm.createRepository(createUserRepository)
+  const user = await userRepo.create({ email: 'test@example.com', name: 'Test' })
+
+  // DAL for complex reads (same transaction context)
+  const stats = await getDashboardStats(txCtx, user.id)
+
+  // Both share the same plugins and transaction
+})
+```
+
 ## Next Steps
 
 - [Core Concepts](/docs/core-concepts/overview) - Understand the architecture
+- [Unified Execution Layer](/docs/api/executor) - Learn about @kysera/executor
 - [Repository Pattern](/docs/core-concepts/repository-pattern) - Deep dive into repositories
+- [Functional DAL](/docs/api/dal) - Type-safe functional queries
 - [Plugins](/docs/plugins/overview) - Explore available plugins
 - [Best Practices](/docs/guides/best-practices) - Production-ready patterns
 - [API Reference](/docs/api/core) - Detailed API documentation

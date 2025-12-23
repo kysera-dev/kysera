@@ -6,7 +6,7 @@ Functional Data Access Layer for Kysera - Query functions with automatic plugin 
 
 `@kysera/dal` provides a functional approach to database access as an alternative to traditional repository patterns. Write **query functions** that are composable, type-safe, and easy to test.
 
-The DAL seamlessly integrates with `@kysera/executor` to provide automatic plugin support (soft-delete, RLS, audit, etc.) while maintaining a clean functional API.
+**The DAL works through `@kysera/executor`** to provide automatic plugin support. When you pass a `KyseraExecutor` (instead of a raw Kysely instance) to your query functions, all plugins (soft-delete, RLS, audit, etc.) are automatically applied while maintaining a clean functional API.
 
 ## Features
 
@@ -116,7 +116,7 @@ const deletePost = createQuery((ctx, id: number) =>
 
 ### Plugin Integration
 
-The DAL automatically integrates with `@kysera/executor` to provide seamless plugin support. When you use a `KyseraExecutor` instead of a raw Kysely instance, all queries automatically have plugins applied.
+**The DAL works through `@kysera/executor` for plugin support.** Instead of implementing its own plugin system, the DAL leverages the executor's plugin interception mechanism. When you pass a `KyseraExecutor` (instead of a raw Kysely instance) to your query functions, all plugins are automatically applied at the query builder level.
 
 #### Basic Plugin Integration
 
@@ -414,15 +414,31 @@ Create a database context from any database instance.
 
 **Returns:** `DbContext<DB>`
 
+**Important:** To enable plugin support in the DAL, pass a `KyseraExecutor` (not a raw Kysely instance) to `createContext`. The executor wraps the database with plugin interception.
+
 **Example:**
 
 ```typescript
 import { createContext } from '@kysera/dal'
 import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
 
+// Create executor with plugins
 const executor = await createExecutor(db, [softDeletePlugin()])
+
+// Create context from executor (not raw db!)
 const ctx = createContext(executor)
+
+// Queries now have plugins applied
 const user = await findUserById(ctx, 1) // soft-delete filter applied
+```
+
+**Without plugins (raw Kysely):**
+
+```typescript
+// This works but plugins won't be applied
+const ctx = createContext(db) // Raw Kysely instance
+const user = await findUserById(ctx, 1) // No plugin filters
 ```
 
 #### `withTransaction<DB, T>(db, fn, options?)`
@@ -556,6 +572,24 @@ Map over array results.
 
 ## TypeScript Types
 
+### Re-exported Executor Types
+
+The following types are re-exported from `@kysera/executor` for convenience:
+
+```typescript
+import type {
+  ExecutorConfig,
+  KyseraExecutorMarker,
+  PluginValidationDetails
+} from '@kysera/dal'
+```
+
+- **`ExecutorConfig`** - Configuration options for executor creation
+- **`KyseraExecutorMarker`** - Type marker interface for KyseraExecutor
+- **`PluginValidationDetails`** - Validation error details from plugin system
+
+See [`@kysera/executor` documentation](../executor) for detailed type information.
+
 ### `DbContext<DB>`
 
 Database context interface.
@@ -612,6 +646,115 @@ type ParallelResult<T extends Record<string, QueryFunction<any, any, any>>> = {
   [K in keyof T]: T[K] extends QueryFunction<any, any, infer R> ? R : never
 }
 ```
+
+## Transaction Features
+
+### Savepoint Management
+
+The DAL provides savepoint support for nested transaction rollback points:
+
+```typescript
+import { withTransaction, withSavepoint } from '@kysera/dal'
+
+await withTransaction(executor, async ctx => {
+  // Create a user
+  const user = await createUser(ctx, { email: 'test@example.com', name: 'Test' })
+
+  // Create a savepoint before risky operation
+  try {
+    await withSavepoint(ctx, 'before_post', async spCtx => {
+      const post = await createPost(spCtx, { userId: user.id, title: 'Test Post' })
+
+      // This might fail
+      await someRiskyOperation(spCtx, post.id)
+    })
+  } catch (error) {
+    // Rollback to savepoint - user creation is preserved
+    console.log('Post creation failed, but user was still created')
+  }
+
+  return user
+})
+```
+
+**Savepoint Validation:**
+
+Savepoint names must be positive integers (1, 2, 3, etc.) for PostgreSQL compatibility:
+
+```typescript
+// ✅ Valid savepoint names
+await withSavepoint(ctx, '1', async spCtx => { /* ... */ })
+await withSavepoint(ctx, '2', async spCtx => { /* ... */ })
+await withSavepoint(ctx, '999', async spCtx => { /* ... */ })
+
+// ❌ Invalid savepoint names (will throw error)
+await withSavepoint(ctx, 'my-savepoint', async spCtx => { /* ... */ }) // Not a positive integer
+await withSavepoint(ctx, '0', async spCtx => { /* ... */ }) // Zero not allowed
+await withSavepoint(ctx, '-1', async spCtx => { /* ... */ }) // Negative not allowed
+```
+
+### Rollback Error Handling
+
+When a transaction or savepoint is rolled back due to an error, the DAL logs the rollback operation but preserves the original error:
+
+```typescript
+import { withTransaction } from '@kysera/dal'
+
+try {
+  await withTransaction(executor, async ctx => {
+    await createUser(ctx, { email: 'test@example.com', name: 'Test' })
+
+    // This will cause rollback
+    throw new Error('Something went wrong')
+  })
+} catch (error) {
+  console.error(error.message) // "Something went wrong"
+  // Transaction was rolled back automatically
+  // Rollback is logged internally for debugging
+}
+```
+
+**Internal logging:**
+
+When a rollback occurs, the DAL logs it using `console.error`:
+
+```
+Transaction/savepoint rolled back due to error: [error message]
+```
+
+This helps with debugging while ensuring the original error is always re-thrown to the caller.
+
+### Plugin Propagation in Transactions
+
+All plugins registered on the executor automatically propagate through transactions:
+
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { rlsPlugin } from '@kysera/rls'
+import { withTransaction } from '@kysera/dal'
+
+const executor = await createExecutor(db, [
+  softDeletePlugin(),
+  rlsPlugin({ schema: rlsSchema, getCurrentTenantId: () => tenantId })
+])
+
+await withTransaction(executor, async ctx => {
+  // All queries in transaction have soft-delete and RLS filters applied
+  const users = await ctx.db.selectFrom('users').selectAll().execute()
+
+  // Plugin filters still apply to inserts/updates
+  const newUser = await ctx.db
+    .insertInto('users')
+    .values({ name: 'Alice', tenant_id: tenantId })
+    .returningAll()
+    .executeTakeFirst()
+
+  return newUser
+})
+```
+
+See the [Executor documentation](../executor#transaction-support) for more details on how plugins work in transactions.
 
 ## Examples
 
