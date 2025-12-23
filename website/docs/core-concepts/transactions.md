@@ -6,9 +6,8 @@ description: Transaction management in Kysera
 
 # Transactions
 
-**Version 0.7.3**
 
-Kysera provides clean transaction support through the Executor pattern, making it easy to ensure atomic operations. In v0.7+, the **@kysera/executor** foundation layer ensures plugins automatically work in transactions through plugin propagation.
+Kysera provides clean transaction support through the Executor pattern, making it easy to ensure atomic operations. the **@kysera/executor** foundation layer ensures plugins automatically work in transactions through plugin propagation.
 
 ## Basic Transaction Usage
 
@@ -257,7 +256,7 @@ await db.transaction().execute(async (trx) => {
 })
 ```
 
-**Savepoint Validation (v0.7.3):**
+**Savepoint Validation:**
 - Savepoint names must be positive integers (validated by executor)
 - Invalid savepoint names throw descriptive errors
 - Rollback errors are logged with full context for debugging

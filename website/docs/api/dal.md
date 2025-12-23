@@ -28,7 +28,7 @@ npm install @kysera/soft-delete @kysera/rls @kysera/audit
 
 `@kysera/dal` provides a functional approach to database access as an alternative to traditional repository patterns. Instead of classes and methods, you write **query functions** that are composable, type-safe, and easy to test.
 
-:::info New in v0.7.0
+:::info
 **Native Plugin Support!** DAL now seamlessly integrates with `@kysera/executor` to provide automatic plugin interception (soft-delete, RLS, audit, etc.) while maintaining a clean functional API. Plugins automatically propagate through transactions via `withTransaction()`.
 :::
 

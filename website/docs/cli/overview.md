@@ -8,8 +8,6 @@ description: Kysera CLI tool overview and installation
 
 Command-line interface for Kysera - database management, migrations, code generation, and more.
 
-**Version:** 0.7.3
-
 ## Installation
 
 ```bash

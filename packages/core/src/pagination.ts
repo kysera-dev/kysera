@@ -29,13 +29,26 @@ const decodeBase64 = (str: string): string => {
 /**
  * Encode cursor for pagination
  *
- * Optimizations:
- * - Single column: encodes value directly (more compact)
- * - Multi-column: uses JSON encoding (more flexible)
+ * Creates a base64-encoded cursor string from the last row of a result set.
+ * The cursor format is optimized based on the number of columns:
+ * - Single column: `${base64(column)}:${base64(value)}` (more compact)
+ * - Multi-column: `${base64(JSON.stringify(obj))}` (more flexible)
  *
- * Format:
- * - Single column: ${base64(column)}:${base64(value)}
- * - Multi-column: ${base64(JSON.stringify(obj))}
+ * This encoding allows for efficient cursor-based pagination by storing
+ * the values of the order-by columns from the last row, which can later
+ * be decoded to build WHERE clauses for the next page.
+ *
+ * @param orderBy - Array of column ordering specifications used to determine which columns to encode
+ * @param lastRow - The last row of the current page containing the values to encode
+ * @returns Encoded cursor string suitable for use in pagination
+ *
+ * @example
+ * ```ts
+ * const orderBy = [{ column: 'created_at', direction: 'asc' }]
+ * const lastRow = { id: 1, created_at: new Date('2024-01-01') }
+ * const cursor = encodeCursor(orderBy, lastRow)
+ * // Returns: "Y3JlYXRlZF9hdA==:IjIwMjQtMDEtMDFUMDA6MDA6MDAuMDAwWiI="
+ * ```
  */
 function encodeCursor<T>(orderBy: Array<{ column: keyof T & string }>, lastRow: T): string {
   if (orderBy.length === 1) {
@@ -70,9 +83,25 @@ function encodeCursor<T>(orderBy: Array<{ column: keyof T & string }>, lastRow: 
 /**
  * Decode cursor for pagination
  *
- * Supports both formats:
- * - Single column: ${base64(column)}:${base64(value)}
- * - Multi-column: ${base64(JSON.stringify(obj))}
+ * Decodes a base64-encoded cursor string back into an object containing
+ * the column values. Automatically detects and handles both cursor formats:
+ * - Single column: `${base64(column)}:${base64(value)}`
+ * - Multi-column: `${base64(JSON.stringify(obj))}`
+ *
+ * The function first attempts to decode as single-column format (presence of colon),
+ * and falls back to multi-column format if that fails.
+ *
+ * @param cursor - The encoded cursor string to decode
+ * @returns Decoded cursor object with column names as keys and their values
+ * @throws {BadRequestError} When cursor format is invalid or cannot be decoded
+ * @throws {Error} When decoded value is not a valid object
+ *
+ * @example
+ * ```ts
+ * const cursor = "Y3JlYXRlZF9hdA==:IjIwMjQtMDEtMDFUMDA6MDA6MDAuMDAwWiI="
+ * const decoded = decodeCursor(cursor)
+ * // Returns: { created_at: "2024-01-01T00:00:00.000Z" }
+ * ```
  */
 function decodeCursor(cursor: string): Record<string, unknown> {
   // Check for single-column format (has colon separator)
@@ -131,13 +160,41 @@ export interface PaginatedResult<T> {
 /**
  * Offset-based pagination
  *
+ * Performs traditional offset-based pagination with automatic total count calculation.
+ * This method is suitable for smaller datasets where total page count is needed.
+ *
  * @param query - The base query to paginate
  * @param options - Pagination options including page, limit, and optional dialect
+ * @returns Paginated result with data, total count, and navigation metadata
+ * @throws {BadRequestError} When page and limit combination exceeds safe integer range
  *
  * @remarks
  * For MSSQL, the dialect option must be set to 'mssql' as it uses
  * OFFSET/FETCH syntax instead of standard LIMIT/OFFSET.
  * The query MUST include an ORDER BY clause for MSSQL pagination.
+ *
+ * Pagination bounds:
+ * - Page numbers are clamped between 1 and 1,000,000
+ * - Limit is clamped between 1 and 10,000
+ * - Overflow protection ensures (page - 1) * limit stays within safe integer range
+ *
+ * @example
+ * ```ts
+ * const query = db.selectFrom('users').selectAll()
+ * const result = await paginate(query, { page: 2, limit: 20 })
+ * // Returns:
+ * // {
+ * //   data: [...],
+ * //   pagination: {
+ * //     page: 2,
+ * //     limit: 20,
+ * //     total: 150,
+ * //     totalPages: 8,
+ * //     hasNext: true,
+ * //     hasPrev: true
+ * //   }
+ * // }
+ * ```
  */
 export async function paginate<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -212,10 +269,53 @@ export interface CursorOptions<T> {
 /**
  * Advanced cursor-based pagination with multi-column ordering
  *
- * @warning Database-specific optimizations:
+ * Performs efficient cursor-based pagination supporting complex multi-column ordering.
+ * Unlike offset pagination, cursor-based pagination maintains consistent performance
+ * even with large datasets, as it uses WHERE clauses instead of OFFSET.
+ *
+ * @param query - The base Kysely select query to paginate
+ * @param options - Cursor pagination options including orderBy specification, cursor, and limit
+ * @returns Paginated result with data, next/previous cursors, and navigation metadata
+ * @throws {BadRequestError} When cursor is invalid or malformed
+ * @throws {BadRequestError} When cursor is missing required order-by columns
+ *
+ * @remarks
+ * Database-specific optimizations:
  * - PostgreSQL with all ASC: O(log n) - uses row value comparison
  * - Mixed ordering: O(n) worst case - uses compound WHERE
  * - MySQL/SQLite: Always uses compound WHERE (less efficient)
+ *
+ * The function builds compound WHERE clauses for multi-column ordering:
+ * - For orderBy: [score ASC, created_at ASC] with cursor (50, '2024-01-01')
+ * - Generates: WHERE (score > 50) OR (score = 50 AND created_at > '2024-01-01')
+ *
+ * Pagination bounds:
+ * - Limit is clamped between 1 and 10,000
+ * - Fetches limit + 1 rows to determine if there's a next page
+ *
+ * @example
+ * ```ts
+ * const query = db.selectFrom('posts').selectAll()
+ * const result = await paginateCursor(query, {
+ *   orderBy: [
+ *     { column: 'score', direction: 'desc' },
+ *     { column: 'created_at', direction: 'asc' }
+ *   ],
+ *   cursor: 'eyJzY29yZSI6NTAsImNyZWF0ZWRfYXQiOiIyMDI0LTAxLTAxIn0=',
+ *   limit: 20
+ * })
+ * // Returns:
+ * // {
+ * //   data: [...],
+ * //   pagination: {
+ * //     limit: 20,
+ * //     hasNext: true,
+ * //     hasPrev: true,
+ * //     nextCursor: '...',
+ * //     prevCursor: '...'
+ * //   }
+ * // }
+ * ```
  */
 export async function paginateCursor<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -365,6 +465,48 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
 
 /**
  * Simple cursor pagination (backward compatible)
+ *
+ * Provides a simplified cursor-based pagination interface that assumes
+ * ordering by an 'id' column in ascending order. This is a convenience
+ * wrapper around `paginateCursor` for common use cases where only
+ * simple ID-based pagination is needed.
+ *
+ * This function is backward compatible with older codebases that used
+ * simple cursor pagination before the introduction of multi-column
+ * cursor support.
+ *
+ * @param query - The Kysely select query builder to paginate
+ * @param options - Pagination options (cursor, limit, dialect)
+ * @returns Paginated result with cursor-based navigation
+ * @throws {BadRequestError} When cursor is invalid or cannot be decoded
+ *
+ * @remarks
+ * Internally calls `paginateCursor` with fixed ordering:
+ * `orderBy: [{ column: 'id', direction: 'asc' }]`
+ *
+ * Requirements:
+ * - The table MUST have an 'id' column
+ * - The 'id' column should be indexed for optimal performance
+ *
+ * @example
+ * ```ts
+ * const query = db.selectFrom('users').selectAll()
+ * const result = await paginateCursorSimple(query, {
+ *   cursor: 'eyJpZCI6MTAwfQ==',
+ *   limit: 20
+ * })
+ * // Returns:
+ * // {
+ * //   data: [...],
+ * //   pagination: {
+ * //     limit: 20,
+ * //     hasNext: true,
+ * //     hasPrev: true,
+ * //     nextCursor: 'eyJpZCI6MTIwfQ==',
+ * //     prevCursor: 'eyJpZCI6MTAxfQ=='
+ * //   }
+ * // }
+ * ```
  */
 export async function paginateCursorSimple<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>,

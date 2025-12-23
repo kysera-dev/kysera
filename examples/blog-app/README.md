@@ -93,6 +93,8 @@ pnpm build
 pnpm start
 ```
 
+**Note**: This example uses PostgreSQL, but Kysera supports PostgreSQL, MySQL, SQLite, and MSSQL. Simply change the dialect in your database connection setup.
+
 ## Running the Example
 
 ```bash
@@ -326,6 +328,131 @@ blog-app/
 5. **Health Monitoring**: Production-ready health checks using `@kysera/infra`
 6. **Debug Wrapper**: Query logging and slow query detection using `@kysera/debug`
 7. **Metrics Pool**: Connection pool metrics for health monitoring
+
+## Upgrading to v0.7 Patterns
+
+**This example currently uses the direct Kysely instance pattern**, which still works perfectly in v0.7 and beyond. However, **the recommended v0.7 pattern** uses the **Unified Execution Layer** (`@kysera/executor`) for automatic plugin interception.
+
+### Current Pattern (Still Valid)
+
+```typescript
+import { Kysely, PostgresDialect } from 'kysely'
+
+const db = new Kysely<Database>({ dialect })
+const userRepo = createUserRepository(db)
+
+// Manual soft-delete filtering required
+await db
+  .selectFrom('users')
+  .selectAll()
+  .where('deleted_at', 'is', null) // ← Must remember this everywhere
+  .execute()
+```
+
+### Recommended v0.7 Pattern
+
+```typescript
+import { Kysely, PostgresDialect } from 'kysely'
+import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { auditPlugin } from '@kysera/audit'
+
+// 1. Create base Kysely instance
+const db = new Kysely<Database>({ dialect })
+
+// 2. Wrap with executor and plugins
+const executor = await createExecutor(db, [
+  softDeletePlugin(), // Automatic soft-delete filtering
+  auditPlugin() // Automatic audit logging
+])
+
+// 3. Use executor instead of db
+const userRepo = createUserRepository(executor)
+
+// Now soft-delete filtering is automatic - no manual where() needed!
+await executor.selectFrom('users').selectAll().execute()
+// ✅ Automatically excludes deleted_at IS NOT NULL records
+
+// Soft delete/restore methods added to repository automatically
+await userRepo.softDelete(userId)
+await userRepo.restore(userId)
+```
+
+### Benefits of Unified Execution Layer
+
+1. **Automatic Plugin Interception**: Plugins intercept all queries automatically
+   - No need to manually filter `deleted_at IS NULL` everywhere
+   - Audit logging happens automatically on all writes
+   - RLS policies apply globally
+
+2. **Works with Both Repository and DAL**: Same executor works with:
+   - Repository pattern (demonstrated in this example)
+   - Functional DAL pattern (see `examples/multi-tenant-saas`)
+   - Mixed CQRS-lite pattern (Repository for writes, DAL for reads)
+
+3. **Add Features Without Code Changes**:
+   ```typescript
+   // Add audit logging without touching repository code
+   const executor = await createExecutor(db, [
+     softDeletePlugin(),
+     auditPlugin(), // ← Just add plugin, all queries automatically logged
+     rlsPlugin({ schema: rlsSchema })
+   ])
+   ```
+
+4. **Transaction-Safe**: Plugins work correctly in transactions
+   ```typescript
+   await executor.transaction().execute(async trx => {
+     // Plugins still active inside transaction
+     await userRepo.create({ ... })
+   })
+   ```
+
+### Migration Steps
+
+To update this example to v0.7 patterns:
+
+1. **Install executor package**:
+   ```bash
+   pnpm add @kysera/executor @kysera/soft-delete
+   ```
+
+2. **Update `src/db/connection.ts`**:
+   ```typescript
+   import { createExecutor } from '@kysera/executor'
+   import { softDeletePlugin } from '@kysera/soft-delete'
+
+   const baseDb = new Kysely<Database>({ dialect })
+   export const executor = await createExecutor(baseDb, [softDeletePlugin()])
+   ```
+
+3. **Update repositories to use executor**:
+   ```typescript
+   // Remove manual .where('deleted_at', 'is', null) filters
+   // They're now automatic!
+   async findById(id: number) {
+     return executor // ← Changed from db
+       .selectFrom('users')
+       .selectAll()
+       .where('id', '=', id)
+       // ✅ No need for .where('deleted_at', 'is', null)
+       .executeTakeFirst()
+   }
+   ```
+
+4. **Repository gets soft-delete methods automatically**:
+   ```typescript
+   // These are now provided by softDeletePlugin
+   await userRepo.softDelete(userId)
+   await userRepo.restore(userId)
+   await userRepo.findDeleted() // Also available
+   ```
+
+### Learn More
+
+- [Migration Guide](../../website/docs/guides/migration-to-v0.7.md) - Complete v0.7 migration guide
+- [Executor Documentation](../../packages/executor/README.md) - Unified Execution Layer details
+- [Plugin System](../../website/docs/core-concepts/plugins.md) - Building custom plugins
 
 ## Next Steps
 

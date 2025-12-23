@@ -6,11 +6,9 @@ description: Row-level security plugin for multi-tenant applications
 
 # Row-Level Security (RLS) Plugin
 
-**Version:** 0.7.3
-
 Implement declarative authorization policies for multi-tenant applications with automatic query transformation using AsyncLocalStorage for context propagation.
 
-**New in v0.7**: RLS plugin now uses the unified `@kysera/executor` Plugin interface and works with both **Repository** and **DAL** patterns through query interception.
+The RLS plugin uses the unified `@kysera/executor` Plugin interface and works with both **Repository** and **DAL** patterns through query interception.
 
 ## Installation
 
@@ -568,9 +566,9 @@ allow('read', ctx => {
 - Operation requires authentication but no context was set
 - Should result in a 401 response
 
-## DAL Pattern Support (New in v0.7)
+## DAL Pattern Support
 
-**New in v0.7**: RLS filtering now works automatically with DAL pattern through `@kysera/executor` query interception.
+RLS filtering works automatically with DAL pattern through `@kysera/executor` query interception.
 
 ### Usage with DAL
 
@@ -617,15 +615,15 @@ await rlsContext.runAsync(
 
 ### What Works with DAL
 
-| Feature                         | Works in DAL (v0.7)? | Notes                                |
-| ------------------------------- | -------------------- | ------------------------------------ |
-| `rlsContext.runAsync()`         | ✅ Yes               | Context management                   |
-| `rlsContext.getContextOrNull()` | ✅ Yes               | Context access                       |
-| `rlsContext.asSystemAsync()`    | ✅ Yes               | System bypass                        |
-| **Automatic SELECT filtering**  | ✅ **Yes**           | **New in v0.7** via `interceptQuery` |
-| Automatic mutation validation   | ❌ No                | Repository only (`extendRepository`) |
-| `repo.withoutRLS()`             | ❌ No                | Repository method only               |
-| `repo.canAccess()`              | ❌ No                | Repository method only               |
+| Feature                         | Works in DAL? | Notes                                |
+| ------------------------------- | ------------- | ------------------------------------ |
+| `rlsContext.runAsync()`         | ✅ Yes        | Context management                   |
+| `rlsContext.getContextOrNull()` | ✅ Yes        | Context access                       |
+| `rlsContext.asSystemAsync()`    | ✅ Yes        | System bypass                        |
+| **Automatic SELECT filtering**  | ✅ **Yes**    | Via `interceptQuery`                 |
+| Automatic mutation validation   | ❌ No         | Repository only (`extendRepository`) |
+| `repo.withoutRLS()`             | ❌ No         | Repository method only               |
+| `repo.canAccess()`              | ❌ No         | Repository method only               |
 
 ### Filter vs Validation Policies
 
@@ -634,7 +632,7 @@ await rlsContext.runAsync(
 
 For comprehensive comparison, see [Repository vs DAL Guide](/docs/guides/dal-vs-repository).
 
-## How RLS Works (v0.7 Architecture)
+## How RLS Works
 
 The RLS plugin implements row-level security at the **application layer** using `@kysera/executor` for query transformations:
 
@@ -810,7 +808,7 @@ describe('Post RLS Policies', () => {
     )
   })
 
-  it('should work with DAL queries (v0.7)', async () => {
+  it('should work with DAL queries', async () => {
     await rlsContext.runAsync(
       {
         auth: { userId: 1, tenantId: 'acme', roles: ['user'] },

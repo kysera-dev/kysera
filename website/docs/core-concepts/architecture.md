@@ -6,7 +6,6 @@ description: Understanding Kysera's architectural design and patterns
 
 # Architecture
 
-**Version 0.7.3**
 
 Kysera follows a modular, layered architecture designed for flexibility, type safety, and production readiness. The architecture is built on three core layers: **Core Utilities** → **Executor (Foundation)** → **Data Access Patterns (DAL/Repository)**.
 
@@ -88,7 +87,7 @@ All packages use the strictest TypeScript configuration:
 }
 ```
 
-## 3-Layer Architecture (v0.7+)
+## 3-Layer Architecture
 
 The modern architecture features **@kysera/executor** as the foundation layer:
 
@@ -202,7 +201,7 @@ export function createRepositories(executor: Executor<Database>) {
 }
 ```
 
-## Plugin Architecture (v0.7+)
+## Plugin Architecture
 
 Plugins extend functionality through the `@kysera/executor` foundation layer:
 

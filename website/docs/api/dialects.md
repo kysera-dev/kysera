@@ -8,8 +8,6 @@ description: Dialect-specific utilities for PostgreSQL, MySQL, and SQLite
 
 Dialect-specific utilities for Kysely database operations. Provides a unified adapter interface for PostgreSQL, MySQL, and SQLite with connection management, error detection, and database introspection.
 
-**Version:** 0.7.3
-
 ## Installation
 
 ```bash

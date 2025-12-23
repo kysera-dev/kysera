@@ -116,7 +116,7 @@ class CheckConstraintError extends DatabaseError {
 Parse raw database errors into typed errors.
 
 ```typescript
-function parseDatabaseError(error: unknown, dialect: 'postgres' | 'mysql' | 'sqlite'): DatabaseError
+function parseDatabaseError(error: unknown, dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql'): DatabaseError
 ```
 
 **Parameters:**
@@ -129,6 +129,7 @@ function parseDatabaseError(error: unknown, dialect: 'postgres' | 'mysql' | 'sql
 **Example:**
 
 ```typescript
+// PostgreSQL example
 try {
   await db.insertInto('users').values({ email: 'test@test.com' }).execute()
 } catch (error) {
@@ -137,6 +138,16 @@ try {
   if (dbError instanceof UniqueConstraintError) {
     console.log('Duplicate:', dbError.constraint)
     console.log('Columns:', dbError.columns)
+  }
+}
+
+// MSSQL example
+try {
+  await db.insertInto('users').values({ email: 'duplicate@example.com' }).execute()
+} catch (error) {
+  const dbError = parseDatabaseError(error, 'mssql')
+  if (dbError instanceof UniqueConstraintError) {
+    console.log('Duplicate entry:', dbError.constraint)
   }
 }
 ```
@@ -203,6 +214,14 @@ try {
 | UNIQUE constraint      | UniqueConstraintError |
 | FOREIGN KEY constraint | ForeignKeyError       |
 | NOT NULL constraint    | NotNullError          |
+
+### MSSQL
+
+| Error Code | Error Type            | Description                      |
+| ---------- | --------------------- | -------------------------------- |
+| 2627, 2601 | UniqueConstraintError | Unique constraint violation      |
+| 515        | NotNullError          | NOT NULL constraint violation    |
+| 547        | ForeignKeyError       | Foreign key constraint violation |
 
 ## JSON Serialization
 

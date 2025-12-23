@@ -6,7 +6,6 @@ description: Validation strategies in Kysera
 
 # Validation
 
-**Version 0.7.3**
 
 Kysera uses a smart validation strategy that balances type safety with performance. Validation is integrated at the data access layer and works seamlessly with the executor-based architecture.
 

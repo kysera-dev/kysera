@@ -18,7 +18,6 @@ npm install @kysera/soft-delete
 
 | Metric                | Value                          |
 | --------------------- | ------------------------------ |
-| **Version**           | 0.7.0                          |
 | **Bundle Size**       | ~4 KB (minified)               |
 | **Dependencies**      | @kysera/core, @kysera/executor |
 | **Peer Dependencies** | kysely >=0.28.8                |

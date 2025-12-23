@@ -38,15 +38,15 @@ async function loadMore(offset: number) {
 **Key features:**
 
 - No COUNT(\*) query
-- Limit: 1-100 (auto-bounded via `MAX_LIMIT = 100`)
-- SQLite compatible
+- Limit: 1-10000 (auto-bounded via `MAX_LIMIT = 10000`)
+- Compatible with PostgreSQL, MySQL, SQLite, and MSSQL
 
 **Bounds checking:**
 
 ```typescript
 // Limit is automatically clamped to valid range
 applyOffset(query, { limit: 0 }) // Uses 1 (minimum)
-applyOffset(query, { limit: 200 }) // Uses 100 (MAX_LIMIT)
+applyOffset(query, { limit: 20000 }) // Uses 10000 (MAX_LIMIT)
 applyOffset(query, { limit: -5 }) // Uses 1 (minimum)
 ```
 
@@ -86,20 +86,19 @@ paginate(query, { page: 0 }) // Uses page 1 (minimum)
 paginate(query, { page: 15000 }) // Uses page 10000 (MAX_PAGE)
 paginate(query, { page: -5 }) // Uses page 1 (minimum)
 
-// Limit bounds (MAX_LIMIT = 100)
+// Limit bounds (MAX_LIMIT = 10000)
 paginate(query, { page: 1, limit: 0 }) // Uses limit 1 (minimum)
-paginate(query, { page: 1, limit: 500 }) // Uses limit 100 (MAX_LIMIT)
+paginate(query, { page: 1, limit: 20000 }) // Uses limit 10000 (MAX_LIMIT)
 paginate(query, { page: 1, limit: -10 }) // Uses limit 1 (minimum)
 
-// Custom limits for specific use cases
-import { applyOffset } from '@kysera/core'
-
-// Override MAX_LIMIT for specific admin queries
-const adminLimit = Math.min(parseInt(req.query.limit) || 50, 1000) // Custom max: 1000
-const result = await applyOffset(query, { limit: adminLimit, offset: 0 }).execute()
+// MSSQL requires ORDER BY for offset pagination
+paginate(
+  db.selectFrom('users').selectAll().orderBy('id', 'asc'),
+  { page: 1, limit: 20, dialect: 'mssql' }
+)
 ```
 
-**Important:** Page 10,000 with limit 100 means skipping 999,900 rows. If you need to access data beyond this point, use cursor pagination instead.
+**Important:** Page 10,000 with limit 10000 means skipping 99,990,000 rows. If you need to access data beyond this point, use cursor pagination instead.
 
 ### When to Use
 
@@ -149,11 +148,11 @@ const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
 Cursor pagination also enforces limit bounds for safety:
 
 ```typescript
-import { MAX_LIMIT } from '@kysera/core' // MAX_LIMIT = 100
+import { MAX_LIMIT } from '@kysera/core' // MAX_LIMIT = 10000
 
 // Limit bounds automatically enforced
 paginateCursor(query, { orderBy: [...], limit: 0 }) // Uses 1 (minimum)
-paginateCursor(query, { orderBy: [...], limit: 500 }) // Uses 100 (MAX_LIMIT)
+paginateCursor(query, { orderBy: [...], limit: 20000 }) // Uses 10000 (MAX_LIMIT)
 paginateCursor(query, { orderBy: [...], limit: -10 }) // Uses 1 (minimum)
 
 // No page limit - cursor pagination scales to any dataset size
@@ -162,6 +161,19 @@ const millionthPage = await paginateCursor(query, {
   limit: 20,
   cursor: lastCursor // Still O(log n) performance!
 })
+
+// MSSQL uses TOP clause for cursor pagination
+paginateCursor(
+  db.selectFrom('posts').selectAll(),
+  {
+    orderBy: [
+      { column: 'created_at', direction: 'desc' },
+      { column: 'id', direction: 'desc' }
+    ],
+    limit: 20,
+    dialect: 'mssql'
+  }
+)
 ```
 
 ### When to Use
@@ -211,7 +223,7 @@ const result = await userRepo.paginateCursor({
 ```typescript
 app.get('/posts', async (req, res) => {
   const page = parseInt(req.query.page) || 1
-  const limit = Math.min(parseInt(req.query.limit) || 20, 100)
+  const limit = Math.min(parseInt(req.query.limit) || 20, 10000)
 
   const result = await paginate(db.selectFrom('posts').selectAll(), { page, limit })
 
@@ -238,7 +250,7 @@ app.get('/posts', async (req, res) => {
 
 ```typescript
 app.get('/posts', async (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit) || 20, 100)
+  const limit = Math.min(parseInt(req.query.limit) || 20, 10000)
   const cursor = req.query.cursor || null
 
   const result = await paginateCursor(db.selectFrom('posts').selectAll(), {
@@ -293,26 +305,205 @@ const recentPosts = await applyDateRange(
 ).execute()
 ```
 
+## Database-Specific Behavior
+
+### Supported Databases
+
+Kysera pagination supports **PostgreSQL**, **MySQL**, **SQLite**, and **MSSQL**. The dialect is usually auto-detected from your Kysely instance, but can be explicitly specified via the `dialect` parameter.
+
+### MSSQL Requirements and Optimizations
+
+MSSQL has specific requirements and optimizations for pagination:
+
+#### Offset Pagination
+
+MSSQL **requires** an `ORDER BY` clause when using offset pagination. Kysera uses the MSSQL `OFFSET/FETCH NEXT` syntax:
+
+```typescript
+import { paginate } from '@kysera/core'
+
+// CORRECT: ORDER BY required for MSSQL
+const result = await paginate(
+  db.selectFrom('users')
+    .selectAll()
+    .orderBy('id', 'asc'), // Required!
+  {
+    page: 1,
+    limit: 20,
+    dialect: 'mssql'
+  }
+)
+
+// Generated SQL (MSSQL):
+// SELECT * FROM users
+// ORDER BY id ASC
+// OFFSET 0 ROWS
+// FETCH NEXT 20 ROWS ONLY
+
+// WRONG: Will fail without ORDER BY
+const result = await paginate(
+  db.selectFrom('users').selectAll(), // Missing ORDER BY
+  { page: 1, limit: 20, dialect: 'mssql' }
+)
+// Error: MSSQL requires ORDER BY for offset pagination
+```
+
+#### Cursor Pagination
+
+MSSQL cursor pagination uses the `TOP` clause for efficient queries:
+
+```typescript
+import { paginateCursor } from '@kysera/core'
+
+const page1 = await paginateCursor(
+  db.selectFrom('posts').selectAll(),
+  {
+    orderBy: [
+      { column: 'created_at', direction: 'desc' },
+      { column: 'id', direction: 'desc' }
+    ],
+    limit: 20,
+    dialect: 'mssql'
+  }
+)
+
+// Generated SQL (MSSQL):
+// SELECT TOP 21 * FROM posts
+// WHERE (created_at < @p1 OR (created_at = @p1 AND id < @p2))
+// ORDER BY created_at DESC, id DESC
+```
+
+**Why TOP 21 for limit 20?** The extra row is fetched to determine if there's a next page (`hasNext`).
+
+### PostgreSQL Optimizations
+
+PostgreSQL uses efficient row value comparison when all ORDER BY columns have the same direction:
+
+```typescript
+// All columns DESC - uses row value comparison
+const result = await paginateCursor(
+  db.selectFrom('posts').selectAll(),
+  {
+    orderBy: [
+      { column: 'created_at', direction: 'desc' },
+      { column: 'id', direction: 'desc' } // Same direction
+    ],
+    limit: 20
+  }
+)
+
+// Efficient PostgreSQL query:
+// SELECT * FROM posts
+// WHERE (created_at, id) < ($1, $2)
+// ORDER BY created_at DESC, id DESC
+// LIMIT 20
+
+// Mixed directions - uses compound conditions
+const mixed = await paginateCursor(
+  db.selectFrom('posts').selectAll(),
+  {
+    orderBy: [
+      { column: 'created_at', direction: 'desc' },
+      { column: 'id', direction: 'asc' } // Different direction
+    ],
+    limit: 20
+  }
+)
+
+// Less efficient (but still correct):
+// SELECT * FROM posts
+// WHERE created_at < $1 OR (created_at = $1 AND id > $2)
+// ORDER BY created_at DESC, id ASC
+// LIMIT 20
+```
+
+### MySQL and SQLite
+
+MySQL and SQLite use standard `LIMIT/OFFSET` syntax:
+
+```typescript
+// MySQL/SQLite pagination
+const result = await paginate(
+  db.selectFrom('users').selectAll(),
+  { page: 1, limit: 20, dialect: 'mysql' }
+)
+
+// Generated SQL:
+// SELECT * FROM users LIMIT 20 OFFSET 0
+```
+
+Both support cursor pagination with standard WHERE clauses:
+
+```typescript
+// MySQL cursor pagination
+const page1 = await paginateCursor(
+  db.selectFrom('posts').selectAll(),
+  {
+    orderBy: [{ column: 'id', direction: 'asc' }],
+    limit: 20,
+    dialect: 'mysql'
+  }
+)
+
+// MySQL query:
+// SELECT * FROM posts
+// WHERE id > ?
+// ORDER BY id ASC
+// LIMIT 20
+```
+
+### Dialect Auto-Detection
+
+The `dialect` parameter is optional. Kysera auto-detects the database type from your Kysely instance:
+
+```typescript
+import { Kysely, MssqlDialect } from 'kysely'
+
+const db = new Kysely({
+  dialect: new MssqlDialect(/* ... */)
+})
+
+// Auto-detected as MSSQL
+const result = await paginate(
+  db.selectFrom('users').selectAll().orderBy('id'),
+  { page: 1, limit: 20 } // No dialect needed
+)
+
+// Explicit override (for testing or multi-database scenarios)
+const result = await paginate(
+  db.selectFrom('users').selectAll().orderBy('id'),
+  { page: 1, limit: 20, dialect: 'mssql' } // Explicit
+)
+```
+
 ## Database Optimization
 
 ### Indexes for Cursor Pagination
 
 ```sql
--- Single column ordering
+-- PostgreSQL / MySQL / MSSQL
 CREATE INDEX idx_posts_created_at ON posts (created_at DESC);
 
--- Multi-column (recommended)
+-- Multi-column (recommended for cursor pagination)
 CREATE INDEX idx_posts_cursor ON posts (created_at DESC, id DESC);
 
--- With filtering
+-- With filtering (all databases)
 CREATE INDEX idx_posts_status_created ON posts (status, created_at DESC, id DESC);
+
+-- MSSQL with INCLUDE columns (for covering index)
+CREATE INDEX idx_posts_cursor_mssql ON posts (created_at DESC, id DESC)
+INCLUDE (title, content, author_id);
 ```
 
-### Partial Indexes (PostgreSQL)
+### Partial Indexes
 
 ```sql
--- Index only active posts
+-- PostgreSQL: Partial index for published posts only
 CREATE INDEX idx_active_posts ON posts (created_at DESC, id DESC)
+WHERE status = 'published';
+
+-- MSSQL: Filtered index (similar to PostgreSQL partial index)
+CREATE INDEX idx_active_posts_mssql ON posts (created_at DESC, id DESC)
 WHERE status = 'published';
 ```
 
@@ -338,7 +529,7 @@ WHERE status = 'published';
 ### 2. Limit Maximum Page Size
 
 ```typescript
-const limit = Math.min(parseInt(req.query.limit) || 20, 100)
+const limit = Math.min(parseInt(req.query.limit) || 20, 10000)
 ```
 
 ### 3. Use Cursor for Large Datasets

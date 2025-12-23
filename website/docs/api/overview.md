@@ -12,7 +12,7 @@ Complete API documentation for all Kysera packages.
 Kysera is a **type-safe data access toolkit** built on Kysely, not a traditional ORM. It provides composable patterns (Repository, DAL) and plugins for common database features, while maintaining Kysely's lightweight philosophy and full SQL control.
 :::
 
-:::tip Unified Execution Layer (v0.7+)
+:::tip Unified Execution Layer
 Kysera now features a **Unified Execution Layer** powered by `@kysera/executor`. This foundation package enables plugins to work seamlessly with both Repository and DAL patterns through query interception. [Learn more about the architecture](#architecture-overview).
 :::
 

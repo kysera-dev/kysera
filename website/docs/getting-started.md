@@ -10,7 +10,6 @@ Get up and running with Kysera in 5 minutes.
 
 ## Installation
 
-**Current Version: 0.7.3**
 
 ### Prerequisites
 

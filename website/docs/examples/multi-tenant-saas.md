@@ -285,9 +285,9 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
 - Updates/deletes verify `tenant_id` for security
 - Validation is optional based on environment
 
-## Alternative Pattern: Using @kysera/rls Plugin (v0.7+)
+## Alternative Pattern: Using @kysera/rls Plugin
 
-> **Important**: The actual example implementation in `examples/multi-tenant-saas` does NOT use the `@kysera/rls` plugin. It demonstrates the foundational pattern using manual tenant filtering in repositories (as shown above). This section shows an alternative approach using the RLS plugin with v0.7's unified executor, which is recommended for production applications as it provides automatic filtering and reduces the risk of accidentally omitting tenant filters.
+> **Important**: The actual example implementation in `examples/multi-tenant-saas` does NOT use the `@kysera/rls` plugin. It demonstrates the foundational pattern using manual tenant filtering in repositories (as shown above). This section shows an alternative approach using the RLS plugin with unified executor, which is recommended for production applications as it provides automatic filtering and reduces the risk of accidentally omitting tenant filters.
 
 ### With Repository Pattern
 

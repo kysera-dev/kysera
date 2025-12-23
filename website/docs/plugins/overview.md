@@ -6,8 +6,6 @@ description: Overview of Kysera's plugin system
 
 # Plugin System
 
-**Version:** 0.7.3
-
 Kysera's plugin system allows you to extend repository functionality without modifying core code. All plugins work through **@kysera/executor's** Unified Execution Layer, providing consistent behavior across both Repository and DAL patterns.
 
 ## Available Plugins

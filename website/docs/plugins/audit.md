@@ -6,8 +6,6 @@ description: Audit logging plugin for Kysera
 
 # Audit Plugin
 
-**Version:** 0.7.3
-
 Automatically track all database changes with comprehensive audit logging. Works through **@kysera/executor's** Unified Execution Layer for consistent behavior.
 
 ## Installation

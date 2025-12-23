@@ -80,7 +80,7 @@ import { createQuery, withTransaction, createContext } from '@kysera/dal'
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
-// Create executor with plugins (v0.7.3+)
+// Create executor with plugins
 const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Define queries as functions
@@ -127,7 +127,7 @@ const userWithPosts = await getUserWithPosts(executor, 1)
 | **Boilerplate**                  | More                          | Less                            |
 | **Tree-Shaking**                 | Medium                        | Excellent                       |
 | **Testing**                      | Mock repositories             | Mock functions/context          |
-| **Version**                      | 0.7.3                         | 0.7.3                           |
+| **Plugin Support**               | Full                          | Via createExecutor              |
 
 ## Architecture Deep Dive
 
@@ -323,7 +323,7 @@ import { createExecutor } from '@kysera/executor'
 import { createQuery } from '@kysera/dal'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
-// Create executor with soft-delete plugin (v0.7.3+)
+// Create executor with soft-delete plugin
 const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Define query function
@@ -404,7 +404,7 @@ await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: ['user']
 
 ### DAL with RLS (via createExecutor)
 
-RLS filtering works automatically with `createExecutor` (v0.7.3+):
+RLS filtering works automatically with `createExecutor`:
 
 ```typescript
 import { createExecutor } from '@kysera/executor'

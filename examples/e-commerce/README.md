@@ -214,14 +214,316 @@ interface Database {
 }
 ```
 
+## Using Unified Execution Layer (v0.7)
+
+**New in Kysera v0.7**: The example can leverage `@kysera/executor` for automatic plugin integration, eliminating the need for manual timestamp and audit logging boilerplate.
+
+### Automatic Timestamps and Audit Logging
+
+Instead of manually managing `created_at`, `updated_at`, and audit trails, you can use the Unified Execution Layer with plugins:
+
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { auditPlugin } from '@kysera/audit'
+import { timestampsPlugin } from '@kysera/timestamps'
+
+// Create executor with automatic plugins
+const executor = await createExecutor(db, [
+  auditPlugin({
+    userId: () => getCurrentUserId(),
+    tables: ['products', 'orders', 'cart_items']
+  }),
+  timestampsPlugin({
+    createdAtColumn: 'created_at',
+    updatedAtColumn: 'updated_at'
+  })
+])
+
+// All repositories now get automatic timestamps and audit logging
+const productRepo = createProductRepository(executor)
+const orderRepo = createOrderRepository(executor)
+
+// Every insert automatically gets created_at timestamp
+await productRepo.create({
+  category_id: 1,
+  name: 'Gaming Mouse',
+  description: 'RGB gaming mouse',
+  price: 59.99,
+  stock: 100
+  // created_at, updated_at automatically added!
+})
+
+// Every update automatically:
+// 1. Updates updated_at timestamp
+// 2. Records audit trail with user_id, table, operation, old/new values
+await productRepo.update(productId, { price: 49.99 })
+```
+
+### Benefits for E-Commerce
+
+1. **Automatic Audit Trail**
+   - Every order status change is automatically logged
+   - Stock changes are tracked with user attribution
+   - Price changes have full audit history
+   - No manual audit logging code needed
+
+2. **Automatic Timestamps**
+   - `created_at` automatically set on all inserts
+   - `updated_at` automatically updated on modifications
+   - Consistent timestamp handling across all tables
+   - No manual `new Date()` calls needed
+
+3. **Transaction Safety Preserved**
+   - Plugins work seamlessly within transactions
+   - Audit logs are part of the transaction (rollback if order creation fails)
+   - No additional complexity in transaction code
+
+4. **Cleaner Repository Code**
+   - Remove all manual timestamp management
+   - Remove all manual audit logging
+   - Focus on business logic only
+   - Plugins handle cross-cutting concerns
+
+### Example: Before vs After
+
+**Before (v0.6 - Manual):**
+
+```typescript
+async decreaseStock(productId: number, quantity: number): Promise<Product> {
+  const result = await this.db
+    .updateTable('products')
+    .set({
+      stock: sql`stock - ${quantity}`,
+      updated_at: new Date() // Manual timestamp
+    })
+    .where('id', '=', productId)
+    .where('stock', '>=', quantity)
+    .returningAll()
+    .executeTakeFirst()
+
+  // Manual audit logging
+  await this.db
+    .insertInto('audit_log')
+    .values({
+      table_name: 'products',
+      operation: 'update',
+      record_id: productId,
+      user_id: getCurrentUserId(),
+      changes: { stock: -quantity },
+      created_at: new Date()
+    })
+    .execute()
+
+  if (!result) {
+    throw new InsufficientStockError(productId)
+  }
+
+  return result
+}
+```
+
+**After (v0.7 - With Plugins):**
+
+```typescript
+async decreaseStock(productId: number, quantity: number): Promise<Product> {
+  const result = await this.executor // Uses executor with plugins
+    .updateTable('products')
+    .set({
+      stock: sql`stock - ${quantity}`
+      // updated_at automatically added by timestampsPlugin!
+      // audit log automatically created by auditPlugin!
+    })
+    .where('id', '=', productId)
+    .where('stock', '>=', quantity)
+    .returningAll()
+    .executeTakeFirst()
+
+  if (!result) {
+    throw new InsufficientStockError(productId)
+  }
+
+  return result
+}
+```
+
+### Migration Path
+
+To upgrade this example to use v0.7 plugins:
+
+1. Install new packages:
+```bash
+pnpm add @kysera/executor @kysera/audit @kysera/timestamps
+```
+
+2. Create executor with plugins (in `db/connection.ts`):
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { auditPlugin } from '@kysera/audit'
+import { timestampsPlugin } from '@kysera/timestamps'
+
+const db = new Kysely<Database>({ /* ... */ })
+
+export const executor = await createExecutor(db, [
+  auditPlugin({ userId: () => getCurrentUserId() }),
+  timestampsPlugin()
+])
+```
+
+3. Update repositories to use `executor` instead of `db`
+4. Remove all manual timestamp and audit logging code
+5. Enjoy cleaner, more maintainable code!
+
+## Multi-Database Support
+
+This example uses **PostgreSQL**, but Kysera v0.7 supports multiple database backends with minimal code changes:
+
+### Supported Databases
+
+- **PostgreSQL** (default) - Recommended for production e-commerce
+- **MySQL** - Fully supported with schema adjustments
+- **SQLite** - Supported for development/testing
+- **MSSQL** - Supported with appropriate dialect
+
+### Database-Specific Considerations
+
+#### PostgreSQL (Current Implementation)
+
+```typescript
+import { PostgresDialect } from 'kysely'
+import { Pool } from 'pg'
+
+const db = new Kysely<Database>({
+  dialect: new PostgresDialect({ pool: new Pool({ connectionString }) })
+})
+```
+
+**Advantages:**
+- Full-text search with `to_tsvector()` and GIN indexes
+- JSONB support for flexible data
+- Advanced transaction isolation levels
+- Mature ecosystem
+
+**Schema Notes:**
+- Uses `SERIAL` or `GENERATED ALWAYS AS IDENTITY` for auto-increment
+- Supports array types, JSONB, and advanced data types
+
+#### MySQL
+
+```typescript
+import { MysqlDialect } from 'kysely'
+import { createPool } from 'mysql2'
+
+const db = new Kysely<Database>({
+  dialect: new MysqlDialect({ pool: createPool(connectionString) })
+})
+```
+
+**Schema Adjustments:**
+- Use `AUTO_INCREMENT` instead of `SERIAL`
+- Use `DATETIME` instead of `TIMESTAMP WITH TIME ZONE`
+- Text search requires `FULLTEXT` indexes
+- JSON support (not JSONB)
+
+#### SQLite
+
+```typescript
+import { SqliteDialect } from 'kysely'
+import Database from 'better-sqlite3'
+
+const db = new Kysely<Database>({
+  dialect: new SqliteDialect({ database: new Database('ecommerce.db') })
+})
+```
+
+**Schema Adjustments:**
+- Use `INTEGER PRIMARY KEY AUTOINCREMENT` for auto-increment
+- No native `BOOLEAN` type (use `INTEGER` with 0/1)
+- Limited text search capabilities (use `LIKE` or FTS5 extension)
+- No `TIMESTAMP WITH TIME ZONE` (use `TEXT` or `INTEGER` for Unix timestamps)
+
+**Use Cases:**
+- Development and testing
+- Embedded applications
+- Small-scale deployments
+
+#### MSSQL
+
+```typescript
+import { MssqlDialect } from 'kysely'
+import { Pool } from 'tarn'
+import * as Tedious from 'tedious'
+
+const db = new Kysely<Database>({
+  dialect: new MssqlDialect({ /* ... */ })
+})
+```
+
+**Schema Adjustments:**
+- Use `IDENTITY` for auto-increment
+- Use `NVARCHAR` for Unicode strings
+- Full-text search with `CONTAINS()` and fulltext indexes
+- Date handling differences
+
+### Cross-Database Query Patterns
+
+The e-commerce example uses **database-agnostic patterns** that work across all supported databases:
+
+**✅ Works everywhere:**
+```typescript
+// Standard WHERE clauses
+.where('id', '=', productId)
+.where('stock', '>=', quantity)
+
+// Standard JOINs
+.innerJoin('products', 'products.id', 'cart_items.product_id')
+
+// Standard aggregates
+.select(({ fn }) => fn.sum('price').as('total'))
+
+// Atomic updates with WHERE conditions (optimistic locking)
+.updateTable('products')
+.set({ stock: sql`stock - ${quantity}` })
+.where('stock', '>=', quantity)
+```
+
+**⚠️ Database-specific (use with caution):**
+```typescript
+// PostgreSQL-specific full-text search
+.where(sql`to_tsvector('english', name || ' ' || description) @@ to_tsquery('gaming')`)
+
+// MySQL-specific
+.where(sql`MATCH(name, description) AGAINST('gaming' IN NATURAL LANGUAGE MODE)`)
+
+// SQLite-specific
+.where(sql`name LIKE ${'%gaming%'} OR description LIKE ${'%gaming%'}`)
+```
+
+### Recommendation
+
+For production e-commerce systems, **PostgreSQL is recommended** due to:
+- Superior transaction isolation
+- Advanced indexing (GIN, GIST)
+- Full-text search capabilities
+- JSONB for flexible schemas
+- Proven scalability
+
+For development/testing, **SQLite** provides a lightweight alternative with zero configuration.
+
 ## Setup
 
 ```bash
 cd examples/e-commerce
 pnpm install
 
+# PostgreSQL (default)
 createdb ecommerce_example
 export DATABASE_URL="postgresql://localhost/ecommerce_example"
+
+# Or MySQL
+export DATABASE_URL="mysql://user:password@localhost/ecommerce_example"
+
+# Or SQLite (adjust connection in db/connection.ts)
+# No database creation needed, file will be auto-created
 
 pnpm build
 pnpm start

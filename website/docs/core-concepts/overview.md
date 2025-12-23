@@ -6,7 +6,6 @@ description: Core concepts and architecture of Kysera
 
 # Core Concepts Overview
 
-**Version 0.7.3**
 
 Kysera is a **type-safe data access toolkit** built on a layered architecture that allows you to use only what you need while maintaining full type safety and production readiness.
 
@@ -82,7 +81,7 @@ try {
 const page = await paginate(db.selectFrom('users').selectAll(), { page: 1, limit: 20 })
 ```
 
-### Layer 2: Foundation Layer - Unified Execution (v0.7+)
+### Layer 2: Foundation Layer - Unified Execution
 
 The `@kysera/executor` package is the **foundation** for Kysera's plugin system, providing a plugin-aware wrapper around Kysely:
 
@@ -185,7 +184,7 @@ const result = await withTransaction(executor, async ctx => {
 })
 ```
 
-:::tip Choosing Between Repository and DAL (v0.7+)
+:::tip Choosing Between Repository and DAL
 Both patterns now support query interceptor plugins through `@kysera/executor`:
 
 - **Repository**: Query interceptors + extension methods (e.g., `repo.softDelete()`)
@@ -211,7 +210,7 @@ const orm = await createORM(db, [softDeletePlugin(), auditPlugin()])
 
 ## Key Concepts
 
-### Unified Execution Layer (v0.7+)
+### Unified Execution Layer
 
 The `@kysera/executor` package provides `KyseraExecutor`, a plugin-aware wrapper around Kysely:
 

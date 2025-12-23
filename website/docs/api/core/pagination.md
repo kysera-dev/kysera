@@ -24,7 +24,8 @@ async function paginate<DB, TB, O>(
 ```typescript
 interface PaginationOptions {
   page?: number // Page number (default: 1)
-  limit?: number // Items per page (default: 20)
+  limit?: number // Items per page (default: 20, max: 10000)
+  dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql' // Database dialect (optional)
 }
 ```
 
@@ -87,8 +88,9 @@ interface CursorOptions<O> {
     column: keyof O & string
     direction: 'asc' | 'desc'
   }>
-  limit?: number // Default: 20
+  limit?: number // Default: 20, max: 10000
   cursor?: string | null // Cursor from previous page
+  dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql' // Database dialect (optional)
 }
 ```
 
@@ -228,5 +230,123 @@ CREATE INDEX idx_posts_pagination ON posts (created_at DESC, id DESC);
 ### 3. Limit Maximum Page Size
 
 ```typescript
-const limit = Math.min(options.limit ?? 20, 100) // Max 100
+const limit = Math.min(options.limit ?? 20, 10000) // Max 10000
+```
+
+## Database-Specific Behavior
+
+### Supported Databases
+
+Kysera pagination supports PostgreSQL, MySQL, SQLite, and MSSQL. The dialect is usually auto-detected but can be explicitly specified.
+
+### MSSQL-Specific Requirements
+
+MSSQL has specific requirements for offset pagination:
+
+#### Offset Pagination
+
+MSSQL requires an `ORDER BY` clause when using offset pagination. Kysera uses the `OFFSET/FETCH NEXT` syntax:
+
+```typescript
+import { paginate } from '@kysera/core'
+
+// MSSQL offset pagination
+const result = await paginate(
+  db.selectFrom('users')
+    .selectAll()
+    .orderBy('id', 'asc'), // ORDER BY required for MSSQL
+  {
+    page: 1,
+    limit: 20,
+    dialect: 'mssql'
+  }
+)
+
+// Generated SQL (MSSQL):
+// SELECT * FROM users
+// ORDER BY id ASC
+// OFFSET 0 ROWS
+// FETCH NEXT 20 ROWS ONLY
+```
+
+**Important:** If you attempt offset pagination on MSSQL without an `ORDER BY` clause, the query will fail.
+
+#### Cursor Pagination
+
+MSSQL cursor pagination uses the `TOP` clause for efficient queries:
+
+```typescript
+import { paginateCursor } from '@kysera/core'
+
+const page1 = await paginateCursor(
+  db.selectFrom('posts').selectAll(),
+  {
+    orderBy: [
+      { column: 'created_at', direction: 'desc' },
+      { column: 'id', direction: 'desc' }
+    ],
+    limit: 20,
+    dialect: 'mssql'
+  }
+)
+
+// Generated SQL (MSSQL):
+// SELECT TOP 21 * FROM posts
+// WHERE (created_at < @p1 OR (created_at = @p1 AND id < @p2))
+// ORDER BY created_at DESC, id DESC
+```
+
+### PostgreSQL Row Value Comparison
+
+When all columns use the same direction (all `asc` or all `desc`), PostgreSQL uses efficient row value comparison:
+
+```typescript
+// Efficient PostgreSQL query
+const result = await paginateCursor(
+  db.selectFrom('posts').selectAll(),
+  {
+    orderBy: [
+      { column: 'created_at', direction: 'desc' },
+      { column: 'id', direction: 'desc' } // Same direction
+    ],
+    limit: 20
+  }
+)
+
+// PostgreSQL generates:
+// SELECT * FROM posts
+// WHERE (created_at, id) < ($1, $2)
+// ORDER BY created_at DESC, id DESC
+// LIMIT 20
+```
+
+### MySQL and SQLite
+
+MySQL and SQLite use standard `LIMIT/OFFSET` syntax:
+
+```typescript
+// MySQL/SQLite pagination
+const result = await paginate(
+  db.selectFrom('users').selectAll(),
+  { page: 1, limit: 20, dialect: 'mysql' }
+)
+
+// Generated SQL:
+// SELECT * FROM users LIMIT 20 OFFSET 0
+```
+
+### Auto-Detection vs Explicit Dialect
+
+The dialect parameter is optional. Kysera typically auto-detects the database type from the Kysely instance, but you can override it:
+
+```typescript
+// Auto-detected (recommended)
+const result = await paginate(query, { page: 1, limit: 20 })
+
+// Explicit dialect (for testing or specific optimizations)
+const result = await paginate(query, {
+  page: 1,
+  limit: 20,
+  dialect: 'mssql'
+})
 ```
