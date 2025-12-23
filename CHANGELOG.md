@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2025-12-23
+
+### ✨ Features
+
+- feat: production-grade MSSQL pagination and cascade delete support
+- feat: add MSSQL (SQL Server) support across Kysera packages
+- feat(website): add local search and fix footer theme contrast
+
+### 🐛 Bug Fixes
+
+- fix: comprehensive security audit fixes and documentation updates
+- fix: resolve all critical and high priority issues from code audit
+- fix: resolve security issues and implement dynamic version injection
+
+### 📝 Other Changes
+
+- docs: comprehensive documentation consistency audit and fixes
+- docs: add MSSQL support to website and main pages
+- docs: comprehensive documentation update for v0.7.3
+- test: comprehensive test audit and coverage improvements
+- docs: comprehensive documentation update for v0.7.3
+- docs: comprehensive documentation audit and CLI accuracy fixes
+- docs: fix API documentation discrepancies and add missing content
+- chore: remove changesets dependency
+
+
 ## [Unreleased]
 
 ### 🔒 Security Fixes
