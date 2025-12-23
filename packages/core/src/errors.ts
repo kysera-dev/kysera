@@ -452,6 +452,347 @@ export class CheckConstraintError extends DatabaseError {
  */
 export type DatabaseDialect = Dialect
 
+// ============================================================================
+// Plugin-Specific Error Classes
+// ============================================================================
+
+/**
+ * Base error class for soft-delete plugin errors.
+ *
+ * This is the foundation error type for all soft-delete related errors.
+ * It extends DatabaseError to maintain consistency with the error hierarchy.
+ *
+ * @example
+ * ```typescript
+ * import { SoftDeleteError } from '@kysera/core'
+ *
+ * // Generic soft-delete error
+ * throw new SoftDeleteError('Soft delete operation failed', 'Invalid deleted_at column')
+ *
+ * // Catching the error
+ * try {
+ *   await repo.softDelete(id)
+ * } catch (error) {
+ *   if (error instanceof SoftDeleteError) {
+ *     console.log(error.message) // 'Soft delete operation failed'
+ *     console.log(error.detail) // 'Invalid deleted_at column'
+ *   }
+ * }
+ * ```
+ */
+export class SoftDeleteError extends DatabaseError {
+  /**
+   * Creates a new SoftDeleteError instance.
+   *
+   * @param message - Human-readable error message
+   * @param detail - Optional additional context about the error
+   */
+  constructor(message: string, detail?: string) {
+    super(message, ErrorCodes.SOFT_DELETE_ERROR, detail)
+    this.name = 'SoftDeleteError'
+  }
+}
+
+/**
+ * Error thrown when attempting to restore a record that is not soft-deleted.
+ *
+ * This occurs when calling restore() on a record that hasn't been soft-deleted,
+ * or when trying to perform operations that require a soft-deleted record.
+ *
+ * @example
+ * ```typescript
+ * import { RecordNotDeletedError } from '@kysera/core'
+ *
+ * // In a repository restore method
+ * const user = await db.selectFrom('users')
+ *   .where('id', '=', id)
+ *   .selectAll()
+ *   .executeTakeFirst()
+ *
+ * if (!user?.deleted_at) {
+ *   throw new RecordNotDeletedError(id, 'users')
+ * }
+ *
+ * // Catching the error
+ * try {
+ *   await repo.restore(123)
+ * } catch (error) {
+ *   if (error instanceof RecordNotDeletedError) {
+ *     return 'Record is not deleted, cannot restore'
+ *   }
+ * }
+ * ```
+ */
+export class RecordNotDeletedError extends SoftDeleteError {
+  /**
+   * Creates a new RecordNotDeletedError instance.
+   *
+   * @param recordId - ID of the record that is not deleted
+   * @param tableName - Optional name of the table containing the record
+   */
+  constructor(
+    public readonly recordId: string | number,
+    public readonly tableName?: string
+  ) {
+    const tableInfo = tableName ? ` in table ${tableName}` : ''
+    const message = `Record ${recordId} is not deleted${tableInfo}`
+    super(message, undefined)
+    // Override the code from parent class
+    ;(this as { code: string }).code = ErrorCodes.RECORD_NOT_DELETED
+    this.name = 'RecordNotDeletedError'
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      recordId: this.recordId,
+      tableName: this.tableName
+    }
+  }
+}
+
+/**
+ * Base error class for audit plugin errors.
+ *
+ * This is the foundation error type for all audit-related errors.
+ * It extends DatabaseError to maintain consistency with the error hierarchy.
+ *
+ * @example
+ * ```typescript
+ * import { AuditError } from '@kysera/core'
+ *
+ * // Generic audit error
+ * throw new AuditError('Audit operation failed', 'Audit table not initialized')
+ *
+ * // Catching the error
+ * try {
+ *   await auditPlugin.logChange(change)
+ * } catch (error) {
+ *   if (error instanceof AuditError) {
+ *     console.log(error.message) // 'Audit operation failed'
+ *     console.log(error.detail) // 'Audit table not initialized'
+ *   }
+ * }
+ * ```
+ */
+export class AuditError extends DatabaseError {
+  /**
+   * Creates a new AuditError instance.
+   *
+   * @param message - Human-readable error message
+   * @param detail - Optional additional context about the error
+   */
+  constructor(message: string, detail?: string) {
+    super(message, ErrorCodes.AUDIT_ERROR, detail)
+    this.name = 'AuditError'
+  }
+}
+
+/**
+ * Error thrown when an audit restore operation fails.
+ *
+ * This occurs when attempting to restore data from an audit log entry fails,
+ * typically because the operation type doesn't support restoration or the
+ * old values are missing/invalid.
+ *
+ * @example
+ * ```typescript
+ * import { AuditRestoreError } from '@kysera/core'
+ *
+ * // In an audit restore method
+ * const auditLog = await getAuditLog(auditId)
+ *
+ * if (auditLog.operation === 'INSERT') {
+ *   throw new AuditRestoreError(
+ *     auditId,
+ *     auditLog.operation,
+ *     'Cannot restore INSERT operations'
+ *   )
+ * }
+ *
+ * // Catching the error
+ * try {
+ *   await auditPlugin.restore(123)
+ * } catch (error) {
+ *   if (error instanceof AuditRestoreError) {
+ *     console.log(`Failed to restore audit ${error.auditId}: ${error.reason}`)
+ *   }
+ * }
+ * ```
+ */
+export class AuditRestoreError extends AuditError {
+  /**
+   * Creates a new AuditRestoreError instance.
+   *
+   * @param auditId - ID of the audit log entry
+   * @param operation - The operation type that failed to restore (e.g., 'UPDATE', 'DELETE')
+   * @param reason - Description of why the restore failed
+   */
+  constructor(
+    public readonly auditId: number,
+    public readonly operation: string,
+    public readonly reason: string
+  ) {
+    const message = `Cannot restore audit ${auditId} (${operation}): ${reason}`
+    super(message, undefined)
+    // Override the code from parent class
+    ;(this as { code: string }).code = ErrorCodes.AUDIT_RESTORE_ERROR
+    this.name = 'AuditRestoreError'
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      auditId: this.auditId,
+      operation: this.operation,
+      reason: this.reason
+    }
+  }
+}
+
+/**
+ * Error thrown when an audit log entry is missing required old values.
+ *
+ * This occurs when attempting to restore or analyze an audit log entry that
+ * doesn't have the necessary old_values data captured, typically because the
+ * audit plugin wasn't configured to capture old values for that operation.
+ *
+ * @example
+ * ```typescript
+ * import { AuditMissingValuesError } from '@kysera/core'
+ *
+ * // In an audit restore method
+ * const auditLog = await getAuditLog(auditId)
+ *
+ * if (!auditLog.old_values) {
+ *   throw new AuditMissingValuesError(auditId)
+ * }
+ *
+ * // Catching the error
+ * try {
+ *   await auditPlugin.restore(123)
+ * } catch (error) {
+ *   if (error instanceof AuditMissingValuesError) {
+ *     return 'Cannot restore: old values were not captured'
+ *   }
+ * }
+ * ```
+ */
+export class AuditMissingValuesError extends AuditError {
+  /**
+   * Creates a new AuditMissingValuesError instance.
+   *
+   * @param auditId - ID of the audit log entry missing values
+   */
+  constructor(public readonly auditId: number) {
+    const message = `Audit log ${auditId} is missing old_values required for restoration`
+    super(message, undefined)
+    // Override the code from parent class
+    ;(this as { code: string }).code = ErrorCodes.AUDIT_MISSING_VALUES
+    this.name = 'AuditMissingValuesError'
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      auditId: this.auditId
+    }
+  }
+}
+
+/**
+ * Base error class for timestamps plugin errors.
+ *
+ * This is the foundation error type for all timestamps-related errors.
+ * It extends DatabaseError to maintain consistency with the error hierarchy.
+ *
+ * @example
+ * ```typescript
+ * import { TimestampsError } from '@kysera/core'
+ *
+ * // Generic timestamps error
+ * throw new TimestampsError('Timestamp operation failed', 'Invalid column type')
+ *
+ * // Catching the error
+ * try {
+ *   await timestampsPlugin.applyTimestamps(data)
+ * } catch (error) {
+ *   if (error instanceof TimestampsError) {
+ *     console.log(error.message) // 'Timestamp operation failed'
+ *     console.log(error.detail) // 'Invalid column type'
+ *   }
+ * }
+ * ```
+ */
+export class TimestampsError extends DatabaseError {
+  /**
+   * Creates a new TimestampsError instance.
+   *
+   * @param message - Human-readable error message
+   * @param detail - Optional additional context about the error
+   */
+  constructor(message: string, detail?: string) {
+    super(message, ErrorCodes.TIMESTAMPS_ERROR, detail)
+    this.name = 'TimestampsError'
+  }
+}
+
+/**
+ * Error thrown when a required timestamp column is missing from the table.
+ *
+ * This occurs when the timestamps plugin is configured to use specific columns
+ * (e.g., created_at, updated_at) but those columns don't exist in the database
+ * table schema.
+ *
+ * @example
+ * ```typescript
+ * import { TimestampColumnMissingError } from '@kysera/core'
+ *
+ * // In timestamps plugin validation
+ * const tableMetadata = await getTableMetadata('users')
+ *
+ * if (!tableMetadata.columns.includes('created_at')) {
+ *   throw new TimestampColumnMissingError('users', 'created_at')
+ * }
+ *
+ * // Catching the error
+ * try {
+ *   await timestampsPlugin.initialize()
+ * } catch (error) {
+ *   if (error instanceof TimestampColumnMissingError) {
+ *     console.log(`Table ${error.tableName} is missing column ${error.columnName}`)
+ *     // Maybe create a migration to add the column
+ *   }
+ * }
+ * ```
+ */
+export class TimestampColumnMissingError extends TimestampsError {
+  /**
+   * Creates a new TimestampColumnMissingError instance.
+   *
+   * @param tableName - Name of the table missing the timestamp column
+   * @param columnName - Name of the missing timestamp column
+   */
+  constructor(
+    public readonly tableName: string,
+    public readonly columnName: string
+  ) {
+    const message = `Table ${tableName} is missing required timestamp column: ${columnName}`
+    super(message, undefined)
+    // Override the code from parent class
+    ;(this as { code: string }).code = ErrorCodes.TIMESTAMP_COLUMN_MISSING
+    this.name = 'TimestampColumnMissingError'
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      tableName: this.tableName,
+      columnName: this.columnName
+    }
+  }
+}
+
 /**
  * Database error with code property (internal type for parsing).
  * @internal
@@ -534,11 +875,11 @@ function parseMySQLError(dbError: RawDatabaseError): DatabaseError {
       const fieldMatch = dbError.sqlMessage ? MYSQL_FIELD_REGEX.exec(dbError.sqlMessage) : null
       return new NotNullError(fieldMatch?.[1] ?? 'unknown')
     }
-    default:
-      return new DatabaseError(
-        dbError.sqlMessage ?? dbError.message ?? 'Database error',
-        dbError.code ?? ErrorCodes.DB_UNKNOWN
-      )
+    default: {
+      // Standardized error message extraction (nullish coalescing for consistency)
+      const message = dbError.sqlMessage ?? dbError.message ?? 'Database error'
+      return new DatabaseError(message, dbError.code ?? ErrorCodes.DB_UNKNOWN)
+    }
   }
 }
 
@@ -612,7 +953,9 @@ function parseMSSQLError(dbError: RawDatabaseError): DatabaseError {
     return new NotNullError(match?.[1] ?? 'unknown')
   }
 
-  return new DatabaseError(message || 'Database error', dbError.code ?? ErrorCodes.DB_UNKNOWN)
+  // Standardized error message extraction (nullish coalescing for consistency)
+  const errorMessage = dbError.message ?? 'Database error'
+  return new DatabaseError(errorMessage, dbError.code ?? ErrorCodes.DB_UNKNOWN)
 }
 
 /**

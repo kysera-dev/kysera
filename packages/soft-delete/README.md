@@ -38,6 +38,28 @@ bun add @kysera/soft-delete
 
 Note: `zod` is optional (used for configuration schema validation in `kysera-cli`)
 
+### Optional Zod Schema Validation
+
+If you need to validate configuration options (e.g., in a CLI tool or config file), you can import the Zod schema separately:
+
+```typescript
+import { SoftDeleteOptionsSchema } from '@kysera/soft-delete/schema'
+
+const result = SoftDeleteOptionsSchema.safeParse({
+  deletedAtColumn: 'deleted_at',
+  includeDeleted: false,
+  tables: ['users', 'posts']
+})
+
+if (result.success) {
+  console.log('Valid configuration:', result.data)
+} else {
+  console.error('Invalid configuration:', result.error)
+}
+```
+
+**Important**: The main package (`@kysera/soft-delete`) works without Zod installed. Only import `/schema` if you need validation functionality.
+
 ## Quick Start
 
 ### With Repository Pattern

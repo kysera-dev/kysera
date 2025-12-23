@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8')) as { version: string }
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/schema.ts'],
   format: ['esm'],
   dts: true,
   splitting: false,

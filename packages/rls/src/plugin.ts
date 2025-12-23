@@ -26,7 +26,9 @@ import {
   transformQueryBuilder,
   selectFromDynamicTable,
   whereIdEquals,
-  hasRawDb as hasRawDbUtil
+  hasRawDb as hasRawDbUtil,
+  applyWhereCondition,
+  createRawCondition
 } from './utils/type-utils.js'
 
 /**
@@ -36,7 +38,17 @@ export interface RLSPluginOptions<DB = unknown> {
   /** RLS policy schema */
   schema: RLSSchema<DB>
 
-  /** Tables to skip RLS for (always bypass policies) */
+  /**
+   * Tables to exclude from RLS (always bypass policies)
+   * Replaces the deprecated `skipTables` option for consistency with other plugins.
+   * @default []
+   */
+  excludeTables?: string[]
+
+  /**
+   * @deprecated Use `excludeTables` instead for consistency with other Kysera plugins
+   * @default []
+   */
   skipTables?: string[]
 
   /** Roles that bypass RLS entirely (e.g., ['admin', 'superuser']) */
@@ -45,8 +57,39 @@ export interface RLSPluginOptions<DB = unknown> {
   /** Logger instance for RLS operations */
   logger?: KyseraLogger
 
-  /** Require RLS context for all operations (throws if missing) */
+  /**
+   * Require RLS context for all operations (throws if missing)
+   *
+   * **Security**: Defaults to `true` for secure-by-default behavior.
+   * When `true`, missing RLS context throws RLSContextError, preventing
+   * unfiltered database access which could expose sensitive data.
+   *
+   * Only set to `false` if you explicitly want to allow queries without
+   * RLS context (not recommended in production).
+   *
+   * @default true
+   * @see allowUnfilteredQueries for explicit unfiltered query control
+   */
   requireContext?: boolean
+
+  /**
+   * Allow unfiltered queries when RLS context is missing
+   *
+   * **SECURITY WARNING**: Setting this to `true` allows database queries
+   * to execute without RLS filtering when context is missing. This can
+   * expose sensitive data across tenant boundaries or user permissions.
+   *
+   * Only enable this if you:
+   * 1. Understand the security implications
+   * 2. Have other security controls in place
+   * 3. Are running background jobs or system operations that don't have user context
+   *
+   * When both `requireContext: false` and `allowUnfilteredQueries: false`:
+   * - Missing context logs a warning and returns empty results
+   *
+   * @default false (secure-by-default)
+   */
+  allowUnfilteredQueries?: boolean
 
   /** Enable audit logging of policy decisions */
   auditDecisions?: boolean
@@ -67,9 +110,11 @@ export interface RLSPluginOptions<DB = unknown> {
  * Note: 'schema' and 'onViolation' are not included as they are complex runtime objects.
  */
 export const RLSPluginOptionsSchema = z.object({
-  skipTables: z.array(z.string()).optional(),
+  excludeTables: z.array(z.string()).optional(),
+  skipTables: z.array(z.string()).optional(), // deprecated but kept for backward compatibility
   bypassRoles: z.array(z.string()).optional(),
   requireContext: z.boolean().optional(),
+  allowUnfilteredQueries: z.boolean().optional(),
   auditDecisions: z.boolean().optional(),
   primaryKeyColumn: z.string().optional()
 })
@@ -131,14 +176,27 @@ type BaseRepository = BaseRepositoryLike<Record<string, unknown>>
 export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
   const {
     schema,
-    skipTables = [],
+    excludeTables: excludeTablesOption,
+    skipTables: skipTablesOption,
     bypassRoles = [],
     logger = silentLogger,
-    requireContext = false,
+    requireContext = true, // SECURITY: Changed to true for secure-by-default (CRIT-2 fix)
+    allowUnfilteredQueries = false, // SECURITY: Explicit opt-in for unfiltered queries
     auditDecisions = false,
     onViolation,
     primaryKeyColumn = 'id'
   } = options
+
+  // Backward compatibility: support both excludeTables and skipTables
+  // excludeTables takes precedence if both are provided
+  const excludeTables = excludeTablesOption ?? skipTablesOption ?? []
+
+  // Warn if deprecated skipTables is used
+  if (skipTablesOption !== undefined && excludeTablesOption === undefined) {
+    logger.warn?.(
+      '[RLS] The "skipTables" option is deprecated. Use "excludeTables" instead for consistency with other Kysera plugins.'
+    )
+  }
 
   // Registry and transformers (initialized in onInit)
   let registry: PolicyRegistry<DB>
@@ -161,7 +219,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     onInit<TDB>(_executor: Kysely<TDB>): void {
       logger.info?.('[RLS] Initializing RLS plugin', {
         tables: Object.keys(schema).length,
-        skipTables: skipTables.length,
+        excludeTables: excludeTables.length,
         bypassRoles: bypassRoles.length
       })
 
@@ -179,6 +237,15 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     },
 
     /**
+     * Cleanup resources when executor is destroyed
+     */
+    async onDestroy(): Promise<void> {
+      // Clear registry to free up memory
+      registry.clear()
+      logger.info?.('[RLS] RLS plugin destroyed, cleared policy registry')
+    },
+
+    /**
      * Intercept queries to apply RLS filtering
      *
      * This hook is called for every query builder operation. For SELECT queries,
@@ -189,7 +256,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
       const { operation, table, metadata } = context
 
       // Skip if table is excluded
-      if (skipTables.includes(table)) {
+      if (excludeTables.includes(table)) {
         logger.debug?.(`[RLS] Skipping RLS for excluded table: ${table}`)
         return qb
       }
@@ -204,10 +271,45 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
       const ctx = rlsContext.getContextOrNull()
 
       if (!ctx) {
+        // SECURITY FIX (CRIT-2): Secure-by-default behavior for missing context
         if (requireContext) {
-          throw new RLSContextError('RLS context required but not found')
+          throw new RLSContextError(
+            `RLS context required but not found for ${operation} on ${table}. ` +
+              `This prevents unfiltered database access. ` +
+              `Either provide RLS context or set 'requireContext: false' with 'allowUnfilteredQueries: true' if intentional.`
+          )
         }
-        logger.warn?.(`[RLS] No context for ${operation} on ${table}`)
+
+        if (!allowUnfilteredQueries) {
+          // Log warning and return safe empty result
+          logger.warn?.(
+            `[RLS] Missing context for ${operation} on ${table}. ` +
+              `Queries will return empty results for security. ` +
+              `Set 'allowUnfilteredQueries: true' to allow unfiltered access (not recommended).`
+          )
+          // For SELECT, apply impossible condition to return no rows
+          if (operation === 'select') {
+            return transformQueryBuilder(qb, operation, selectQb => {
+              // Apply WHERE FALSE to ensure no rows are returned
+              return applyWhereCondition(
+                selectQb,
+                createRawCondition('FALSE') as unknown as string,
+                '=',
+                true
+              ) as typeof selectQb
+            })
+          }
+          // For mutations, we'll let them through but log warning
+          // The extendRepository will handle mutation checks
+          return qb
+        }
+
+        // allowUnfilteredQueries is true - allow but log warning
+        logger.warn?.(
+          `[RLS] No context for ${operation} on ${table}. ` +
+            `Allowing unfiltered query due to 'allowUnfilteredQueries: true'. ` +
+            `This may expose sensitive data.`
+        )
         return qb
       }
 
@@ -274,7 +376,8 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
       const table = baseRepo.tableName
 
       // Skip excluded tables
-      if (skipTables.includes(table)) {
+      if (excludeTables.includes(table)) {
+        logger.debug?.(`[RLS] Skipping repository extension for excluded table: ${table}`)
         return repo
       }
 

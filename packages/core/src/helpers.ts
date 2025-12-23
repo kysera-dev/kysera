@@ -7,6 +7,18 @@ import type { SelectQueryBuilder } from 'kysely'
 const SQLITE_MAX_ROWS = 2147483647
 
 /**
+ * Maximum allowed limit for applyOffset function
+ * Prevents accidentally fetching too many rows in a single query
+ */
+const MAX_LIMIT = 100
+
+/**
+ * Minimum required limit for applyOffset function
+ * Ensures at least one row is fetched when a limit is specified
+ */
+const MIN_LIMIT = 1
+
+/**
  * Cross-runtime environment variable access
  * Works in Node.js, Bun, and Deno
  *
@@ -42,10 +54,31 @@ export function getEnv(key: string): string | undefined {
 }
 
 // Module-level type guards for better performance
+/**
+ * Type guard to check if value is a count result object.
+ * Used by executeCount() to safely extract the count value.
+ */
 function isCountResult(val: unknown): val is { count: string | number } {
   return typeof val === 'object' && val !== null && 'count' in val
 }
 
+/**
+ * Type guard to check if value is a grouped count row.
+ * Used by executeGroupedCount() to safely extract count values.
+ *
+ * NOTE: This implementation is identical to isCountResult() because both check
+ * for the same structure (object with 'count' property). The separate function
+ * exists for semantic clarity and type safety:
+ * - isCountResult: Used for simple COUNT(*) queries (single count value)
+ * - isGroupedCountRow: Used for GROUP BY queries (count + grouping columns)
+ *
+ * While the runtime check is the same, the return types differ:
+ * - isCountResult: `{ count: string | number }`
+ * - isGroupedCountRow: `Record<string, unknown> & { count: string | number }`
+ *
+ * This distinction helps TypeScript understand that grouped count rows contain
+ * additional properties beyond just the count field.
+ */
 function isGroupedCountRow(
   val: unknown
 ): val is Record<string, unknown> & { count: string | number } {
@@ -163,8 +196,8 @@ export function applyOffset<DB, TB extends keyof DB, O>(
 
   // Apply limit with bounds checking
   if (options?.limit !== undefined) {
-    // Ensure limit is between 1 and 100
-    const boundedLimit = Math.min(100, Math.max(1, options.limit))
+    // Ensure limit is between MIN_LIMIT and MAX_LIMIT
+    const boundedLimit = Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, options.limit))
     q = q.limit(boundedLimit)
   } else if (options?.offset !== undefined) {
     // SQLite requires LIMIT when OFFSET is used
@@ -435,4 +468,152 @@ export async function executeGroupedCount<DB, TB extends keyof DB, O>(
     },
     {} as Record<string, number>
   )
+}
+
+/**
+ * Configuration for table filtering in plugins.
+ *
+ * This interface is used by plugins to determine which tables they should
+ * apply to. It supports both whitelist (include) and blacklist (exclude) patterns.
+ *
+ * @example
+ * ```typescript
+ * import type { TableFilterConfig } from '@kysera/core'
+ *
+ * // Only apply to specific tables
+ * const config: TableFilterConfig = {
+ *   tables: ['users', 'posts', 'comments']
+ * }
+ *
+ * // Exclude specific tables
+ * const config: TableFilterConfig = {
+ *   excludeTables: ['migrations', 'sessions']
+ * }
+ *
+ * // Whitelist takes precedence
+ * const config: TableFilterConfig = {
+ *   tables: ['users'],           // Only users table
+ *   excludeTables: ['posts']     // Ignored (whitelist takes precedence)
+ * }
+ * ```
+ */
+export interface TableFilterConfig {
+  /** Whitelist of tables to include (takes precedence) */
+  tables?: string[]
+  /** Blacklist of tables to exclude */
+  excludeTables?: string[]
+}
+
+/**
+ * Check if a plugin should apply to a specific table.
+ *
+ * This function implements a three-tier precedence system for table filtering:
+ * 1. **Whitelist** (highest priority): If `tables` is provided, only those tables are included
+ * 2. **Blacklist**: If `excludeTables` is provided, those tables are excluded
+ * 3. **Allow All** (default): If neither is provided, all tables are included
+ *
+ * **Precedence rules:**
+ * - Whitelist > Blacklist > Allow All
+ * - If whitelist is provided, blacklist is ignored
+ * - Empty arrays are treated as not provided
+ *
+ * @param tableName - The name of the table to check
+ * @param config - The table filter configuration
+ * @returns true if the plugin should apply to this table, false otherwise
+ *
+ * @example
+ * Whitelist only:
+ * ```typescript
+ * import { shouldApplyToTable } from '@kysera/core'
+ *
+ * const config = { tables: ['users', 'posts'] }
+ *
+ * shouldApplyToTable('users', config)     // true
+ * shouldApplyToTable('posts', config)     // true
+ * shouldApplyToTable('comments', config)  // false
+ * ```
+ *
+ * @example
+ * Blacklist only:
+ * ```typescript
+ * const config = { excludeTables: ['migrations', 'sessions'] }
+ *
+ * shouldApplyToTable('users', config)      // true
+ * shouldApplyToTable('posts', config)      // true
+ * shouldApplyToTable('migrations', config) // false
+ * shouldApplyToTable('sessions', config)   // false
+ * ```
+ *
+ * @example
+ * Whitelist takes precedence:
+ * ```typescript
+ * const config = {
+ *   tables: ['users', 'posts'],
+ *   excludeTables: ['posts', 'comments']  // Ignored!
+ * }
+ *
+ * shouldApplyToTable('users', config)    // true (in whitelist)
+ * shouldApplyToTable('posts', config)    // true (in whitelist, blacklist ignored)
+ * shouldApplyToTable('comments', config) // false (not in whitelist)
+ * ```
+ *
+ * @example
+ * Allow all (no configuration):
+ * ```typescript
+ * const config = {}
+ *
+ * shouldApplyToTable('users', config)      // true
+ * shouldApplyToTable('posts', config)      // true
+ * shouldApplyToTable('migrations', config) // true
+ * ```
+ *
+ * @example
+ * Empty arrays are ignored:
+ * ```typescript
+ * const config = {
+ *   tables: [],
+ *   excludeTables: []
+ * }
+ *
+ * shouldApplyToTable('users', config) // true (allow all)
+ * ```
+ *
+ * @example
+ * Usage in plugins:
+ * ```typescript
+ * import { shouldApplyToTable, type TableFilterConfig } from '@kysera/core'
+ *
+ * interface MyPluginConfig extends TableFilterConfig {
+ *   enabled: boolean
+ * }
+ *
+ * function myPlugin(config: MyPluginConfig) {
+ *   return {
+ *     transformQuery(args) {
+ *       const tableName = extractTableName(args)
+ *
+ *       if (!shouldApplyToTable(tableName, config)) {
+ *         return args.node // Skip this table
+ *       }
+ *
+ *       // Apply plugin logic
+ *       return transformedNode
+ *     }
+ *   }
+ * }
+ * ```
+ */
+export function shouldApplyToTable(tableName: string, config: TableFilterConfig): boolean {
+  // Whitelist takes precedence
+  if (config.tables && config.tables.length > 0) {
+    return config.tables.includes(tableName)
+  }
+
+  // Blacklist
+  if (config.excludeTables && config.excludeTables.length > 0) {
+    return !config.excludeTables.includes(tableName)
+  }
+
+  // Allow all by default
+  return true
 }

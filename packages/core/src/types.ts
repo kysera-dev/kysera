@@ -1,4 +1,5 @@
 import type { Kysely, Transaction } from 'kysely'
+import type { KyseraExecutorMarker } from '@kysera/executor'
 
 /**
  * Supported database dialects across all Kysera packages.
@@ -121,7 +122,9 @@ export interface AuditFields {
 /**
  * Utility type to extract selectable (read) type from a table definition.
  *
- * @deprecated Use Kysely's built-in `Selectable` type instead:
+ * @deprecated **DEPRECATED in v0.7.0 - Will be removed in v1.0.0**
+ *
+ * Use Kysely's built-in `Selectable` type instead:
  * ```typescript
  * import type { Selectable } from 'kysely'
  * ```
@@ -131,16 +134,18 @@ export interface AuditFields {
  * particularly for `Generated<T>` and `ColumnType<S, I, U>` columns.
  * Kysely's native types provide correct behavior and better type inference.
  *
- * **Migration:**
+ * **Migration path:**
  * ```typescript
- * // Before (deprecated)
+ * // Before (deprecated - will break in v1.0.0)
  * import type { Selectable } from '@kysera/core'
  *
- * // After (recommended)
+ * // After (recommended - use Kysely's native type)
  * import type { Selectable } from 'kysely'
  * ```
  *
- * This type is kept for backward compatibility but will be removed in v1.0.
+ * **Breaking change warning:**
+ * This type will be removed in v1.0.0. Please migrate to Kysely's `Selectable` type.
+ * TypeScript will show this deprecation warning at compile time.
  *
  * @template T - The table schema type
  *
@@ -180,7 +185,9 @@ export type Selectable<T> = {
 /**
  * Utility type to extract insertable (create) type from a table definition.
  *
- * @deprecated Use Kysely's built-in `Insertable` type instead:
+ * @deprecated **DEPRECATED in v0.7.0 - Will be removed in v1.0.0**
+ *
+ * Use Kysely's built-in `Insertable` type instead:
  * ```typescript
  * import type { Insertable } from 'kysely'
  * ```
@@ -190,16 +197,18 @@ export type Selectable<T> = {
  * particularly for `Generated<T>` and `ColumnType<S, I, U>` columns.
  * Kysely's native types provide correct behavior and better type inference.
  *
- * **Migration:**
+ * **Migration path:**
  * ```typescript
- * // Before (deprecated)
+ * // Before (deprecated - will break in v1.0.0)
  * import type { Insertable } from '@kysera/core'
  *
- * // After (recommended)
+ * // After (recommended - use Kysely's native type)
  * import type { Insertable } from 'kysely'
  * ```
  *
- * This type is kept for backward compatibility but will be removed in v1.0.
+ * **Breaking change warning:**
+ * This type will be removed in v1.0.0. Please migrate to Kysely's `Insertable` type.
+ * TypeScript will show this deprecation warning at compile time.
  *
  * @template T - The table schema type
  *
@@ -243,7 +252,9 @@ export type Insertable<T> = {
 /**
  * Utility type to extract updateable (modify) type from a table definition.
  *
- * @deprecated Use Kysely's built-in `Updateable` type instead:
+ * @deprecated **DEPRECATED in v0.7.0 - Will be removed in v1.0.0**
+ *
+ * Use Kysely's built-in `Updateable` type instead:
  * ```typescript
  * import type { Updateable } from 'kysely'
  * ```
@@ -253,16 +264,18 @@ export type Insertable<T> = {
  * particularly for `Generated<T>` and `ColumnType<S, I, U>` columns.
  * Kysely's native types provide correct behavior and better type inference.
  *
- * **Migration:**
+ * **Migration path:**
  * ```typescript
- * // Before (deprecated)
+ * // Before (deprecated - will break in v1.0.0)
  * import type { Updateable } from '@kysera/core'
  *
- * // After (recommended)
+ * // After (recommended - use Kysely's native type)
  * import type { Updateable } from 'kysely'
  * ```
  *
- * This type is kept for backward compatibility but will be removed in v1.0.
+ * **Breaking change warning:**
+ * This type will be removed in v1.0.0. Please migrate to Kysely's `Updateable` type.
+ * TypeScript will show this deprecation warning at compile time.
  *
  * @template T - The table schema type
  *
@@ -315,8 +328,13 @@ export type Updateable<T> = {
  * This type is designed to work with both raw Kysely instances
  * and plugin-wrapped executors from @kysera/executor.
  *
+ * **Type Safety:** This type properly references `KyseraExecutorMarker` from
+ * `@kysera/executor` to ensure type consistency across packages. It will
+ * automatically stay in sync with any changes to the executor marker interface.
+ *
  * @template DB - The database schema type
  * @see {@link @kysera/executor#KyseraExecutor}
+ * @see {@link @kysera/executor#KyseraExecutorMarker}
  *
  * @example
  * ```typescript
@@ -336,7 +354,108 @@ export type Updateable<T> = {
  * }
  * ```
  */
-export type AnyExecutor<DB> =
-  | Kysely<DB>
-  | Transaction<DB>
-  | (Kysely<DB> & { __kysera: true; __plugins: readonly unknown[]; __rawDb: Kysely<DB> })
+export type AnyExecutor<DB> = Kysely<DB> | Transaction<DB> | (Kysely<DB> & KyseraExecutorMarker<DB>)
+
+/**
+ * Shared configuration for plugins that need primary key identification.
+ *
+ * This interface provides a consistent way for plugins to specify which column(s)
+ * serve as the primary key in database tables. Supports both single-column keys
+ * (most common) and composite keys (multiple columns).
+ *
+ * **Used by:**
+ * - `@kysera/soft-delete` - For identifying records to soft delete/restore
+ * - `@kysera/audit` - For tracking record changes by primary key
+ * - `@kysera/timestamps` - For touch() method to update timestamps by ID
+ *
+ * **Common Patterns:**
+ * - Numeric IDs: `'id'` (auto-increment, most common)
+ * - UUIDs: `'uuid'` or `'guid'` (string-based identifiers)
+ * - Prefixed IDs: `'user_id'`, `'post_id'` (table-specific naming)
+ * - Composite keys: `['organization_id', 'user_id']` (multi-column keys)
+ *
+ * @example Single column (default)
+ * ```typescript
+ * import type { PrimaryKeyConfig } from '@kysera/core'
+ *
+ * // Numeric auto-increment ID (most common)
+ * const config: PrimaryKeyConfig = {
+ *   primaryKeyColumn: 'id'  // Default
+ * }
+ *
+ * // UUID primary key
+ * const uuidConfig: PrimaryKeyConfig = {
+ *   primaryKeyColumn: 'uuid'
+ * }
+ *
+ * // Custom primary key name
+ * const customConfig: PrimaryKeyConfig = {
+ *   primaryKeyColumn: 'user_id'
+ * }
+ * ```
+ *
+ * @example Composite primary keys
+ * ```typescript
+ * // Multi-tenant applications
+ * const multiTenantConfig: PrimaryKeyConfig = {
+ *   primaryKeyColumn: ['organization_id', 'user_id']
+ * }
+ *
+ * // Time-series data with composite key
+ * const timeSeriesConfig: PrimaryKeyConfig = {
+ *   primaryKeyColumn: ['device_id', 'timestamp']
+ * }
+ * ```
+ *
+ * @example Extending in plugins
+ * ```typescript
+ * import type { PrimaryKeyConfig } from '@kysera/core'
+ *
+ * interface MyPluginConfig extends PrimaryKeyConfig {
+ *   // Plugin-specific options
+ *   enabled: boolean
+ *   customOption: string
+ * }
+ *
+ * const pluginConfig: MyPluginConfig = {
+ *   primaryKeyColumn: 'id',  // From PrimaryKeyConfig
+ *   enabled: true,
+ *   customOption: 'value'
+ * }
+ * ```
+ */
+export interface PrimaryKeyConfig {
+  /**
+   * Name of the primary key column(s) used for identifying records
+   *
+   * **Single column (most common):**
+   * - `'id'` - Auto-increment integer (default)
+   * - `'uuid'` - UUID/GUID string
+   * - `'<table>_id'` - Prefixed ID (e.g., 'user_id')
+   *
+   * **Composite keys (advanced):**
+   * - `['org_id', 'user_id']` - Multi-column primary key
+   * - `['device_id', 'timestamp']` - Time-series composite key
+   *
+   * **Requirements:**
+   * - Column(s) must exist in all tables where the plugin is applied
+   * - Column values must be unique (enforced by PRIMARY KEY constraint)
+   * - Supports both numeric and string types
+   * - For composite keys, all columns must be present
+   *
+   * @default 'id'
+   *
+   * @example
+   * ```typescript
+   * // Single column (default)
+   * primaryKeyColumn: 'id'
+   *
+   * // UUID key
+   * primaryKeyColumn: 'uuid'
+   *
+   * // Composite key (multi-tenant)
+   * primaryKeyColumn: ['organization_id', 'user_id']
+   * ```
+   */
+  primaryKeyColumn?: string | string[]
+}

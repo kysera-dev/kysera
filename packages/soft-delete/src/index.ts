@@ -4,7 +4,6 @@ import type { SelectQueryBuilder } from 'kysely'
 import { sql } from 'kysely'
 import { NotFoundError, silentLogger } from '@kysera/core'
 import type { KyseraLogger } from '@kysera/core'
-import { z } from 'zod'
 import { VERSION } from './version.js'
 
 /**
@@ -61,17 +60,6 @@ export interface SoftDeleteOptions {
    */
   logger?: KyseraLogger
 }
-
-/**
- * Zod schema for SoftDeleteOptions
- * Used for validation and configuration in the kysera-cli
- */
-export const SoftDeleteOptionsSchema = z.object({
-  deletedAtColumn: z.string().optional(),
-  includeDeleted: z.boolean().optional(),
-  tables: z.array(z.string()).optional(),
-  primaryKeyColumn: z.string().optional()
-})
 
 /**
  * Methods added to repositories by the soft delete plugin
@@ -226,6 +214,21 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
     priority: 100, // Run first to filter soft-deleted records before other plugins
 
     /**
+     * Lifecycle: No initialization needed for soft-delete plugin
+     */
+    onInit() {
+      // No initialization required
+    },
+
+    /**
+     * Lifecycle: Cleanup resources when executor is destroyed
+     */
+    async onDestroy() {
+      // No cleanup required - soft-delete plugin has no persistent resources
+      logger.debug('Soft-delete plugin destroyed')
+    },
+
+    /**
      * Intercept queries to automatically filter soft-deleted records.
      *
      * NOTE: This plugin uses the Method Override pattern, not full query interception.
@@ -356,7 +359,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           return result ?? null
         },
 
-        async softDelete(id: number): Promise<unknown> {
+        async softDelete(id: number | string): Promise<unknown> {
           logger.info(`Soft deleting record ${id} from ${baseRepo.tableName}`)
           // Use rawDb to bypass interceptors (UPDATE doesn't need filtering anyway)
           await rawDb
@@ -380,7 +383,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           return record
         },
 
-        async restore(id: number): Promise<unknown> {
+        async restore(id: number | string): Promise<unknown> {
           logger.info(`Restoring soft-deleted record ${id} from ${baseRepo.tableName}`)
           await rawDb
             .updateTable(baseRepo.tableName)
@@ -403,7 +406,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           return record
         },
 
-        async hardDelete(id: number): Promise<void> {
+        async hardDelete(id: number | string): Promise<void> {
           logger.info(`Hard deleting record ${id} from ${baseRepo.tableName}`)
           await rawDb
             .deleteFrom(baseRepo.tableName)
@@ -411,7 +414,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
             .execute()
         },
 
-        async findWithDeleted(id: number): Promise<unknown> {
+        async findWithDeleted(id: number | string): Promise<unknown> {
           // Use rawDb to bypass soft-delete filter
           const result = await rawDb
             .selectFrom(baseRepo.tableName)

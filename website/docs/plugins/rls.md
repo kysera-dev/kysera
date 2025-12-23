@@ -10,6 +10,44 @@ Implement declarative authorization policies for multi-tenant applications with 
 
 The RLS plugin uses the unified `@kysera/executor` Plugin interface and works with both **Repository** and **DAL** patterns through query interception.
 
+:::caution Breaking Change in v0.7.3
+**SECURITY: `requireContext` now defaults to `true` (secure-by-default)**
+
+Starting from v0.7.3, the RLS plugin requires an RLS context by default. If you're upgrading from an earlier version and your application allows queries without RLS context (e.g., background jobs, system operations), you need to explicitly configure the plugin:
+
+```typescript
+// Option 1: Use system context for privileged operations (recommended)
+await rlsContext.asSystemAsync(async () => {
+  await orm.posts.findAll() // Runs with full access
+})
+
+// Option 2: Disable requireContext and allow unfiltered queries (use with caution)
+const plugin = rlsPlugin({
+  schema: rlsSchema,
+  requireContext: false,      // Don't throw on missing context
+  allowUnfilteredQueries: true // Allow unfiltered access (SECURITY RISK)
+})
+```
+
+**This change prevents accidental data leaks by ensuring all queries have proper RLS context.**
+
+See [Migration from v0.7](#migration-from-v07) for details.
+:::
+
+:::warning Deprecated: `skipTables` renamed to `excludeTables`
+The `skipTables` option has been deprecated in favor of `excludeTables` for consistency with other Kysera plugins.
+
+```typescript
+// ❌ Old (deprecated but still works)
+rlsPlugin({ schema, skipTables: ['migrations', 'audit_logs'] })
+
+// ✅ New (recommended)
+rlsPlugin({ schema, excludeTables: ['migrations', 'audit_logs'] })
+```
+
+Both options work in v0.7.3+, but `excludeTables` is preferred. `skipTables` will be removed in v0.8.0.
+:::
+
 ## Installation
 
 ```bash
@@ -55,14 +93,183 @@ await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: ['user']
 
 ```typescript
 interface RLSPluginOptions<DB = unknown> {
-  schema: RLSSchema<DB> // RLS policy schema
-  skipTables?: string[] // Tables to exclude from RLS entirely
-  bypassRoles?: string[] // Roles that bypass RLS for all tables
-  logger?: KyseraLogger // Logger instance for RLS operations
-  requireContext?: boolean // Require RLS context for all operations
-  auditDecisions?: boolean // Log policy decisions for debugging
-  primaryKeyColumn?: string // Primary key column name for row lookups (default: 'id')
+  schema: RLSSchema<DB> // RLS policy schema (required)
+
+  // Table exclusion
+  excludeTables?: string[] // Tables to exclude from RLS (replaces skipTables)
+  skipTables?: string[]    // @deprecated Use excludeTables instead
+
+  // Security settings
+  requireContext?: boolean          // Require RLS context (default: true)
+  allowUnfilteredQueries?: boolean  // Allow queries without context (default: false)
+
+  // Bypass options
+  bypassRoles?: string[]  // Roles that bypass RLS for all tables
+
+  // Logging & debugging
+  logger?: KyseraLogger                          // Logger instance
+  auditDecisions?: boolean                       // Log policy decisions
   onViolation?: (violation: RLSPolicyViolation) => void // Custom violation handler
+
+  // Configuration
+  primaryKeyColumn?: string  // Primary key column name (default: 'id')
+}
+```
+
+### Security Configuration (v0.7.3+)
+
+The RLS plugin provides multiple security modes to balance safety and flexibility:
+
+#### Secure Mode (Default - Recommended)
+
+**Configuration:**
+```typescript
+const plugin = rlsPlugin({
+  schema: rlsSchema
+  // requireContext: true (implicit default)
+  // allowUnfilteredQueries: false (implicit default)
+})
+```
+
+**Behavior:**
+- **Missing context throws `RLSContextError`** - prevents unfiltered database access
+- Ensures all queries have proper user context
+- **Recommended for production applications**
+
+**When to use:** Multi-tenant SaaS, user-facing applications, any system where data isolation is critical.
+
+#### System Operations Mode
+
+**Configuration:**
+```typescript
+const plugin = rlsPlugin({
+  schema: rlsSchema,
+  requireContext: false,       // Don't throw on missing context
+  allowUnfilteredQueries: true // Allow queries without filtering
+})
+```
+
+**Behavior:**
+- Missing context allows unfiltered access
+- No errors thrown
+- **Use with caution** - can expose data across tenant boundaries
+
+**When to use:** Background jobs, system maintenance tasks, data migrations, cron jobs that don't have user context.
+
+**Better alternative:** Use system context instead:
+```typescript
+await rlsContext.asSystemAsync(async () => {
+  // Full access with explicit intent
+  await orm.posts.findAll()
+})
+```
+
+#### Defensive Mode
+
+**Configuration:**
+```typescript
+const plugin = rlsPlugin({
+  schema: rlsSchema,
+  requireContext: false,        // Don't throw
+  allowUnfilteredQueries: false // Return empty results
+})
+```
+
+**Behavior:**
+- Missing context logs warning and **returns empty results**
+- Safe but doesn't throw errors
+- Useful during RLS migration
+
+**When to use:** Transitioning legacy applications to RLS, mixed code paths with gradual rollout.
+
+#### Security Matrix
+
+| requireContext | allowUnfilteredQueries | Missing Context Behavior                      | Use Case                    |
+|----------------|------------------------|-----------------------------------------------|-----------------------------|
+| `true` (default) | N/A                  | **Throws `RLSContextError`** (secure)         | Production apps (default)   |
+| `false`        | `false` (default)    | **Returns empty results** (safe)              | RLS migration, defensive    |
+| `false`        | `true`               | **Allows unfiltered access** (⚠️ unsafe)      | Background jobs, migrations |
+
+:::danger Security Warning
+Only use `allowUnfilteredQueries: true` if you:
+1. Understand the security implications
+2. Have other security controls in place (e.g., network isolation)
+3. Are running background jobs or system operations without user context
+4. Cannot use `rlsContext.asSystemAsync()` for explicit bypass
+
+**This setting can expose sensitive data across tenant boundaries. Use system context instead whenever possible.**
+:::
+
+#### Examples
+
+**Production SaaS Application:**
+```typescript
+// Secure by default
+const orm = await createORM(db, [
+  rlsPlugin({ schema: rlsSchema })
+])
+
+// All requests must have context
+app.use(async (req, res, next) => {
+  const user = await authenticate(req)
+
+  await rlsContext.runAsync(
+    {
+      auth: {
+        userId: user.id,
+        tenantId: user.tenantId,
+        roles: user.roles
+      },
+      timestamp: new Date()
+    },
+    next
+  )
+})
+```
+
+**Background Job (Option 1 - Recommended):**
+```typescript
+// Use system context explicitly
+const orm = await createORM(db, [
+  rlsPlugin({ schema: rlsSchema }) // Keep secure defaults
+])
+
+// In your cron job
+async function cleanupExpiredPosts() {
+  await rlsContext.runAsync(
+    {
+      auth: {
+        userId: 'system',
+        roles: [],
+        isSystem: true // Explicit bypass
+      },
+      timestamp: new Date()
+    },
+    async () => {
+      // Full access with clear intent
+      const expired = await orm.posts.findAll()
+      // ... cleanup logic
+    }
+  )
+}
+```
+
+**Background Job (Option 2 - Less Safe):**
+```typescript
+// Allow unfiltered queries (use with caution)
+const orm = await createORM(db, [
+  rlsPlugin({
+    schema: rlsSchema,
+    requireContext: false,
+    allowUnfilteredQueries: true
+  })
+])
+
+// No context needed but less explicit
+async function cleanupExpiredPosts() {
+  // Runs without RLS filtering
+  const expired = await orm.posts.findAll()
+  // ... cleanup logic
 }
 ```
 
@@ -78,7 +285,7 @@ interface TableRLSConfig {
 
 ### Bypass Options Comparison
 
-**Plugin-level bypass** (`skipTables`, `bypassRoles`):
+**Plugin-level bypass** (`excludeTables`, `bypassRoles`):
 
 - Applies to **all tables** globally
 - Set at plugin initialization time
@@ -95,8 +302,8 @@ interface TableRLSConfig {
 const orm = await createORM(db, [
   rlsPlugin({
     schema: rlsSchema,
-    skipTables: ['migrations', 'system_config'],  // Global: Skip these tables entirely
-    bypassRoles: ['superadmin'],                  // Global: Superadmins bypass all RLS
+    excludeTables: ['migrations', 'system_config'],  // Global: Skip these tables entirely
+    bypassRoles: ['superadmin'],                      // Global: Superadmins bypass all RLS
   })
 ])
 
@@ -1102,6 +1309,182 @@ await rlsContext.runAsync(
 
       console.log(`Created post with ${analytics.commentCount} comments`)
     })
+  }
+)
+```
+
+## Migration from v0.7
+
+### Breaking Change: `requireContext` Default
+
+**What changed:**
+- v0.7.0-v0.7.2: `requireContext` defaults to `false` (permissive)
+- v0.7.3+: `requireContext` defaults to `true` (secure-by-default)
+
+**Why it changed:**
+The previous default allowed queries without RLS context, which could lead to accidental data leaks in multi-tenant applications. The new default ensures all queries have proper context.
+
+**Migration strategies:**
+
+#### Strategy 1: Add RLS Context Everywhere (Recommended)
+
+Update your application to always provide RLS context:
+
+```typescript
+// Before v0.7.3 (worked without context)
+const posts = await orm.posts.findAll()
+
+// After v0.7.3 (requires context)
+await rlsContext.runAsync(
+  {
+    auth: {
+      userId: user.id,
+      tenantId: user.tenantId,
+      roles: user.roles
+    },
+    timestamp: new Date()
+  },
+  async () => {
+    const posts = await orm.posts.findAll()
+  }
+)
+```
+
+**Pros:** Most secure, explicit context, catches missing context at runtime
+**Cons:** Requires code changes throughout your application
+
+#### Strategy 2: Use System Context for Background Jobs
+
+Keep secure defaults but use system context for privileged operations:
+
+```typescript
+// Plugin config (secure defaults)
+const orm = await createORM(db, [
+  rlsPlugin({ schema: rlsSchema })
+])
+
+// User requests (require context)
+app.get('/api/posts', async (req, res) => {
+  await rlsContext.runAsync(userContext, async () => {
+    const posts = await orm.posts.findAll()
+    res.json(posts)
+  })
+})
+
+// Background jobs (explicit system context)
+async function cleanupJob() {
+  await rlsContext.runAsync(
+    {
+      auth: { userId: 'system', roles: [], isSystem: true },
+      timestamp: new Date()
+    },
+    async () => {
+      const expired = await orm.posts.findAll()
+      // ... cleanup logic
+    }
+  )
+}
+```
+
+**Pros:** Secure by default, explicit intent for privileged access
+**Cons:** Requires wrapping background jobs in system context
+
+#### Strategy 3: Opt Out of Secure Defaults (Not Recommended)
+
+Restore the old behavior by explicitly setting `requireContext: false`:
+
+```typescript
+// ⚠️ Not recommended - only for temporary migration
+const orm = await createORM(db, [
+  rlsPlugin({
+    schema: rlsSchema,
+    requireContext: false,      // Restore old behavior
+    allowUnfilteredQueries: true // Allow queries without context
+  })
+])
+```
+
+**Pros:** No code changes required
+**Cons:** Not secure, can leak data, defeats the purpose of RLS
+
+**Use this only as a temporary measure during migration, then switch to Strategy 1 or 2.**
+
+### Deprecation: `skipTables` → `excludeTables`
+
+**What changed:**
+- The `skipTables` option has been renamed to `excludeTables` for consistency with other Kysera plugins (`@kysera/soft-delete`, `@kysera/audit`)
+
+**Migration:**
+
+```typescript
+// Before (still works but deprecated)
+rlsPlugin({
+  schema: rlsSchema,
+  skipTables: ['migrations', 'audit_logs', 'system_config']
+})
+
+// After (recommended)
+rlsPlugin({
+  schema: rlsSchema,
+  excludeTables: ['migrations', 'audit_logs', 'system_config']
+})
+```
+
+**Backward compatibility:**
+- `skipTables` still works in v0.7.3+ but logs a deprecation warning
+- `excludeTables` takes precedence if both are provided
+- `skipTables` will be removed in v0.8.0
+
+**Migration checklist:**
+
+1. Search for `skipTables` in your codebase
+2. Replace with `excludeTables`
+3. Test that excluded tables still bypass RLS
+4. Remove any deprecation warnings from logs
+
+### Testing Your Migration
+
+After upgrading to v0.7.3, test these scenarios:
+
+**1. User Queries Require Context**
+```typescript
+// Should throw RLSContextError (if requireContext: true)
+try {
+  await orm.posts.findAll() // ❌ No context
+} catch (error) {
+  if (error instanceof RLSContextError) {
+    console.log('✅ Correctly requires context')
+  }
+}
+```
+
+**2. System Context Bypasses RLS**
+```typescript
+// Should allow full access
+await rlsContext.asSystemAsync(async () => {
+  const allPosts = await orm.posts.findAll() // ✅ System access
+  console.log('✅ System context works')
+})
+```
+
+**3. Excluded Tables Bypass RLS**
+```typescript
+// Should work without context (if in excludeTables)
+const migrations = await orm.migrations.findAll() // ✅ Excluded table
+console.log('✅ Excluded tables work')
+```
+
+**4. User Context Filters Correctly**
+```typescript
+await rlsContext.runAsync(
+  {
+    auth: { userId: 1, tenantId: 'acme', roles: ['user'] },
+    timestamp: new Date()
+  },
+  async () => {
+    const posts = await orm.posts.findAll()
+    // Should only return posts for tenant 'acme'
+    console.log('✅ RLS filtering works', posts.every(p => p.tenant_id === 'acme'))
   }
 )
 ```

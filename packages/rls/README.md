@@ -765,7 +765,13 @@ interface RLSPluginOptions<DB = unknown> {
   /** RLS policy schema (required) */
   schema: RLSSchema<DB>
 
-  /** Tables to skip RLS (always bypass) */
+  /**
+   * Tables to exclude from RLS (always bypass)
+   * Replaces deprecated skipTables
+   */
+  excludeTables?: string[]
+
+  /** @deprecated Use excludeTables instead */
   skipTables?: string[]
 
   /** Roles that bypass RLS entirely */
@@ -774,14 +780,37 @@ interface RLSPluginOptions<DB = unknown> {
   /** Logger for RLS operations */
   logger?: KyseraLogger
 
-  /** Require RLS context (throws if missing) */
+  /**
+   * Require RLS context (throws if missing)
+   * @default true - SECURE BY DEFAULT
+   *
+   * SECURITY: Changed to true in v0.7.3+ for secure-by-default.
+   * When true, missing context throws RLSContextError.
+   * Only set to false if you have other security controls.
+   */
   requireContext?: boolean
+
+  /**
+   * Allow unfiltered queries when context is missing
+   * @default false - SECURE BY DEFAULT
+   *
+   * WARNING: Setting true allows queries without RLS filtering
+   * when context is missing. Only enable if you understand the
+   * security implications (e.g., background jobs, system ops).
+   *
+   * When requireContext=false and allowUnfilteredQueries=false:
+   * - Missing context returns empty results with warnings
+   */
+  allowUnfilteredQueries?: boolean
 
   /** Enable audit logging of decisions */
   auditDecisions?: boolean
 
   /** Custom violation handler */
   onViolation?: (violation: RLSPolicyViolation) => void
+
+  /** Primary key column name (default: 'id') */
+  primaryKeyColumn?: string
 }
 ```
 
@@ -810,6 +839,67 @@ const plugin = rlsPlugin({
 
 const orm = await createORM(db, [plugin])
 ```
+
+### Security Configuration (v0.7.3+)
+
+**BREAKING CHANGE**: Starting in v0.7.3, `requireContext` defaults to `true` for secure-by-default behavior.
+
+#### Secure Defaults (Recommended)
+
+```typescript
+// Default behavior - secure by default
+const plugin = rlsPlugin({
+  schema: rlsSchema
+  // requireContext: true (implicit)
+  // allowUnfilteredQueries: false (implicit)
+})
+
+// Missing context throws RLSContextError
+await orm.posts.findAll() // ❌ Throws: RLS context required
+```
+
+#### Background Jobs / System Operations
+
+For operations that legitimately run without user context (e.g., cron jobs, system maintenance):
+
+```typescript
+const plugin = rlsPlugin({
+  schema: rlsSchema,
+  requireContext: false, // Don't throw on missing context
+  allowUnfilteredQueries: true // Allow queries without filtering
+})
+
+// OR use system context for privileged operations:
+await rlsContext.asSystemAsync(async () => {
+  await orm.posts.findAll() // ✅ Runs as system user
+})
+```
+
+#### Defensive Mode (No throws, but safe)
+
+For applications transitioning to RLS or with mixed code paths:
+
+```typescript
+const plugin = rlsPlugin({
+  schema: rlsSchema,
+  requireContext: false, // Don't throw
+  allowUnfilteredQueries: false // Return empty results
+  // Missing context logs warning and returns no rows
+})
+```
+
+**Security Matrix:**
+
+| requireContext | allowUnfilteredQueries | Missing Context Behavior                |
+| -------------- | ---------------------- | --------------------------------------- |
+| `true` (default) | N/A                  | **Throws RLSContextError** (secure)     |
+| `false`        | `false` (default)    | **Returns empty results** (safe)        |
+| `false`        | `true`               | **Allows unfiltered access** (unsafe)   |
+
+⚠️ **Security Warning**: Only use `allowUnfilteredQueries: true` if you:
+1. Understand the security implications
+2. Have other security controls in place
+3. Are running background jobs or system operations without user context
 
 ---
 

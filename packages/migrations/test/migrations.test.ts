@@ -22,10 +22,12 @@ import {
 // Helper to create a test logger that captures output
 function createTestLogger(logs: string[]): KyseraLogger {
   return {
+    trace: (msg: string) => logs.push(msg),
     debug: (msg: string) => logs.push(msg),
     info: (msg: string) => logs.push(msg),
     warn: (msg: string) => logs.push(msg),
-    error: (msg: string) => logs.push(msg)
+    error: (msg: string) => logs.push(msg),
+    fatal: (msg: string) => logs.push(msg)
   }
 }
 import { safeDbDestroy, safeSqliteClose } from './helpers/cleanup.js'

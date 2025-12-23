@@ -16,6 +16,30 @@ export interface UpsertOptions<T> {
 /**
  * Performs an upsert (INSERT ... ON CONFLICT DO UPDATE) operation.
  *
+ * **Dialect Support:**
+ * - PostgreSQL: Full support via `ON CONFLICT DO UPDATE`
+ * - MySQL 8.0+: Full support via `ON DUPLICATE KEY UPDATE` (handled by Kysely)
+ * - SQLite: Full support via `ON CONFLICT DO UPDATE`
+ * - **MSSQL: NOT SUPPORTED** - Use raw SQL with MERGE statement instead
+ *
+ * **MSSQL Limitation:**
+ * Microsoft SQL Server does not support Kysely's `onConflict` API.
+ * For MSSQL, you must use raw SQL with the MERGE statement:
+ *
+ * ```typescript
+ * import { sql } from 'kysely'
+ *
+ * await sql`
+ *   MERGE users AS target
+ *   USING (SELECT ${sql.lit(email)} AS email, ${sql.lit(name)} AS name) AS source
+ *   ON target.email = source.email
+ *   WHEN MATCHED THEN
+ *     UPDATE SET name = source.name
+ *   WHEN NOT MATCHED THEN
+ *     INSERT (email, name) VALUES (source.email, source.name);
+ * `.execute(db)
+ * ```
+ *
  * @example
  * ```typescript
  * // Upsert with specific conflict column

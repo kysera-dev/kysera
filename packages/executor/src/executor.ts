@@ -348,10 +348,28 @@ const MARKER_PROPS = new Set<string | symbol>(['__kysera', '__plugins', '__rawDb
 const MAX_CACHE_SIZE = 100
 
 /**
- * Simple LRU cache implementation to prevent unbounded cache growth
+ * Sentinel value to distinguish "cached undefined" from "not in cache"
+ * @internal
+ */
+const UNDEFINED_SENTINEL = Symbol('UNDEFINED_SENTINEL')
+
+/**
+ * Wrapper type for cache values to handle undefined correctly
+ * @internal
+ */
+type CacheValue<V> = V | typeof UNDEFINED_SENTINEL
+
+/**
+ * Simple LRU cache implementation to prevent unbounded cache growth.
+ *
+ * Correctly handles undefined values using a sentinel pattern:
+ * - get() returns undefined for both "cached undefined" and "not in cache"
+ * - has() returns true only if key is actually in cache (even if value is undefined)
+ *
+ * @internal
  */
 class LRUCache<K, V> {
-  private cache: Map<K, V>
+  private cache: Map<K, CacheValue<V>>
   private readonly maxSize: number
 
   constructor(maxSize: number) {
@@ -365,16 +383,21 @@ class LRUCache<K, V> {
       // Move to end (most recently used)
       this.cache.delete(key)
       this.cache.set(key, value)
+      // Unwrap sentinel value
+      return value === UNDEFINED_SENTINEL ? undefined : value
     }
-    return value
+    return undefined
   }
 
   set(key: K, value: V): void {
+    // Wrap undefined values with sentinel
+    const wrappedValue: CacheValue<V> = value === undefined ? UNDEFINED_SENTINEL : value
+
     // Delete if exists to move to end
     if (this.cache.has(key)) {
       this.cache.delete(key)
     }
-    this.cache.set(key, value)
+    this.cache.set(key, wrappedValue)
 
     // Evict oldest (first) entry if size exceeded
     if (this.cache.size > this.maxSize) {

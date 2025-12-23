@@ -266,7 +266,9 @@ describe('safeParse', () => {
         debug: vi.fn(),
         info: vi.fn(),
         warn: vi.fn(),
-        error: vi.fn()
+        error: vi.fn(),
+        trace: vi.fn(),
+        fatal: vi.fn()
       }
 
       const invalidData = { name: 123 }
@@ -282,7 +284,9 @@ describe('safeParse', () => {
         debug: vi.fn(),
         info: vi.fn(),
         warn: vi.fn(),
-        error: vi.fn()
+        error: vi.fn(),
+        trace: vi.fn(),
+        fatal: vi.fn()
       }
 
       const invalidData = { name: 123 }
@@ -297,7 +301,9 @@ describe('safeParse', () => {
         debug: vi.fn(),
         info: vi.fn(),
         warn: vi.fn(),
-        error: vi.fn()
+        error: vi.fn(),
+        trace: vi.fn(),
+        fatal: vi.fn()
       }
 
       const invalidData = { name: 123 }
@@ -312,7 +318,9 @@ describe('safeParse', () => {
         debug: vi.fn(),
         info: vi.fn(),
         warn: vi.fn(),
-        error: vi.fn()
+        error: vi.fn(),
+        trace: vi.fn(),
+        fatal: vi.fn()
       }
 
       const invalidData = { name: 123 }
@@ -326,7 +334,9 @@ describe('safeParse', () => {
         debug: vi.fn(),
         info: vi.fn(),
         warn: vi.fn(),
-        error: vi.fn()
+        error: vi.fn(),
+        trace: vi.fn(),
+        fatal: vi.fn()
       }
 
       const invalidData = { name: 123 }
@@ -925,7 +935,9 @@ describe('createValidator', () => {
         debug: vi.fn(),
         info: vi.fn(),
         warn: vi.fn(),
-        error: vi.fn()
+        error: vi.fn(),
+        trace: vi.fn(),
+        fatal: vi.fn()
       }
 
       const validator = createValidator(schema, {

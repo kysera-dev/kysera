@@ -1,7 +1,7 @@
 import type { Plugin } from '@kysera/executor'
 import type { Repository } from '@kysera/repository'
 import type { Kysely, SelectQueryBuilder } from 'kysely'
-import { silentLogger } from '@kysera/core'
+import { silentLogger, detectDialect } from '@kysera/core'
 import type { KyseraLogger } from '@kysera/core'
 import { z } from 'zod'
 import { VERSION } from './version.js'
@@ -171,42 +171,6 @@ function createTimestampQuery(
 }
 
 /**
- * Get the dialect name from executor
- * Used to determine if RETURNING clause is supported
- */
-function getDialectName<DB>(executor: Kysely<DB>): string {
-  try {
-    // Try to detect dialect from executor's internal adapter
-    const executorInternal = executor as unknown as { getExecutor?: () => { adapter?: { constructor?: { name?: string } } } }
-    const dialect = executorInternal.getExecutor?.()?.adapter?.constructor?.name
-    
-    if (dialect) {
-      const dialectLower = dialect.toLowerCase()
-      if (dialectLower.includes('postgres')) return 'postgres'
-      if (dialectLower.includes('mysql')) return 'mysql'
-      if (dialectLower.includes('sqlite')) return 'sqlite'
-      if (dialectLower.includes('mssql')) return 'mssql'
-    }
-    
-    // Fallback: check for known properties via type assertion
-    const execAny = executor as unknown as Record<string, unknown>
-    if (execAny['dialect']) {
-      const dialectObj = execAny['dialect'] as Record<string, unknown>
-      const dialectCtor = dialectObj['constructor'] as Record<string, unknown> | undefined
-      const dialectName = String(dialectCtor?.['name'] ?? '').toLowerCase()
-      if (dialectName.includes('postgres')) return 'postgres'
-      if (dialectName.includes('mysql')) return 'mysql'
-      if (dialectName.includes('sqlite')) return 'sqlite'
-      if (dialectName.includes('mssql')) return 'mssql'
-    }
-    
-    return 'unknown'
-  } catch {
-    return 'unknown'
-  }
-}
-
-/**
  * Check if dialect supports RETURNING clause
  *
  * Database compatibility:
@@ -225,11 +189,11 @@ function getDialectName<DB>(executor: Kysely<DB>): string {
  * @returns true if RETURNING clause is supported
  */
 function supportsReturning<DB>(executor: Kysely<DB>): boolean {
-  const dialectName = getDialectName(executor)
+  const dialect = detectDialect(executor)
   // Return false for MySQL (doesn't support RETURNING)
   // Return false for MSSQL (uses OUTPUT, not RETURNING)
   // Return true for PostgreSQL and SQLite
-  return dialectName !== 'mysql' && dialectName !== 'mssql'
+  return dialect !== 'mysql' && dialect !== 'mssql'
 }
 
 /**
@@ -313,6 +277,21 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
     name: '@kysera/timestamps',
     version: VERSION,
     priority: 50, // Run in the middle, after filtering but before audit
+
+    /**
+     * Lifecycle: No initialization needed for timestamps plugin
+     */
+    onInit() {
+      // No initialization required
+    },
+
+    /**
+     * Lifecycle: Cleanup resources when executor is destroyed
+     */
+    async onDestroy() {
+      // No cleanup required - timestamps plugin has no persistent resources
+      logger.debug('Timestamps plugin destroyed')
+    },
 
     extendRepository<T extends object>(repo: T): T {
       // Check if it's actually a repository (has required properties)

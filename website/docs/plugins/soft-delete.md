@@ -542,6 +542,26 @@ ALTER TABLE users ADD CONSTRAINT unique_active_email
   UNIQUE (email, deleted_at);
 ```
 
+## Schema Validation (Optional)
+
+The soft-delete plugin optionally supports Zod schema validation for configuration:
+
+```typescript
+import { SoftDeleteOptionsSchema } from '@kysera/soft-delete/schema'
+import { z } from 'zod'
+
+// Validate configuration
+const config = SoftDeleteOptionsSchema.parse({
+  deletedAtColumn: 'deleted_at',
+  includeDeleted: false,
+  tables: ['users', 'posts']
+})
+```
+
+:::tip
+The main `@kysera/soft-delete` package works without Zod installed. Only import from `/schema` if you need runtime validation.
+:::
+
 ## Architecture
 
 The soft-delete plugin uses the unified `@kysera/executor` layer:

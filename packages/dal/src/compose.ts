@@ -72,11 +72,14 @@ export function compose<DB, TArgs extends readonly unknown[], TFirst, TResult>(
 /**
  * Chain multiple operations on a query result.
  *
+ * Supports up to 8 type-safe transforms. For more than 8 transforms,
+ * the return type falls back to `unknown` (use type assertion if needed).
+ *
  * @param query - Initial query function
- * @param transforms - Array of transform functions
+ * @param transforms - Array of transform functions (up to 8 with full type safety)
  * @returns Chained query function
  *
- * @example
+ * @example Basic usage (2 transforms)
  * ```typescript
  * import { createQuery, chain } from '@kysera/dal';
  *
@@ -89,6 +92,33 @@ export function compose<DB, TArgs extends readonly unknown[], TFirst, TResult>(
  *   async (ctx, user) => ({ ...user, posts: await getPosts(ctx, user.id) }),
  *   async (ctx, data) => ({ ...data, followers: await getFollowers(ctx, data.id) })
  * );
+ * // Type: QueryFunction<DB, [number], { ...user, posts: Post[], followers: User[] }>
+ * ```
+ *
+ * @example Maximum type-safe transforms (8)
+ * ```typescript
+ * const complexQuery = chain(
+ *   getUser,
+ *   async (ctx, user) => ({ ...user, posts: await getPosts(ctx, user.id) }),
+ *   async (ctx, data) => ({ ...data, comments: await getComments(ctx, data.id) }),
+ *   async (ctx, data) => ({ ...data, likes: await getLikes(ctx, data.id) }),
+ *   async (ctx, data) => ({ ...data, shares: await getShares(ctx, data.id) }),
+ *   async (ctx, data) => ({ ...data, followers: await getFollowers(ctx, data.id) }),
+ *   async (ctx, data) => ({ ...data, following: await getFollowing(ctx, data.id) }),
+ *   async (ctx, data) => ({ ...data, stats: await getStats(ctx, data.id) }),
+ *   async (ctx, data) => ({ ...data, metadata: await getMetadata(ctx, data.id) })
+ * );
+ * // Type is still inferred correctly!
+ * ```
+ *
+ * @example More than 8 transforms (fallback to unknown)
+ * ```typescript
+ * const veryComplexQuery = chain(
+ *   getUser,
+ *   t1, t2, t3, t4, t5, t6, t7, t8, t9  // 9 transforms
+ * );
+ * // Type: QueryFunction<DB, [number], unknown>
+ * // Use type assertion: const result = await veryComplexQuery(db, 1) as MyType
  * ```
  */
 export function chain<DB, TArgs extends readonly unknown[], T1, T2>(
@@ -106,6 +136,40 @@ export function chain<DB, TArgs extends readonly unknown[], T1, T2, T3, T4>(
   t2: (ctx: DbContext<DB>, result: T2) => Promise<T3>,
   t3: (ctx: DbContext<DB>, result: T3) => Promise<T4>
 ): QueryFunction<DB, TArgs, T4>
+export function chain<DB, TArgs extends readonly unknown[], T1, T2, T3, T4, T5>(
+  query: QueryFunction<DB, TArgs, T1>,
+  t1: (ctx: DbContext<DB>, result: T1) => Promise<T2>,
+  t2: (ctx: DbContext<DB>, result: T2) => Promise<T3>,
+  t3: (ctx: DbContext<DB>, result: T3) => Promise<T4>,
+  t4: (ctx: DbContext<DB>, result: T4) => Promise<T5>
+): QueryFunction<DB, TArgs, T5>
+export function chain<DB, TArgs extends readonly unknown[], T1, T2, T3, T4, T5, T6>(
+  query: QueryFunction<DB, TArgs, T1>,
+  t1: (ctx: DbContext<DB>, result: T1) => Promise<T2>,
+  t2: (ctx: DbContext<DB>, result: T2) => Promise<T3>,
+  t3: (ctx: DbContext<DB>, result: T3) => Promise<T4>,
+  t4: (ctx: DbContext<DB>, result: T4) => Promise<T5>,
+  t5: (ctx: DbContext<DB>, result: T5) => Promise<T6>
+): QueryFunction<DB, TArgs, T6>
+export function chain<DB, TArgs extends readonly unknown[], T1, T2, T3, T4, T5, T6, T7>(
+  query: QueryFunction<DB, TArgs, T1>,
+  t1: (ctx: DbContext<DB>, result: T1) => Promise<T2>,
+  t2: (ctx: DbContext<DB>, result: T2) => Promise<T3>,
+  t3: (ctx: DbContext<DB>, result: T3) => Promise<T4>,
+  t4: (ctx: DbContext<DB>, result: T4) => Promise<T5>,
+  t5: (ctx: DbContext<DB>, result: T5) => Promise<T6>,
+  t6: (ctx: DbContext<DB>, result: T6) => Promise<T7>
+): QueryFunction<DB, TArgs, T7>
+export function chain<DB, TArgs extends readonly unknown[], T1, T2, T3, T4, T5, T6, T7, T8>(
+  query: QueryFunction<DB, TArgs, T1>,
+  t1: (ctx: DbContext<DB>, result: T1) => Promise<T2>,
+  t2: (ctx: DbContext<DB>, result: T2) => Promise<T3>,
+  t3: (ctx: DbContext<DB>, result: T3) => Promise<T4>,
+  t4: (ctx: DbContext<DB>, result: T4) => Promise<T5>,
+  t5: (ctx: DbContext<DB>, result: T5) => Promise<T6>,
+  t6: (ctx: DbContext<DB>, result: T6) => Promise<T7>,
+  t7: (ctx: DbContext<DB>, result: T7) => Promise<T8>
+): QueryFunction<DB, TArgs, T8>
 export function chain<DB, TArgs extends readonly unknown[]>(
   query: QueryFunction<DB, TArgs, unknown>,
   ...transforms: ((ctx: DbContext<DB>, result: unknown) => Promise<unknown>)[]

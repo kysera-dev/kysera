@@ -20,9 +20,9 @@ import sqliteConstructor from 'better-sqlite3'
 import type { Database as SQLiteDatabase } from 'better-sqlite3'
 import {
   softDeletePlugin,
-  SoftDeleteOptionsSchema,
   type SoftDeleteRepository
 } from '../src/index.js'
+import { SoftDeleteOptionsSchema } from '../src/schema.js'
 import {
   createORM,
   createRepositoryFactory,

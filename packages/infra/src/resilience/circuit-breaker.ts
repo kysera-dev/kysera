@@ -104,7 +104,8 @@ export class CircuitBreaker {
   private lastFailureTime: number | undefined = undefined
   private state: CircuitState = 'closed'
   private isTestingHalfOpen = false
-  private stateMutex: Promise<void> = Promise.resolve()
+  private mutexLocked = false
+  private mutexQueue: (() => void)[] = []
 
   private readonly threshold: number
   private readonly resetTimeMs: number
@@ -131,16 +132,37 @@ export class CircuitBreaker {
 
   /**
    * Acquire the mutex and return a release function.
+   * Uses a proper queue-based mutex to prevent race conditions.
    * @internal
    */
   private async acquireMutex(): Promise<() => void> {
-    await this.stateMutex
-    // eslint-disable-next-line @typescript-eslint/no-empty-function
-    let release: () => void = () => {}
-    this.stateMutex = new Promise<void>(resolve => {
-      release = resolve
+    // If mutex is not locked, acquire immediately
+    if (!this.mutexLocked) {
+      this.mutexLocked = true
+      return () => { this.releaseMutex(); }
+    }
+
+    // Otherwise, wait in queue
+    await new Promise<void>(resolve => {
+      this.mutexQueue.push(resolve)
     })
-    return release
+
+    return () => { this.releaseMutex(); }
+  }
+
+  /**
+   * Release the mutex and process the next waiting operation.
+   * @internal
+   */
+  private releaseMutex(): void {
+    const next = this.mutexQueue.shift()
+    if (next) {
+      // Transfer lock to next waiter
+      next()
+    } else {
+      // No waiters, release lock
+      this.mutexLocked = false
+    }
   }
 
   /**
