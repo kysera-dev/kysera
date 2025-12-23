@@ -158,17 +158,17 @@ try {
   }
 }
 
-// Check circuit state
-if (breaker.isOpen()) {
+// Check circuit state (async methods)
+if (await breaker.isOpen()) {
   console.log('Circuit is open - service unavailable')
 }
-if (breaker.isClosed()) {
+if (await breaker.isClosed()) {
   console.log('Circuit is closed - operating normally')
 }
 
-breaker.getState() // { state: 'open', failures: 5, lastFailureTime: ... }
-breaker.reset() // Reset to closed
-breaker.forceOpen() // Force open for maintenance
+await breaker.getState() // { state: 'open', failures: 5, lastFailureTime: ... }
+await breaker.reset() // Reset to closed
+await breaker.forceOpen() // Force open for maintenance
 ```
 
 **Circuit States:**
@@ -279,7 +279,9 @@ interface HealthMonitorOptions {
 interface RetryOptions {
   maxAttempts?: number // Default: 3
   delayMs?: number // Default: 1000
+  maxDelayMs?: number // Default: 30000 (caps exponential backoff)
   backoff?: boolean // Default: true
+  jitterFactor?: number // Default: 0.25 (prevents thundering herd)
   shouldRetry?: (error: unknown) => boolean
   onRetry?: (attempt: number, error: unknown) => void
 }
@@ -310,12 +312,12 @@ class CircuitBreaker {
   // Execute a function with circuit breaker protection
   execute<T>(fn: () => Promise<T>): Promise<T>
 
-  // State management
-  getState(): CircuitBreakerState
-  isOpen(): boolean // Check if circuit is open
-  isClosed(): boolean // Check if circuit is closed
-  reset(): void // Reset to closed state
-  forceOpen(): void // Force circuit open
+  // State management (all async for thread-safe mutex-based operations)
+  getState(): Promise<CircuitBreakerState>
+  isOpen(): Promise<boolean> // Check if circuit is open
+  isClosed(): Promise<boolean> // Check if circuit is closed
+  reset(): Promise<void> // Reset to closed state
+  forceOpen(): Promise<void> // Force circuit open
 }
 ```
 

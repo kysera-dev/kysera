@@ -94,7 +94,7 @@ export class CircuitBreakerError extends DatabaseError {
  *   threshold: 3,
  *   resetTimeMs: 30000,
  *   onStateChange: (newState, oldState) => {
- *     console.log(`Circuit breaker: ${oldState} -> ${newState}`);
+ *     console.log('Circuit breaker:', oldState, '->', newState);
  *   },
  * });
  * ```
@@ -130,6 +130,20 @@ export class CircuitBreaker {
   }
 
   /**
+   * Acquire the mutex and return a release function.
+   * @internal
+   */
+  private async acquireMutex(): Promise<() => void> {
+    await this.stateMutex
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    let release: () => void = () => {}
+    this.stateMutex = new Promise<void>(resolve => {
+      release = resolve
+    })
+    return release
+  }
+
+  /**
    * Execute a function with circuit breaker protection.
    *
    * Uses a mutex to prevent race conditions during state transitions,
@@ -142,16 +156,14 @@ export class CircuitBreaker {
    */
   async execute<T>(fn: () => Promise<T>): Promise<T> {
     // Acquire mutex to prevent concurrent state transitions
-    await this.stateMutex
+    const releaseMutex = await this.acquireMutex()
 
-    let releaseMutex: (() => void) | undefined
-    const mutexPromise = new Promise<void>(resolve => {
-      releaseMutex = resolve
-    })
-    this.stateMutex = mutexPromise
+    // Variables to track state for error handling
+    let wasHalfOpen = false
+    let mutexReleased = false
 
     try {
-      // Check if circuit should be reset
+      // Check if circuit should be reset to half-open
       if (
         this.state === 'open' &&
         this.lastFailureTime &&
@@ -173,51 +185,73 @@ export class CircuitBreaker {
         this.isTestingHalfOpen = true
       }
 
-      // Release mutex before executing fn (we've secured our state)
-      releaseMutex?.()
-      releaseMutex = undefined
+      // Capture current state for post-execution handling
+      wasHalfOpen = this.state === 'half-open'
 
+      // Release mutex before executing user function
+      releaseMutex()
+      mutexReleased = true
+
+      // Execute user function
+      const result = await fn()
+
+      // Re-acquire mutex for state update on success
+      const successRelease = await this.acquireMutex()
       try {
-        const result = await fn()
-
         // Reset on success
-        if (this.state === 'half-open') {
+        if (wasHalfOpen && this.state === 'half-open') {
           this.isTestingHalfOpen = false
           this.setState('closed')
           this.failures = 0
         }
-
-        return result
-      } catch (error) {
-        // Reset testing flag on failure in half-open state
-        if (this.state === 'half-open') {
-          this.isTestingHalfOpen = false
-        }
-
-        this.failures++
-        this.lastFailureTime = Date.now()
-
-        // Open circuit if threshold exceeded or failed in half-open
-        if (this.failures >= this.threshold || this.state === 'half-open') {
-          this.setState('open')
-        }
-
-        throw error
+      } finally {
+        successRelease()
       }
-    } finally {
-      // Ensure mutex is always released
-      releaseMutex?.()
+
+      return result
+    } catch (error) {
+      // If mutex was released (we started executing user function), handle failure state
+      if (mutexReleased) {
+        // Re-acquire mutex for state update on failure
+        const failureRelease = await this.acquireMutex()
+        try {
+          // Reset testing flag on failure in half-open state
+          if (this.state === 'half-open') {
+            this.isTestingHalfOpen = false
+          }
+
+          this.failures++
+          this.lastFailureTime = Date.now()
+
+          // Open circuit if threshold exceeded or failed in half-open
+          if (this.failures >= this.threshold || this.state === 'half-open') {
+            this.setState('open')
+          }
+        } finally {
+          failureRelease()
+        }
+      } else {
+        // Mutex was not released (error in state check), release it now
+        releaseMutex()
+      }
+
+      throw error
     }
   }
 
   /**
    * Reset the circuit breaker to closed state.
    */
-  reset(): void {
-    this.failures = 0
-    this.lastFailureTime = undefined
-    this.isTestingHalfOpen = false
-    this.setState('closed')
+  async reset(): Promise<void> {
+    const release = await this.acquireMutex()
+    try {
+      this.failures = 0
+      this.lastFailureTime = undefined
+      this.isTestingHalfOpen = false
+      this.setState('closed')
+    } finally {
+      release()
+    }
   }
 
   /**
@@ -225,12 +259,17 @@ export class CircuitBreaker {
    *
    * @returns Current state snapshot
    */
-  getState(): CircuitBreakerState {
-    return {
-      state: this.state,
-      failures: this.failures,
-      lastFailureTime: this.lastFailureTime,
-      isTestingHalfOpen: this.isTestingHalfOpen
+  async getState(): Promise<CircuitBreakerState> {
+    const release = await this.acquireMutex()
+    try {
+      return {
+        state: this.state,
+        failures: this.failures,
+        lastFailureTime: this.lastFailureTime,
+        isTestingHalfOpen: this.isTestingHalfOpen
+      }
+    } finally {
+      release()
     }
   }
 
@@ -239,8 +278,13 @@ export class CircuitBreaker {
    *
    * @returns True if circuit is open
    */
-  isOpen(): boolean {
-    return this.state === 'open'
+  async isOpen(): Promise<boolean> {
+    const release = await this.acquireMutex()
+    try {
+      return this.state === 'open'
+    } finally {
+      release()
+    }
   }
 
   /**
@@ -248,8 +292,13 @@ export class CircuitBreaker {
    *
    * @returns True if circuit is closed
    */
-  isClosed(): boolean {
-    return this.state === 'closed'
+  async isClosed(): Promise<boolean> {
+    const release = await this.acquireMutex()
+    try {
+      return this.state === 'closed'
+    } finally {
+      release()
+    }
   }
 
   /**
@@ -257,11 +306,16 @@ export class CircuitBreaker {
    *
    * Useful for manual intervention when problems are detected.
    */
-  forceOpen(): void {
-    this.failures = this.threshold
-    this.lastFailureTime = Date.now()
-    this.isTestingHalfOpen = false
-    this.setState('open')
+  async forceOpen(): Promise<void> {
+    const release = await this.acquireMutex()
+    try {
+      this.failures = this.threshold
+      this.lastFailureTime = Date.now()
+      this.isTestingHalfOpen = false
+      this.setState('open')
+    } finally {
+      release()
+    }
   }
 
   /**

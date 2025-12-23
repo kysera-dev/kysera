@@ -7,13 +7,14 @@ import {
   sql,
   type Generated
 } from 'kysely'
+import type { Dialect } from '@kysera/core'
 import { Pool } from 'pg'
 import { createPool } from 'mysql2'
 import Database from 'better-sqlite3'
 import * as Tedious from 'tedious'
 import * as Tarn from 'tarn'
 
-export type DatabaseType = 'postgres' | 'mysql' | 'sqlite' | 'mssql'
+export type DatabaseType = Dialect
 
 export interface MultiDbTestDatabase {
   users: {

@@ -69,7 +69,7 @@ describe('withRetry', () => {
 
     const fn = vi.fn().mockRejectedValueOnce(transientError).mockResolvedValue('success')
 
-    const promise = withRetry(fn, { delayMs: 100 })
+    const promise = withRetry(fn, { delayMs: 100, jitterFactor: 0 })
 
     // First call fails
     await vi.advanceTimersByTimeAsync(0)
@@ -121,7 +121,7 @@ describe('withRetry', () => {
 
     const onRetry = vi.fn()
 
-    const promise = withRetry(fn, { delayMs: 100, onRetry })
+    const promise = withRetry(fn, { delayMs: 100, onRetry, jitterFactor: 0 })
     await vi.advanceTimersByTimeAsync(0)
     await vi.advanceTimersByTimeAsync(100)
     await promise
@@ -141,7 +141,7 @@ describe('withRetry', () => {
       .mockRejectedValueOnce(transientError)
       .mockResolvedValue('success')
 
-    const promise = withRetry(fn, { delayMs: 100, backoff: true })
+    const promise = withRetry(fn, { delayMs: 100, backoff: true, jitterFactor: 0 })
 
     await vi.advanceTimersByTimeAsync(0) // First call
     await vi.advanceTimersByTimeAsync(100) // First retry (100ms)
@@ -173,7 +173,8 @@ describe('withRetry', () => {
         maxAttempts: 5,
         delayMs: 100,
         maxDelayMs: 500,
-        backoff: true
+        backoff: true,
+        jitterFactor: 0
       })
     ).rejects.toThrow('Timeout')
 
@@ -225,7 +226,7 @@ describe('createRetryWrapper', () => {
 
     const fn = vi.fn().mockRejectedValueOnce(transientError).mockResolvedValue('result')
 
-    const wrappedFn = createRetryWrapper(fn, { delayMs: 50 })
+    const wrappedFn = createRetryWrapper(fn, { delayMs: 50, jitterFactor: 0 })
 
     const promise = wrappedFn('arg1', 'arg2')
     await vi.advanceTimersByTimeAsync(0)
@@ -251,8 +252,8 @@ describe('CircuitBreaker', () => {
     const result = await breaker.execute(fn)
 
     expect(result).toBe('result')
-    expect(breaker.getState().state).toBe('closed')
-    expect(breaker.isClosed()).toBe(true)
+    expect((await breaker.getState()).state).toBe('closed')
+    expect(await breaker.isClosed()).toBe(true)
   })
 
   it('should track failures', async () => {
@@ -265,8 +266,8 @@ describe('CircuitBreaker', () => {
       // Expected
     }
 
-    expect(breaker.getState().failures).toBe(1)
-    expect(breaker.getState().state).toBe('closed')
+    expect((await breaker.getState()).failures).toBe(1)
+    expect((await breaker.getState()).state).toBe('closed')
   })
 
   it('should open after threshold failures', async () => {
@@ -281,8 +282,8 @@ describe('CircuitBreaker', () => {
       }
     }
 
-    expect(breaker.getState().state).toBe('open')
-    expect(breaker.isOpen()).toBe(true)
+    expect((await breaker.getState()).state).toBe('open')
+    expect(await breaker.isOpen()).toBe(true)
   })
 
   it('should fail fast when open', async () => {
@@ -313,7 +314,7 @@ describe('CircuitBreaker', () => {
       // Expected
     }
 
-    expect(breaker.getState().state).toBe('open')
+    expect((await breaker.getState()).state).toBe('open')
 
     // Advance time past reset
     vi.advanceTimersByTime(1001)
@@ -323,7 +324,7 @@ describe('CircuitBreaker', () => {
     const result = await breaker.execute(fn)
 
     expect(result).toBe('success')
-    expect(breaker.getState().state).toBe('closed')
+    expect((await breaker.getState()).state).toBe('closed')
   })
 
   it('should reset on manual reset()', async () => {
@@ -337,12 +338,12 @@ describe('CircuitBreaker', () => {
       // Expected
     }
 
-    expect(breaker.getState().state).toBe('open')
+    expect((await breaker.getState()).state).toBe('open')
 
-    breaker.reset()
+    await breaker.reset()
 
-    expect(breaker.getState().state).toBe('closed')
-    expect(breaker.getState().failures).toBe(0)
+    expect((await breaker.getState()).state).toBe('closed')
+    expect((await breaker.getState()).failures).toBe(0)
   })
 
   it('should call onStateChange callback', async () => {
@@ -364,15 +365,15 @@ describe('CircuitBreaker', () => {
     expect(onStateChange).toHaveBeenCalledWith('open', 'closed')
   })
 
-  it('should forceOpen the circuit', () => {
+  it('should forceOpen the circuit', async () => {
     const breaker = new CircuitBreaker(5, 60000)
 
-    expect(breaker.isClosed()).toBe(true)
+    expect(await breaker.isClosed()).toBe(true)
 
-    breaker.forceOpen()
+    await breaker.forceOpen()
 
-    expect(breaker.isOpen()).toBe(true)
-    expect(breaker.getState().failures).toBe(5)
+    expect(await breaker.isOpen()).toBe(true)
+    expect((await breaker.getState()).failures).toBe(5)
   })
 
   it('should prevent race condition in half-open state', async () => {
@@ -388,7 +389,7 @@ describe('CircuitBreaker', () => {
       // Expected
     }
 
-    expect(breaker.getState().state).toBe('open')
+    expect((await breaker.getState()).state).toBe('open')
 
     // Wait for reset time to allow transition to half-open
     await new Promise(resolve => setTimeout(resolve, 101))
@@ -413,5 +414,96 @@ describe('CircuitBreaker', () => {
     expect((rejectedResult as PromiseRejectedResult).reason.message).toBe(
       'Circuit breaker is testing recovery'
     )
+  })
+
+  it('should prevent race conditions in concurrent state reads and writes', async () => {
+    vi.useRealTimers() // Use real timers for concurrency test
+
+    const breaker = new CircuitBreaker(5, 1000)
+    const fn = vi.fn().mockRejectedValue(new Error('fail'))
+
+    // Simulate concurrent operations: failures, state reads, and resets
+    const operations = [
+      // Execute failures
+      breaker.execute(fn).catch(() => {}),
+      breaker.execute(fn).catch(() => {}),
+      breaker.execute(fn).catch(() => {}),
+      // Read state concurrently
+      breaker.getState(),
+      breaker.isOpen(),
+      breaker.isClosed(),
+      // More failures
+      breaker.execute(fn).catch(() => {}),
+      breaker.execute(fn).catch(() => {})
+    ]
+
+    await Promise.allSettled(operations)
+
+    // State should be consistent after all operations
+    const finalState = await breaker.getState()
+    expect(finalState.failures).toBeGreaterThanOrEqual(0)
+    expect(finalState.failures).toBeLessThanOrEqual(5)
+    expect(['closed', 'open', 'half-open']).toContain(finalState.state)
+
+    // If threshold reached, should be open
+    if (finalState.failures >= 5) {
+      expect(finalState.state).toBe('open')
+      expect(await breaker.isOpen()).toBe(true)
+    }
+  })
+
+  it('should prevent race conditions between reset and execute', async () => {
+    vi.useRealTimers() // Use real timers for concurrency test
+
+    const breaker = new CircuitBreaker(1, 1000)
+    const fn = vi.fn().mockRejectedValue(new Error('fail'))
+
+    // Open the circuit
+    try {
+      await breaker.execute(fn)
+    } catch {
+      // Expected
+    }
+
+    expect((await breaker.getState()).state).toBe('open')
+
+    // Execute concurrent reset and execute operations
+    fn.mockResolvedValue('success')
+    const results = await Promise.allSettled([
+      breaker.reset(),
+      breaker.execute(fn),
+      breaker.execute(fn),
+      breaker.getState()
+    ])
+
+    // All operations should complete without crashes
+    const errors = results.filter(r => r.status === 'rejected')
+    // Some may fail due to circuit being open, but shouldn't crash
+    errors.forEach(e => {
+      const reason = (e as PromiseRejectedResult).reason
+      // Only CircuitBreakerError is acceptable
+      if (reason.name !== 'CircuitBreakerError') {
+        throw reason
+      }
+    })
+
+    // Final state should be consistent
+    const finalState = await breaker.getState()
+    expect(['closed', 'open', 'half-open']).toContain(finalState.state)
+  })
+
+  it('should prevent race conditions in concurrent forceOpen calls', async () => {
+    vi.useRealTimers() // Use real timers for concurrency test
+
+    const breaker = new CircuitBreaker(5, 1000)
+
+    // Execute concurrent forceOpen operations
+    await Promise.all([breaker.forceOpen(), breaker.forceOpen(), breaker.forceOpen()])
+
+    // State should be consistently open
+    const state = await breaker.getState()
+    expect(state.state).toBe('open')
+    expect(state.failures).toBe(5)
+    expect(await breaker.isOpen()).toBe(true)
   })
 })

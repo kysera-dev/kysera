@@ -61,6 +61,7 @@ interface RLSPluginOptions<DB = unknown> {
   logger?: KyseraLogger // Logger instance for RLS operations
   requireContext?: boolean // Require RLS context for all operations
   auditDecisions?: boolean // Log policy decisions for debugging
+  primaryKeyColumn?: string // Primary key column name for row lookups (default: 'id')
   onViolation?: (violation: RLSPolicyViolation) => void // Custom violation handler
 }
 ```
@@ -156,6 +157,10 @@ deny('all')
 ### filter
 
 Add WHERE conditions to SELECT queries. Returns an object with column-value pairs.
+
+:::warning Synchronous Only
+**Filter conditions must be synchronous functions.** Async filter policies are not supported because filters are applied directly to query builders at query construction time. Use `allow()` or `validate()` policies if you need async operations.
+:::
 
 ```typescript
 // Tenant isolation

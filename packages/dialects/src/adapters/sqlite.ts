@@ -4,11 +4,17 @@
 
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
+import { silentLogger, type KyseraLogger } from '@kysera/core'
 import type { DialectAdapter, DatabaseErrorLike } from '../types.js'
 import { assertValidIdentifier } from '../helpers.js'
 
 export class SQLiteAdapter implements DialectAdapter {
   readonly dialect = 'sqlite' as const
+  private logger: KyseraLogger
+
+  constructor(logger: KyseraLogger = silentLogger) {
+    this.logger = logger
+  }
 
   getDefaultPort(): null {
     // SQLite is file-based, no port
@@ -104,7 +110,7 @@ export class SQLiteAdapter implements DialectAdapter {
         return false
       }
       // Log and rethrow unexpected errors
-      console.error(`[Kysera Dialects] Failed to truncate table "${tableName}":`, error)
+      this.logger.error(`Failed to truncate table "${tableName}":`, error)
       throw error
     }
   }

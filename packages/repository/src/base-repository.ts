@@ -1,15 +1,16 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- DialectConfig kept for backwards compatibility */
 import type { Selectable, Transaction } from 'kysely'
 import type { Executor } from './helpers.js'
 import type {
   PrimaryKeyColumn,
   PrimaryKeyTypeHint,
   PrimaryKeyInput,
-  PrimaryKeyConfig
+  PrimaryKeyConfig,
+  DialectConfig
 } from './types.js'
 import { normalizePrimaryKeyConfig, getPrimaryKeyColumns } from './types.js'
-import { NotFoundError } from '@kysera/core'
+import { NotFoundError, getEnv } from '@kysera/core'
 import type { ValidationSchema } from './validation-adapter.js'
-import { getEnv } from './validation.js'
 
 /**
  * Core repository interface
@@ -72,7 +73,7 @@ export interface RepositoryConfig<Table, Entity> {
    * dialect: { dialect: 'sqlite' }
    * ```
    */
-  dialect?: import('./types.js').DialectConfig // eslint-disable-line @typescript-eslint/consistent-type-imports -- Dynamic import for type-only reference
+  dialect?: DialectConfig
   mapRow: (row: Selectable<Table>) => Entity
   /**
    * Validation schemas for entity, create, and update operations.
@@ -158,7 +159,7 @@ function extractPrimaryKey<Entity, PK>(entity: Entity, pkConfig: PrimaryKeyConfi
   // For composite keys, return an object
   const result: Record<string, unknown> = {}
   for (const column of columns) {
-    result[column] = (entity as any)[column]
+    result[column] = (entity as Record<string, unknown>)[column]
   }
   return result as PK
 }

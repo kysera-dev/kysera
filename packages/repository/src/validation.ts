@@ -1,36 +1,10 @@
 import type { KyseraLogger } from '@kysera/core'
-import { consoleLogger } from '@kysera/core'
+import { consoleLogger, getEnv } from '@kysera/core'
 import type { ValidationSchema } from './validation-adapter.js'
 
 /**
  * Validation utilities for repositories
  */
-
-/**
- * Cross-runtime environment variable access
- * Works in Node.js, Deno, and browsers (with polyfill)
- */
-export function getEnv(key: string): string | undefined {
-  // Node.js / Bun
-  if (globalThis.process?.env) {
-    return globalThis.process.env[key]
-  }
-  // Deno
-  if (
-    typeof (globalThis as { Deno?: { env?: { get(key: string): string | undefined } } }).Deno !==
-    'undefined'
-  ) {
-    try {
-      return (
-        globalThis as { Deno?: { env?: { get(key: string): string | undefined } } }
-      ).Deno?.env?.get(key)
-    } catch {
-      return undefined
-    }
-  }
-  // Browser / other - no env vars
-  return undefined
-}
 
 export interface ValidationOptions {
   /**

@@ -2,7 +2,7 @@
  * @kysera/dialects
  *
  * Dialect-specific utilities for Kysely database operations.
- * Supports PostgreSQL, MySQL, and SQLite with a unified adapter interface.
+ * Supports PostgreSQL, MySQL, SQLite, and MSSQL with a unified adapter interface.
  *
  * @example
  * // Using the adapter interface
@@ -27,8 +27,11 @@
  * const url = buildConnectionUrl('postgres', { host: 'localhost', database: 'mydb' });
  */
 
-// Types
+// Types - Dialect is the canonical type from @kysera/core
+// DatabaseDialect is kept for backwards compatibility
 export type {
+  Dialect,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Exported for backwards compatibility
   DatabaseDialect,
   ConnectionConfig,
   DialectAdapter,

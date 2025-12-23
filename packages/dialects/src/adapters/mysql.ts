@@ -4,11 +4,17 @@
 
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
+import { silentLogger, type KyseraLogger } from '@kysera/core'
 import type { DialectAdapter, DatabaseErrorLike } from '../types.js'
 import { assertValidIdentifier } from '../helpers.js'
 
 export class MySQLAdapter implements DialectAdapter {
   readonly dialect = 'mysql' as const
+  private logger: KyseraLogger
+
+  constructor(logger: KyseraLogger = silentLogger) {
+    this.logger = logger
+  }
 
   getDefaultPort(): number {
     return 3306
@@ -132,7 +138,7 @@ export class MySQLAdapter implements DialectAdapter {
         try {
           await sql.raw('SET FOREIGN_KEY_CHECKS = 1').execute(db)
         } catch (fkError) {
-          console.error('[Kysera Dialects] Failed to re-enable foreign key checks:', fkError)
+          this.logger.error('Failed to re-enable foreign key checks:', fkError)
         }
       }
     } catch (error) {
@@ -141,7 +147,7 @@ export class MySQLAdapter implements DialectAdapter {
         return false
       }
       // Log and rethrow unexpected errors
-      console.error(`[Kysera Dialects] Failed to truncate table "${tableName}":`, error)
+      this.logger.error(`Failed to truncate table "${tableName}":`, error)
       throw error
     }
   }

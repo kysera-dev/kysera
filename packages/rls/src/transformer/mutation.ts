@@ -10,6 +10,11 @@ import { rlsContext } from '../context/manager.js'
 import { RLSPolicyViolation, RLSPolicyEvaluationError } from '../errors.js'
 
 /**
+ * Default chunk size for parallel row filtering
+ */
+const DEFAULT_CHUNK_SIZE = 100
+
+/**
  * Mutation guard
  * Validates mutations (CREATE, UPDATE, DELETE) against allow/deny/validate policies
  */
@@ -321,11 +326,12 @@ export class MutationGuard<DB = unknown> {
   }
 
   /**
-   * Filter an array of rows, keeping only accessible ones
-   * Useful for post-query filtering when query-level filtering is not possible
+   * Filter rows based on read policies.
+   * Uses parallel processing with chunking for performance.
    *
    * @param table - Table name
-   * @param rows - Array of rows to filter
+   * @param rows - Rows to filter
+   * @param chunkSize - Number of rows to process in parallel (default: 100)
    * @returns Filtered array containing only accessible rows
    *
    * @example
@@ -333,14 +339,37 @@ export class MutationGuard<DB = unknown> {
    * const guard = new MutationGuard(registry);
    * const allPosts = await db.selectFrom('posts').selectAll().execute();
    * const accessiblePosts = await guard.filterRows('posts', allPosts);
+   *
+   * // With custom chunk size for large datasets
+   * const accessiblePosts = await guard.filterRows('posts', allPosts, 50);
    * ```
    */
-  async filterRows<T extends Record<string, unknown>>(table: string, rows: T[]): Promise<T[]> {
+  async filterRows<T extends Record<string, unknown>>(
+    table: string,
+    rows: T[],
+    chunkSize: number = DEFAULT_CHUNK_SIZE
+  ): Promise<T[]> {
+    if (rows.length === 0) return []
+
     const results: T[] = []
 
-    for (const row of rows) {
-      if (await this.checkRead(table, row)) {
-        results.push(row)
+    // Process in chunks to avoid overwhelming the event loop
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize)
+
+      // Process chunk in parallel
+      const chunkResults = await Promise.all(
+        chunk.map(async (row) => {
+          const allowed = await this.checkRead(table, row)
+          return allowed ? row : null
+        })
+      )
+
+      // Filter out nulls and add to results
+      for (const row of chunkResults) {
+        if (row !== null) {
+          results.push(row)
+        }
       }
     }
 

@@ -1,6 +1,6 @@
-import type { Plugin, QueryBuilderContext } from '@kysera/executor'
-import { getRawDb } from '@kysera/executor'
-import type { SelectQueryBuilder, Kysely } from 'kysely'
+import type { Plugin, QueryBuilderContext, BaseRepositoryLike } from '@kysera/executor'
+import { getRawDb, isRepositoryLike } from '@kysera/executor'
+import type { SelectQueryBuilder } from 'kysely'
 import { sql } from 'kysely'
 import { NotFoundError, silentLogger } from '@kysera/core'
 import type { KyseraLogger } from '@kysera/core'
@@ -113,13 +113,11 @@ export type SoftDeleteRepository<
   BaseRepo extends object = Record<string, never>
 > = BaseRepo & SoftDeleteMethods<Entity>
 
-interface BaseRepository {
-  tableName: string
-  executor: Kysely<Record<string, unknown>>
-  findAll: () => Promise<unknown[]>
-  findById: (id: number) => Promise<unknown>
-  update: (id: number, data: Record<string, unknown>) => Promise<unknown>
-}
+/**
+ * Internal repository interface for soft-delete operations.
+ * Uses the unified BaseRepositoryLike interface from @kysera/executor.
+ */
+type SoftDeleteBaseRepository = BaseRepositoryLike<Record<string, unknown>>
 
 /**
  * Soft Delete Plugin for Kysera
@@ -225,6 +223,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
   return {
     name: '@kysera/soft-delete',
     version: VERSION,
+    priority: 100, // Run first to filter soft-deleted records before other plugins
 
     /**
      * Intercept queries to automatically filter soft-deleted records.
@@ -289,13 +288,13 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
      * soft-deleted records (unless includeDeleted option is set).
      */
     extendRepository<T extends object>(repo: T): T {
-      // Type assertion is safe here as we're checking for BaseRepository properties
-      const baseRepo = repo as unknown as BaseRepository
-
-      // Check if it's actually a repository (has required properties)
-      if (!('tableName' in baseRepo) || !('executor' in baseRepo)) {
+      // Use the shared type guard from @kysera/executor
+      if (!isRepositoryLike(repo)) {
         return repo
       }
+
+      // Type assertion is safe after type guard
+      const baseRepo = repo as unknown as SoftDeleteBaseRepository
 
       // Check if table supports soft delete
       const supportsSoftDelete = !tables || tables.includes(baseRepo.tableName)
@@ -314,10 +313,17 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
       const extendedRepo = {
         ...baseRepo,
 
-        // Override base methods to filter soft-deleted records
-        // Use rawDb to avoid double filtering from interceptor
+        // Override findAll() and findById() to support custom primaryKeyColumn
+        // We use rawDb to bypass the interceptor and manually apply filtering here.
+        // This is intentional - there is NO duplicate filtering because:
+        // - rawDb bypasses the interceptor (no filter #1)
+        // - We manually add WHERE deleted_at IS NULL (filter #2)
+        // Result: Only ONE filter is applied, which is correct.
+        // Alternative approach (using baseRepo.executor) would apply interceptor
+        // but wouldn't support custom primaryKeyColumn option.
         async findAll(): Promise<unknown[]> {
           if (!includeDeleted) {
+            // Use rawDb + manual filter (avoids double filtering from interceptor)
             const result = await rawDb
               .selectFrom(baseRepo.tableName)
               .selectAll()
@@ -330,8 +336,9 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           return result as unknown[]
         },
 
-        async findById(id: number): Promise<unknown> {
+        async findById(id: number | string): Promise<unknown> {
           if (!includeDeleted) {
+            // Use rawDb + manual filter (avoids double filtering from interceptor)
             const result = await rawDb
               .selectFrom(baseRepo.tableName)
               .selectAll()

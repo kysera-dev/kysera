@@ -10,6 +10,10 @@ import type {
   Updateable
 } from 'kysely'
 
+// Re-export Dialect from @kysera/core for backwards compatibility
+import type { Dialect } from '@kysera/core'
+export type { Dialect }
+
 /**
  * Repository-specific type utilities
  */
@@ -196,13 +200,10 @@ export type AnyQueryBuilder =
   | DeleteQueryBuilder<any, any, any>
 
 /**
- * Supported database dialects
- */
-export type Dialect = 'postgres' | 'mysql' | 'sqlite'
-
-/**
  * Database dialect configuration
  * Used to determine dialect-specific behaviors (e.g., RETURNING clause support)
+ *
+ * @deprecated Import { Dialect } from '@kysera/core' instead
  */
 export interface DialectConfig {
   /**
@@ -210,6 +211,7 @@ export interface DialectConfig {
    * - 'postgres': PostgreSQL (supports RETURNING)
    * - 'mysql': MySQL/MariaDB (no RETURNING support, uses insertId)
    * - 'sqlite': SQLite (supports RETURNING)
+   * - 'mssql': SQL Server (supports OUTPUT clause)
    */
   readonly dialect: Dialect
 }

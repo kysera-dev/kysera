@@ -23,8 +23,7 @@ npm install @kysera/soft-delete @kysera/rls @kysera/audit
 
 ## Overview
 
-**Dependencies:** `@kysera/executor` (peer: kysely >=0.28.8)
-**Zero Runtime Dependencies** in core package
+**Dependencies:** `@kysera/core`, `@kysera/executor` (peer: kysely >=0.28.8)
 
 `@kysera/dal` provides a functional approach to database access as an alternative to traditional repository patterns. Instead of classes and methods, you write **query functions** that are composable, type-safe, and easy to test.
 
@@ -738,6 +737,35 @@ interface TransactionOptions {
 
 **Note:** The `isolationLevel` option is defined for future compatibility but not currently implemented. Kysely's `Transaction` API doesn't expose runtime configuration methods for isolation levels. Isolation levels should typically be configured at the connection pool level or via database-specific configuration.
 
+### TransactionOptionsWithLogger
+
+Extended transaction options with logger support.
+
+```typescript
+interface TransactionOptionsWithLogger extends TransactionOptions {
+  /**
+   * Logger for transaction operations.
+   * Defaults to silentLogger (no-op).
+   */
+  logger?: KyseraLogger
+}
+```
+
+**Example:**
+
+```typescript
+import { withTransaction } from '@kysera/dal'
+import { consoleLogger } from '@kysera/core'
+
+await withTransaction(
+  executor,
+  async ctx => {
+    return await createUser(ctx, userData)
+  },
+  { logger: consoleLogger }
+)
+```
+
 ### Type Inference Utilities
 
 ```typescript
@@ -758,13 +786,15 @@ Result type for parallel query execution.
 
 ```typescript
 type ParallelResult<
-  T extends Record<string, QueryFunction<Record<string, unknown>, readonly unknown[], unknown>>
+  DB,
+  TArgs extends readonly unknown[],
+  T extends Record<string, QueryFunction<DB, TArgs, unknown>>
 > = {
-  [K in keyof T]: T[K] extends QueryFunction<Record<string, unknown>, readonly unknown[], infer R>
-    ? R
-    : never
+  [K in keyof T]: T[K] extends QueryFunction<DB, TArgs, infer R> ? R : never
 }
 ```
+
+**Note:** The type has 3 type parameters: `DB` (database schema), `TArgs` (query arguments), and `T` (queries object).
 
 ### Re-exported Executor Types
 

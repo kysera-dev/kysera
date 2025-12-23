@@ -123,16 +123,31 @@ export function deny(
  * Create a filter policy
  * Adds WHERE conditions to SELECT queries
  *
+ * **IMPORTANT**: Filter conditions must be synchronous functions.
+ * Async filter policies are not currently supported because filters are applied
+ * directly to query builders at query construction time.
+ *
  * @example
  * ```typescript
- * // Filter by tenant
+ * // ✅ CORRECT: Filter by tenant (synchronous)
  * filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
  *
- * // Filter by organization with soft delete
+ * // ✅ CORRECT: Filter by organization with soft delete
  * filter('read', ctx => ({
  *   organization_id: ctx.auth.organizationIds?.[0],
  *   deleted_at: null
  * }))
+ *
+ * // ❌ WRONG: Async filter (not supported)
+ * // filter('read', async ctx => {
+ * //   const tenantId = await fetchTenantId(ctx.auth.userId)
+ * //   return { tenant_id: tenantId }
+ * // })
+ *
+ * // ✅ WORKAROUND: Fetch data before creating context
+ * // const tenantId = await fetchTenantId(userId)
+ * // const ctx = createRLSContext({ auth: { userId, tenantId, roles: [] } })
+ * // filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
  *
  * // Named filter
  * filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }), {

@@ -39,9 +39,31 @@ export function createEvaluationContext<TRow = unknown, TData = unknown>(
 
 /**
  * Check if a condition function is async
+ *
+ * NOTE: This function checks both constructor.name (for native async functions)
+ * and return type (for transpiled code that returns Promise).
+ * Transpilers often convert async functions to regular functions that return Promise.
  */
 export function isAsyncFunction(fn: unknown): fn is (...args: unknown[]) => Promise<unknown> {
-  return fn instanceof Function && fn.constructor.name === 'AsyncFunction'
+  if (!(fn instanceof Function)) {
+    return false
+  }
+
+  // Check constructor name for native async functions
+  if (fn.constructor.name === 'AsyncFunction') {
+    return true
+  }
+
+  // For transpiled code: call the function with empty args and check if it returns a Promise
+  // This is safe because policy conditions should be pure functions
+  try {
+    const result = (fn as Function)()
+    return result instanceof Promise
+  } catch {
+    // If calling with no args throws, assume it's not async
+    // (async functions that require args should be wrapped in the policy definition)
+    return false
+  }
 }
 
 /**

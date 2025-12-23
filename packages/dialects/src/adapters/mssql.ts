@@ -140,8 +140,10 @@ export class MSSQLAdapter implements DialectAdapter {
           await sql.raw(`DELETE FROM ${this.escapeIdentifier(tableName)}`).execute(db)
           // Reset identity if table has one
           try {
+            // Use escaped identifier for SQL injection prevention
+            const escapedTableName = this.escapeIdentifier(tableName)
             await sql
-              .raw(`DBCC CHECKIDENT ('${tableName}', RESEED, 0)`)
+              .raw(`DBCC CHECKIDENT (${escapedTableName}, RESEED, 0)`)
               .execute(db)
           } catch {
             // Ignore if table doesn't have identity column
@@ -159,8 +161,8 @@ export class MSSQLAdapter implements DialectAdapter {
       ) {
         return false
       }
-      console.error(`[Kysera Dialects] Failed to truncate table "${tableName}":`, error)
-      throw error
+      // Re-throw with context (logging should be handled by caller)
+      throw new Error(`Failed to truncate MSSQL table "${tableName}": ${String(error)}`)
     }
   }
 

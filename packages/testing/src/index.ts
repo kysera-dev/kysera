@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- DatabaseDialect re-exported for backwards compatibility */
 /**
  * @kysera/testing - Testing utilities for Kysera
  *

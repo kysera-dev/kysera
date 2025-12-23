@@ -110,13 +110,32 @@ export class HealthMonitor<DB = unknown> implements Disposable {
     this.logger.debug(`Starting health monitor with ${this.intervalMs.toString()}ms interval`)
 
     const check = async (): Promise<void> => {
-      this.lastCheck = await checkDatabaseHealth(this.db, this.pool)
+      try {
+        this.lastCheck = await checkDatabaseHealth(this.db, this.pool)
 
-      if (this.lastCheck.status !== 'healthy') {
-        this.logger.warn(`Health check status: ${this.lastCheck.status}`)
+        if (this.lastCheck.status !== 'healthy') {
+          this.logger.warn(`Health check status: ${this.lastCheck.status}`)
+        }
+
+        onCheck?.(this.lastCheck)
+      } catch (error) {
+        this.logger.error('Health check failed:', error)
+        // Create an error result for callback
+        const errorResult: HealthCheckResult = {
+          status: 'unhealthy',
+          checks: [
+            {
+              name: 'Database Connection',
+              status: 'unhealthy',
+              message: error instanceof Error ? error.message : String(error)
+            }
+          ],
+          errors: [error instanceof Error ? error.message : String(error)],
+          timestamp: new Date()
+        }
+        this.lastCheck = errorResult
+        onCheck?.(errorResult)
       }
-
-      onCheck?.(this.lastCheck)
     }
 
     // Initial check

@@ -6,6 +6,7 @@
  */
 
 import { ErrorCodes } from './error-codes.js'
+import type { Dialect } from './types.js'
 
 // Pre-compiled regex patterns for database error parsing (module-level constants)
 const PG_KEY_REGEX = /Key \(([^)]+)\)=/
@@ -445,7 +446,11 @@ export class CheckConstraintError extends DatabaseError {
   }
 }
 
-export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql'
+/**
+ * @deprecated Use `Dialect` from '@kysera/core' instead.
+ * This alias is kept for backwards compatibility.
+ */
+export type DatabaseDialect = Dialect
 
 /**
  * Database error with code property (internal type for parsing).

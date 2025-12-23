@@ -5,11 +5,18 @@
  */
 
 import type { Kysely } from 'kysely'
+import type { Dialect } from '@kysera/core'
 
 /**
  * Supported database dialects
+ * 
+ * @deprecated Use `Dialect` from '@kysera/core' instead.
+ * This alias is kept for backwards compatibility.
  */
-export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql'
+export type DatabaseDialect = Dialect
+
+// Re-export Dialect from core for convenience
+export type { Dialect } from '@kysera/core'
 
 /**
  * Database connection configuration
@@ -28,7 +35,7 @@ export interface ConnectionConfig {
  */
 export interface DialectAdapter {
   /** The dialect this adapter handles */
-  readonly dialect: DatabaseDialect
+  readonly dialect: Dialect
 
   /** Get default port for this dialect */
   getDefaultPort(): number | null

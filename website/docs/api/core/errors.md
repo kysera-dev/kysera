@@ -40,10 +40,10 @@ Thrown when a UNIQUE constraint is violated.
 ```typescript
 class UniqueConstraintError extends DatabaseError {
   constraint: string // Constraint name
+  table: string // Table name
   columns: string[] // Affected columns
-  value?: unknown // Duplicate value
 
-  constructor(constraint: string, columns?: string[], value?: unknown)
+  constructor(constraint: string, table: string, columns: string[])
 }
 ```
 
@@ -55,10 +55,9 @@ Thrown when a FOREIGN KEY constraint is violated.
 class ForeignKeyError extends DatabaseError {
   constraint: string
   table: string
-  column: string
-  referencedTable?: string
+  referencedTable: string
 
-  constructor(constraint: string, table: string, column: string, referencedTable?: string)
+  constructor(constraint: string, table: string, referencedTable: string)
 }
 ```
 
@@ -81,7 +80,7 @@ Thrown for invalid requests.
 
 ```typescript
 class BadRequestError extends DatabaseError {
-  constructor(message: string, detail?: string)
+  constructor(message: string)
 }
 ```
 
@@ -186,6 +185,37 @@ try {
 // Plugin errors
 'PLUGIN_INIT_FAILED'
 'PLUGIN_VALIDATION_FAILED'
+'PLUGIN_DESTROY_FAILED'
+'PLUGIN_HOOK_FAILED'
+'PLUGIN_CONFLICT'
+'PLUGIN_DEPENDENCY_MISSING'
+
+// Audit errors
+'AUDIT_LOG_FAILED'
+'AUDIT_RESTORE_FAILED'
+'AUDIT_QUERY_FAILED'
+'AUDIT_TABLE_MISSING'
+
+// Config errors
+'CONFIG_VALIDATION_FAILED'
+'CONFIG_MISSING_REQUIRED'
+'CONFIG_INVALID_VALUE'
+'CONFIG_FILE_NOT_FOUND'
+'CONFIG_PARSE_ERROR'
+
+// FileSystem errors
+'FS_READ_FAILED'
+'FS_WRITE_FAILED'
+'FS_DELETE_FAILED'
+'FS_PERMISSION_DENIED'
+'FS_NOT_FOUND'
+'FS_ALREADY_EXISTS'
+
+// Network errors
+'NETWORK_TIMEOUT'
+'NETWORK_CONNECTION_REFUSED'
+'NETWORK_HOST_UNREACHABLE'
+'NETWORK_UNKNOWN'
 ```
 
 ## Database-Specific Codes

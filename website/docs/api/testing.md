@@ -135,9 +135,22 @@ afterEach(async () => {
 
 **Security Features:**
 - **SQL injection prevention** - Table names are validated against database schema
-- **Dialect detection** - Automatic fallback if dialect not specified
 - **Safe identifier escaping** - Uses dialect-specific escaping for table names
 - Only whitelisted tables from the schema can be truncated/deleted
+
+:::warning Deprecated: Dialect Detection
+Dialect detection via Kysely internals is deprecated and will be removed in a future version. Always pass the `dialect` parameter explicitly:
+
+```typescript
+// ❌ Deprecated - relies on internal Kysely APIs
+await cleanDatabase(db, 'truncate', ['users'])
+
+// ✅ Recommended - explicit dialect
+await cleanDatabase(db, 'truncate', ['users'], { dialect: 'postgres' })
+```
+
+The automatic dialect detection may fail in future Kysely versions as it relies on internal APIs that are not part of Kysely's public contract.
+:::
 
 ## Test Data Factories
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- DialectConfig kept for backwards compatibility */
 import type { Selectable, Transaction } from 'kysely'
 import {
   createBaseRepository,
@@ -6,7 +7,7 @@ import {
 } from './base-repository.js'
 import { createTableOperations } from './table-operations.js'
 import type { Executor } from './helpers.js'
-import type { PrimaryKeyColumn, PrimaryKeyTypeHint } from './types.js'
+import type { PrimaryKeyColumn, PrimaryKeyTypeHint, DialectConfig } from './types.js'
 import { normalizePrimaryKeyConfig } from './types.js'
 import { nativeAdapter, type ValidationSchema } from './validation-adapter.js'
 
@@ -65,7 +66,7 @@ export function createRepositoryFactory<DB>(executor: Executor<DB>): {
      * Database dialect configuration.
      * Recommended for production to avoid relying on Kysely internals.
      */
-    dialect?: import('./types.js').DialectConfig // eslint-disable-line @typescript-eslint/consistent-type-imports -- Dynamic import for type-only reference
+    dialect?: DialectConfig
     mapRow: (row: Selectable<DB[TableName]>) => Entity
     schemas: {
       entity?: ValidationSchema<Entity>
@@ -83,7 +84,7 @@ export function createRepositoryFactory<DB>(executor: Executor<DB>): {
       tableName: TableName
       primaryKey?: PrimaryKeyColumn
       primaryKeyType?: PrimaryKeyTypeHint
-      dialect?: import('./types.js').DialectConfig // eslint-disable-line @typescript-eslint/consistent-type-imports -- Dynamic import for type-only reference
+      dialect?: DialectConfig
       mapRow: (row: Selectable<DB[TableName]>) => Entity
       schemas: {
         entity?: ValidationSchema<Entity>
@@ -140,7 +141,7 @@ export function createSimpleRepository<
   options?: {
     primaryKey?: PrimaryKeyColumn
     primaryKeyType?: PrimaryKeyTypeHint
-    dialect?: import('./types.js').DialectConfig // eslint-disable-line @typescript-eslint/consistent-type-imports -- Dynamic import for type-only reference
+    dialect?: DialectConfig
   }
 ): Repository<Entity, DB, PK> {
   const factory = createRepositoryFactory(executor)

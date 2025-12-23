@@ -62,7 +62,7 @@ export async function upsert<DB, Table extends keyof DB & string>(
   /**
    * INTENTIONAL TYPE ASSERTION (documented and safe)
    *
-   * Why `as any` is used here:
+   * Why type assertions are used here:
    * 1. conflictColumns: Array of column names is validated at runtime but TypeScript can't
    *    narrow (keyof T)[] to the exact literal types needed for oc.columns()
    * 2. updateSet: Partial update object is validated but TypeScript can't verify that
@@ -83,12 +83,13 @@ export async function upsert<DB, Table extends keyof DB & string>(
     .insertInto(table)
     .values(data)
     .onConflict(oc => {
-      const conflict = oc.columns(conflictColumns as any)
-      return conflict.doUpdateSet(updateSet as any)
+      const conflict = oc.columns(conflictColumns as never)
+      return conflict.doUpdateSet(updateSet as never)
     })
 
   if (returning) {
-    return (query as any).returningAll().executeTakeFirst()
+    type QueryWithReturning = { returningAll: () => { executeTakeFirst: () => Promise<Selectable<DB[Table]> | undefined> } }
+    return (query as unknown as QueryWithReturning).returningAll().executeTakeFirst()
   }
 
   await query.execute()
@@ -133,7 +134,7 @@ export async function upsertMany<DB, Table extends keyof DB & string>(
   /**
    * INTENTIONAL TYPE ASSERTION (documented and safe)
    *
-   * Why `as any` is used here for bulk upsert:
+   * Why type assertions are used here for bulk upsert:
    * 1. updateSet: Uses eb.ref(`excluded.${col}`) pattern for PostgreSQL ON CONFLICT UPDATE,
    *    which TypeScript can't type-check statically (excluded is a SQL concept, not a TypeScript type)
    * 2. data: Array of insertable records validated at runtime but TypeScript can't verify
@@ -152,16 +153,17 @@ export async function upsertMany<DB, Table extends keyof DB & string>(
    */
   // Build update set using excluded.column reference
   // This ensures each row's values are used during the update
-  const updateSet = updateCols.reduce<Record<string, any>>((acc, col) => {
+  type ExpressionBuilder = { ref: (column: string) => unknown }
+  const updateSet = updateCols.reduce<Record<string, (eb: ExpressionBuilder) => unknown>>((acc, col) => {
     // Use eb.ref to reference excluded values
-    acc[col] = (eb: any) => eb.ref(`excluded.${col}`)
+    acc[col] = (eb: ExpressionBuilder) => eb.ref(`excluded.${col}`)
     return acc
   }, {})
 
   const query = db
     .insertInto(table)
-    .values(data as any)
-    .onConflict(oc => oc.columns(conflictColumns as any).doUpdateSet(updateSet as any))
+    .values(data as never)
+    .onConflict(oc => oc.columns(conflictColumns as never).doUpdateSet(updateSet as never))
 
   if (returning) {
     return query.returningAll().execute() as Promise<Selectable<DB[Table]>[]>
@@ -300,7 +302,7 @@ export async function atomicStatusTransition<DB, Table extends keyof DB & string
   /**
    * INTENTIONAL TYPE ASSERTION (documented and safe)
    *
-   * Why `as any` is used here for atomic status transition:
+   * Why type assertions are used here for atomic status transition:
    * 1. updateData: Contains statusColumn (string) and additionalUpdates (Partial<T>),
    *    which TypeScript can't verify statically match the table schema
    * 2. where: Runtime-determined conditions (Partial<Selectable<DB[Table]>>) that
@@ -323,15 +325,25 @@ export async function atomicStatusTransition<DB, Table extends keyof DB & string
    */
 
   // Build the query with WHERE conditions including status check
-  let query = (db.updateTable(table) as any).set(updateData)
+  type AtomicUpdateQueryBuilder = {
+    where: (column: string, op: string, value: unknown) => AtomicUpdateQueryBuilder
+    returningAll: () => { executeTakeFirst: () => Promise<unknown> }
+    execute: () => Promise<{ numUpdatedRows: number | bigint }>
+  }
+
+  type AtomicUpdateQuery = {
+    set: (data: unknown) => AtomicUpdateQueryBuilder
+  }
+
+  let query: AtomicUpdateQueryBuilder = (db.updateTable(table) as unknown as AtomicUpdateQuery).set(updateData)
 
   // Apply WHERE conditions
   for (const [column, value] of Object.entries(where)) {
-    query = query.where(column as any, '=', value as any)
+    query = query.where(column, '=', value)
   }
 
   // Add the atomic status check
-  query = query.where(statusColumn as any, '=', fromStatus as any)
+  query = query.where(statusColumn, '=', fromStatus as unknown)
 
   if (returning) {
     const result = await query.returningAll().executeTakeFirst()

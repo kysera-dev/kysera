@@ -8,9 +8,12 @@
 import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, sql, type Generated } from 'kysely'
 import type { Pool as PgPool } from 'pg'
 import type { Pool as MysqlPool } from 'mysql2/promise'
+import type { Dialect } from '@kysera/core'
 import Database from 'better-sqlite3'
 
-export type DatabaseType = 'postgres' | 'mysql' | 'sqlite'
+// For test utilities, we support all dialects but only implement postgres/mysql/sqlite
+// MSSQL tests are handled separately due to different setup requirements
+export type DatabaseType = Exclude<Dialect, 'mssql'>
 
 /**
  * Test database schema for RLS testing

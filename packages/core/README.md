@@ -340,7 +340,7 @@ async function loadMore(offset: number) {
 
 **Options:**
 
-- `limit`: 1-10,000 (default: 20)
+- `limit`: 1-100 (default: 20, bounded for safety)
 - `offset`: >= 0 (default: 0)
 
 ### applyDateRange

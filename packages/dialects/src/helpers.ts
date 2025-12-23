@@ -6,7 +6,7 @@
  */
 
 import type { Kysely } from 'kysely'
-import type { DatabaseDialect } from './types.js'
+import type { Dialect } from './types.js'
 import { getAdapter } from './factory.js'
 
 /**
@@ -67,7 +67,7 @@ export function assertValidIdentifier(name: string, context = 'identifier'): voi
 export async function tableExists(
   db: Kysely<any>,
   tableName: string,
-  dialect: DatabaseDialect
+  dialect: Dialect
 ): Promise<boolean> {
   return await getAdapter(dialect).tableExists(db, tableName)
 }
@@ -82,7 +82,7 @@ export async function tableExists(
 export async function getTableColumns(
   db: Kysely<any>,
   tableName: string,
-  dialect: DatabaseDialect
+  dialect: Dialect
 ): Promise<string[]> {
   return await getAdapter(dialect).getTableColumns(db, tableName)
 }
@@ -94,7 +94,7 @@ export async function getTableColumns(
  * const tables = await getTables(db, 'postgres');
  * // ['users', 'posts', 'comments']
  */
-export async function getTables(db: Kysely<any>, dialect: DatabaseDialect): Promise<string[]> {
+export async function getTables(db: Kysely<any>, dialect: Dialect): Promise<string[]> {
   return await getAdapter(dialect).getTables(db)
 }
 
@@ -105,7 +105,7 @@ export async function getTables(db: Kysely<any>, dialect: DatabaseDialect): Prom
  * escapeIdentifier('my-table', 'postgres') // '"my-table"'
  * escapeIdentifier('my-table', 'mysql')    // '`my-table`'
  */
-export function escapeIdentifier(identifier: string, dialect: DatabaseDialect): string {
+export function escapeIdentifier(identifier: string, dialect: Dialect): string {
   return getAdapter(dialect).escapeIdentifier(identifier)
 }
 
@@ -116,7 +116,7 @@ export function escapeIdentifier(identifier: string, dialect: DatabaseDialect): 
  * getCurrentTimestamp('postgres') // 'CURRENT_TIMESTAMP'
  * getCurrentTimestamp('sqlite')   // "datetime('now')"
  */
-export function getCurrentTimestamp(dialect: DatabaseDialect): string {
+export function getCurrentTimestamp(dialect: Dialect): string {
   return getAdapter(dialect).getCurrentTimestamp()
 }
 
@@ -127,7 +127,7 @@ export function getCurrentTimestamp(dialect: DatabaseDialect): string {
  * formatDate(new Date(), 'postgres') // '2024-01-15T10:30:00.000Z'
  * formatDate(new Date(), 'mysql')    // '2024-01-15 10:30:00'
  */
-export function formatDate(date: Date, dialect: DatabaseDialect): string {
+export function formatDate(date: Date, dialect: Dialect): string {
   return getAdapter(dialect).formatDate(date)
 }
 
@@ -143,7 +143,7 @@ export function formatDate(date: Date, dialect: DatabaseDialect): string {
  *   }
  * }
  */
-export function isUniqueConstraintError(error: unknown, dialect: DatabaseDialect): boolean {
+export function isUniqueConstraintError(error: unknown, dialect: Dialect): boolean {
   return getAdapter(dialect).isUniqueConstraintError(error)
 }
 
@@ -155,7 +155,7 @@ export function isUniqueConstraintError(error: unknown, dialect: DatabaseDialect
  *   console.log('Referenced row does not exist');
  * }
  */
-export function isForeignKeyError(error: unknown, dialect: DatabaseDialect): boolean {
+export function isForeignKeyError(error: unknown, dialect: Dialect): boolean {
   return getAdapter(dialect).isForeignKeyError(error)
 }
 
@@ -167,7 +167,7 @@ export function isForeignKeyError(error: unknown, dialect: DatabaseDialect): boo
  *   console.log('Required field is missing');
  * }
  */
-export function isNotNullError(error: unknown, dialect: DatabaseDialect): boolean {
+export function isNotNullError(error: unknown, dialect: Dialect): boolean {
   return getAdapter(dialect).isNotNullError(error)
 }
 
@@ -180,7 +180,7 @@ export function isNotNullError(error: unknown, dialect: DatabaseDialect): boolea
  */
 export async function getDatabaseSize(
   db: Kysely<any>,
-  dialect: DatabaseDialect,
+  dialect: Dialect,
   databaseName?: string
 ): Promise<number> {
   return await getAdapter(dialect).getDatabaseSize(db, databaseName)
@@ -195,7 +195,7 @@ export async function getDatabaseSize(
  */
 export async function truncateAllTables(
   db: Kysely<any>,
-  dialect: DatabaseDialect,
+  dialect: Dialect,
   exclude: string[] = []
 ): Promise<void> {
   await getAdapter(dialect).truncateAllTables(db, exclude)

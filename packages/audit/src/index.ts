@@ -1,6 +1,7 @@
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
-import type { Plugin } from '@kysera/executor'
+import type { Plugin, BaseRepositoryLike } from '@kysera/executor'
+import { isRepositoryLike } from '@kysera/executor'
 import { NotFoundError, BadRequestError, type KyseraLogger, silentLogger } from '@kysera/core'
 import { z } from 'zod'
 import { VERSION } from './version.js'
@@ -37,7 +38,7 @@ interface DynamicSelectQueryBuilder {
  * Interface for Kysely insert query builder with dynamic operations
  */
 interface DynamicInsertQueryBuilder {
-  values: (values: Record<string, unknown>) => DynamicInsertQueryBuilder
+  values: (values: Record<string, unknown> | Record<string, unknown>[]) => DynamicInsertQueryBuilder
   execute: () => Promise<unknown>
 }
 
@@ -290,12 +291,12 @@ export interface AuditRepositoryExtensions<T = unknown> {
 }
 
 /**
- * Base repository interface for type checking
- * Uses generic T to represent the entity type
+ * Base repository interface for audit plugin with typed methods.
+ * Extends BaseRepositoryLike from @kysera/executor with audit-specific bulk operations.
  */
-interface BaseRepositoryLike<T = unknown> {
-  tableName?: string
-  executor?: Kysely<unknown>
+interface AuditBaseRepository<T = unknown> {
+  tableName: string
+  executor: Kysely<unknown>
   create?: (data: Partial<T>) => Promise<T>
   update?: (id: number | string, data: Partial<T>) => Promise<T>
   delete?: (id: number | string) => Promise<boolean>
@@ -309,7 +310,7 @@ interface BaseRepositoryLike<T = unknown> {
  * Internal type that combines repository methods with audit extensions
  */
 interface ExtendedRepositoryInternal<T = unknown>
-  extends BaseRepositoryLike<T>, AuditRepositoryExtensions<T> {}
+  extends AuditBaseRepository<T>, AuditRepositoryExtensions<T> {}
 
 // ============================================================================
 // Helper Functions
@@ -445,15 +446,6 @@ async function createAuditLogEntry<DB>(
 }
 
 /**
- * Helper function to check if an object looks like a repository
- */
-function isRepositoryLike(obj: unknown): obj is BaseRepositoryLike {
-  if (!obj || typeof obj !== 'object') return false
-  const repo = obj as Record<string, unknown>
-  return 'tableName' in repo && 'executor' in repo
-}
-
-/**
  * Helper function to fetch an entity by ID
  */
 async function fetchEntityById(
@@ -555,6 +547,48 @@ function extractPrimaryKey(entity: unknown, primaryKeyColumn: string): string | 
   return pkValue as string | number
 }
 
+/**
+ * Prepare audit entry for batch insert
+ */
+function prepareAuditEntry(
+  tableName: string,
+  entityId: string | number,
+  operation: string,
+  oldValues: unknown,
+  newValues: unknown,
+  options: AuditOptions
+): Record<string, unknown> {
+  const timestamp = options.getTimestamp ? getAuditTimestamp(options) : sql`CURRENT_TIMESTAMP`
+
+  return {
+    table_name: tableName,
+    entity_id: String(entityId),
+    operation,
+    old_values: serializeAuditValues(oldValues),
+    new_values: serializeAuditValues(newValues),
+    changed_by: options.getUserId ? options.getUserId() : null,
+    changed_at: timestamp,
+    metadata: options.metadata ? JSON.stringify(options.metadata()) : null
+  }
+}
+
+/**
+ * Create multiple audit log entries in a single batch INSERT.
+ * This function optimizes bulk operations by avoiding N+1 query patterns.
+ */
+async function createBulkAuditLogEntries<DB>(
+  executor: Kysely<DB>,
+  auditTable: string,
+  entries: Record<string, unknown>[]
+): Promise<void> {
+  if (entries.length === 0) {
+    return
+  }
+
+  const dynamicExecutor = executor as unknown as DynamicQueryBuilder
+  await dynamicExecutor.insertInto(auditTable).values(entries).execute()
+}
+
 // ============================================================================
 // Repository Extension Helpers
 // ============================================================================
@@ -563,7 +597,7 @@ function extractPrimaryKey(entity: unknown, primaryKeyColumn: string): string | 
  * Wrap the create method with audit logging
  */
 function wrapCreateMethod<T = unknown>(
-  baseRepo: BaseRepositoryLike<T>,
+  baseRepo: AuditBaseRepository<T>,
   executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
@@ -601,7 +635,7 @@ function wrapCreateMethod<T = unknown>(
  * Wrap the update method with audit logging
  */
 function wrapUpdateMethod<T = unknown>(
-  baseRepo: BaseRepositoryLike<T>,
+  baseRepo: AuditBaseRepository<T>,
   executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
@@ -644,7 +678,7 @@ function wrapUpdateMethod<T = unknown>(
  * Wrap the delete method with audit logging
  */
 function wrapDeleteMethod<T = unknown>(
-  baseRepo: BaseRepositoryLike<T>,
+  baseRepo: AuditBaseRepository<T>,
   executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
@@ -684,9 +718,14 @@ function wrapDeleteMethod<T = unknown>(
 
 /**
  * Wrap the bulkCreate method with audit logging
+ *
+ * **Performance Optimization:** Uses batch INSERT for all audit entries in a single query.
+ * - Old approach (N+1): 100 records = 100 separate INSERT queries
+ * - New approach: 100 records = 1 batch INSERT query
+ * - Performance gain: ~100x faster for large batches
  */
 function wrapBulkCreateMethod<T = unknown>(
-  baseRepo: BaseRepositoryLike<T>,
+  baseRepo: AuditBaseRepository<T>,
   executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
@@ -701,12 +740,11 @@ function wrapBulkCreateMethod<T = unknown>(
   baseRepo.bulkCreate = async function (inputs: Partial<T>[]): Promise<T[]> {
     const results = await originalBulkCreate(inputs)
 
-    if (!skipSystemOperations && Array.isArray(results)) {
-      for (const result of results) {
+    if (!skipSystemOperations && Array.isArray(results) && results.length > 0) {
+      // Prepare all audit entries in memory
+      const auditEntries = results.map(result => {
         const pkValue = extractPrimaryKey(result, primaryKeyColumn)
-        await createAuditLogEntry(
-          executor,
-          auditTable,
+        return prepareAuditEntry(
           tableName,
           pkValue,
           'INSERT',
@@ -714,7 +752,10 @@ function wrapBulkCreateMethod<T = unknown>(
           captureNewValues ? result : null,
           options
         )
-      }
+      })
+
+      // Batch insert all audit entries in one query
+      await createBulkAuditLogEntries(executor, auditTable, auditEntries)
     }
 
     return results
@@ -723,9 +764,14 @@ function wrapBulkCreateMethod<T = unknown>(
 
 /**
  * Wrap the bulkUpdate method with audit logging
+ *
+ * **Performance Optimization:** Uses batch queries for both fetching old values and inserting audit entries.
+ * - Old values: 1 batch SELECT with WHERE IN clause (not N individual queries)
+ * - Audit entries: 1 batch INSERT (not N individual queries)
+ * - Performance gain: ~100x faster for large batches
  */
 function wrapBulkUpdateMethod<T = unknown>(
-  baseRepo: BaseRepositoryLike<T>,
+  baseRepo: AuditBaseRepository<T>,
   executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
@@ -755,13 +801,11 @@ function wrapBulkUpdateMethod<T = unknown>(
 
     const results = await originalBulkUpdate(updates)
 
-    if (!skipSystemOperations && Array.isArray(results)) {
-      for (const result of results) {
+    if (!skipSystemOperations && Array.isArray(results) && results.length > 0) {
+      // Prepare all audit entries in memory
+      const auditEntries = results.map(result => {
         const pkValue = extractPrimaryKey(result, primaryKeyColumn)
-
-        await createAuditLogEntry(
-          executor,
-          auditTable,
+        return prepareAuditEntry(
           tableName,
           pkValue,
           'UPDATE',
@@ -769,7 +813,10 @@ function wrapBulkUpdateMethod<T = unknown>(
           captureNewValues ? result : null,
           options
         )
-      }
+      })
+
+      // Batch insert all audit entries in one query
+      await createBulkAuditLogEntries(executor, auditTable, auditEntries)
     }
 
     return results
@@ -778,9 +825,14 @@ function wrapBulkUpdateMethod<T = unknown>(
 
 /**
  * Wrap the bulkDelete method with audit logging
+ *
+ * **Performance Optimization:** Uses batch queries for both fetching old values and inserting audit entries.
+ * - Old values: 1 batch SELECT with WHERE IN clause (not N individual queries)
+ * - Audit entries: 1 batch INSERT (not N individual queries)
+ * - Performance gain: ~100x faster for large batches
  */
 function wrapBulkDeleteMethod<T = unknown>(
-  baseRepo: BaseRepositoryLike<T>,
+  baseRepo: AuditBaseRepository<T>,
   executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
@@ -806,19 +858,14 @@ function wrapBulkDeleteMethod<T = unknown>(
 
     const result = await originalBulkDelete(ids)
 
-    if (!skipSystemOperations) {
-      for (const id of ids) {
-        await createAuditLogEntry(
-          executor,
-          auditTable,
-          tableName,
-          id,
-          'DELETE',
-          oldValuesMap.get(id) ?? null,
-          null,
-          options
-        )
-      }
+    if (!skipSystemOperations && ids.length > 0) {
+      // Prepare all audit entries in memory
+      const auditEntries = ids.map(id =>
+        prepareAuditEntry(tableName, id, 'DELETE', oldValuesMap.get(id) ?? null, null, options)
+      )
+
+      // Batch insert all audit entries in one query
+      await createBulkAuditLogEntries(executor, auditTable, auditEntries)
     }
 
     return result
@@ -849,7 +896,7 @@ function parseAuditLogEntries(logs: unknown[], logger: KyseraLogger): ParsedAudi
  */
 function addRestoreMethod<T = unknown>(
   extendedRepo: ExtendedRepositoryInternal<T>,
-  baseRepo: BaseRepositoryLike<T>,
+  baseRepo: AuditBaseRepository<T>,
   primaryKeyColumn: string,
   logger: KyseraLogger
 ): void {
@@ -922,7 +969,7 @@ function addRestoreMethod<T = unknown>(
  */
 function addAuditQueryMethods<T = unknown>(
   extendedRepo: ExtendedRepositoryInternal<T>,
-  baseRepo: BaseRepositoryLike<T>,
+  baseRepo: AuditBaseRepository<T>,
   executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
@@ -1196,6 +1243,7 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
   return {
     name: '@kysera/audit',
     version: VERSION,
+    priority: -100, // Run last to audit after all other transformations
 
     async onInit<DB>(executor: Kysely<DB>): Promise<void> {
       const exists = await checkAuditTableExists(executor, auditTable)
@@ -1232,7 +1280,8 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
       }
 
       // Cast to mutable repository for wrapping methods
-      const mutableRepo = baseRepo as BaseRepositoryLike
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mutableRepo = baseRepo as any as AuditBaseRepository
 
       wrapCreateMethod(
         mutableRepo,

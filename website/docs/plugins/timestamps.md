@@ -254,6 +254,37 @@ await postRepo.updateWithoutTimestamp(postId, {
 })
 ```
 
+## Database Compatibility
+
+The timestamps plugin handles database-specific differences in how records are returned after INSERT operations:
+
+### RETURNING Clause Support
+
+| Database   | RETURNING Support | Fallback Behavior                              |
+| ---------- | ----------------- | ---------------------------------------------- |
+| PostgreSQL | ✅ Full support   | Uses `RETURNING *` for immediate data access   |
+| SQLite     | ✅ 3.35+          | Uses `RETURNING *` for immediate data access   |
+| MySQL      | ❌ Not supported  | Insert then fetch: requires extra SELECT query |
+| MSSQL      | ⚠️ OUTPUT clause  | Uses OUTPUT for single inserts, fallback for batch |
+
+### How the Fallback Works
+
+For MySQL and batch operations on MSSQL, the plugin uses an **insert-then-fetch** strategy:
+
+```typescript
+// PostgreSQL/SQLite: Single query with RETURNING
+const result = await db.insertInto('posts').values(data).returningAll().executeTakeFirst()
+
+// MySQL/MSSQL fallback: Two queries
+await db.insertInto('posts').values(data).execute()
+const result = await db.selectFrom('posts').where('id', '=', insertId).executeTakeFirst()
+```
+
+**Performance implications:**
+- MySQL/MSSQL require an extra SELECT query for each insert
+- Batch inserts (`createMany`) use optimized single-query fetching
+- Consider using database defaults for timestamps in high-throughput MySQL scenarios
+
 ## Database Schema
 
 ```sql

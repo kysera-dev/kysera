@@ -86,14 +86,20 @@ export function selectFromDynamicTable<DB>(
 }
 
 /**
- * Type-safe wrapper for dynamic ID lookups
+ * Add WHERE clause for primary key equality.
+ * Supports custom primary key column names.
  *
- * @param qb - Query builder
- * @param id - ID value to match
+ * @param qb - Select query builder
+ * @param id - Primary key value
+ * @param primaryKeyColumn - Primary key column name (default: 'id')
  * @returns Query builder with ID filter
  */
-export function whereIdEquals(qb: SelectQueryBuilder<any, any, any>, id: unknown): SelectQueryBuilder<any, any, any> {
-  return qb.where('id' as any, '=', id as any)
+export function whereIdEquals(
+  qb: SelectQueryBuilder<any, any, any>,
+  id: unknown,
+  primaryKeyColumn = 'id'
+): SelectQueryBuilder<any, any, any> {
+  return qb.where(primaryKeyColumn as any, '=', id as any)
 }
 
 /**

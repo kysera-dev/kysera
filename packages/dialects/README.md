@@ -812,9 +812,9 @@ Truncate all tables in database.
 
 ### Types
 
-#### `type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite'`
+#### `type Dialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql'`
 
-Supported database dialects.
+Supported database dialects. Re-exported from `@kysera/core`.
 
 ---
 

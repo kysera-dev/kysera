@@ -44,8 +44,12 @@ export type {
   ExecutorConfig,
   KyseraExecutorMarker,
   PluginValidationDetails,
-  PluginValidationErrorType
+  PluginValidationErrorType,
+  BaseRepositoryLike
 } from './types.js'
+
+// Type guard function
+export { isRepositoryLike } from './types.js'
 
 // Executor
 export {
