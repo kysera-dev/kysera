@@ -8,8 +8,6 @@ description: Migration system API reference
 
 Lightweight, type-safe database migration system.
 
-**Version:** 0.7.3
-
 ## Installation
 
 ```bash

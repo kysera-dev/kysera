@@ -9,7 +9,7 @@
 ## 🎯 Features
 
 - ✅ **Zero Runtime Dependencies** - Only peer dependency on Kysely
-- ✅ **Multi-Database Error Parsing** - PostgreSQL, MySQL, SQLite with unified error hierarchy
+- ✅ **Multi-Database Error Parsing** - PostgreSQL, MySQL, SQLite, MSSQL with unified error hierarchy
 - ✅ **Unified Error Codes** - Consistent error codes across the entire Kysera ecosystem
 - ✅ **Pagination** - Both offset-based and cursor-based strategies
 - ✅ **Type Utilities** - Executor, Timestamps, and common database types
@@ -104,19 +104,21 @@ const posts = await paginateCursor(db.selectFrom('posts').selectAll(), {
    - [Offset Pagination](#offset-pagination)
    - [Cursor Pagination](#cursor-pagination)
    - [Performance Comparison](#performance-comparison)
+   - [MSSQL-Specific Pagination Notes](#mssql-specific-pagination-notes)
 3. [Type Utilities](#-type-utilities)
    - [Executor Type](#executor-type)
    - [Common Column Types](#common-column-types)
 4. [Logger Interface](#-logger-interface)
 5. [API Reference](#-api-reference)
 6. [Migration Notes](#-migration-notes)
-7. [Best Practices](#-best-practices)
+7. [Multi-Database Testing](#-multi-database-testing)
+8. [Best Practices](#-best-practices)
 
 ---
 
 ## 🚨 Error Handling
 
-The error handling system provides unified error parsing across PostgreSQL, MySQL, and SQLite with a rich error hierarchy.
+The error handling system provides unified error parsing across PostgreSQL, MySQL, SQLite, and MSSQL with a rich error hierarchy.
 
 ### Error Hierarchy
 
@@ -162,6 +164,15 @@ The `parseDatabaseError` function automatically detects and parses database-spec
 | `FOREIGN KEY constraint failed` | ForeignKeyError       | Foreign key violation |
 | `NOT NULL constraint failed`    | NotNullError          | NOT NULL violation    |
 | `CHECK constraint failed`       | CheckConstraintError  | CHECK violation       |
+
+#### MSSQL Error Codes
+
+| Error Code   | Type                  | Description                  |
+| ------------ | --------------------- | ---------------------------- |
+| `2627`       | UniqueConstraintError | UNIQUE constraint violation  |
+| `2601`       | UniqueConstraintError | Duplicate key index          |
+| `515`        | NotNullError          | NOT NULL constraint violation|
+| `547`        | ForeignKeyError       | FOREIGN KEY violation        |
 
 ### Error Codes
 
@@ -329,7 +340,7 @@ async function loadMore(offset: number) {
 
 **Options:**
 
-- `limit`: 1-100 (default: 20)
+- `limit`: 1-10,000 (default: 20)
 - `offset`: >= 0 (default: 0)
 
 ### applyDateRange
@@ -484,7 +495,7 @@ Cursors are base64-encoded for security and compactness using cross-runtime comp
 
 - **Single-column ordering:** Uses simple WHERE clause `WHERE column > value` → `O(log n)` with index
 - **Multi-column ordering:** Uses compound WHERE clauses → Still better than offset pagination
-- **Database compatibility:** Works with PostgreSQL, MySQL, and SQLite
+- **Database compatibility:** Works with PostgreSQL, MySQL, SQLite, and MSSQL
 
 **Index Recommendation:**
 
@@ -492,6 +503,51 @@ Cursors are base64-encoded for security and compactness using cross-runtime comp
 -- For multi-column cursor pagination
 CREATE INDEX idx_posts_score_created ON posts(score DESC, created_at DESC);
 ```
+
+### MSSQL-Specific Pagination Notes
+
+MSSQL has unique requirements for pagination that are handled automatically when you specify `dialect: 'mssql'`:
+
+#### Offset Pagination (OFFSET/FETCH NEXT)
+
+MSSQL requires an explicit ORDER BY clause when using OFFSET pagination. The implementation uses the `OFFSET ... ROWS FETCH NEXT ... ROWS ONLY` syntax:
+
+```typescript
+// MSSQL pagination automatically uses OFFSET/FETCH NEXT
+const result = await paginate(
+  db.selectFrom('users')
+    .selectAll()
+    .orderBy('id', 'asc'), // ORDER BY required for MSSQL
+  { page: 1, limit: 20, dialect: 'mssql' }
+)
+
+// Generated SQL (MSSQL):
+// SELECT * FROM users ORDER BY id ASC OFFSET 0 ROWS FETCH NEXT 20 ROWS ONLY
+```
+
+#### Cursor Pagination (TOP Clause)
+
+MSSQL cursor pagination uses the `TOP` clause for optimal performance:
+
+```typescript
+const result = await paginateCursor(
+  db.selectFrom('posts').selectAll(),
+  {
+    orderBy: [{ column: 'id', direction: 'asc' }],
+    limit: 20,
+    dialect: 'mssql'
+  }
+)
+
+// Generated SQL (MSSQL):
+// SELECT TOP(21) * FROM posts WHERE id > @cursor ORDER BY id ASC
+```
+
+**Important MSSQL Requirements:**
+
+- Always provide an ORDER BY clause for offset pagination
+- MSSQL doesn't support LIMIT/OFFSET syntax - use `dialect: 'mssql'` to automatically generate correct syntax
+- Cursor pagination automatically handles the TOP clause
 
 ---
 
@@ -622,7 +678,7 @@ Parse database-specific errors into unified format.
 **Parameters:**
 
 - `error` - Original database error
-- `dialect` - `'postgres' | 'mysql' | 'sqlite'`
+- `dialect` - `'postgres' | 'mysql' | 'sqlite' | 'mssql'`
 
 **Returns:** `DatabaseError` or subclass
 
@@ -744,7 +800,8 @@ Offset-based pagination.
 ```typescript
 interface PaginationOptions {
   page?: number // Default: 1
-  limit?: number // Default: 20, max: 100
+  limit?: number // Default: 20, max: 10,000
+  dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql' // For MSSQL-specific syntax
 }
 ```
 
@@ -780,6 +837,7 @@ interface CursorOptions<T> {
   }>
   cursor?: string
   limit?: number // Default: 20
+  dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql' // For MSSQL-specific syntax
 }
 ```
 
@@ -953,6 +1011,104 @@ Core now focuses on fundamental utilities:
 
 ---
 
+## 🧪 Multi-Database Testing
+
+@kysera/core supports testing against multiple databases simultaneously using environment variables. This ensures error handling works correctly across all supported databases.
+
+### Running Tests with Multiple Databases
+
+Use these environment variables to enable specific database tests:
+
+```bash
+# Test with PostgreSQL (default, always runs)
+pnpm test
+
+# Test with MySQL
+TEST_MYSQL=1 pnpm test
+
+# Test with MSSQL
+TEST_MSSQL=1 pnpm test
+
+# Test with all databases
+TEST_POSTGRES=1 TEST_MYSQL=1 TEST_MSSQL=1 pnpm test
+```
+
+### Database-Specific Test Setup
+
+Each database requires proper setup before running tests:
+
+#### PostgreSQL (Default)
+
+```bash
+# Using Docker
+docker run -d \
+  --name kysera-postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=kysera_test \
+  -p 5432:5432 \
+  postgres:16-alpine
+
+# Connection string
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/kysera_test
+```
+
+#### MySQL
+
+```bash
+# Using Docker
+docker run -d \
+  --name kysera-mysql \
+  -e MYSQL_ROOT_PASSWORD=mysql \
+  -e MYSQL_DATABASE=kysera_test \
+  -p 3306:3306 \
+  mysql:8
+
+# Connection string
+DATABASE_URL=mysql://root:mysql@localhost:3306/kysera_test
+```
+
+#### MSSQL
+
+```bash
+# Using Docker
+docker run -d \
+  --name kysera-mssql \
+  -e "ACCEPT_EULA=Y" \
+  -e "SA_PASSWORD=YourStrong@Passw0rd" \
+  -p 1433:1433 \
+  mcr.microsoft.com/mssql/server:2022-latest
+
+# Connection string
+DATABASE_URL=sqlserver://sa:YourStrong@Passw0rd@localhost:1433/kysera_test
+```
+
+### Continuous Integration
+
+In CI/CD pipelines, you can run tests against all databases in parallel:
+
+```yaml
+# GitHub Actions example
+strategy:
+  matrix:
+    database: [postgres, mysql, mssql]
+steps:
+  - name: Run tests
+    run: TEST_${{ matrix.database | upper }}=1 pnpm test
+```
+
+### Error Handling Tests
+
+The error handling system is tested against all supported databases to ensure consistent behavior:
+
+- Unique constraint violations
+- Foreign key violations
+- NOT NULL violations
+- CHECK constraint violations (where supported)
+
+Each test verifies that `parseDatabaseError` correctly identifies and parses database-specific error codes into unified error types.
+
+---
+
 ## ✨ Best Practices
 
 ### 1. Use Consistent Error Codes
@@ -1039,7 +1195,7 @@ Contributions are welcome! This package follows strict development principles:
 - ✅ **Zero runtime dependencies** (peer deps only)
 - ✅ **100% type safe** (TypeScript strict mode)
 - ✅ **Comprehensive test coverage**
-- ✅ **Cross-database compatible** (PostgreSQL, MySQL, SQLite)
+- ✅ **Cross-database compatible** (PostgreSQL, MySQL, SQLite, MSSQL)
 - ✅ **ESM only** (no CommonJS)
 
 See [CLAUDE.md](../../CLAUDE.md) for development guidelines.

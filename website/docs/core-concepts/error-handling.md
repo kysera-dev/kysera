@@ -6,7 +6,6 @@ description: Error handling and typed errors in Kysera
 
 # Error Handling
 
-**Version 0.7.3**
 
 Kysera provides a comprehensive error handling system with typed errors for different database operations. The error handling system includes improved error parsing for all supported databases.
 
@@ -106,6 +105,7 @@ Use `parseDatabaseError` to convert raw database errors into typed errors. The e
 ```typescript
 import { parseDatabaseError, UniqueConstraintError, ForeignKeyError } from '@kysera/core'
 
+// PostgreSQL example
 try {
   await db.insertInto('users').values({ email: 'duplicate@test.com' }).execute()
 } catch (error) {
@@ -123,11 +123,21 @@ try {
     throw dbError
   }
 }
+
+// MSSQL example
+try {
+  await db.insertInto('users').values({ email: 'duplicate@example.com' }).execute()
+} catch (error) {
+  const dbError = parseDatabaseError(error, 'mssql')
+  if (dbError instanceof UniqueConstraintError) {
+    console.log('Duplicate entry:', dbError.constraint)
+  }
+}
 ```
 
-**Enhanced Error Parsing (v0.7.3):**
+**Enhanced Error Parsing:**
 - **Improved Truncate Handling** - Better error detection for TRUNCATE operations
-- **Database-Specific Parsing** - Handles PostgreSQL, MySQL, and SQLite error formats
+- **Database-Specific Parsing** - Handles PostgreSQL, MySQL, SQLite, and MSSQL error formats
 - **Detail Extraction** - Extracts constraint names, columns, and referenced tables from error messages
 
 ## Multi-Database Support
@@ -166,6 +176,17 @@ const error = parseDatabaseError(sqliteError, 'sqlite')
 // - FOREIGN KEY constraint failed
 // - NOT NULL constraint failed
 // - Better column name extraction from error messages
+```
+
+### MSSQL
+
+```typescript
+const error = parseDatabaseError(mssqlError, 'mssql')
+// Handles:
+// - 2627, 2601 (unique constraint violation)
+// - 515 (not null violation)
+// - 547 (foreign key violation)
+// - Constraint name extraction from error messages
 ```
 
 ## Unified Error Codes

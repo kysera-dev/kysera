@@ -90,7 +90,7 @@ export const db = withDebug(baseDb, {
 })
 ```
 
-### Alternative: With Plugins (v0.7+)
+### Alternative: With Plugins
 
 For automatic soft-delete filtering and other plugin features:
 
@@ -241,7 +241,7 @@ export function createUserRepository(executor: Executor<Database>) {
 }
 ```
 
-### Alternative Pattern: With Plugins (v0.7+)
+### Alternative Pattern: With Plugins
 
 For automatic soft-delete filtering using `@kysera/executor`:
 

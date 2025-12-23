@@ -8,8 +8,6 @@ description: Infrastructure utilities API reference
 
 Infrastructure utilities for Kysera - health monitoring, resilience patterns, and graceful shutdown.
 
-**Version:** 0.7.3
-
 ## Installation
 
 ```bash

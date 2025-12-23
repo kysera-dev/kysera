@@ -6,8 +6,6 @@ description: Automatic timestamp management plugin for Kysera
 
 # Timestamps Plugin
 
-**Version:** 0.7.3
-
 Automatically manage `created_at` and `updated_at` timestamps on your entities. Works through **@kysera/executor's** Unified Execution Layer for consistent behavior across both Repository and DAL patterns.
 
 ## Installation

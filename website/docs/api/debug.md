@@ -8,8 +8,6 @@ description: Debug utilities API reference
 
 Debug utilities for Kysera - query logging, profiling, SQL formatting, and performance analysis.
 
-**Version:** 0.7.3
-
 ## Installation
 
 ```bash

@@ -6,8 +6,6 @@ description: How to create custom plugins for Kysera
 
 # Plugin Authoring Guide
 
-**Version:** 0.7.3
-
 Learn how to create custom plugins to extend Kysera's functionality using **@kysera/executor's** Unified Execution Layer.
 
 ## Plugin Architecture

@@ -436,9 +436,305 @@ multi-tenant-saas/
 - Audit logging repository
 - Migration scripts
 
+## Using Unified Execution Layer with RLS (v0.7) 🆕
+
+**New in v0.7**: Kysera introduces the Unified Execution Layer with automatic Row-Level Security (RLS) that eliminates manual tenant filtering.
+
+### Why Use the Unified Execution Layer?
+
+The traditional approach (shown in this example) requires **manual** `WHERE tenant_id = getTenantId()` in every query. This is error-prone:
+
+```typescript
+// ❌ Old pattern: Easy to forget tenant filter
+async findAll() {
+  return executor
+    .selectFrom('users')
+    .selectAll()
+    // Oops! Forgot .where('tenant_id', '=', getTenantId())
+    .execute() // 🚨 SECURITY BREACH: Returns ALL tenants' users!
+}
+```
+
+With the Unified Execution Layer + RLS plugin, tenant filtering is **automatic** and **impossible to bypass**:
+
+```typescript
+// ✅ New pattern: Automatic tenant isolation
+async findAll() {
+  return executor
+    .selectFrom('users')
+    .selectAll()
+    .execute() // ✅ Automatically filtered by tenant_id
+}
+```
+
+### Setup with Unified Execution Layer
+
+**Step 1: Define RLS Schema**
+
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { rlsPlugin } from '@kysera/rls'
+import type { Database } from './db/schema'
+
+// Define which tables need tenant isolation
+const rlsSchema = {
+  users: {
+    column: 'tenant_id',
+    getContext: () => tenantContext.getTenantId()
+  },
+  projects: {
+    column: 'tenant_id',
+    getContext: () => tenantContext.getTenantId()
+  },
+  tasks: {
+    column: 'tenant_id',
+    getContext: () => tenantContext.getTenantId()
+  },
+  audit_logs: {
+    column: 'tenant_id',
+    getContext: () => tenantContext.getTenantId()
+  }
+  // Note: 'tenants' table is intentionally excluded (global scope)
+}
+
+// Create executor with RLS plugin
+const executor = await createExecutor<Database>(db, [
+  rlsPlugin({ schema: rlsSchema })
+])
+```
+
+**Step 2: Simplified Repository (No Manual Filters)**
+
+```typescript
+export function createUserRepository(
+  executor: Executor<Database>
+  // Note: No tenantContext needed anymore!
+) {
+  return {
+    // All queries automatically filtered by tenant_id
+    async findAll() {
+      return executor.selectFrom('users').selectAll().execute()
+      // RLS plugin automatically adds: WHERE tenant_id = <current_tenant>
+    },
+
+    async findById(id: string) {
+      return executor
+        .selectFrom('users')
+        .where('id', '=', id)
+        .selectAll()
+        .executeTakeFirst()
+      // RLS plugin automatically adds: AND tenant_id = <current_tenant>
+    },
+
+    async create(data: NewUser) {
+      return executor
+        .insertInto('users')
+        .values(data)
+        .returningAll()
+        .executeTakeFirstOrThrow()
+      // RLS plugin automatically injects tenant_id into values
+    },
+
+    async update(id: string, data: Partial<UserUpdate>) {
+      return executor
+        .updateTable('users')
+        .set(data)
+        .where('id', '=', id)
+        .returningAll()
+        .executeTakeFirst()
+      // RLS plugin ensures you can only update users in your tenant
+    }
+  }
+}
+```
+
+### Benefits for Multi-Tenant Applications
+
+1. **Security by Default**
+   - Automatic tenant isolation on **ALL** queries (SELECT, INSERT, UPDATE, DELETE)
+   - Impossible to accidentally leak data between tenants
+   - No manual `WHERE tenant_id = ?` clauses needed
+
+2. **Clean Code**
+   - Repositories don't need tenant context parameter
+   - No repetitive tenant filtering boilerplate
+   - Focus on business logic, not security plumbing
+
+3. **Maintainability**
+   - Single source of truth for RLS rules (the RLS schema)
+   - Changes to tenant isolation logic happen in one place
+   - Easier to audit and test
+
+4. **Performance**
+   - RLS filters are added at query build time (no runtime overhead)
+   - Database can optimize queries with tenant_id in WHERE clause
+   - Works with all database indexes
+
+### Combined with Audit Logging
+
+For complete multi-tenant security, combine RLS with audit logging:
+
+```typescript
+import { auditPlugin } from '@kysera/audit'
+import { rlsPlugin } from '@kysera/rls'
+
+const executor = await createExecutor<Database>(db, [
+  // Automatic tenant isolation
+  rlsPlugin({ schema: rlsSchema }),
+
+  // Automatic audit logging with tenant context
+  auditPlugin({
+    tenantId: () => tenantContext.getTenantId(),
+    userId: () => getCurrentUserId(),
+    enableRestore: true // Enable audit log restoration
+  })
+])
+
+// Now ALL queries are:
+// 1. Automatically filtered by tenant_id (RLS)
+// 2. Automatically logged with tenant context (Audit)
+const user = await executor
+  .selectFrom('users')
+  .where('email', '=', 'john@acme.com')
+  .selectAll()
+  .executeTakeFirst()
+
+// Audit log entry created:
+// {
+//   tenant_id: 1,
+//   user_id: 'current-user-id',
+//   table_name: 'users',
+//   operation: 'SELECT',
+//   entity_id: user.id,
+//   timestamp: '2025-12-23T10:30:00Z'
+// }
+```
+
+### Database Support for Multi-Tenant
+
+The Unified Execution Layer with RLS works across all supported databases:
+
+| Database   | RLS Support | Notes                                     |
+| ---------- | ----------- | ----------------------------------------- |
+| PostgreSQL | ✅ Full     | Native RLS + plugin-based RLS             |
+| MySQL      | ✅ Full     | Plugin-based RLS (no native RLS)          |
+| SQLite     | ✅ Full     | Plugin-based RLS (no native RLS)          |
+| MSSQL      | ✅ Full     | Native RLS + plugin-based RLS (see below) |
+
+**PostgreSQL Native RLS (Alternative Approach)**
+
+PostgreSQL also supports native Row-Level Security policies:
+
+```sql
+-- Enable RLS on table
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+-- Create policy for tenant isolation
+CREATE POLICY tenant_isolation ON users
+  USING (tenant_id = current_setting('app.current_tenant_id')::integer);
+
+-- In application, set tenant context
+await db.executeQuery(
+  sql`SET LOCAL app.current_tenant_id = ${tenantId}`
+)
+```
+
+**When to use native RLS:**
+- Maximum security (enforced at database level, even for raw SQL)
+- Multi-language applications (policies work for all clients)
+- Auditing requirements (database-level enforcement)
+
+**When to use plugin-based RLS (Kysera):**
+- Cross-database compatibility (works on MySQL, SQLite, etc.)
+- Application-level control (easier testing, debugging)
+- Better TypeScript integration
+- Dynamic RLS rules (can change at runtime)
+
+### Migration Path from Manual Filtering
+
+If you're upgrading an existing multi-tenant app:
+
+**Before (Manual):**
+```typescript
+const userRepo = createUserRepository(db, tenantContext)
+const users = await userRepo.findAll()
+```
+
+**After (Unified Execution Layer):**
+```typescript
+const executor = await createExecutor(db, [
+  rlsPlugin({ schema: rlsSchema })
+])
+const userRepo = createUserRepository(executor)
+const users = await userRepo.findAll()
+```
+
+**Migration Steps:**
+1. Install packages: `pnpm add @kysera/executor @kysera/rls`
+2. Define RLS schema for all tenant-scoped tables
+3. Create executor with `rlsPlugin`
+4. Update repositories to remove manual `WHERE tenant_id = ?` clauses
+5. Remove `tenantContext` parameter from repositories
+6. Test thoroughly (RLS should produce identical results)
+
+### Testing Tenant Isolation
+
+```typescript
+import { describe, it, expect } from 'vitest'
+
+describe('Tenant Isolation with RLS', () => {
+  it('should isolate users by tenant', async () => {
+    // Create executor for tenant 1
+    const tenant1Context = new TenantContext()
+    tenant1Context.setTenantId(1)
+    const executor1 = await createExecutor(db, [
+      rlsPlugin({
+        schema: {
+          users: {
+            column: 'tenant_id',
+            getContext: () => tenant1Context.getTenantId()
+          }
+        }
+      })
+    ])
+
+    // Create executor for tenant 2
+    const tenant2Context = new TenantContext()
+    tenant2Context.setTenantId(2)
+    const executor2 = await createExecutor(db, [
+      rlsPlugin({
+        schema: {
+          users: {
+            column: 'tenant_id',
+            getContext: () => tenant2Context.getTenantId()
+          }
+        }
+      })
+    ])
+
+    // Insert user for tenant 1
+    const user1 = await executor1
+      .insertInto('users')
+      .values({ email: 'alice@tenant1.com', name: 'Alice' })
+      .returningAll()
+      .executeTakeFirstOrThrow()
+
+    // Tenant 2 should NOT see tenant 1's user
+    const users = await executor2.selectFrom('users').selectAll().execute()
+    expect(users).not.toContainEqual(expect.objectContaining({ id: user1.id }))
+
+    // Tenant 1 should see their own user
+    const tenant1Users = await executor1.selectFrom('users').selectAll().execute()
+    expect(tenant1Users).toContainEqual(expect.objectContaining({ id: user1.id }))
+  })
+})
+```
+
 ## Extending This Example
 
 To add more repositories, follow the pattern in `user.repository.ts`:
+
+### Traditional Approach (Manual Filtering)
 
 1. Create a repository file (e.g., `project.repository.ts`)
 2. Accept `executor` and `tenantContext` parameters
@@ -462,6 +758,36 @@ export function createProjectRepository(
         .selectAll()
         .where('tenant_id', '=', getTenantId()) // Key: tenant filter
         .execute()
+    }
+  }
+}
+```
+
+### Recommended Approach (v0.7 Unified Execution Layer)
+
+1. Create a repository file (e.g., `project.repository.ts`)
+2. Accept `executor` parameter (no `tenantContext` needed)
+3. **NO** manual tenant filtering required
+4. Add Zod schemas for validation
+
+Example:
+
+```typescript
+export function createProjectRepository(executor: Executor<Database>) {
+  return {
+    async findAll() {
+      return executor
+        .selectFrom('projects')
+        .selectAll()
+        .execute() // RLS plugin automatically adds tenant filter
+    },
+
+    async create(data: NewProject) {
+      return executor
+        .insertInto('projects')
+        .values(data)
+        .returningAll()
+        .executeTakeFirstOrThrow() // RLS plugin automatically injects tenant_id
     }
   }
 }

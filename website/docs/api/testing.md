@@ -8,8 +8,6 @@ description: Testing utilities API reference
 
 Testing utilities for Kysera - transaction isolation, factories, seeding, and test helpers.
 
-**Version:** 0.7.3
-
 ## Installation
 
 Install as a development dependency:

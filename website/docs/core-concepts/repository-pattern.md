@@ -6,15 +6,14 @@ description: Understanding the repository pattern in Kysera
 
 # Repository Pattern
 
-**Version 0.7.3**
 
-Kysera's repository pattern provides a clean abstraction over database operations with type safety and validation built-in. In v0.7+, repositories are built on top of the **@kysera/executor** foundation layer, enabling unified plugin support.
+Kysera's repository pattern provides a clean abstraction over database operations with type safety and validation built-in. repositories are built on top of the **@kysera/executor** foundation layer, enabling unified plugin support.
 
 ## Creating Repositories
 
 ### Using createORM with Plugins (Recommended)
 
-The recommended approach in v0.7+ - `createORM` internally uses `createExecutor()` for plugin support:
+The recommended approach - `createORM` internally uses `createExecutor()` for plugin support:
 
 ```typescript
 import { createORM } from '@kysera/repository'
@@ -337,7 +336,7 @@ const userRepo = factory.create({
 
 Repositories work seamlessly with transactions:
 
-### With createORM (Recommended for v0.7+)
+### With createORM (Recommended)
 
 ```typescript
 import { createORM } from '@kysera/repository'

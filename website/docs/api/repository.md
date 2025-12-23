@@ -25,7 +25,7 @@ npm install zod           # Popular schema validation
 **Dependencies:** @kysera/executor, @kysera/dal, @kysera/core
 **Peer Dependencies:** kysely >=0.28.8, zod ^4.x (optional)
 
-:::tip Unified Execution Layer (v0.7+)
+:::tip Unified Execution Layer
 `@kysera/repository` uses `@kysera/executor` under the hood for plugin management. Plugins work through query interception (`interceptQuery`) and repository extensions (`extendRepository`). Query interceptors apply to both Repository and DAL patterns. Repository extensions work only with Repository pattern.
 :::
 

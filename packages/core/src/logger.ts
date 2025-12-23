@@ -1,6 +1,32 @@
 /**
- * Shared logger interface for Kysera ecosystem.
- * All packages can optionally accept this logger for consistent logging.
+ * Universal logging interface for the Kysera ecosystem.
+ *
+ * This interface provides a standardized way to log messages across all Kysera packages.
+ * It follows common logging levels (debug, info, warn, error) and can be implemented
+ * with any logging library (winston, pino, bunyan, etc.) or custom implementation.
+ *
+ * @example
+ * ```typescript
+ * // Custom logger implementation with Winston
+ * import winston from 'winston'
+ * import type { KyseraLogger } from '@kysera/core'
+ *
+ * const winstonLogger = winston.createLogger({
+ *   level: 'info',
+ *   format: winston.format.json(),
+ *   transports: [new winston.transports.Console()]
+ * })
+ *
+ * const customLogger: KyseraLogger = {
+ *   debug: (msg, ...args) => winstonLogger.debug(msg, ...args),
+ *   info: (msg, ...args) => winstonLogger.info(msg, ...args),
+ *   warn: (msg, ...args) => winstonLogger.warn(msg, ...args),
+ *   error: (msg, ...args) => winstonLogger.error(msg, ...args)
+ * }
+ *
+ * // Use with Kysera packages
+ * const orm = await createORM(db, [], { logger: customLogger })
+ * ```
  */
 export interface KyseraLogger {
   debug(message: string, ...args: unknown[]): void
@@ -10,7 +36,25 @@ export interface KyseraLogger {
 }
 
 /**
- * Simple console logger implementation.
+ * Default console-based logger implementation.
+ *
+ * This is the default logger used by Kysera packages when no custom logger is provided.
+ * All log messages are prefixed with `[kysera:level]` for easy filtering and identification.
+ *
+ * @example
+ * ```typescript
+ * import { consoleLogger } from '@kysera/core'
+ *
+ * // Use as default logger
+ * const orm = await createORM(db, [], { logger: consoleLogger })
+ *
+ * // Direct usage
+ * consoleLogger.info('User created', { userId: 123 })
+ * // Output: [kysera:info] User created { userId: 123 }
+ *
+ * consoleLogger.error('Database error', error)
+ * // Output: [kysera:error] Database error [Error object]
+ * ```
  */
 export const consoleLogger: KyseraLogger = {
   debug: (msg, ...args) => console.debug(`[kysera:debug] ${msg}`, ...args),
@@ -20,7 +64,26 @@ export const consoleLogger: KyseraLogger = {
 }
 
 /**
- * No-op logger for silent operation.
+ * No-op logger that discards all log messages.
+ *
+ * This logger is useful for testing environments or production scenarios where
+ * logging should be completely disabled. All methods are empty functions that
+ * do nothing, ensuring zero performance overhead from logging operations.
+ *
+ * @example
+ * ```typescript
+ * import { silentLogger } from '@kysera/core'
+ *
+ * // Disable all logging in tests
+ * const orm = await createORM(db, [], { logger: silentLogger })
+ *
+ * // Or conditionally in production
+ * const logger = process.env.NODE_ENV === 'production'
+ *   ? silentLogger
+ *   : consoleLogger
+ *
+ * const orm = await createORM(db, [], { logger })
+ * ```
  */
 export const silentLogger: KyseraLogger = {
   debug: () => {
@@ -38,7 +101,32 @@ export const silentLogger: KyseraLogger = {
 }
 
 /**
- * Create a logger with a specific prefix.
+ * Create a logger that adds a custom prefix to all log messages.
+ *
+ * This is useful for creating package-specific or feature-specific loggers
+ * that help identify the source of log messages in complex applications.
+ *
+ * @param prefix - The prefix to add to all log messages (without brackets)
+ * @param baseLogger - The underlying logger to use (defaults to consoleLogger)
+ * @returns A new logger that prefixes all messages with `[prefix]`
+ *
+ * @example
+ * ```typescript
+ * import { createPrefixedLogger, consoleLogger } from '@kysera/core'
+ *
+ * // Create package-specific logger
+ * const auditLogger = createPrefixedLogger('audit', consoleLogger)
+ * auditLogger.info('User action recorded', { userId: 123, action: 'login' })
+ * // Output: [kysera:info] [audit] User action recorded { userId: 123, action: 'login' }
+ *
+ * // Create feature-specific logger
+ * const authLogger = createPrefixedLogger('auth')
+ * authLogger.warn('Failed login attempt', { username: 'alice' })
+ * // Output: [kysera:warn] [auth] Failed login attempt { username: 'alice' }
+ *
+ * // Use with custom base logger
+ * const myLogger = createPrefixedLogger('my-app', customWinstonLogger)
+ * ```
  */
 export function createPrefixedLogger(
   prefix: string,

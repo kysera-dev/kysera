@@ -18,12 +18,9 @@ npm install @kysera/rls
 
 | Metric                | Value                                                  |
 | --------------------- | ------------------------------------------------------ |
-| **Version**           | 0.7.0                                                  |
 | **Bundle Size**       | ~10 KB (minified)                                      |
 | **Dependencies**      | @kysera/core (workspace), @kysera/executor (workspace) |
 | **Peer Dependencies** | kysely >=0.28.8                                        |
-
-**New in v0.7**: RLS plugin now uses the unified `@kysera/executor` Plugin interface and works with both Repository and DAL patterns.
 
 ## Exports
 
@@ -1055,7 +1052,7 @@ if (canUpdate) {
 
 ## Usage with DAL Pattern
 
-**New in v0.7**: RLS filtering now works with DAL pattern via executor interception.
+RLS filtering now works with DAL pattern via executor interception.
 
 ```typescript
 import { createQuery, createContext, withTransaction } from '@kysera/dal'

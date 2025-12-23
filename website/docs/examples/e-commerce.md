@@ -146,7 +146,7 @@ const order = await db.transaction().execute(async trx => {
 })
 ```
 
-### Alternative: With Plugins (v0.7+)
+### Alternative: With Plugins
 
 For automatic audit logging or soft-delete support:
 
@@ -396,9 +396,9 @@ This example demonstrates the following production-ready patterns:
 6. **Price Consistency** - Cart prices are always fetched via JOIN, never stored
 7. **Error Handling** - Custom error types like `InsufficientStockError` and `InvalidStatusTransitionError`
 
-### v0.7 Enhancements
+### Plugin Enhancements
 
-With v0.7, you can enhance this example with:
+You can enhance this example with:
 
 - **Automatic Audit Logging** - Use `@kysera/audit` plugin to automatically log all inventory changes
 - **Soft Delete Support** - Use `@kysera/soft-delete` plugin for cart items or archived products
