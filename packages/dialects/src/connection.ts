@@ -34,7 +34,14 @@ export function parseConnectionUrl(url: string): ConnectionConfig {
  * // 'postgresql://localhost:5432/mydb'
  */
 export function buildConnectionUrl(dialect: DatabaseDialect, config: ConnectionConfig): string {
-  const protocol = dialect === 'postgres' ? 'postgresql' : dialect
+  // Map dialect to protocol
+  const protocolMap: Record<DatabaseDialect, string> = {
+    postgres: 'postgresql',
+    mysql: 'mysql',
+    sqlite: 'sqlite',
+    mssql: 'mssql'
+  }
+  const protocol = protocolMap[dialect]
   const auth = config.user
     ? config.password
       ? `${config.user}:${config.password}@`

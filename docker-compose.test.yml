@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -58,8 +56,32 @@ services:
       timeout: 5s
       retries: 5
 
+  mssql:
+    # Azure SQL Edge - ARM64 compatible SQL Server for Apple Silicon
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    container_name: kysera_test_mssql
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Test@12345"
+      MSSQL_PID: "Developer"
+    cap_add:
+      - SYS_PTRACE
+    healthcheck:
+      test: [
+        "CMD-SHELL",
+        "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'Test@12345' -Q 'SELECT 1' || exit 1"
+      ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
 volumes:
   postgres_data:
     driver: local
   mysql_data:
+    driver: local
+  mssql_data:
     driver: local

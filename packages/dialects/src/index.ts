@@ -40,6 +40,7 @@ export { getAdapter, createDialectAdapter, registerAdapter } from './factory.js'
 export { PostgresAdapter, postgresAdapter } from './adapters/postgres.js'
 export { MySQLAdapter, mysqlAdapter } from './adapters/mysql.js'
 export { SQLiteAdapter, sqliteAdapter } from './adapters/sqlite.js'
+export { MSSQLAdapter, mssqlAdapter } from './adapters/mssql.js'
 
 // Connection utilities
 export { parseConnectionUrl, buildConnectionUrl, getDefaultPort } from './connection.js'

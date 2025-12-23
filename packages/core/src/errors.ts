@@ -18,6 +18,11 @@ const MYSQL_COL_REGEX = /^([^.]+)$/
 const SQLITE_UNIQUE_REGEX = /UNIQUE constraint failed: (\w+)\.(\w+)/
 const SQLITE_NOT_NULL_REGEX = /NOT NULL constraint failed: (\w+)\.(\w+)/
 const SQLITE_CHECK_REGEX = /CHECK constraint failed: (\w+)/
+// MSSQL regex patterns
+const MSSQL_UNIQUE_REGEX = /Cannot insert duplicate key.*?'([^']+)'/i
+const MSSQL_UNIQUE_CONSTRAINT_REGEX = /constraint "?([^"]+)"?.*?column[s]? ?\(?'?([^')]+)/i
+const MSSQL_NULL_REGEX = /Cannot insert the value NULL into column '([^']+)'/i
+const MSSQL_FK_REGEX = /FOREIGN KEY constraint "?([^"]+)"?/i
 
 export class DatabaseError extends Error {
   constructor(
@@ -146,7 +151,7 @@ export class CheckConstraintError extends DatabaseError {
   }
 }
 
-export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite'
+export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql'
 
 /**
  * Database error with code property (internal type for parsing).
@@ -266,8 +271,54 @@ function parseSQLiteError(message: string): DatabaseError {
 }
 
 /**
+ * Parse MSSQL-specific database errors.
+ * MSSQL error codes: 2627 (unique), 2601 (unique), 515 (not null), 547 (FK)
+ * @internal
+ */
+function parseMSSQLError(dbError: RawDatabaseError): DatabaseError {
+  const message = dbError.message ?? ''
+  const code = dbError.code ?? ''
+
+  // Unique constraint violations (error 2627, 2601)
+  if (
+    code === '2627' ||
+    code === '2601' ||
+    message.toLowerCase().includes('cannot insert duplicate key') ||
+    message.toLowerCase().includes('unique key constraint')
+  ) {
+    const match = MSSQL_UNIQUE_REGEX.exec(message)
+    const constraintMatch = MSSQL_UNIQUE_CONSTRAINT_REGEX.exec(message)
+    const constraint = match?.[1] ?? constraintMatch?.[1] ?? 'unique'
+    const column = constraintMatch?.[2] ?? 'unknown'
+    return new UniqueConstraintError(constraint, 'unknown', column !== 'unknown' ? [column] : [])
+  }
+
+  // Foreign key constraint violations (error 547)
+  if (
+    code === '547' ||
+    message.toLowerCase().includes('foreign key constraint') ||
+    message.toLowerCase().includes('conflicted with the foreign key')
+  ) {
+    const match = MSSQL_FK_REGEX.exec(message)
+    return new ForeignKeyError(match?.[1] ?? 'foreign_key', 'unknown', 'unknown')
+  }
+
+  // Not null violations (error 515)
+  if (
+    code === '515' ||
+    message.toLowerCase().includes('cannot insert the value null') ||
+    message.toLowerCase().includes('does not allow nulls')
+  ) {
+    const match = MSSQL_NULL_REGEX.exec(message)
+    return new NotNullError(match?.[1] ?? 'unknown')
+  }
+
+  return new DatabaseError(message || 'Database error', dbError.code ?? ErrorCodes.DB_UNKNOWN)
+}
+
+/**
  * Multi-database error parser
- * Supports PostgreSQL, MySQL, and SQLite
+ * Supports PostgreSQL, MySQL, SQLite, and MSSQL
  *
  * Uses unified ErrorCodes from @kysera/core/error-codes for consistent
  * error code formatting across all database dialects.
@@ -292,6 +343,10 @@ export function parseDatabaseError(
 
   if (dialect === 'sqlite') {
     return parseSQLiteError(dbError.message ?? '')
+  }
+
+  if (dialect === 'mssql') {
+    return parseMSSQLError(dbError)
   }
 
   return new DatabaseError('Unknown database error', ErrorCodes.DB_UNKNOWN)
