@@ -3,7 +3,7 @@ import { Kysely } from 'kysely'
 import {
   type DatabaseType,
   type MultiDbTestDatabase,
-  createTestDb,
+  createTestDbAsync,
   initializeSchema,
   seedDatabase,
   clearDatabase
@@ -38,9 +38,9 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', dbType => {
   let db: Kysely<MultiDbTestDatabase>
 
   beforeAll(async () => {
-    db = createTestDb(dbType)
+    db = await createTestDbAsync(dbType)
     await initializeSchema(db, dbType)
-  })
+  }, 30000) // Extended timeout for MSSQL database creation
 
   afterAll(async () => {
     await db.destroy()
@@ -125,9 +125,7 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', dbType => {
       }
     })
 
-    // MSSQL doesn't allow multiple cascade paths, so comments->users FK
-    // doesn't have ON DELETE CASCADE, causing this test to fail
-    it.skipIf(dbType === 'mssql')('should handle cascading deletes', async () => {
+    it('should handle cascading deletes', async () => {
       // Get user with posts
       const user = await db
         .selectFrom('users')
@@ -146,7 +144,14 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', dbType => {
 
       expect(postsBefore).toHaveLength(2)
 
-      // Delete user (should cascade to posts)
+      // For MSSQL: comments->users FK doesn't have CASCADE to avoid
+      // multiple cascade paths (users->posts->comments AND users->comments).
+      // We need to manually delete comments referencing the user first.
+      if (dbType === 'mssql') {
+        await db.deleteFrom('comments').where('user_id', '=', user!.id).execute()
+      }
+
+      // Delete user (should cascade to posts, posts cascade to remaining comments)
       await db.deleteFrom('users').where('id', '=', user!.id).execute()
 
       // Check posts are deleted
@@ -162,24 +167,22 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', dbType => {
 
   // Health Checks tests moved to @kysera/infra package
 
-  // MSSQL requires ORDER BY for OFFSET/FETCH pagination and has different syntax
-  // Skip pagination tests for MSSQL until proper dialect-aware pagination is implemented
-  describe.skipIf(dbType === 'mssql')('Pagination', () => {
+  describe('Pagination', () => {
     it('should paginate with offset', async () => {
       const { paginate } = await import('../src/pagination.js')
       const query = db.selectFrom('users').selectAll().orderBy('email', 'asc')
 
-      const page1 = await paginate(query, { page: 1, limit: 2 })
+      const page1 = await paginate(query, { page: 1, limit: 2, dialect: dbType })
       expect(page1.data).toHaveLength(2)
       expect(page1.data[0]!.email).toBe('alice@example.com')
       expect(page1.pagination.hasNext).toBe(true)
 
-      const page2 = await paginate(query, { page: 2, limit: 2 })
+      const page2 = await paginate(query, { page: 2, limit: 2, dialect: dbType })
       expect(page2.data).toHaveLength(2)
       expect(page2.data[0]!.email).toBe('charlie@example.com')
       expect(page2.pagination.hasNext).toBe(true)
 
-      const page3 = await paginate(query, { page: 3, limit: 2 })
+      const page3 = await paginate(query, { page: 3, limit: 2, dialect: dbType })
       expect(page3.data).toHaveLength(1)
       expect(page3.data[0]!.email).toBe('eve@example.com')
       expect(page3.pagination.hasNext).toBe(false)
@@ -194,7 +197,8 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', dbType => {
 
       const page1 = await paginateCursor(query, {
         orderBy: [{ column: 'title', direction: 'asc' }],
-        limit: 2
+        limit: 2,
+        dialect: dbType
       })
 
       expect(page1.data).toHaveLength(2)
@@ -204,7 +208,8 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', dbType => {
       const page2 = await paginateCursor(query, {
         orderBy: [{ column: 'title', direction: 'asc' }],
         limit: 2,
-        cursor: page1.pagination.nextCursor
+        cursor: page1.pagination.nextCursor,
+        dialect: dbType
       })
 
       expect(page2.data).toHaveLength(2)
@@ -220,7 +225,8 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', dbType => {
           { column: 'user_id', direction: 'asc' },
           { column: 'title', direction: 'asc' }
         ],
-        limit: 2
+        limit: 2,
+        dialect: dbType
       })
 
       expect(page1.data).toHaveLength(2)
@@ -232,7 +238,8 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', dbType => {
           { column: 'title', direction: 'asc' }
         ],
         limit: 2,
-        cursor: page1.pagination.nextCursor
+        cursor: page1.pagination.nextCursor,
+        dialect: dbType
       })
 
       // Ensure cursor advanced - check if we got different data or reached the end

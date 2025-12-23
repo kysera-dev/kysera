@@ -1,5 +1,6 @@
 import type { SelectQueryBuilder, ExpressionBuilder } from 'kysely'
-import { BadRequestError } from './errors.js'
+import { sql } from 'kysely'
+import { BadRequestError, type DatabaseDialect } from './errors.js'
 
 /**
  * Pagination bounds constants
@@ -106,6 +107,11 @@ export interface PaginationOptions {
   page?: number | undefined
   limit?: number | undefined
   cursor?: string | undefined
+  /**
+   * Database dialect for dialect-specific SQL generation
+   * Required for MSSQL which uses different OFFSET/FETCH syntax
+   */
+  dialect?: DatabaseDialect | undefined
 }
 
 export interface PaginatedResult<T> {
@@ -124,6 +130,14 @@ export interface PaginatedResult<T> {
 
 /**
  * Offset-based pagination
+ *
+ * @param query - The base query to paginate
+ * @param options - Pagination options including page, limit, and optional dialect
+ *
+ * @remarks
+ * For MSSQL, the dialect option must be set to 'mssql' as it uses
+ * OFFSET/FETCH syntax instead of standard LIMIT/OFFSET.
+ * The query MUST include an ORDER BY clause for MSSQL pagination.
  */
 export async function paginate<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -131,6 +145,7 @@ export async function paginate<DB, TB extends keyof DB, O>(
 ): Promise<PaginatedResult<O>> {
   const page = Math.min(MAX_PAGE, Math.max(1, options.page || 1))
   const limit = options.limit === 0 ? 0 : Math.min(MAX_LIMIT, Math.max(1, options.limit || 20))
+  const dialect = options.dialect
 
   // Check for potential overflow
   const offset = (page - 1) * limit
@@ -138,7 +153,7 @@ export async function paginate<DB, TB extends keyof DB, O>(
     throw new BadRequestError(`Page ${page} with limit ${limit} exceeds safe integer range`)
   }
 
-  // Get total count
+  // Get total count - for MSSQL we need to use a different approach
   const countQuery = query.clearSelect().clearOrderBy() as SelectQueryBuilder<
     DB,
     TB,
@@ -151,8 +166,18 @@ export async function paginate<DB, TB extends keyof DB, O>(
   const total = Number(count)
   const totalPages = limit === 0 ? 0 : Math.ceil(total / limit)
 
-  // Get paginated data
-  const data = await query.limit(limit).offset(offset).execute()
+  // Get paginated data with dialect-specific handling
+  let data: O[]
+  if (dialect === 'mssql') {
+    // MSSQL uses OFFSET/FETCH syntax which requires ORDER BY
+    // Use modifyEnd to add MSSQL-compatible pagination
+    data = await query
+      .modifyEnd(sql`offset ${sql.literal(offset)} rows fetch next ${sql.literal(limit)} rows only`)
+      .execute()
+  } else {
+    // Standard LIMIT/OFFSET for PostgreSQL, MySQL, SQLite
+    data = await query.limit(limit).offset(offset).execute()
+  }
 
   return {
     data,
@@ -177,6 +202,11 @@ export interface CursorOptions<T> {
   }>
   cursor?: string | undefined
   limit?: number | undefined
+  /**
+   * Database dialect for dialect-specific SQL generation
+   * Required for MSSQL which uses different OFFSET/FETCH syntax
+   */
+  dialect?: DatabaseDialect | undefined
 }
 
 /**
@@ -191,7 +221,7 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
   options: CursorOptions<O>
 ): Promise<PaginatedResult<O>> {
-  const { orderBy, cursor } = options
+  const { orderBy, cursor, dialect } = options
 
   // Apply bounds checking to limit parameter
   // Allow 0 as a special case (same as offset pagination)
@@ -291,7 +321,16 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
   // Fetch one extra row to determine if there's a next page
   // Safe to add 1 because limit is already bounded to MAX_LIMIT
   // Special case: if limit is 0, fetch 0 rows
-  const data = limit === 0 ? [] : await finalQuery.limit(limit + 1).execute()
+  let data: O[]
+  if (limit === 0) {
+    data = []
+  } else if (dialect === 'mssql') {
+    // MSSQL: Use TOP for cursor pagination (no offset needed)
+    data = await finalQuery.top(limit + 1).execute()
+  } else {
+    // Standard LIMIT for PostgreSQL, MySQL, SQLite
+    data = await finalQuery.limit(limit + 1).execute()
+  }
 
   const hasNext = data.length > limit
   if (hasNext) data.pop()
@@ -341,6 +380,10 @@ export async function paginateCursorSimple<DB, TB extends keyof DB, O>(
 
   if (options.limit !== undefined) {
     cursorOptions.limit = options.limit
+  }
+
+  if (options.dialect !== undefined) {
+    cursorOptions.dialect = options.dialect
   }
 
   return paginateCursor(query, cursorOptions)
