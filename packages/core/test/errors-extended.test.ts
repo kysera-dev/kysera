@@ -211,6 +211,53 @@ describe('Extended Error Handling', () => {
       expect(parsed).toBeInstanceOf(NotNullError)
       expect((parsed as NotNullError).column).toBe('unknown')
     })
+
+    it('should parse MySQL ER_NO_DEFAULT_FOR_FIELD error', () => {
+      const mysqlError = {
+        code: 'ER_NO_DEFAULT_FOR_FIELD',
+        sqlMessage: "Field 'username' doesn't have a default value"
+      }
+
+      const parsed = parseDatabaseError(mysqlError, 'mysql')
+
+      expect(parsed).toBeInstanceOf(NotNullError)
+      expect(parsed.code).toBe(ErrorCodes.VALIDATION_NOT_NULL_VIOLATION)
+      expect((parsed as NotNullError).column).toBe('username')
+    })
+
+    it('should parse MySQL ER_NO_DEFAULT_FOR_FIELD without sqlMessage', () => {
+      const mysqlError = {
+        code: 'ER_NO_DEFAULT_FOR_FIELD'
+        // No sqlMessage - should default to 'unknown'
+      }
+
+      const parsed = parseDatabaseError(mysqlError, 'mysql')
+
+      expect(parsed).toBeInstanceOf(NotNullError)
+      expect((parsed as NotNullError).column).toBe('unknown')
+    })
+
+    it('should parse MySQL ER_ROW_IS_REFERENCED error', () => {
+      const mysqlError = {
+        code: 'ER_ROW_IS_REFERENCED',
+        message: 'Cannot delete or update a parent row'
+      }
+
+      const parsed = parseDatabaseError(mysqlError, 'mysql')
+
+      expect(parsed).toBeInstanceOf(ForeignKeyError)
+    })
+
+    it('should parse MySQL ER_ROW_IS_REFERENCED_2 error', () => {
+      const mysqlError = {
+        code: 'ER_ROW_IS_REFERENCED_2',
+        message: 'Cannot delete or update a parent row'
+      }
+
+      const parsed = parseDatabaseError(mysqlError, 'mysql')
+
+      expect(parsed).toBeInstanceOf(ForeignKeyError)
+    })
   })
 
   describe('SQLite Error Parsing', () => {
@@ -238,6 +285,66 @@ describe('Extended Error Handling', () => {
       const uniqueError = parsed as UniqueConstraintError
       expect(uniqueError.table).toBe('unknown') // SQLite parser doesn't extract table from partial match
       expect(uniqueError.columns).toEqual([])
+    })
+
+    it('should parse SQLite CHECK constraint error', () => {
+      const sqliteError = {
+        message: 'CHECK constraint failed: age_positive'
+      }
+
+      const parsed = parseDatabaseError(sqliteError, 'sqlite')
+
+      expect(parsed).toBeInstanceOf(CheckConstraintError)
+      expect(parsed.code).toBe(ErrorCodes.VALIDATION_CHECK_VIOLATION)
+      expect((parsed as CheckConstraintError).constraint).toBe('age_positive')
+    })
+
+    it('should parse SQLite CHECK constraint error without constraint name', () => {
+      const sqliteError = {
+        message: 'CHECK constraint failed'
+        // No constraint name in message
+      }
+
+      const parsed = parseDatabaseError(sqliteError, 'sqlite')
+
+      expect(parsed).toBeInstanceOf(CheckConstraintError)
+      expect((parsed as CheckConstraintError).constraint).toBe('unknown')
+    })
+  })
+
+  describe('Error toJSON methods', () => {
+    it('should serialize ForeignKeyError to JSON', () => {
+      const error = new ForeignKeyError('fk_user_id', 'posts', 'users')
+
+      const json = error.toJSON()
+
+      expect(json.constraint).toBe('fk_user_id')
+      expect(json.table).toBe('posts')
+      expect(json.referencedTable).toBe('users')
+      expect(json.name).toBe('ForeignKeyError')
+      expect(json.code).toBe(ErrorCodes.VALIDATION_FOREIGN_KEY_VIOLATION)
+    })
+
+    it('should serialize NotNullError to JSON', () => {
+      const error = new NotNullError('email', 'users')
+
+      const json = error.toJSON()
+
+      expect(json.column).toBe('email')
+      expect(json.table).toBe('users')
+      expect(json.name).toBe('NotNullError')
+      expect(json.code).toBe(ErrorCodes.VALIDATION_NOT_NULL_VIOLATION)
+    })
+
+    it('should serialize CheckConstraintError to JSON', () => {
+      const error = new CheckConstraintError('age_positive', 'users')
+
+      const json = error.toJSON()
+
+      expect(json.constraint).toBe('age_positive')
+      expect(json.table).toBe('users')
+      expect(json.name).toBe('CheckConstraintError')
+      expect(json.code).toBe(ErrorCodes.VALIDATION_CHECK_VIOLATION)
     })
   })
 
