@@ -131,7 +131,7 @@ describe('rlsPlugin', () => {
 
       const plugin = rlsPlugin({
         schema,
-        skipTables: ['system_logs'],
+        excludeTables: ['system_logs'],
         bypassRoles: ['admin', 'system'],
         logger,
         requireContext: true,

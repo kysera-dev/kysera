@@ -1299,8 +1299,8 @@ export interface RLSPluginOptions<DB = unknown> {
   /** Enable native PostgreSQL RLS sync */
   nativeSync?: boolean
 
-  /** Tables to skip RLS for */
-  skipTables?: string[]
+  /** Tables to exclude from RLS */
+  excludeTables?: string[]
 
   /** Roles that bypass RLS */
   bypassRoles?: string[]
@@ -1322,7 +1322,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
   const {
     schema,
     nativeSync = false,
-    skipTables = [],
+    excludeTables = [],
     bypassRoles = [],
     logger = silentLogger,
     requireContext = false,
@@ -1373,7 +1373,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
       const { operation, table, metadata } = context
 
       // Skip if table is excluded
-      if (skipTables.includes(table)) {
+      if (excludeTables.includes(table)) {
         return qb
       }
 
@@ -1426,7 +1426,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
       const table = baseRepo.tableName
 
       // Skip excluded tables
-      if (skipTables.includes(table)) {
+      if (excludeTables.includes(table)) {
         return repo
       }
 

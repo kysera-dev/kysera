@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-deprecated -- DatabaseDialect re-exported for backwards compatibility */
 /**
  * @kysera/testing - Testing utilities for Kysera
  *
@@ -42,12 +41,10 @@ export {
 } from './transaction.js'
 
 // Cleanup utilities
-export {
-  cleanDatabase,
-  type CleanupStrategy,
-  type CleanupOptions,
-  type DatabaseDialect
-} from './cleanup.js'
+export { cleanDatabase, type CleanupStrategy, type CleanupOptions } from './cleanup.js'
+
+// Re-export Dialect from core for convenience
+export type { Dialect } from '@kysera/core'
 
 // Factory utilities
 export {

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-deprecated -- DatabaseDialect kept for backwards compatibility */
 /**
  * Database cleanup utilities.
  *
@@ -15,12 +14,6 @@ import { silentLogger, type Dialect, type KyseraLogger } from '@kysera/core'
 export type CleanupStrategy = 'truncate' | 'transaction' | 'delete'
 
 /**
- * Supported database dialects.
- * @deprecated Use `Dialect` from '@kysera/core' instead.
- */
-export type DatabaseDialect = Dialect
-
-/**
  * Options for database cleanup operations.
  */
 export interface CleanupOptions {
@@ -28,7 +21,7 @@ export interface CleanupOptions {
    * Explicitly specify the database dialect.
    * If not provided, will attempt to detect from Kysely instance.
    */
-  dialect?: DatabaseDialect
+  dialect?: Dialect
   /**
    * List of tables to clean (in deletion order for 'delete' strategy).
    */
@@ -196,9 +189,9 @@ interface DatabaseExecutorWithAdapter {
  */
 function detectDialect<DB>(
   db: Kysely<DB>,
-  providedDialect?: DatabaseDialect,
+  providedDialect?: Dialect,
   logger: KyseraLogger = silentLogger
-): DatabaseDialect {
+): Dialect {
   // Use provided dialect if available (recommended approach)
   if (providedDialect) {
     return providedDialect
@@ -237,7 +230,7 @@ function detectDialect<DB>(
  * Try multiple strategies to detect database dialect
  * @internal
  */
-function tryMultipleDetectionStrategies<DB>(db: Kysely<DB>): DatabaseDialect | null {
+function tryMultipleDetectionStrategies<DB>(db: Kysely<DB>): Dialect | null {
   // Strategy 1: Check via getExecutor() method (most common)
   const strategy1 = tryGetExecutorStrategy(db)
   if (strategy1) return strategy1
@@ -254,7 +247,7 @@ function tryMultipleDetectionStrategies<DB>(db: Kysely<DB>): DatabaseDialect | n
  * Strategy 1: Detect via getExecutor() accessor
  * @internal
  */
-function tryGetExecutorStrategy<DB>(db: Kysely<DB>): DatabaseDialect | null {
+function tryGetExecutorStrategy<DB>(db: Kysely<DB>): Dialect | null {
   try {
     // Type assertion is necessary for accessing internal Kysely properties
      
@@ -291,7 +284,7 @@ function tryGetExecutorStrategy<DB>(db: Kysely<DB>): DatabaseDialect | null {
  * Strategy 2: Detect via introspection of db object properties
  * @internal
  */
-function tryDialectMethodsStrategy<DB>(db: Kysely<DB>): DatabaseDialect | null {
+function tryDialectMethodsStrategy<DB>(db: Kysely<DB>): Dialect | null {
   try {
     // Check if db has any dialect-specific internal properties
     // This is a more defensive fallback strategy
@@ -315,7 +308,7 @@ function tryDialectMethodsStrategy<DB>(db: Kysely<DB>): DatabaseDialect | null {
  * Check a single property for dialect indicators
  * @internal
  */
-function checkPropertyForDialect(value: unknown): DatabaseDialect | null {
+function checkPropertyForDialect(value: unknown): Dialect | null {
   if (!value || typeof value !== 'object') {
     return null
   }
@@ -379,7 +372,7 @@ async function truncateTableCascade<DB>(db: Kysely<DB>, tableName: string): Prom
 async function cleanUsingTruncate<DB>(
   db: Kysely<DB>,
   tables: string[],
-  providedDialect?: DatabaseDialect,
+  providedDialect?: Dialect,
   logger: KyseraLogger = silentLogger
 ): Promise<void> {
    

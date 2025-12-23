@@ -1,6 +1,6 @@
 {
   "name": "@kysera/core",
-  "version": "0.7.4",
+  "version": "0.8.0",
   "description": "Core utilities for Kysely - errors, pagination, types, logger",
   "type": "module",
   "main": "./dist/index.js",

@@ -28,15 +28,7 @@
  */
 
 // Types - Dialect is the canonical type from @kysera/core
-// DatabaseDialect is kept for backwards compatibility
-export type {
-  Dialect,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Exported for backwards compatibility
-  DatabaseDialect,
-  ConnectionConfig,
-  DialectAdapter,
-  DatabaseErrorLike
-} from './types.js'
+export type { Dialect, ConnectionConfig, DialectAdapter, DatabaseErrorLike } from './types.js'
 
 // Factory and adapters
 export { getAdapter, createDialectAdapter, registerAdapter } from './factory.js'

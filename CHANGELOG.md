@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2025-12-23
+
+### Breaking Changes
+
+- **RLS Plugin**: Removed deprecated `skipTables` option. Use `excludeTables` instead.
+- **Types**: Removed deprecated `DatabaseDialect` type alias from `@kysera/core`, `@kysera/dialects`, and `@kysera/testing`. Use `Dialect` from `@kysera/core` instead.
+
+### Changed
+
+- All packages updated to version 0.8.0
+- RLS plugin configuration simplified (only `excludeTables` supported)
+- Type exports consolidated to use canonical `Dialect` type from `@kysera/core`
+
+### Migration
+
+See the [v0.8 Migration Guide](/docs/guides/migration-v08) for detailed upgrade instructions.
+
 ## [0.7.4] - 2025-12-23
 
 ### ✨ Features

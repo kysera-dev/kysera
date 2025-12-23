@@ -48,10 +48,10 @@ kysera/
 
 | Tool               | Version  |
 | ------------------ | -------- |
-| Kysera packages    | 0.7.0    |
-| @kysera/executor   | 0.7.0    |
-| @kysera/dal        | 0.7.0    |
-| @kysera/repository | 0.7.0    |
+| Kysera packages    | 0.8.0    |
+| @kysera/executor   | 0.8.0    |
+| @kysera/dal        | 0.8.0    |
+| @kysera/repository | 0.8.0    |
 | Kysely (peer)      | >=0.28.9 |
 | TypeScript         | ^5.9.2   |
 | Turbo              | ^2.6.3   |
@@ -82,7 +82,7 @@ kysera/
 
 ## Code Patterns
 
-### Unified Execution Layer (NEW in v0.7)
+### Unified Execution Layer
 
 ```typescript
 import { createExecutor } from '@kysera/executor'
@@ -183,7 +183,7 @@ try {
 @kysera/migrations → @kysera/core
 ```
 
-**Key Change in v0.7**: `@kysera/executor` is the new foundation package that enables plugins to work with both Repository and DAL patterns. Both `@kysera/dal` and `@kysera/repository` now depend on it for unified plugin interception.
+**Architecture Note**: `@kysera/executor` is the foundation package that enables plugins to work with both Repository and DAL patterns. Both `@kysera/dal` and `@kysera/repository` depend on it for unified plugin interception.
 
 ## Testing
 

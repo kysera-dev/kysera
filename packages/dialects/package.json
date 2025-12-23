@@ -1,6 +1,6 @@
 {
   "name": "@kysera/dialects",
-  "version": "0.7.4",
+  "version": "0.8.0",
   "description": "Dialect-specific utilities for Kysely - PostgreSQL, MySQL, SQLite support",
   "type": "module",
   "main": "./dist/index.js",

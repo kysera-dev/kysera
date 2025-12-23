@@ -34,19 +34,6 @@ const plugin = rlsPlugin({
 See [Migration from v0.7](#migration-from-v07) for details.
 :::
 
-:::warning Deprecated: `skipTables` renamed to `excludeTables`
-The `skipTables` option has been deprecated in favor of `excludeTables` for consistency with other Kysera plugins.
-
-```typescript
-// ❌ Old (deprecated but still works)
-rlsPlugin({ schema, skipTables: ['migrations', 'audit_logs'] })
-
-// ✅ New (recommended)
-rlsPlugin({ schema, excludeTables: ['migrations', 'audit_logs'] })
-```
-
-Both options work in v0.7.3+, but `excludeTables` is preferred. `skipTables` will be removed in v0.8.0.
-:::
 
 ## Installation
 
@@ -96,8 +83,7 @@ interface RLSPluginOptions<DB = unknown> {
   schema: RLSSchema<DB> // RLS policy schema (required)
 
   // Table exclusion
-  excludeTables?: string[] // Tables to exclude from RLS (replaces skipTables)
-  skipTables?: string[]    // @deprecated Use excludeTables instead
+  excludeTables?: string[] // Tables to exclude from RLS
 
   // Security settings
   requireContext?: boolean          // Require RLS context (default: true)
@@ -603,7 +589,7 @@ Policies are evaluated differently depending on operation type:
 **For SELECT queries (`interceptQuery`):**
 
 ```
-1. Check bypass conditions (skipTables, isSystem, bypassRoles)
+1. Check bypass conditions (excludeTables, isSystem, bypassRoles)
 2. Get filter policies for table → registry.getFilters(table)
 3. For each filter:
    - Call filter.getConditions(ctx) → { tenant_id: 1, status: 'active' }
@@ -614,7 +600,7 @@ Policies are evaluated differently depending on operation type:
 **For mutations (create/update/delete via `extendRepository`):**
 
 ```
-1. Check bypass conditions (skipTables, isSystem, bypassRoles)
+1. Check bypass conditions (excludeTables, isSystem, bypassRoles)
 2. DENY policies first (highest priority)
    - If ANY deny evaluates to true → RLSPolicyViolation
 3. VALIDATE policies (create/update only)
@@ -1409,42 +1395,37 @@ const orm = await createORM(db, [
 
 **Use this only as a temporary measure during migration, then switch to Strategy 1 or 2.**
 
-### Deprecation: `skipTables` → `excludeTables`
+### Breaking Change: `skipTables` Removed
 
-**What changed:**
-- The `skipTables` option has been renamed to `excludeTables` for consistency with other Kysera plugins (`@kysera/soft-delete`, `@kysera/audit`)
+**What changed in v0.8.0:**
+- The deprecated `skipTables` option has been removed
+- Use `excludeTables` instead for table exclusion
 
 **Migration:**
 
 ```typescript
-// Before (still works but deprecated)
+// ❌ No longer supported (removed in v0.8.0)
 rlsPlugin({
   schema: rlsSchema,
   skipTables: ['migrations', 'audit_logs', 'system_config']
 })
 
-// After (recommended)
+// ✅ Use excludeTables instead
 rlsPlugin({
   schema: rlsSchema,
   excludeTables: ['migrations', 'audit_logs', 'system_config']
 })
 ```
 
-**Backward compatibility:**
-- `skipTables` still works in v0.7.3+ but logs a deprecation warning
-- `excludeTables` takes precedence if both are provided
-- `skipTables` will be removed in v0.8.0
-
 **Migration checklist:**
 
 1. Search for `skipTables` in your codebase
-2. Replace with `excludeTables`
+2. Replace all instances with `excludeTables`
 3. Test that excluded tables still bypass RLS
-4. Remove any deprecation warnings from logs
 
 ### Testing Your Migration
 
-After upgrading to v0.7.3, test these scenarios:
+After upgrading to v0.8.0, test these scenarios:
 
 **1. User Queries Require Context**
 ```typescript
