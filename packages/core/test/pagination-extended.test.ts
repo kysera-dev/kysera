@@ -86,11 +86,12 @@ describe('Extended Pagination Tests', () => {
       expect(page2.data[2]?.name).toBe('Charlie Foster')
     })
 
-    it.skip('should handle mixed direction ordering', async () => {
-      // Skip: Complex multi-column cursor with mixed directions needs more sophisticated implementation
+    it('should handle mixed direction ordering', async () => {
       const query = db.selectFrom('users').selectAll()
 
-      // First page with mixed ordering
+      // First page with mixed ordering (name DESC, email ASC)
+      // Order by name DESC: Eve Jackson > Eve Irving > David Harris > David Green > ...
+      // (alphabetically, 'Jackson' > 'Irving', 'Harris' > 'Green')
       const page1 = await paginateCursor(query, {
         orderBy: [
           { column: 'name', direction: 'desc' },
@@ -100,11 +101,10 @@ describe('Extended Pagination Tests', () => {
       })
 
       expect(page1.data).toHaveLength(3)
-      // Names should be in descending order - check actual results
-      // When name is same, email should be ascending
-      expect(page1.data[0]?.name).toMatch(/^Eve/)
-      expect(page1.data[1]?.name).toMatch(/^Eve/)
-      expect(page1.data[2]?.name).toMatch(/^David/)
+      // Names in DESC order: Eve Jackson, Eve Irving, David Harris
+      expect(page1.data[0]?.name).toBe('Eve Jackson')
+      expect(page1.data[1]?.name).toBe('Eve Irving')
+      expect(page1.data[2]?.name).toBe('David Harris')
 
       // Use cursor for next page
       const page2 = await paginateCursor(query, {
@@ -117,7 +117,10 @@ describe('Extended Pagination Tests', () => {
       })
 
       expect(page2.data).toHaveLength(3)
-      expect(page2.data[0]?.name).toBe('David Harris')
+      // Continues with: David Green, Charlie Foster, Charlie Evans
+      expect(page2.data[0]?.name).toBe('David Green')
+      expect(page2.data[1]?.name).toBe('Charlie Foster')
+      expect(page2.data[2]?.name).toBe('Charlie Evans')
     })
 
     it('should handle three-column ordering', async () => {

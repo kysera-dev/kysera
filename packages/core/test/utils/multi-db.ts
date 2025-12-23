@@ -94,6 +94,64 @@ export const DB_CONFIGS = {
 }
 
 /**
+ * Create MSSQL connection factory for tedious
+ */
+function createMssqlConnectionFactory(database: string): () => Tedious.Connection {
+  return () =>
+    new Tedious.Connection({
+      authentication: {
+        options: {
+          userName: DB_CONFIGS.mssql.user,
+          password: DB_CONFIGS.mssql.password
+        },
+        type: 'default'
+      },
+      options: {
+        database,
+        port: DB_CONFIGS.mssql.port,
+        trustServerCertificate: true,
+        encrypt: false
+      },
+      server: DB_CONFIGS.mssql.server
+    })
+}
+
+/**
+ * Ensure MSSQL test database exists
+ * Connects to master and creates kysera_test if it doesn't exist
+ */
+async function ensureMssqlDatabase(): Promise<void> {
+  const masterDb = new Kysely<Record<string, unknown>>({
+    dialect: new MssqlDialect({
+      tarn: {
+        ...Tarn,
+        options: { min: 0, max: 1 }
+      },
+      tedious: {
+        ...Tedious,
+        connectionFactory: createMssqlConnectionFactory('master')
+      }
+    })
+  })
+
+  try {
+    // Check if database exists
+    const result = await sql<{ name: string }>`
+      SELECT name FROM sys.databases WHERE name = ${DB_CONFIGS.mssql.database}
+    `.execute(masterDb)
+
+    if (!result.rows || result.rows.length === 0) {
+      // Create database using raw SQL (Kysely doesn't support CREATE DATABASE)
+      await sql.raw(`CREATE DATABASE [${DB_CONFIGS.mssql.database}]`).execute(masterDb)
+      // Wait for database to be ready
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+  } finally {
+    await masterDb.destroy()
+  }
+}
+
+/**
  * Create a test database connection
  */
 export function createTestDb(type: DatabaseType): Kysely<MultiDbTestDatabase> {
@@ -131,30 +189,11 @@ export function createTestDb(type: DatabaseType): Kysely<MultiDbTestDatabase> {
         dialect: new MssqlDialect({
           tarn: {
             ...Tarn,
-            options: {
-              min: 0,
-              max: 10
-            }
+            options: { min: 0, max: 10 }
           },
           tedious: {
             ...Tedious,
-            connectionFactory: () =>
-              new Tedious.Connection({
-                authentication: {
-                  options: {
-                    userName: DB_CONFIGS.mssql.user,
-                    password: DB_CONFIGS.mssql.password
-                  },
-                  type: 'default'
-                },
-                options: {
-                  database: DB_CONFIGS.mssql.database,
-                  port: DB_CONFIGS.mssql.port,
-                  trustServerCertificate: true,
-                  encrypt: false
-                },
-                server: DB_CONFIGS.mssql.server
-              })
+            connectionFactory: createMssqlConnectionFactory(DB_CONFIGS.mssql.database)
           }
         })
       })
@@ -162,6 +201,17 @@ export function createTestDb(type: DatabaseType): Kysely<MultiDbTestDatabase> {
     default:
       throw new Error(`Unsupported database type: ${type}`)
   }
+}
+
+/**
+ * Create a test database connection with async initialization
+ * For MSSQL, ensures the database exists before connecting
+ */
+export async function createTestDbAsync(type: DatabaseType): Promise<Kysely<MultiDbTestDatabase>> {
+  if (type === 'mssql') {
+    await ensureMssqlDatabase()
+  }
+  return createTestDb(type)
 }
 
 /**

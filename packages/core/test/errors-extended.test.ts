@@ -318,11 +318,11 @@ describe('Extended Error Handling', () => {
 
       const json = error.toJSON()
 
-      expect(json.constraint).toBe('fk_user_id')
-      expect(json.table).toBe('posts')
-      expect(json.referencedTable).toBe('users')
-      expect(json.name).toBe('ForeignKeyError')
-      expect(json.code).toBe(ErrorCodes.VALIDATION_FOREIGN_KEY_VIOLATION)
+      expect(json['constraint']).toBe('fk_user_id')
+      expect(json['table']).toBe('posts')
+      expect(json['referencedTable']).toBe('users')
+      expect(json['name']).toBe('ForeignKeyError')
+      expect(json['code']).toBe(ErrorCodes.VALIDATION_FOREIGN_KEY_VIOLATION)
     })
 
     it('should serialize NotNullError to JSON', () => {
@@ -330,10 +330,10 @@ describe('Extended Error Handling', () => {
 
       const json = error.toJSON()
 
-      expect(json.column).toBe('email')
-      expect(json.table).toBe('users')
-      expect(json.name).toBe('NotNullError')
-      expect(json.code).toBe(ErrorCodes.VALIDATION_NOT_NULL_VIOLATION)
+      expect(json['column']).toBe('email')
+      expect(json['table']).toBe('users')
+      expect(json['name']).toBe('NotNullError')
+      expect(json['code']).toBe(ErrorCodes.VALIDATION_NOT_NULL_VIOLATION)
     })
 
     it('should serialize CheckConstraintError to JSON', () => {
@@ -341,10 +341,10 @@ describe('Extended Error Handling', () => {
 
       const json = error.toJSON()
 
-      expect(json.constraint).toBe('age_positive')
-      expect(json.table).toBe('users')
-      expect(json.name).toBe('CheckConstraintError')
-      expect(json.code).toBe(ErrorCodes.VALIDATION_CHECK_VIOLATION)
+      expect(json['constraint']).toBe('age_positive')
+      expect(json['table']).toBe('users')
+      expect(json['name']).toBe('CheckConstraintError')
+      expect(json['code']).toBe(ErrorCodes.VALIDATION_CHECK_VIOLATION)
     })
   })
 
