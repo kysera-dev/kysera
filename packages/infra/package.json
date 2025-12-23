@@ -1,6 +1,6 @@
 {
   "name": "@kysera/infra",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "Infrastructure utilities for Kysely - health checks, retry, circuit breaker, graceful shutdown",
   "type": "module",
   "main": "./dist/index.js",
