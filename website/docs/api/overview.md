@@ -92,25 +92,52 @@ import { parseDatabaseError, paginate, consoleLogger } from '@kysera/core'
 Understanding the dependency hierarchy helps you choose the right packages:
 
 ```
-@kysera/executor (foundation - 0 dependencies)
-    │
-    ├──> @kysera/dal (depends on executor)
-    │       └──> Used for: Functional queries with plugin support
-    │
-    ├──> @kysera/repository (depends on executor + dal)
-    │       └──> Used for: Repository pattern with validation and plugin methods
-    │
-    └──> Plugin packages (use executor's Plugin interface)
-            ├──> @kysera/soft-delete (query interceptor + repository extensions)
-            ├──> @kysera/rls (query interceptor + repository extensions)
-            ├──> @kysera/timestamps (repository extensions only)
-            └──> @kysera/audit (repository extensions only)
+Layer 1: Foundation
+┌─────────────────────────────────────────────────────────────┐
+│ @kysera/core (0 deps)                                       │
+│   └──> Errors, pagination, logging, types                  │
+│                                                              │
+│ @kysera/dialects (0 deps)                                   │
+│   └──> Dialect adapters, introspection, error detection    │
+│                                                              │
+│ @kysera/executor (0 deps - peer: kysely)                    │
+│   └──> Plugin-aware Kysely wrapper, query interception     │
+└─────────────────────────────────────────────────────────────┘
 
-@kysera/core (standalone - 0 dependencies)
-    └──> Used by: All packages for errors, pagination, logging
+Layer 2: Data Access Patterns
+┌─────────────────────────────────────────────────────────────┐
+│ @kysera/dal (depends: @kysera/executor)                     │
+│   └──> Functional queries, context passing, composition    │
+│                                                              │
+│ @kysera/repository (depends: @kysera/executor, @kysera/dal) │
+│   └──> Repository pattern, validation, CRUD operations     │
+└─────────────────────────────────────────────────────────────┘
 
-@kysera/dialects (standalone - 0 dependencies)
-    └──> Used by: All packages for dialect-specific operations, error detection, introspection
+Layer 3: Plugins (depend on executor for Plugin interface)
+┌─────────────────────────────────────────────────────────────┐
+│ Query Interceptor Plugins (work with Repository + DAL)     │
+│   ├──> @kysera/soft-delete (interceptQuery + extendRepo)   │
+│   └──> @kysera/rls (interceptQuery + extendRepo)           │
+│                                                              │
+│ Repository Extension Plugins (Repository only)              │
+│   ├──> @kysera/timestamps (extendRepository only)          │
+│   └──> @kysera/audit (extendRepository only)               │
+└─────────────────────────────────────────────────────────────┘
+
+Layer 4: Infrastructure (standalone or depend on core)
+┌─────────────────────────────────────────────────────────────┐
+│ @kysera/infra (depends: @kysera/core)                       │
+│   └──> Health checks, retry, circuit breaker, shutdown     │
+│                                                              │
+│ @kysera/debug (depends: @kysera/core)                       │
+│   └──> Query logging, profiling, SQL formatting            │
+│                                                              │
+│ @kysera/testing (minimal deps)                              │
+│   └──> Testing utilities, transaction isolation, factories │
+│                                                              │
+│ @kysera/migrations (depends: @kysera/core)                  │
+│   └──> Migration runner, schema versioning                 │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 **Plugin Capabilities:**

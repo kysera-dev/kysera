@@ -108,6 +108,48 @@ Plugins are:
 - **No interceptors:** Returns augmented Kysely instance (minimal overhead)
 - **With interceptors:** Uses optimized Proxy with method caching
 
+### destroyExecutor
+
+Destroy an executor and call cleanup hooks for all plugins.
+
+```typescript
+async function destroyExecutor<DB>(executor: KyseraExecutor<DB>): Promise<void>
+```
+
+**Parameters:**
+
+- `executor` - KyseraExecutor instance to destroy
+
+**Returns:** `Promise<void>` - Resolves when all plugin `onDestroy` hooks have completed
+
+**Example:**
+
+```typescript
+import { createExecutor, destroyExecutor } from '@kysera/executor'
+
+const executor = await createExecutor(db, [myPlugin()])
+
+// Use executor...
+const users = await executor.selectFrom('users').selectAll().execute()
+
+// Clean up when done (e.g., during application shutdown)
+await destroyExecutor(executor)
+```
+
+**Use Cases:**
+
+- Application shutdown - clean up plugin resources (connections, timers, etc.)
+- Testing - ensure clean state between tests
+- Hot reloading - destroy old executor before creating new one
+- Resource management - explicitly release plugin resources
+
+**Behavior:**
+
+- Calls `onDestroy()` hook for each plugin in reverse order (dependencies last)
+- Ignores plugins without `onDestroy` hook
+- Errors in cleanup hooks are logged but don't throw (best-effort cleanup)
+- Safe to call multiple times (no-op after first call)
+
 ### createExecutorSync
 
 Synchronous version of `createExecutor` that skips async plugin initialization.
@@ -250,6 +292,54 @@ const allUsers = await rawDb.selectFrom('users').selectAll().execute()
 **Safety:**
 
 Use with caution - bypassing plugins can expose deleted records, violate RLS policies, etc.
+
+### withSchema
+
+Switch to a different schema while maintaining plugin interception.
+
+```typescript
+function withSchema<DB>(
+  executor: KyseraExecutor<DB>,
+  schema: string
+): KyseraExecutor<DB>
+```
+
+**Parameters:**
+
+- `executor` - KyseraExecutor instance
+- `schema` - Schema name to switch to
+
+**Returns:** `KyseraExecutor<DB>` - New executor with schema switched (plugins preserved)
+
+**Example:**
+
+```typescript
+import { createExecutor, withSchema } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+const executor = await createExecutor(db, [softDeletePlugin()])
+
+// Switch to a different schema
+const tenantExecutor = withSchema(executor, 'tenant_123')
+
+// Queries use the specified schema with plugins applied
+const users = await tenantExecutor.selectFrom('users').selectAll().execute()
+// SELECT * FROM tenant_123.users WHERE deleted_at IS NULL
+```
+
+**Use Cases:**
+
+- Multi-tenant applications with schema-per-tenant architecture
+- Database introspection across schemas
+- Cross-schema queries with consistent plugin behavior
+- Dynamic schema selection based on context
+
+**Important Notes:**
+
+- Plugin interceptors are preserved in the schema-switched executor
+- Returns a new executor instance (original is unchanged)
+- Uses Kysely's `withSchema()` method internally
+- All plugin behavior remains active in the new schema context
 
 ### wrapTransaction
 
@@ -442,6 +532,9 @@ interface Plugin {
   /** Lifecycle: Called once when plugin is initialized */
   onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
 
+  /** Lifecycle: Called when plugin is destroyed (cleanup) */
+  onDestroy?(): Promise<void> | void
+
   /** Query interception: Modify query builder before execution */
   interceptQuery?<QB>(qb: QB, context: QueryBuilderContext): QB
 
@@ -452,11 +545,12 @@ interface Plugin {
 
 **Plugin Hooks:**
 
-| Hook               | When Called                                   | Use Case                          |
-| ------------------ | --------------------------------------------- | --------------------------------- |
-| `onInit`           | Once during `createExecutor`                  | Setup, validation, schema checks  |
-| `interceptQuery`   | Before query execution                        | Add WHERE clauses, modify queries |
-| `extendRepository` | Repository creation (Repository pattern only) | Add custom methods                |
+| Hook               | When Called                                   | Use Case                                |
+| ------------------ | --------------------------------------------- | --------------------------------------- |
+| `onInit`           | Once during `createExecutor`                  | Setup, validation, schema checks        |
+| `onDestroy`        | During cleanup (manual or shutdown)           | Close connections, release resources    |
+| `interceptQuery`   | Before query execution                        | Add WHERE clauses, modify queries       |
+| `extendRepository` | Repository creation (Repository pattern only) | Add custom methods                      |
 
 **Example:**
 
@@ -676,6 +770,171 @@ try {
   }
 }
 ```
+
+## Intercepted Methods
+
+The executor only intercepts these four Kysely methods to apply plugins:
+
+```typescript
+const INTERCEPTED_METHODS = {
+  selectFrom: 'select',
+  insertInto: 'insert',
+  updateTable: 'update',
+  deleteFrom: 'delete'
+} as const
+```
+
+**Method Interception:**
+
+| Kysely Method        | Operation Type | Plugins Applied |
+| -------------------- | -------------- | --------------- |
+| `selectFrom(table)`  | `'select'`     | ✅ Yes          |
+| `insertInto(table)`  | `'insert'`     | ✅ Yes          |
+| `updateTable(table)` | `'update'`     | ✅ Yes          |
+| `deleteFrom(table)`  | `'delete'`     | ✅ Yes          |
+| All other methods    | N/A            | ❌ Pass-through |
+
+**What this means:**
+
+- Only table-starting methods trigger plugin interception
+- Builder methods (`.where()`, `.select()`, `.join()`, etc.) pass through unchanged
+- Execution methods (`.execute()`, `.executeTakeFirst()`) pass through unchanged
+- Schema methods (`.schema`, `.introspection`) pass through unchanged
+
+**Example:**
+
+```typescript
+const executor = await createExecutor(db, [softDeletePlugin()])
+
+// ✅ Plugin intercepted (selectFrom triggers interception)
+const users = await executor.selectFrom('users').selectAll().execute()
+// WHERE deleted_at IS NULL is added
+
+// ❌ Plugin NOT intercepted (starting with .with, not selectFrom)
+const result = await executor
+  .with('active_users', qb => qb.selectFrom('users').selectAll())
+  .selectFrom('active_users')
+  .selectAll()
+  .execute()
+// No deleted_at filter added (limitation - see below)
+```
+
+## Limitations
+
+While the executor provides powerful plugin capabilities, there are some limitations to be aware of:
+
+### 1. SQL Template Strings (`sql`...`)
+
+Raw SQL template strings bypass plugin interception entirely:
+
+```typescript
+const executor = await createExecutor(db, [softDeletePlugin()])
+
+// ❌ NO plugin filtering - raw SQL bypasses interception
+const users = await sql<User[]>`SELECT * FROM users`.execute(executor)
+// Returns ALL users including deleted ones
+
+// ✅ Use query builder instead
+const users = await executor.selectFrom('users').selectAll().execute()
+// Soft-delete filter applied correctly
+```
+
+**Workaround:** Use Kysely's query builder methods instead of raw SQL when plugins are needed.
+
+### 2. CTEs (Common Table Expressions)
+
+Queries starting with `.with()` are not intercepted:
+
+```typescript
+const executor = await createExecutor(db, [softDeletePlugin()])
+
+// ❌ NO plugin filtering on CTE definition
+const result = await executor
+  .with('active_users', qb =>
+    qb.selectFrom('users').selectAll() // No soft-delete filter here!
+  )
+  .selectFrom('active_users')
+  .selectAll()
+  .execute()
+
+// ✅ Workaround: Apply plugins manually in CTE
+const result = await executor
+  .with('active_users', qb =>
+    qb
+      .selectFrom('users')
+      .selectAll()
+      .where('deleted_at', 'is', null) // Manual filter
+  )
+  .selectFrom('active_users')
+  .selectAll()
+  .execute()
+```
+
+**Workaround:** Manually apply filters in CTE definitions or use `applyPlugins()` helper.
+
+### 3. Dynamic Query Building
+
+Queries built outside the executor context don't get plugin interception:
+
+```typescript
+const executor = await createExecutor(db, [softDeletePlugin()])
+
+// ❌ Building query before passing to executor
+const baseQuery = db.selectFrom('users').selectAll()
+const users = await baseQuery.execute() // No plugins applied
+
+// ✅ Build query through executor
+const users = await executor.selectFrom('users').selectAll().execute()
+```
+
+**Workaround:** Always start queries from the executor, not the raw database instance.
+
+### 4. Subqueries
+
+Subqueries created with `.selectFrom()` inside expressions don't trigger interception:
+
+```typescript
+const executor = await createExecutor(db, [softDeletePlugin()])
+
+// ⚠️ Outer query gets filtering, subquery doesn't
+const posts = await executor
+  .selectFrom('posts')
+  .select([
+    'posts.id',
+    'posts.title',
+    eb =>
+      eb
+        .selectFrom('users') // Subquery - no soft-delete filter!
+        .select('name')
+        .whereRef('users.id', '=', 'posts.user_id')
+        .as('author_name')
+  ])
+  .execute()
+
+// ✅ Workaround: Use joins or apply filters manually
+const posts = await executor
+  .selectFrom('posts')
+  .innerJoin('users', 'users.id', 'posts.user_id')
+  .where('users.deleted_at', 'is', null) // Manual filter for join
+  .select(['posts.id', 'posts.title', 'users.name as author_name'])
+  .execute()
+```
+
+**Workaround:** Use joins instead of subqueries, or manually apply plugin filters.
+
+### 5. Schema Introspection
+
+Kysely's schema introspection methods bypass plugins:
+
+```typescript
+const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })])
+
+// ❌ NO RLS filtering on introspection
+const tables = await executor.introspection.getTables()
+// Returns all tables regardless of RLS context
+```
+
+**Note:** This is expected behavior - introspection is metadata only and should not be filtered.
 
 ## Usage Patterns
 

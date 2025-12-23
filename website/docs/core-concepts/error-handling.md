@@ -6,7 +6,9 @@ description: Error handling and typed errors in Kysera
 
 # Error Handling
 
-Kysera provides a comprehensive error handling system with typed errors for different database operations.
+**Version 0.7.3**
+
+Kysera provides a comprehensive error handling system with typed errors for different database operations. The error handling system includes improved error parsing for all supported databases.
 
 ## Error Hierarchy
 
@@ -99,7 +101,7 @@ class CheckConstraintError extends DatabaseError {
 
 ## Parsing Database Errors
 
-Use `parseDatabaseError` to convert raw database errors into typed errors:
+Use `parseDatabaseError` to convert raw database errors into typed errors. The error parser intelligently handles database-specific error formats:
 
 ```typescript
 import { parseDatabaseError, UniqueConstraintError, ForeignKeyError } from '@kysera/core'
@@ -107,6 +109,7 @@ import { parseDatabaseError, UniqueConstraintError, ForeignKeyError } from '@kys
 try {
   await db.insertInto('users').values({ email: 'duplicate@test.com' }).execute()
 } catch (error) {
+  // parseDatabaseError handles all database-specific error formats
   const dbError = parseDatabaseError(error, 'postgres')
 
   if (dbError instanceof UniqueConstraintError) {
@@ -122,6 +125,11 @@ try {
 }
 ```
 
+**Enhanced Error Parsing (v0.7.3):**
+- **Improved Truncate Handling** - Better error detection for TRUNCATE operations
+- **Database-Specific Parsing** - Handles PostgreSQL, MySQL, and SQLite error formats
+- **Detail Extraction** - Extracts constraint names, columns, and referenced tables from error messages
+
 ## Multi-Database Support
 
 The error parser works with all supported databases:
@@ -130,21 +138,34 @@ The error parser works with all supported databases:
 
 ```typescript
 const error = parseDatabaseError(pgError, 'postgres')
-// Handles: 23505 (unique), 23503 (foreign key), 23502 (not null), 23514 (check)
+// Handles:
+// - 23505 (unique constraint)
+// - 23503 (foreign key violation)
+// - 23502 (not null violation)
+// - 23514 (check constraint)
+// - Improved TRUNCATE error detection
 ```
 
 ### MySQL
 
 ```typescript
 const error = parseDatabaseError(mysqlError, 'mysql')
-// Handles: ER_DUP_ENTRY, ER_NO_REFERENCED_ROW, ER_BAD_NULL_ERROR
+// Handles:
+// - ER_DUP_ENTRY (duplicate key)
+// - ER_NO_REFERENCED_ROW (foreign key)
+// - ER_BAD_NULL_ERROR (not null)
+// - Enhanced constraint name extraction
 ```
 
 ### SQLite
 
 ```typescript
 const error = parseDatabaseError(sqliteError, 'sqlite')
-// Handles: UNIQUE constraint failed, FOREIGN KEY constraint failed, etc.
+// Handles:
+// - UNIQUE constraint failed
+// - FOREIGN KEY constraint failed
+// - NOT NULL constraint failed
+// - Better column name extraction from error messages
 ```
 
 ## Unified Error Codes

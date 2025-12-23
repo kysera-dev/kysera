@@ -1,6 +1,6 @@
 # @kysera/audit
 
-> Comprehensive audit logging plugin for Kysera with automatic change tracking, user attribution, and transaction support.
+> Comprehensive audit logging plugin for Kysera (v0.7.3) with automatic change tracking through @kysera/executor's Unified Execution Layer, user attribution, and transaction support.
 
 [![npm version](https://img.shields.io/npm/v/@kysera/audit.svg)](https://www.npmjs.com/package/@kysera/audit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -20,16 +20,17 @@
 ### Advanced Features
 
 - ✅ **Transaction-aware** - Audit logs commit/rollback with transactions
-- ✅ **Bulk operations** - Optimized for bulkCreate, bulkUpdate, bulkDelete
+- ✅ **Bulk operations** - Optimized for bulkCreate, bulkUpdate, bulkDelete with single-query fetching
 - ✅ **Restoration** - Restore deleted entities or revert updates
 - ✅ **Query methods** - Rich API for querying audit history
 - ✅ **Table filtering** - Whitelist/blacklist specific tables
 - ✅ **Auto-initialization** - Creates audit_logs table automatically
-- ✅ **UUID support** - Works with UUID and other string-based primary keys
+- ✅ **UUID support** - Works with UUID and other string-based primary keys via primaryKeyColumn
+- ✅ **Unified Execution Layer** - Integrates seamlessly through @kysera/executor
 
 ### Performance Optimizations
 
-- ✅ **Single-query fetching** - Bulk operations avoid N+1 queries
+- ✅ **Single-query fetching** - Bulk operations avoid N+1 queries (optimized in v0.7.3)
 - ✅ **Minimal overhead** - <5% performance impact
 - ✅ **Selective auditing** - Audit only what you need
 - ✅ **Database-native timestamps** - Uses CURRENT_TIMESTAMP
@@ -56,20 +57,24 @@ bun add @kysera/audit
 
 ```typescript
 import { Kysely } from 'kysely'
+import { createExecutor } from '@kysera/executor'
 import { auditPlugin } from '@kysera/audit'
 import { createORM, createRepositoryFactory } from '@kysera/repository'
 
-// Create audit plugin with user tracking
+// Step 1: Create audit plugin with user tracking
 const audit = auditPlugin({
   getUserId: () => currentUser?.id || null,
-  metadata: () => ({ ip: request.ip, userAgent: request.headers['user-agent'] })
+  metadata: () => ({ ip: request.ip, userAgent: request.headers['user-agent'] }),
+  primaryKeyColumn: 'id' // Default, use 'uuid' for UUID primary keys
 })
 
-// Initialize plugin container with audit plugin
-const orm = await createORM(db, [audit])
+// Step 2: Register plugin with Unified Execution Layer
+const executor = await createExecutor(db, [audit])
 
-// Create repository - audit logging is automatic!
-// Note: Use the executor from orm.createRepository callback for proper plugin integration
+// Step 3: Initialize ORM with plugin-enabled executor
+const orm = await createORM(executor, [])
+
+// Step 4: Create repository - audit logging is automatic!
 const userRepo = orm.createRepository(executor =>
   createRepositoryFactory(executor).create({
     tableName: 'users',
@@ -198,6 +203,7 @@ export interface AuditOptions {
   /**
    * Primary key column name
    * Supports both numeric IDs and string IDs (e.g., UUIDs)
+   * Configurable to match your schema (e.g., 'uuid', 'user_id', 'pk')
    * @default 'id'
    */
   primaryKeyColumn?: string
@@ -259,13 +265,14 @@ export interface AuditOptions {
 ### Complete Configuration Example
 
 ```typescript
+import { createExecutor } from '@kysera/executor'
 import { auditPlugin } from '@kysera/audit'
 
 const audit = auditPlugin({
   // Custom audit table name
   auditTable: 'my_audit_logs',
 
-  // Custom primary key column (default: 'id')
+  // Custom primary key column (important for bulk operations)
   primaryKeyColumn: 'id', // or 'uuid', 'user_id', etc.
 
   // Value capture options
@@ -298,6 +305,9 @@ const audit = auditPlugin({
   // Or use blacklist
   // excludeTables: ['sessions', 'cache', 'migrations']
 })
+
+// Register with Unified Execution Layer
+const executor = await createExecutor(db, [audit])
 ```
 
 ### Table Filtering
@@ -977,11 +987,16 @@ console.log(auditLogs.length) // 0 if rolled back, 6 if committed
 
 ## 🚀 Bulk Operations
 
-### Optimized Performance
+### Optimized Performance (v0.7.3)
 
-Bulk operations use optimized single-query fetching to avoid N+1 problems:
+Bulk operations use optimized single-query fetching to avoid N+1 problems. The `primaryKeyColumn` configuration is critical for these optimizations:
 
 ```typescript
+// Configure primaryKeyColumn for optimal bulk operations
+const audit = auditPlugin({
+  primaryKeyColumn: 'id' // or 'uuid', 'user_id', etc.
+})
+
 // Old approach (N+1 queries):
 // - Fetch entity 1
 // - Fetch entity 2
@@ -989,7 +1004,7 @@ Bulk operations use optimized single-query fetching to avoid N+1 problems:
 // - Fetch entity N
 // Total: N queries
 
-// New approach (optimized):
+// New approach (optimized in v0.7.3):
 // - Fetch all entities in single query: WHERE id IN (1, 2, ..., N)
 // Total: 1 query
 

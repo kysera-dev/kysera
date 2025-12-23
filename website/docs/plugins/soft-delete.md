@@ -6,6 +6,8 @@ description: Soft delete plugin for Kysera
 
 # Soft Delete Plugin
 
+**Version:** 0.7.3
+
 Mark records as deleted without permanently removing them from the database. Soft-delete filtering works automatically with both **Repository** and **DAL** patterns through the unified `@kysera/executor` layer.
 
 **New in v0.7**: Full DAL support with automatic SELECT filtering through query interception.

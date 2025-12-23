@@ -6,7 +6,9 @@ description: Understanding Kysera's architectural design and patterns
 
 # Architecture
 
-Kysera follows a modular, layered architecture designed for flexibility, type safety, and production readiness.
+**Version 0.7.3**
+
+Kysera follows a modular, layered architecture designed for flexibility, type safety, and production readiness. The architecture is built on three core layers: **Core Utilities** → **Executor (Foundation)** → **Data Access Patterns (DAL/Repository)**.
 
 ## Design Principles
 
@@ -86,7 +88,9 @@ All packages use the strictest TypeScript configuration:
 }
 ```
 
-## Package Architecture
+## 3-Layer Architecture (v0.7+)
+
+The modern architecture features **@kysera/executor** as the foundation layer:
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -100,22 +104,35 @@ All packages use the strictest TypeScript configuration:
 │  │ soft-delete  │  │    audit     │  │     timestamps       │ │
 │  └──────────────┘  └──────────────┘  └──────────────────────┘ │
 │  ┌──────────────┐                                              │
-│  │     rls      │                                              │
-│  └──────────────┘                                              │
+│  │     rls      │    Plugin flow: Register → Validate →       │
+│  └──────────────┘    Intercept queries through executor        │
 └────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────────┐
-│              Data Access Layer (choose your style)             │
+│       Layer 3: Data Access Patterns (choose your style)        │
 │  ┌─────────────────────────┐  ┌──────────────────────────────┐│
 │  │   @kysera/repository    │  │        @kysera/dal           ││
-│  │  Repository + Validation│  │   Functional + Type Infer    ││
+│  │  CRUD + Validation +    │  │   Functional Queries +       ││
+│  │  Plugin Extensions      │  │   Type Inference             ││
+│  │  (depends on executor)  │  │   (depends on executor)      ││
 │  └─────────────────────────┘  └──────────────────────────────┘│
 └────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────────┐
-│                Infrastructure Layer (opt-in)                   │
+│    Layer 2: FOUNDATION - @kysera/executor (~8KB, 0 deps)      │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  • Query Interception (plugins modify queries)           │ │
+│  │  • Transaction Propagation (plugins work in transactions)│ │
+│  │  • Plugin Validation (conflicts, dependencies, cycles)   │ │
+│  │  • KyseraExecutor type (extends Kysely<DB>)             │ │
+│  └──────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────────┐
+│          Layer 1.5: Infrastructure Layer (opt-in)              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐ │
 │  │ @kysera/infra│  │@kysera/debug │  │   @kysera/testing    │ │
 │  │Health, Retry │  │ Logging, SQL │  │  Factories, Cleanup  │ │
@@ -124,7 +141,7 @@ All packages use the strictest TypeScript configuration:
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────────┐
-│                  @kysera/core (minimal, ~8KB)                  │
+│          Layer 1: Core Utilities (@kysera/core ~8KB)           │
 │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐   │
 │  │    Errors    │ │  Pagination  │ │   Types + Logger     │   │
 │  └──────────────┘ └──────────────┘ └──────────────────────┘   │
@@ -132,8 +149,8 @@ All packages use the strictest TypeScript configuration:
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────────┐
-│                          Kysely                                │
-│  Type-safe SQL Query Builder for TypeScript                    │
+│                  Layer 0: Kysely Foundation                    │
+│                Type-safe SQL Query Builder                     │
 └────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -143,6 +160,20 @@ All packages use the strictest TypeScript configuration:
 │  │  PostgreSQL  │  │    MySQL     │  │       SQLite         │ │
 │  └──────────────┘  └──────────────┘  └──────────────────────┘ │
 └────────────────────────────────────────────────────────────────┘
+```
+
+### Dependency Flow
+
+```
+@kysera/core (0 deps)
+    ↓
+@kysera/executor (depends on: kysely)
+    ↓
+    ├── @kysera/dal (depends on: executor, core)
+    └── @kysera/repository (depends on: executor, dal, core)
+            ↓
+            └── Plugins (soft-delete, audit, rls, timestamps)
+                (depend on: executor, core)
 ```
 
 ## Repository Factory Pattern
@@ -171,48 +202,94 @@ export function createRepositories(executor: Executor<Database>) {
 }
 ```
 
-## Plugin Architecture
+## Plugin Architecture (v0.7+)
 
-Plugins extend repository functionality through three mechanisms:
+Plugins extend functionality through the `@kysera/executor` foundation layer:
 
-### 1. Query Interception
+### Plugin Flow Through Executor
 
-Modify queries before execution:
-
-```typescript
-interceptQuery(qb, context) {
-  if (context.operation === 'select') {
-    return qb.where('deleted_at', 'is', null)
-  }
-  return qb
-}
+```
+User Code
+    ↓
+createExecutor(db, [softDeletePlugin(), rlsPlugin()])
+    ↓
+Plugin Validation (conflicts, dependencies, circular deps)
+    ↓
+KyseraExecutor created
+    ↓
+Query Execution: executor.selectFrom('users').execute()
+    ↓
+Query Interception (plugins modify query)
+    ↓
+Final Query: WHERE deleted_at IS NULL AND tenant_id = ?
+    ↓
+Database
 ```
 
-### 2. Repository Extension
+### 1. Query Interceptors (Work with Both Repository & DAL)
+
+Modify queries before execution through the executor:
+
+```typescript
+// Plugin definition
+{
+  name: 'soft-delete',
+  interceptQuery(qb, context) {
+    if (context.operation === 'select') {
+      return qb.where('deleted_at', 'is', null)
+    }
+    return qb
+  }
+}
+
+// Automatic application through executor
+const executor = await createExecutor(db, [softDeletePlugin()])
+const users = await executor.selectFrom('users').selectAll().execute()
+// -> SELECT * FROM users WHERE deleted_at IS NULL
+```
+
+### 2. Repository Extensions (Work with Repository Only)
 
 Add new methods to repositories:
 
 ```typescript
-extendRepository(repo) {
-  return {
-    ...repo,
-    async softDelete(id: number) { /* ... */ },
-    async restore(id: number) { /* ... */ }
+// Plugin definition
+{
+  name: 'soft-delete',
+  extendRepository(repo) {
+    return {
+      ...repo,
+      async softDelete(id: number) {
+        return repo.executor
+          .updateTable(repo.tableName)
+          .set({ deleted_at: new Date() })
+          .where('id', '=', id)
+          .execute()
+      },
+      async restore(id: number) { /* ... */ }
+    }
   }
 }
+
+// Usage
+const orm = await createORM(db, [softDeletePlugin()])
+const userRepo = orm.createRepository(createUserRepository)
+await userRepo.softDelete(1) // Extension method
 ```
 
 ## Performance Characteristics
 
-| Package            | Size        | Overhead                  |
-| ------------------ | ----------- | ------------------------- |
-| @kysera/core       | ~8KB        | Minimal                   |
-| @kysera/repository | ~12KB       | Less than 0.3ms per query |
-| @kysera/dal        | ~7KB        | Less than 0.2ms per query |
-| @kysera/infra      | ~12KB       | Less than 0.2ms per query |
-| @kysera/debug      | ~5KB        | Less than 0.1ms per query |
-| @kysera/testing    | ~6KB        | Dev-only                  |
-| Plugins            | 4-12KB each | Less than 0.1ms per query |
+| Package            | Size        | Overhead                  | Dependencies |
+| ------------------ | ----------- | ------------------------- | ------------ |
+| @kysera/core       | ~8KB        | Minimal                   | 0            |
+| @kysera/executor   | ~8KB        | &lt;0.1ms (no interceptors)  | 0            |
+|                    |             | &lt;0.2ms (with interceptors)| (kysely peer)|
+| @kysera/repository | ~12KB       | &lt;0.3ms per query          | executor, dal|
+| @kysera/dal        | ~7KB        | &lt;0.2ms per query          | executor     |
+| @kysera/infra      | ~12KB       | &lt;0.2ms per query          | core         |
+| @kysera/debug      | ~5KB        | &lt;0.1ms per query          | core         |
+| @kysera/testing    | ~6KB        | Dev-only                  | 0            |
+| Plugins            | 4-12KB each | &lt;0.1ms per query          | executor, core|
 
 ### Benchmarks
 

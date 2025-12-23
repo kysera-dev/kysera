@@ -219,6 +219,46 @@ const deletedUser = await rawDb
 
 ---
 
+#### `destroyExecutor(executor)`
+
+Destroy an executor and call the `onDestroy` hook for all registered plugins.
+
+```typescript
+async function destroyExecutor<DB>(executor: KyseraExecutor<DB>): Promise<void>
+```
+
+**Parameters:**
+
+- `executor` - KyseraExecutor instance to destroy
+
+**Use Case:** Cleanup when shutting down application or when executor is no longer needed.
+
+**Example:**
+
+```typescript
+const executor = await createExecutor(db, [
+  {
+    name: 'connection-pool',
+    version: '1.0.0',
+    async onInit(db) {
+      console.log('Initializing connection pool')
+    },
+    async onDestroy(db) {
+      console.log('Closing connection pool')
+      // Close connections, release resources, etc.
+    }
+  }
+])
+
+// Later...
+await destroyExecutor(executor)
+// Logs: "Closing connection pool"
+```
+
+**Important:** After calling `destroyExecutor`, the executor should not be used for further queries.
+
+---
+
 #### `wrapTransaction(trx, plugins)`
 
 Wrap a Kysely transaction with plugins.
@@ -383,6 +423,12 @@ interface Plugin {
   onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
 
   /**
+   * Lifecycle: Called when executor is destroyed
+   * Use for cleanup, releasing resources, closing connections
+   */
+  onDestroy?<DB>(executor: Kysely<DB>): Promise<void> | void
+
+  /**
    * Query interception: Modify query builder before execution
    * This is where most plugin logic lives
    * Works in both Repository and DAL patterns
@@ -400,6 +446,7 @@ interface Plugin {
 **Available Hooks:**
 
 - `onInit` - Plugin initialization (async)
+- `onDestroy` - Plugin cleanup/teardown (async)
 - `interceptQuery` - Query interception (most common)
 - `extendRepository` - Repository pattern only
 
@@ -807,6 +854,120 @@ it('should filter deleted records', async () => {
 })
 ```
 
+## Query Interception Details
+
+### Intercepted Methods
+
+The executor intercepts the following Kysely query builder methods to apply plugins:
+
+- `selectFrom` - SELECT queries
+- `insertInto` - INSERT queries
+- `updateTable` - UPDATE queries
+- `deleteFrom` - DELETE queries
+- `replaceInto` - REPLACE queries (MySQL)
+- `mergeInto` - MERGE queries (SQL Server, Oracle)
+
+**Example:**
+
+```typescript
+// All of these are intercepted and have plugins applied:
+await executor.selectFrom('users').selectAll().execute()
+await executor.insertInto('users').values(data).execute()
+await executor.updateTable('users').set(data).execute()
+await executor.deleteFrom('users').where('id', '=', 1).execute()
+```
+
+### Schema Support (withSchema)
+
+The `withSchema()` method now maintains the plugin proxy with caching for optimal performance:
+
+```typescript
+// Schema switching preserves plugins
+const publicUsers = await executor
+  .withSchema('public')
+  .selectFrom('users')
+  .selectAll()
+  .execute()
+// soft-delete filter still applied!
+
+const archiveUsers = await executor
+  .withSchema('archive')
+  .selectFrom('users')
+  .selectAll()
+  .execute()
+// soft-delete filter still applied!
+```
+
+**Performance Note:** Schema proxies are cached, so repeated calls to `withSchema('public')` return the same proxy instance.
+
+### Limitations
+
+#### SQL Template Tag Bypasses Plugins
+
+The Kysely `sql` template tag bypasses plugin interception:
+
+```typescript
+import { sql } from 'kysely'
+
+// ❌ This bypasses plugins (no soft-delete filter!)
+const users = await executor
+  .selectFrom(sql`users`.as('users'))
+  .selectAll()
+  .execute()
+
+// ✅ Workaround: Use normal query builders
+const users = await executor
+  .selectFrom('users')
+  .selectAll()
+  .execute()
+// Plugins applied correctly
+```
+
+**Why this happens:** The `sql` template tag creates raw SQL fragments that bypass the query builder chain where plugins are applied.
+
+**When you need raw SQL:**
+
+```typescript
+// For complex WHERE clauses, use sql inside the query builder:
+const users = await executor
+  .selectFrom('users')
+  .where(sql`jsonb_array_length(metadata->'tags') > 5`)
+  .selectAll()
+  .execute()
+// Soft-delete filter still applied to the FROM clause!
+```
+
+#### CTE Limitations (with/withRecursive)
+
+Common Table Expressions (CTEs) created with `with()` or `withRecursive()` have limited plugin support:
+
+```typescript
+// ⚠️ Plugins only apply to the main query, not the CTE
+const result = await executor
+  .with('active_users', db =>
+    db.selectFrom('users').selectAll() // ❌ Plugins NOT applied here
+  )
+  .selectFrom('active_users')
+  .selectAll()
+  .execute() // ✅ Plugins applied to outer query
+
+// ✅ Workaround: Apply filters manually in CTE
+const result = await executor
+  .with('active_users', db =>
+    db
+      .selectFrom('users')
+      .where('deleted_at', 'is', null) // Manual soft-delete filter
+      .selectAll()
+  )
+  .selectFrom('active_users')
+  .selectAll()
+  .execute()
+```
+
+**Why this limitation exists:** CTEs are defined before the main query executes, and the CTE callback receives the raw `db` instance, not the plugin-wrapped executor.
+
+**Future improvement:** This may be addressed in a future version by wrapping the callback parameter.
+
 ## Architecture & Design Decisions
 
 ### Type System Constraints
@@ -902,6 +1063,34 @@ The wrapped transaction only exposes the `.execute()` method, not `.setIsolation
 1. **Simplicity**: Keeps the plugin system simple and focused on query interception
 2. **Intent**: Isolation level should be set before plugin interception begins
 3. **Common case**: Most applications use default isolation levels
+
+**Escape Hatch: Using `__rawDb`**
+
+You can access the raw database instance via `executor.__rawDb` or `ctx.db.__rawDb` to bypass plugins when needed:
+
+```typescript
+import { withTransaction } from '@kysera/dal'
+
+// Within a transaction, access raw db for special cases:
+await withTransaction(executor, async ctx => {
+  // Regular query with plugins
+  const users = await ctx.db.selectFrom('users').selectAll().execute()
+
+  // Access raw db to bypass plugins
+  if ('__rawDb' in ctx.db) {
+    const rawDb = ctx.db.__rawDb
+
+    // This bypasses all plugins including soft-delete
+    const deletedUsers = await rawDb
+      .selectFrom('users')
+      .where('deleted_at', 'is not', null)
+      .selectAll()
+      .execute()
+  }
+
+  return users
+})
+```
 
 **Workaround for advanced use cases:**
 

@@ -6,6 +6,8 @@ description: Row-level security plugin for multi-tenant applications
 
 # Row-Level Security (RLS) Plugin
 
+**Version:** 0.7.3
+
 Implement declarative authorization policies for multi-tenant applications with automatic query transformation using AsyncLocalStorage for context propagation.
 
 **New in v0.7**: RLS plugin now uses the unified `@kysera/executor` Plugin interface and works with both **Repository** and **DAL** patterns through query interception.

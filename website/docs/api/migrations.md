@@ -8,15 +8,18 @@ description: Migration system API reference
 
 Lightweight, type-safe database migration system.
 
+**Version:** 0.7.3
+
 ## Installation
 
 ```bash
-npm install @kysera/migrations
+npm install @kysera/migrations zod
 ```
 
 ## Overview
 
 **Dependencies:** @kysera/core
+**Peer Dependencies:** zod (required for schema validation)
 
 ## Creating Migrations
 

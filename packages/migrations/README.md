@@ -42,17 +42,19 @@
 
 ```bash
 # pnpm (recommended)
-pnpm add @kysera/migrations kysely
+pnpm add @kysera/migrations kysely zod
 
 # npm
-npm install @kysera/migrations kysely
+npm install @kysera/migrations kysely zod
 
 # yarn
-yarn add @kysera/migrations kysely
+yarn add @kysera/migrations kysely zod
 
 # bun
-bun add @kysera/migrations kysely
+bun add @kysera/migrations kysely zod
 ```
+
+**Note:** Zod is a **required peer dependency** (not optional) for schema validation in the migration system.
 
 ## Quick Start
 
@@ -767,6 +769,18 @@ createMigration('001_create_users', async db => {
 })
 ```
 
+## Implementation Details
+
+### Version File Fallback Pattern
+
+The migration system uses a robust version file fallback pattern to ensure compatibility across different build environments:
+
+1. **Primary:** Try to load `version.ts` (development/source code)
+2. **Fallback:** Try to load `version.js` (compiled/production code)
+3. **Default:** Use `'0.0.0-dev'` if both fail
+
+This pattern ensures migrations work correctly in both development and production environments without requiring specific build configurations.
+
 ## Changelog
 
 ### v0.5.1
@@ -779,6 +793,7 @@ createMigration('001_create_users', async db => {
 - **Added** `MigrationDefinition` and `MigrationDefinitions` type exports
 - **Added** `MigrationRunnerWithPluginsOptions` interface export
 - **Added** `DatabaseError` and `BadRequestError` re-exports from `@kysera/core`
+- **Added** Version file fallback pattern for cross-environment compatibility
 - **Changed** Validation errors now throw `BadRequestError` instead of generic `Error`
 
 ### v0.5.0

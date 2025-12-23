@@ -13,7 +13,7 @@ Implementing efficient pagination with Kysera.
 When you don't need total count, use `applyOffset` for a ~50% performance boost:
 
 ```typescript
-import { applyOffset } from '@kysera/core'
+import { applyOffset, MAX_LIMIT } from '@kysera/core'
 
 // Simple pagination without COUNT(*)
 const users = await applyOffset(db.selectFrom('users').selectAll().orderBy('id'), {
@@ -38,15 +38,24 @@ async function loadMore(offset: number) {
 **Key features:**
 
 - No COUNT(\*) query
-- Limit: 1-100 (auto-bounded)
+- Limit: 1-100 (auto-bounded via `MAX_LIMIT = 100`)
 - SQLite compatible
+
+**Bounds checking:**
+
+```typescript
+// Limit is automatically clamped to valid range
+applyOffset(query, { limit: 0 }) // Uses 1 (minimum)
+applyOffset(query, { limit: 200 }) // Uses 100 (MAX_LIMIT)
+applyOffset(query, { limit: -5 }) // Uses 1 (minimum)
+```
 
 ## Offset Pagination
 
 Traditional page-based pagination with total count.
 
 ```typescript
-import { paginate } from '@kysera/core'
+import { paginate, MAX_PAGE, MAX_LIMIT } from '@kysera/core'
 
 const result = await paginate(
   db.selectFrom('posts').selectAll().where('status', '=', 'published'),
@@ -67,6 +76,31 @@ console.log(result)
 // }
 ```
 
+### Bounds Checking
+
+Kysera automatically enforces safe limits to prevent performance issues:
+
+```typescript
+// Page bounds (MAX_PAGE = 10000)
+paginate(query, { page: 0 }) // Uses page 1 (minimum)
+paginate(query, { page: 15000 }) // Uses page 10000 (MAX_PAGE)
+paginate(query, { page: -5 }) // Uses page 1 (minimum)
+
+// Limit bounds (MAX_LIMIT = 100)
+paginate(query, { page: 1, limit: 0 }) // Uses limit 1 (minimum)
+paginate(query, { page: 1, limit: 500 }) // Uses limit 100 (MAX_LIMIT)
+paginate(query, { page: 1, limit: -10 }) // Uses limit 1 (minimum)
+
+// Custom limits for specific use cases
+import { applyOffset } from '@kysera/core'
+
+// Override MAX_LIMIT for specific admin queries
+const adminLimit = Math.min(parseInt(req.query.limit) || 50, 1000) // Custom max: 1000
+const result = await applyOffset(query, { limit: adminLimit, offset: 0 }).execute()
+```
+
+**Important:** Page 10,000 with limit 100 means skipping 999,900 rows. If you need to access data beyond this point, use cursor pagination instead.
+
 ### When to Use
 
 - Need page numbers (e.g., "Page 3 of 10")
@@ -81,19 +115,20 @@ console.log(result)
 | Simple to implement | O(n) at high pages             |
 | Page numbers        | Inconsistent with data changes |
 | Jump to any page    | Performance degrades           |
+| Built-in bounds     | Limited to 10,000 pages        |
 
 ## Cursor Pagination
 
 Efficient keyset-based pagination.
 
 ```typescript
-import { paginateCursor } from '@kysera/core'
+import { paginateCursor, MAX_LIMIT } from '@kysera/core'
 
 // First page
 const page1 = await paginateCursor(db.selectFrom('posts').selectAll(), {
   orderBy: [
     { column: 'created_at', direction: 'desc' },
-    { column: 'id', direction: 'desc' }
+    { column: 'id', direction: 'desc' } // Always include unique tie-breaker
   ],
   limit: 20
 })
@@ -109,6 +144,26 @@ const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
 })
 ```
 
+### Bounds Checking
+
+Cursor pagination also enforces limit bounds for safety:
+
+```typescript
+import { MAX_LIMIT } from '@kysera/core' // MAX_LIMIT = 100
+
+// Limit bounds automatically enforced
+paginateCursor(query, { orderBy: [...], limit: 0 }) // Uses 1 (minimum)
+paginateCursor(query, { orderBy: [...], limit: 500 }) // Uses 100 (MAX_LIMIT)
+paginateCursor(query, { orderBy: [...], limit: -10 }) // Uses 1 (minimum)
+
+// No page limit - cursor pagination scales to any dataset size
+const millionthPage = await paginateCursor(query, {
+  orderBy: [{ column: 'id', direction: 'asc' }],
+  limit: 20,
+  cursor: lastCursor // Still O(log n) performance!
+})
+```
+
 ### When to Use
 
 - Large datasets (> 10,000 rows)
@@ -116,6 +171,7 @@ const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
 - Real-time data (frequent inserts/deletes)
 - API responses
 - Mobile apps
+- When you need to paginate beyond offset pagination's 10,000 page limit
 
 ### Pros and Cons
 
@@ -124,6 +180,7 @@ const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
 | O(log n) with index      | No page numbers        |
 | Stable with data changes | Sequential access only |
 | Consistent performance   | More complex           |
+| No page limit            | Requires unique order  |
 
 ## Repository Pagination
 

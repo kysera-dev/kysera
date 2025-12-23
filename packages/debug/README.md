@@ -24,8 +24,8 @@ bun add @kysera/debug
 - **Performance Metrics** - Collect and analyze query performance data
 - **Slow Query Detection** - Identify and alert on slow database queries
 - **SQL Formatting** - Format and highlight SQL for better readability
-- **Query Profiling** - Detailed performance analysis with statistics
-- **Circular Buffer** - Memory-efficient metrics storage with automatic cleanup
+- **Query Profiling** - Detailed performance analysis with statistics using O(1) index-based metrics
+- **Circular Buffer** - O(1) memory-efficient metrics storage with automatic cleanup (ring buffer implementation)
 - **Zero Dependencies** - Only depends on `@kysera/core` and peer-depends on `kysely`
 
 ## Quick Start
@@ -187,6 +187,8 @@ interface QueryMetrics {
 
 Advanced query profiler for collecting and analyzing query performance with detailed statistics.
 
+**Implementation:** Uses O(1) index-based circular buffer for efficient metrics tracking with minimal memory overhead.
+
 ```typescript
 class QueryProfiler {
   constructor(options?: ProfilerOptions)
@@ -194,7 +196,7 @@ class QueryProfiler {
   /** Record a query metric */
   record(metric: QueryMetrics): void
 
-  /** Get profiling summary */
+  /** Get profiling summary (O(1) using index-based metrics) */
   getSummary(): ProfilerSummary
 
   /** Get the slowest N queries */
@@ -605,11 +607,12 @@ const debugDb: DebugDatabase<Database> = withDebug(db, options)
 
 ### Memory Management
 
-The debug plugin uses a circular buffer to manage memory efficiently:
+The debug plugin uses an O(1) circular buffer (ring buffer) to manage memory efficiently:
 
 - Default limit: 1000 metrics
-- Oldest metrics automatically removed when limit reached
+- Oldest metrics automatically removed when limit reached (O(1) operation)
 - Configure via `maxMetrics` option
+- Index-based metrics tracking for constant-time summary calculations
 
 ```typescript
 const debugDb = withDebug(db, {

@@ -10,11 +10,11 @@
 
 - ✅ **Zero Runtime Dependencies** - Only peer dependency on Kysely
 - ✅ **Unified Adapter Interface** - Consistent API across all dialects
-- ✅ **Multi-Database Support** - PostgreSQL, MySQL, and SQLite
+- ✅ **Multi-Database Support** - PostgreSQL, MySQL, and SQLite with dialect-specific adapters
 - ✅ **Error Detection** - Detect unique, foreign key, and not-null constraint violations
 - ✅ **Connection Utilities** - Parse and build connection URLs
 - ✅ **Schema Introspection** - Table existence checks, column enumeration, database size
-- ✅ **Testing Helpers** - Truncate tables, clean databases
+- ✅ **Testing Helpers** - Truncate tables with recoverable vs critical error handling
 - ✅ **100% Type Safe** - Full TypeScript support with strict mode
 - ✅ **Cross-Runtime** - Works on Node.js, Bun, and Deno
 
@@ -617,6 +617,11 @@ await truncateAllTables(db, 'postgres', ['migrations', 'schema_version'])
 ```
 
 **Warning:** This permanently deletes all data. Use only in test environments.
+
+**Error Handling:** The function uses sophisticated error classification:
+- **Recoverable errors:** Table not found, already truncated → Logged as warnings, execution continues
+- **Critical errors:** Permission denied, foreign key violations → Thrown immediately
+- **Unknown errors:** All other errors → Thrown with full error context
 
 **Behavior:**
 

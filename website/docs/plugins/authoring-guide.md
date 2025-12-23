@@ -6,7 +6,9 @@ description: How to create custom plugins for Kysera
 
 # Plugin Authoring Guide
 
-Learn how to create custom plugins to extend Kysera's functionality.
+**Version:** 0.7.3
+
+Learn how to create custom plugins to extend Kysera's functionality using **@kysera/executor's** Unified Execution Layer.
 
 ## Plugin Architecture
 
@@ -35,7 +37,7 @@ interface Plugin {
   readonly priority?: number // Higher = runs first (default: 0)
   readonly conflictsWith?: readonly string[] // Incompatible plugins
 
-  // Lifecycle: Initialize plugin (called once)
+  // Lifecycle: Initialize plugin (called once during setup)
   onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
 
   // Query interception: Works in both Repository and DAL patterns
@@ -45,6 +47,9 @@ interface Plugin {
   // Repository extension: Repository pattern only
   // Add/wrap methods after repository creation
   extendRepository?<T extends object>(repo: T): T
+
+  // Lifecycle: Cleanup plugin (called when executor is destroyed)
+  onDestroy?(): Promise<void> | void
 }
 
 interface QueryBuilderContext {
@@ -52,6 +57,20 @@ interface QueryBuilderContext {
   readonly table: string
   readonly metadata: Record<string, unknown>
 }
+```
+
+### Intercepted Methods
+
+The executor intercepts these Kysely methods for plugin processing:
+
+```typescript
+// From @kysera/executor/src/types.ts
+const INTERCEPTED_METHODS = [
+  'selectFrom',   // SELECT queries → operation: 'select'
+  'insertInto',   // INSERT queries → operation: 'insert'
+  'updateTable',  // UPDATE queries → operation: 'update'
+  'deleteFrom'    // DELETE queries → operation: 'delete'
+] as const
 ```
 
 ## Creating a Plugin
@@ -77,6 +96,9 @@ import { silentLogger, type KyseraLogger } from '@kysera/core'
 export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
   const { enabled = true, customField = 'default', logger = silentLogger } = options
 
+  // Track resources for cleanup
+  let cleanupInterval: NodeJS.Timeout | undefined
+
   return {
     name: '@myorg/my-plugin',
     version: '1.0.0',
@@ -93,6 +115,11 @@ export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
       if (!result) {
         logger.warn('Required table "my_table" not found')
       }
+
+      // Example: Start a background task
+      cleanupInterval = setInterval(() => {
+        logger.debug('Plugin background task running')
+      }, 60000)
     },
 
     interceptQuery(qb, context) {
@@ -127,6 +154,16 @@ export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
           return result.map(row => ({ ...row, [customField]: true }))
         }
       } as T
+    },
+
+    async onDestroy() {
+      logger.info('MyPlugin cleaning up')
+      // Clean up resources
+      if (cleanupInterval) {
+        clearInterval(cleanupInterval)
+        cleanupInterval = undefined
+      }
+      // Close connections, clear caches, etc.
     }
   }
 }
@@ -416,7 +453,7 @@ export const myPlugin = (): Plugin => ({
 - Circular dependencies → `PluginValidationError`
 - Conflicts → `PluginValidationError`
 
-## Complete Example
+## Complete Example: Cache Plugin with Lifecycle
 
 ```typescript
 import type { Plugin, QueryBuilderContext } from '@kysera/executor'
@@ -437,6 +474,7 @@ export const cachePlugin = (options: CachePluginOptions = {}): Plugin => {
   const config = CachePluginOptionsSchema.parse(options)
   const cache = new Map<string, { data: unknown; expires: number }>()
   let logger: KyseraLogger = silentLogger
+  let cleanupInterval: NodeJS.Timeout | undefined
 
   return {
     name: '@kysera/cache',
@@ -451,7 +489,7 @@ export const cachePlugin = (options: CachePluginOptions = {}): Plugin => {
 
       // Start cache cleanup interval
       if (config.enabled) {
-        setInterval(() => {
+        cleanupInterval = setInterval(() => {
           const now = Date.now()
           for (const [key, value] of cache.entries()) {
             if (value.expires < now) {
@@ -541,6 +579,53 @@ export const cachePlugin = (options: CachePluginOptions = {}): Plugin => {
           }
         }
       } as T
+    },
+
+    async onDestroy(): Promise<void> {
+      logger.info?.('[Cache] Plugin shutting down')
+
+      // Clear cleanup interval
+      if (cleanupInterval) {
+        clearInterval(cleanupInterval)
+        cleanupInterval = undefined
+      }
+
+      // Clear all cached data
+      const cacheSize = cache.size
+      cache.clear()
+      logger.debug?.(`[Cache] Cleared ${cacheSize} cache entries`)
+    }
+  }
+}
+```
+
+### Lifecycle Best Practices
+
+1. **onInit**: Set up resources (connections, intervals, caches)
+2. **interceptQuery/extendRepository**: Implement plugin functionality
+3. **onDestroy**: Clean up resources to prevent memory leaks
+
+```typescript
+export const myPlugin = (): Plugin => {
+  let connection: DatabaseConnection | undefined
+  let interval: NodeJS.Timeout | undefined
+
+  return {
+    name: '@myorg/my-plugin',
+    version: '1.0.0',
+
+    async onInit(executor) {
+      // Initialize resources
+      connection = await createConnection()
+      interval = setInterval(() => cleanup(), 60000)
+    },
+
+    // ... plugin implementation ...
+
+    async onDestroy() {
+      // Clean up resources
+      if (interval) clearInterval(interval)
+      if (connection) await connection.close()
     }
   }
 }

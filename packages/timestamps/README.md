@@ -1,6 +1,6 @@
 # @kysera/timestamps
 
-> Automatic timestamp management plugin for Kysera - Zero-configuration `created_at` and `updated_at` tracking with powerful query helpers.
+> Automatic timestamp management plugin for Kysera (v0.7.3) - Zero-configuration `created_at` and `updated_at` tracking through @kysera/executor's Unified Execution Layer with powerful query helpers.
 
 [![Version](https://img.shields.io/npm/v/@kysera/timestamps.svg)](https://www.npmjs.com/package/@kysera/timestamps)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -9,14 +9,14 @@
 ## 🎯 Features
 
 - ✅ **Zero Configuration** - Works out of the box with sensible defaults
-- ✅ **Automatic Timestamps** - `created_at` on insert, `updated_at` on update
+- ✅ **Automatic Timestamps** - `created_at` on insert, `updated_at` on update via @kysera/executor
 - ✅ **Batch Operations** - Efficient `createMany`, `updateMany`, `touchMany` methods
 - ✅ **Custom Column Names** - Use any column names you want
 - ✅ **Table Filtering** - Whitelist or blacklist specific tables
 - ✅ **Date Formats** - ISO strings, Unix timestamps, or Date objects
 - ✅ **Query Helpers** - 13+ methods for timestamp-based queries
 - ✅ **Type-Safe** - Full TypeScript support with inference
-- ✅ **Plugin Architecture** - Integrates seamlessly with @kysera/repository
+- ✅ **Plugin Architecture** - Integrates seamlessly via @kysera/executor's Unified Execution Layer
 - ✅ **Production Ready** - Battle-tested with comprehensive test coverage
 
 ## 📥 Installation
@@ -59,6 +59,7 @@ CREATE TABLE users (
 ```typescript
 import { Kysely, PostgresDialect } from 'kysely'
 import { Pool } from 'pg'
+import { createExecutor } from '@kysera/executor'
 import { createORM, createRepositoryFactory } from '@kysera/repository'
 import { timestampsPlugin } from '@kysera/timestamps'
 import { z } from 'zod'
@@ -83,12 +84,15 @@ const db = new Kysely<Database>({
   })
 })
 
-// Create plugin container with timestamps plugin
-const orm = await createORM(db, [
+// Step 1: Register timestamps plugin with Unified Execution Layer
+const executor = await createExecutor(db, [
   timestampsPlugin() // ✨ That's it!
 ])
 
-// Create repository
+// Step 2: Create ORM with plugin-enabled executor
+const orm = await createORM(executor, [])
+
+// Step 3: Create repository
 const userRepo = orm.createRepository(executor => {
   const factory = createRepositoryFactory(executor)
   return factory.create<'users', User>({
@@ -367,6 +371,8 @@ await userRepo.touch(userId)
 ---
 
 ## 🤖 Automatic Behavior
+
+The timestamps plugin works through @kysera/executor's Unified Execution Layer to automatically manage timestamps on all operations.
 
 ### On Create
 
@@ -825,20 +831,24 @@ console.log(columns)
 
 ### Multiple Plugins
 
-Combine timestamps with other plugins:
+Combine timestamps with other plugins via @kysera/executor's Unified Execution Layer:
 
 ```typescript
+import { createExecutor } from '@kysera/executor'
 import { timestampsPlugin } from '@kysera/timestamps'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { auditPlugin } from '@kysera/audit'
 
-const orm = await createORM(db, [
+// Register all plugins with Unified Execution Layer
+const executor = await createExecutor(db, [
   timestampsPlugin(),
   softDeletePlugin(),
-  auditPlugin({ userId: currentUserId })
+  auditPlugin({ getUserId: () => currentUserId })
 ])
 
-// All plugins work together:
+const orm = await createORM(executor, [])
+
+// All plugins work together seamlessly:
 const user = await userRepo.create({ email: 'test@example.com', name: 'Test' })
 // ✅ created_at added by timestamps plugin
 // ✅ deleted_at set to null by soft-delete plugin

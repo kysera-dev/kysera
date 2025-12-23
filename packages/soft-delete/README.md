@@ -1,14 +1,14 @@
 # @kysera/soft-delete
 
-Soft delete plugin for Kysera. Implements soft delete functionality using the Method Override pattern with automatic filtering of deleted records.
+Soft delete plugin for Kysera (v0.7.3). Implements soft delete functionality through @kysera/executor's Unified Execution Layer with automatic filtering of deleted records.
 
 ## Features
 
-- Automatic filtering of soft-deleted records in SELECT queries
+- Automatic filtering of soft-deleted records in SELECT queries via @kysera/executor's plugin interception
 - Repository methods for soft delete operations (softDelete, restore, hardDelete)
-- Bulk operations (softDeleteMany, restoreMany, hardDeleteMany)
+- Bulk operations (softDeleteMany, restoreMany, hardDeleteMany) with optimized single-query fetching
 - Query methods for deleted records (findWithDeleted, findAllWithDeleted, findDeleted)
-- Works with both Repository and DAL patterns through unified executor layer
+- Works with both Repository and DAL patterns through @kysera/executor's Unified Execution Layer
 - Full transaction support with ACID compliance
 - Configurable deleted column name, primary key, and table filtering
 - Cross-runtime compatible (Node.js, Bun, Deno)
@@ -45,9 +45,10 @@ Note: `zod` is optional (used for configuration schema validation in `kysera-cli
 ```typescript
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
+import { createExecutor } from '@kysera/executor'
 
-// Create plugin container with soft-delete plugin
-const orm = await createORM(db, [
+// Step 1: Create executor with soft-delete plugin
+const executor = await createExecutor(db, [
   softDeletePlugin({
     deletedAtColumn: 'deleted_at',
     includeDeleted: false,
@@ -55,7 +56,10 @@ const orm = await createORM(db, [
   })
 ])
 
-// Create repository
+// Step 2: Create ORM with plugin-enabled executor
+const orm = await createORM(executor, [])
+
+// Step 3: Create repository
 const userRepo = orm.createRepository(createUserRepository)
 
 // Soft delete a user (sets deleted_at timestamp)
@@ -72,6 +76,11 @@ await userRepo.restore(1)
 
 // Permanently delete (real DELETE)
 await userRepo.hardDelete(1)
+
+// Batch operations (optimized single-query fetching)
+await userRepo.softDeleteMany([1, 2, 3])
+await userRepo.restoreMany([1, 2, 3])
+await userRepo.hardDeleteMany([1, 2, 3])
 ```
 
 ### With DAL Pattern
@@ -82,7 +91,7 @@ import { createContext, createQuery, withTransaction } from '@kysera/dal'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { sql } from 'kysely'
 
-// Create executor with soft-delete plugin
+// Step 1: Create executor with soft-delete plugin (Unified Execution Layer)
 const executor = await createExecutor(db, [
   softDeletePlugin({
     deletedAtColumn: 'deleted_at',
@@ -90,10 +99,10 @@ const executor = await createExecutor(db, [
   })
 ])
 
-// Create context
+// Step 2: Create context - plugins automatically apply to all queries
 const ctx = createContext(executor)
 
-// Define queries - soft-delete filter applied automatically
+// Step 3: Define queries - soft-delete filter applied automatically
 const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
 
 const getUserById = createQuery((ctx, id: number) =>
@@ -119,7 +128,7 @@ await withTransaction(executor, async txCtx => {
 
 ## Plugin Architecture
 
-The soft-delete plugin leverages `@kysera/executor` for unified plugin support across both Repository and DAL patterns.
+The soft-delete plugin leverages `@kysera/executor`'s Unified Execution Layer for seamless plugin support across both Repository and DAL patterns.
 
 ### How It Works
 
@@ -127,14 +136,21 @@ The soft-delete plugin leverages `@kysera/executor` for unified plugin support a
 import { createExecutor, getRawDb } from '@kysera/executor'
 import type { Plugin, QueryBuilderContext } from '@kysera/executor'
 
-// Plugin implements the Plugin interface
-const plugin = softDeletePlugin()
+// Step 1: Register plugin with createExecutor() - Unified Execution Layer
+const executor = await createExecutor(db, [
+  softDeletePlugin({
+    deletedAtColumn: 'deleted_at',
+    includeDeleted: false
+  })
+])
 
-// Executor wraps Kysely with plugin interception
-const executor = await createExecutor(db, [plugin])
+// Step 2: Plugin interceptQuery hook adds WHERE clause automatically
+const users = await executor.selectFrom('users').selectAll().execute()
+// SQL: SELECT * FROM users WHERE users.deleted_at IS NULL
 
-// All queries through executor have soft-delete filter applied
-const users = await executor.selectFrom('users').selectAll().execute() // WHERE users.deleted_at IS NULL (added automatically)
+// Step 3: Works with both Repository and DAL patterns
+const orm = await createORM(executor, [])
+const ctx = createContext(executor)
 ```
 
 ### Plugin Interface
@@ -658,12 +674,13 @@ softDeletePlugin({
 
 ## Type Safety
 
-The plugin maintains full type safety with TypeScript:
+The plugin maintains full type safety with TypeScript. The `SoftDeleteRepository` type uses `Record<string, never>` for the database type parameter by default:
 
 ```typescript
 import type { SoftDeleteRepository } from '@kysera/soft-delete'
 
 // Extend repository type with soft delete methods
+// Default: SoftDeleteRepository<User, Record<string, never>>
 type UserRepository = SoftDeleteRepository<User>
 
 const userRepo: UserRepository = orm.createRepository(executor => {
@@ -678,6 +695,10 @@ const userRepo: UserRepository = orm.createRepository(executor => {
 const deletedUser: User = await userRepo.softDelete(1)
 const allUsers: User[] = await userRepo.findAllWithDeleted()
 const deletedUsers: User[] = await userRepo.findDeleted()
+
+// Batch operations are also typed
+const deleted: User[] = await userRepo.softDeleteMany([1, 2, 3])
+const restored: User[] = await userRepo.restoreMany([1, 2, 3])
 ```
 
 ## Error Handling

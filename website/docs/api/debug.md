@@ -8,6 +8,8 @@ description: Debug utilities API reference
 
 Debug utilities for Kysera - query logging, profiling, SQL formatting, and performance analysis.
 
+**Version:** 0.7.3
+
 ## Installation
 
 ```bash
@@ -275,11 +277,15 @@ const debugDb = withDebug(db, { logger: customLogger })
 
 ### Memory Management
 
-The debug plugin uses a circular buffer:
+The debug plugin uses an **O(1) circular buffer** for efficient metrics storage:
 
 - Default limit: 1000 metrics
-- Oldest metrics removed when limit reached
+- Oldest metrics automatically overwritten when limit reached
 - Configure via `maxMetrics` option
+- **O(1) insertion** - no array shifting or reallocation
+- **O(1) retrieval** - direct index access
+- Minimal memory overhead - fixed-size array
+- No garbage collection pressure from array resizing
 
 ### Production Usage
 

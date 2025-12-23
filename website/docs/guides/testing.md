@@ -184,6 +184,74 @@ describe('Soft Delete Plugin', () => {
 })
 ```
 
+## Testing Security (SQL Injection Prevention)
+
+Kysera uses parameterized queries by default. Test that user input is safely handled:
+
+```typescript
+import { sql } from 'kysely'
+
+describe('SQL Injection Prevention', () => {
+  it('should safely handle malicious input in where clause', async () => {
+    await testInTransaction(db, async trx => {
+      const repos = createRepos(trx)
+
+      // Create test user
+      await repos.users.create({ email: 'legit@example.com', name: 'Legit User' })
+
+      // Attempt SQL injection
+      const maliciousEmail = "' OR '1'='1"
+
+      // Query builder uses parameterized queries - safe by default
+      const result = await trx
+        .selectFrom('users')
+        .selectAll()
+        .where('email', '=', maliciousEmail)
+        .execute()
+
+      // Should return empty (no match), not all users
+      expect(result).toHaveLength(0)
+    })
+  })
+
+  it('should safely handle user input in dynamic column names', async () => {
+    await testInTransaction(db, async trx => {
+      // Use sql.ref() for dynamic column names
+      const userColumn = 'email' // Could be from user input (after validation!)
+
+      const result = await trx
+        .selectFrom('users')
+        .select([sql.ref(userColumn)])
+        .limit(1)
+        .execute()
+
+      expect(result[0]).toHaveProperty('email')
+    })
+  })
+
+  it('should validate column names against allowlist', async () => {
+    const ALLOWED_COLUMNS = ['email', 'name', 'created_at'] as const
+
+    function getSortedUsers(sortBy: string) {
+      // Validate against allowlist before using
+      if (!ALLOWED_COLUMNS.includes(sortBy as any)) {
+        throw new Error('Invalid sort column')
+      }
+
+      return db.selectFrom('users').selectAll().orderBy(sql.ref(sortBy)).execute()
+    }
+
+    await testInTransaction(db, async trx => {
+      // Valid column - should work
+      await expect(getSortedUsers('email')).resolves.toBeDefined()
+
+      // Invalid column - should throw
+      await expect(getSortedUsers('DROP TABLE users')).rejects.toThrow('Invalid sort column')
+    })
+  })
+})
+```
+
 ## Database Cleanup Strategies
 
 ### Transaction (Fastest)
@@ -337,6 +405,53 @@ it('should validate input', async () => {
     const repos = createRepos(trx)
 
     await expect(repos.users.create({ email: 'invalid', name: '' })).rejects.toThrow()
+  })
+})
+```
+
+## Testing Error Parsing (Dialect Detection)
+
+Kysera's `parseDatabaseError()` automatically detects the database dialect and parses errors:
+
+```typescript
+import { parseDatabaseError, UniqueConstraintError } from '@kysera/core'
+
+describe('Database Error Parsing', () => {
+  it('should parse unique constraint error (auto-detect dialect)', async () => {
+    await testInTransaction(db, async trx => {
+      const repos = createRepos(trx)
+
+      // Create first user
+      await repos.users.create({ email: 'test@example.com', name: 'Test' })
+
+      try {
+        // Attempt duplicate
+        await repos.users.create({ email: 'test@example.com', name: 'Test2' })
+        fail('Should have thrown')
+      } catch (err) {
+        // Auto-detect dialect from error
+        const error = parseDatabaseError(err, 'postgres') // or 'mysql', 'sqlite'
+
+        expect(error).toBeInstanceOf(UniqueConstraintError)
+        if (error instanceof UniqueConstraintError) {
+          expect(error.constraint).toBeDefined()
+          expect(error.columns).toContain('email')
+          expect(error.table).toBe('users')
+        }
+      }
+    })
+  })
+
+  it('should work across different databases', async () => {
+    // Test with PostgreSQL
+    const pgDb = new Kysely({ dialect: new PostgresDialect({ pool }) })
+    // Test with MySQL
+    const mysqlDb = new Kysely({ dialect: new MysqlDialect({ pool }) })
+    // Test with SQLite
+    const sqliteDb = new Kysely({ dialect: new SqliteDialect({ database }) })
+
+    // parseDatabaseError works with all dialects
+    // Just pass the correct dialect name
   })
 })
 ```

@@ -12,12 +12,14 @@ description: Production-ready type-safe data access toolkit built on Kysely with
 
 Kysera is a lightweight, modular data access toolkit that builds upon [Kysely](https://kysely.dev) - the type-safe SQL query builder. **Kysera is NOT a traditional ORM** - it has no entity mapping, Unit of Work, Identity Map, or lazy loading. Instead, it provides lightweight patterns and plugins on top of Kysely:
 
+- **Unified Execution Layer** (`@kysera/executor`) - Foundation for plugin interception across all query patterns
 - **Repository Pattern** with validation-agnostic design (Zod, Valibot, TypeBox, or native)
 - **Functional DAL** for type-inferred queries and context-based transactions
-- **Plugin System** for extensibility (soft delete, audit, timestamps, RLS)
+- **Plugin System** for extensibility (soft delete, audit, timestamps, RLS) that works with both Repository and DAL
 - **Infrastructure Utilities** (health checks, retry, circuit breaker) as opt-in packages
 - **Zero External Dependencies** in core packages
 - **Full TypeScript** with strict mode support
+- **Cross-Runtime Compatibility** - Node.js >=20.0.0, Bun >=1.0.0, Deno (experimental)
 
 ## Philosophy
 
@@ -60,6 +62,7 @@ Kysera is a lightweight, modular data access toolkit that builds upon [Kysely](h
 | Package                                    | Description                                 | Size  |
 | ------------------------------------------ | ------------------------------------------- | ----- |
 | [@kysera/core](/docs/api/core)             | Error handling, pagination, types, logger   | ~8KB  |
+| [@kysera/executor](/docs/api/executor)     | Unified Execution Layer (plugin foundation) | ~6KB  |
 | [@kysera/repository](/docs/api/repository) | Repository pattern with validation adapters | ~12KB |
 | [@kysera/dal](/docs/api/dal)               | Functional Data Access Layer                | ~7KB  |
 
@@ -84,9 +87,11 @@ Kysera is a lightweight, modular data access toolkit that builds upon [Kysely](h
 ## Architecture
 
 ```
-Layer 4: Plugins (@kysera/soft-delete, @kysera/audit, @kysera/timestamps, @kysera/rls)
+Layer 5: Plugins (@kysera/soft-delete, @kysera/audit, @kysera/timestamps, @kysera/rls)
          ↓
-Layer 3: Data Access (@kysera/repository OR @kysera/dal - choose your style)
+Layer 4: Data Access (@kysera/repository OR @kysera/dal - choose your style)
+         ↓
+Layer 3: Unified Execution (@kysera/executor - plugin interception foundation)
          ↓
 Layer 2: Infrastructure (@kysera/infra, @kysera/debug, @kysera/testing - opt-in)
          ↓
@@ -97,9 +102,14 @@ Layer 0: Kysely Foundation (Direct usage, no wrapper)
 
 ## Quick Example
 
+### Repository Pattern with Plugins
+
 ```typescript
-import { Kysely, PostgresDialect } from 'kysely'
-import { createRepositoryFactory } from '@kysera/repository'
+import { Kysely, PostgresDialect, Generated } from 'kysely'
+import { createExecutor } from '@kysera/executor'
+import { createORM } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { timestampsPlugin } from '@kysera/timestamps'
 import { z } from 'zod'
 
 // Define schema
@@ -108,6 +118,9 @@ interface Database {
     id: Generated<number>
     email: string
     name: string
+    created_at: Generated<Date>
+    updated_at: Generated<Date>
+    deleted_at: Date | null
   }
 }
 
@@ -116,28 +129,71 @@ const db = new Kysely<Database>({
   dialect: new PostgresDialect({ pool: new Pool({ connectionString: '...' }) })
 })
 
+// Create executor with plugins (foundation layer)
+const executor = await createExecutor(db, [
+  softDeletePlugin(),
+  timestampsPlugin()
+])
+
+// Create ORM (plugin container, not traditional ORM)
+const orm = await createORM(executor, [])
+
 // Create repository
-const factory = createRepositoryFactory(db)
-const userRepo = factory.create({
-  tableName: 'users',
-  mapRow: row => row,
-  schemas: {
-    create: z.object({ email: z.string().email(), name: z.string() }),
-    update: z.object({ email: z.string().email(), name: z.string() }).partial()
-  }
+const userRepo = orm.createRepository(exec => {
+  const factory = createRepositoryFactory(exec)
+  return factory.create({
+    tableName: 'users',
+    mapRow: row => row,
+    schemas: {
+      create: z.object({ email: z.string().email(), name: z.string() }),
+      update: z.object({ email: z.string().email(), name: z.string() }).partial()
+    }
+  })
 })
 
-// Use repository
+// Use repository - plugins apply automatically
 const user = await userRepo.create({ email: 'john@example.com', name: 'John' })
-const users = await userRepo.findAll()
+// created_at, updated_at set automatically by timestampsPlugin
+
+await userRepo.softDelete(user.id)  // Sets deleted_at instead of hard delete
+const activeUsers = await userRepo.findAll()  // Automatically excludes soft-deleted
+```
+
+### Functional DAL with Plugins
+
+```typescript
+import { createQuery, createContext, withTransaction } from '@kysera/dal'
+
+// Define queries
+const getUser = createQuery((ctx, id: number) =>
+  ctx.db.selectFrom('users').where('id', '=', id).selectAll().executeTakeFirst()
+)
+
+const listActiveUsers = createQuery((ctx) =>
+  ctx.db.selectFrom('users').selectAll().execute()
+)
+
+// Create context with executor (plugins apply automatically)
+const ctx = createContext(executor)
+
+// Queries automatically filtered by soft-delete plugin
+const user = await getUser(ctx, 1)  // Returns null if soft-deleted
+const users = await listActiveUsers(ctx)  // Excludes soft-deleted records
+
+// Transactions preserve plugins
+await withTransaction(executor, async (txCtx) => {
+  const user = await getUser(txCtx, userId)
+  // All queries in transaction have plugin filters
+})
 ```
 
 ## Requirements
 
-- **Node.js** 20+ or **Bun** 1.0+ or **Deno**
-- **TypeScript** 5.0+ (recommended)
-- **Kysely** 0.28.8+
-- **Validation library** (optional): Zod 4.x, Valibot, TypeBox, or none
+- **Runtime**: Node.js >=20.0.0, Bun >=1.0.0, or Deno (experimental)
+- **TypeScript**: ^5.9.2 (recommended for best type inference)
+- **Kysely**: >=0.28.9 (peer dependency)
+- **Validation library** (optional): Zod ^4.1.13, Valibot, TypeBox, or none
+- **Module System**: ESM-only (no CommonJS)
 
 ## Database Support
 

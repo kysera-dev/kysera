@@ -6,7 +6,9 @@ description: Automatic timestamp management plugin for Kysera
 
 # Timestamps Plugin
 
-Automatically manage `created_at` and `updated_at` timestamps on your entities.
+**Version:** 0.7.3
+
+Automatically manage `created_at` and `updated_at` timestamps on your entities. Works through **@kysera/executor's** Unified Execution Layer for consistent behavior across both Repository and DAL patterns.
 
 ## Installation
 
@@ -15,6 +17,8 @@ npm install @kysera/timestamps
 ```
 
 ## Basic Usage
+
+### With Repository Pattern
 
 ```typescript
 import { createORM } from '@kysera/repository'
@@ -38,6 +42,23 @@ console.log(post.created_at) // 2024-01-15T10:30:00.000Z
 
 // updated_at is set automatically on update
 await postRepo.update(post.id, { title: 'Updated Title' })
+```
+
+### With Executor Directly
+
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { timestampsPlugin } from '@kysera/timestamps'
+
+const executor = await createExecutor(db, [timestampsPlugin()])
+
+// Timestamps work with direct executor usage
+const post = await executor
+  .insertInto('posts')
+  .values({ title: 'Hello World', content: 'My first post' })
+  .returningAll()
+  .executeTakeFirst()
+// created_at and updated_at set automatically
 ```
 
 ## Configuration

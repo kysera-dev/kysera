@@ -6,7 +6,9 @@ description: Overview of Kysera's plugin system
 
 # Plugin System
 
-Kysera's plugin system allows you to extend repository functionality without modifying core code.
+**Version:** 0.7.3
+
+Kysera's plugin system allows you to extend repository functionality without modifying core code. All plugins work through **@kysera/executor's** Unified Execution Layer, providing consistent behavior across both Repository and DAL patterns.
 
 ## Available Plugins
 
@@ -19,7 +21,7 @@ Kysera's plugin system allows you to extend repository functionality without mod
 
 ## Using Plugins
 
-### Basic Setup
+### Basic Setup with Repository Pattern
 
 ```typescript
 import { createORM } from '@kysera/repository'
@@ -46,6 +48,29 @@ const userRepo = orm.createRepository(executor => {
 await userRepo.softDelete(userId) // From soft-delete
 await userRepo.getAuditHistory(userId) // From audit
 await userRepo.findRecentlyCreated() // From timestamps
+```
+
+### Basic Setup with DAL Pattern
+
+```typescript
+import { createExecutor } from '@kysera/executor'
+import { createQuery, createContext } from '@kysera/dal'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { timestampsPlugin } from '@kysera/timestamps'
+
+// Create executor with plugins
+const executor = await createExecutor(db, [
+  softDeletePlugin({ deletedAtColumn: 'deleted_at' }),
+  timestampsPlugin()
+])
+
+// DAL queries automatically get plugin behavior
+const getActiveUsers = createQuery(ctx =>
+  ctx.db.selectFrom('users').selectAll().execute()
+)
+
+const ctx = createContext(executor)
+const users = await getActiveUsers(ctx) // Soft-delete filter applied automatically!
 ```
 
 ## Plugin Architecture
@@ -87,14 +112,36 @@ extendRepository(repo) {
 }
 ```
 
+### Plugin Lifecycle
+
+Plugins go through a complete lifecycle managed by the executor:
+
+1. **Validation**: Plugins are validated for dependencies, conflicts, and circular references
+2. **Ordering**: Plugin order is resolved via topological sort with priority
+3. **Initialization**: `onInit()` is called for each plugin in order
+4. **Execution**: Query interception and repository extensions are applied
+5. **Cleanup**: `onDestroy()` is called when executor is destroyed (if implemented)
+
 ### How It Works
 
-1. **createORM** uses **createExecutor** internally
+1. **createORM** or **createExecutor** validates and initializes plugins
 2. **Executor** wraps Kysely with a Proxy that intercepts query-building methods
-3. **Plugins** are validated for dependencies, conflicts, and circular references
-4. **Plugin order** is resolved via topological sort with priority
-5. **Query interception** applies plugins to `selectFrom`, `insertInto`, `updateTable`, `deleteFrom`
-6. **Transaction wrapping** preserves plugin behavior in transactions
+3. **Query interception** applies to: `selectFrom`, `insertInto`, `updateTable`, `deleteFrom`
+4. **Repository extensions** add methods via `extendRepository()`
+5. **Transaction wrapping** preserves plugin behavior in transactions
+6. **Cleanup** happens via `onDestroy()` when executor is destroyed
+
+**Intercepted Methods:**
+
+```typescript
+// From @kysera/executor/src/types.ts
+const INTERCEPTED_METHODS = [
+  'selectFrom',   // SELECT queries → 'select'
+  'insertInto',   // INSERT queries → 'insert'
+  'updateTable',  // UPDATE queries → 'update'
+  'deleteFrom'    // DELETE queries → 'delete'
+] as const
+```
 
 ## Plugin Interface
 
@@ -133,6 +180,12 @@ interface Plugin {
    * Repository pattern only (not available in DAL)
    */
   extendRepository?<T extends object>(repo: T): T
+
+  /**
+   * Lifecycle: Called when plugin is destroyed/cleaned up
+   * Use for cleanup tasks (close connections, clear intervals, etc.)
+   */
+  onDestroy?(): Promise<void> | void
 }
 
 interface QueryBuilderContext {

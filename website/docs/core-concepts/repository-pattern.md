@@ -6,13 +6,15 @@ description: Understanding the repository pattern in Kysera
 
 # Repository Pattern
 
-Kysera's repository pattern provides a clean abstraction over database operations with type safety and validation built-in.
+**Version 0.7.3**
+
+Kysera's repository pattern provides a clean abstraction over database operations with type safety and validation built-in. In v0.7+, repositories are built on top of the **@kysera/executor** foundation layer, enabling unified plugin support.
 
 ## Creating Repositories
 
-### Using createORM with Plugins
+### Using createORM with Plugins (Recommended)
 
-The recommended way to create repositories in v0.7:
+The recommended approach in v0.7+ - `createORM` internally uses `createExecutor()` for plugin support:
 
 ```typescript
 import { createORM } from '@kysera/repository'
@@ -27,15 +29,19 @@ const CreateUserSchema = z.object({
 
 const UpdateUserSchema = CreateUserSchema.partial()
 
-// Create ORM with plugins
+// Step 1: createORM internally creates a KyseraExecutor with plugins
 const orm = await createORM(db, [softDeletePlugin()])
+// Equivalent to:
+// const executor = await createExecutor(db, [softDeletePlugin()])
+// const orm = createORM(executor, [])
 
 // Define repository factory function
 const createUserRepository = (executor, applyPlugins) => ({
   tableName: 'users',
-  executor,
+  executor, // This is a KyseraExecutor with plugins
 
   async findById(id) {
+    // Query interceptors automatically apply soft-delete filter
     return executor.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
   },
 
@@ -60,12 +66,13 @@ const createUserRepository = (executor, applyPlugins) => ({
 // Create repository with plugin support
 const userRepo = orm.createRepository(createUserRepository)
 
-// Use repository methods (plugins automatically applied)
+// Use repository methods (query interceptors automatically applied)
 const user = await userRepo.findById(1)
+// -> SELECT * FROM users WHERE id = 1 AND deleted_at IS NULL
 
 // Plugin extension methods also available
-await userRepo.softDelete(1)
-await userRepo.restore(1)
+await userRepo.softDelete(1) // Extension method from plugin
+await userRepo.restore(1)     // Extension method from plugin
 ```
 
 ### Alternative: Using Repository Factory (No Plugins)

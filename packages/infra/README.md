@@ -19,7 +19,7 @@ bun add @kysera/infra kysely
 
 - **Health Monitoring** - Database connectivity checks with latency tracking
 - **Retry Logic** - Automatic retries with exponential backoff for transient errors
-- **Circuit Breaker** - Prevent cascading failures when database is unavailable
+- **Circuit Breaker** - Prevent cascading failures with mutex-based race condition prevention
 - **Graceful Shutdown** - Clean database connection termination
 - **Pool Metrics** - Connection pool monitoring for PostgreSQL, MySQL, and SQLite
 - **TypeScript First** - Full type safety with strict TypeScript
@@ -285,7 +285,9 @@ const users = await fetchUsersWithRetry(100)
 
 ### Circuit Breaker
 
-Prevent cascading failures by failing fast when a service is unavailable:
+Prevent cascading failures by failing fast when a service is unavailable.
+
+**Race Condition Prevention:** Uses internal mutex to prevent race conditions during state transitions, ensuring thread-safe operation in concurrent environments.
 
 ```typescript
 import { CircuitBreaker } from '@kysera/infra/resilience'
