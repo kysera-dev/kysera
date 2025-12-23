@@ -94,7 +94,7 @@ function Stats() {
             <div className={styles.statLabel}>Runtime Dependencies</div>
           </div>
           <div className={styles.stat}>
-            <div className={styles.statValue}>3</div>
+            <div className={styles.statValue}>4</div>
             <div className={styles.statLabel}>Databases Supported</div>
           </div>
         </div>

@@ -200,6 +200,7 @@ await withTransaction(executor, async (txCtx) => {
 - PostgreSQL
 - MySQL
 - SQLite
+- MSSQL (SQL Server)
 
 ## Next Steps
 

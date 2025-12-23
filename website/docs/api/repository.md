@@ -1153,17 +1153,20 @@ console.log(shouldValidate()) // boolean
 
 ## Database Support
 
-| Feature        | PostgreSQL   | MySQL        | SQLite       |
-| -------------- | ------------ | ------------ | ------------ |
-| RETURNING      | Native       | Emulated     | Native       |
-| Bulk Insert    | Single query | Single query | Single query |
-| Boolean        | true/false   | 1/0          | 1/0          |
-| Composite Keys | ✓            | ✓            | ✓            |
-| UUID           | ✓            | ✓            | ✓            |
+| Feature        | PostgreSQL   | MySQL        | SQLite       | MSSQL        |
+| -------------- | ------------ | ------------ | ------------ | ------------ |
+| RETURNING      | Native       | Emulated     | Native       | OUTPUT       |
+| Bulk Insert    | Single query | Single query | Single query | Single query |
+| Boolean        | true/false   | 1/0          | 1/0          | BIT (1/0)    |
+| Composite Keys | ✓            | ✓            | ✓            | ✓            |
+| UUID           | ✓            | ✓            | ✓            | ✓            |
+| Pagination     | LIMIT/OFFSET | LIMIT/OFFSET | LIMIT/OFFSET | OFFSET/FETCH |
 
 **Notes:**
 
 - MySQL doesn't support RETURNING clause - Kysera automatically emulates it by fetching inserted/updated records
+- MSSQL uses OUTPUT clause for returning inserted/updated records
+- MSSQL pagination requires ORDER BY clause (Kysera handles this automatically)
 - All databases support composite primary keys
 - Boolean values are automatically normalized
 
