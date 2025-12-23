@@ -507,6 +507,237 @@ CREATE INDEX idx_active_posts_mssql ON posts (created_at DESC, id DESC)
 WHERE status = 'published';
 ```
 
+## Cursor Security
+
+**NEW in v0.7.3**: Prevent cursor tampering with signing and encryption.
+
+### Why Cursor Security Matters
+
+Cursors are base64-encoded values that can be decoded and modified by clients. Without protection, malicious users can:
+
+- Tamper with cursor values to access unauthorized data
+- Skip to arbitrary positions in result sets
+- Bypass pagination limits
+- Access data outside their permission scope
+
+### HMAC Signing (Recommended)
+
+Sign cursors with HMAC to detect tampering:
+
+```typescript
+import { paginateCursor } from '@kysera/core'
+
+const page1 = await paginateCursor(db.selectFrom('posts').selectAll(), {
+  orderBy: [
+    { column: 'created_at', direction: 'desc' },
+    { column: 'id', direction: 'desc' }
+  ],
+  limit: 20,
+  security: {
+    secret: process.env.CURSOR_SECRET!, // Minimum 16 characters
+    algorithm: 'sha256' // Default: sha256, options: sha256 | sha384 | sha512
+  }
+})
+
+// Cursor format: base64-cursor.signature
+// Example: aWQ=:MTA=.a1b2c3d4e5f6...
+
+// Next page with same security options
+const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
+  orderBy: [
+    { column: 'created_at', direction: 'desc' },
+    { column: 'id', direction: 'desc' }
+  ],
+  limit: 20,
+  cursor: page1.pagination.nextCursor,
+  security: {
+    secret: process.env.CURSOR_SECRET!,
+    algorithm: 'sha256'
+  }
+})
+```
+
+**Tampered cursors throw `BadRequestError`:**
+
+```typescript
+try {
+  await paginateCursor(query, {
+    orderBy: [...],
+    cursor: tamperedCursor,
+    security: { secret: process.env.CURSOR_SECRET! }
+  })
+} catch (error) {
+  // BadRequestError: Invalid cursor signature: cursor has been tampered with
+}
+```
+
+### AES-256-GCM Encryption (Maximum Security)
+
+Encrypt cursors to hide their contents completely:
+
+```typescript
+const page1 = await paginateCursor(db.selectFrom('posts').selectAll(), {
+  orderBy: [{ column: 'id', direction: 'asc' }],
+  limit: 20,
+  security: {
+    secret: process.env.CURSOR_SECRET!,
+    encrypt: true, // Enable AES-256-GCM encryption
+    algorithm: 'sha384' // Optional: defaults to sha256
+  }
+})
+
+// Cursor format: iv.encrypted.authTag.signature
+// Values are completely hidden from client
+```
+
+**Benefits of encryption:**
+
+- Cursors cannot be decoded by clients
+- Completely hides pagination state
+- Prevents information leakage
+- Still detects tampering via HMAC signature
+
+**Performance considerations:**
+
+| Method          | Speed  | Security   | Cursor Size |
+| --------------- | ------ | ---------- | ----------- |
+| No security     | Fastest| None       | Smallest    |
+| HMAC signing    | Fast   | High       | +64 bytes   |
+| AES-256-GCM     | Good   | Maximum    | +128 bytes  |
+
+### API Implementation with Security
+
+```typescript
+import { paginateCursor } from '@kysera/core'
+import { BadRequestError } from '@kysera/core'
+
+const CURSOR_SECRET = process.env.CURSOR_SECRET! // Set in environment
+
+app.get('/api/posts', async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 20, 100)
+  const cursor = req.query.cursor || null
+
+  try {
+    const result = await paginateCursor(
+      db.selectFrom('posts').selectAll(),
+      {
+        orderBy: [
+          { column: 'created_at', direction: 'desc' },
+          { column: 'id', direction: 'desc' }
+        ],
+        limit,
+        cursor,
+        security: {
+          secret: CURSOR_SECRET,
+          encrypt: true // Optional: use encryption for sensitive data
+        }
+      }
+    )
+
+    res.json({
+      data: result.data,
+      cursors: {
+        next: result.pagination.nextCursor,
+        prev: result.pagination.prevCursor
+      }
+    })
+  } catch (error) {
+    if (error instanceof BadRequestError) {
+      // Tampered cursor detected
+      return res.status(400).json({ error: 'Invalid cursor' })
+    }
+    throw error
+  }
+})
+```
+
+### Secret Key Management
+
+**Best practices:**
+
+```typescript
+// ✅ Good: Environment variable
+const secret = process.env.CURSOR_SECRET!
+
+// ✅ Good: Key management service
+const secret = await kms.getSecret('cursor-secret')
+
+// ❌ Bad: Hard-coded secret
+const secret = 'my-secret-key-12345' // Don't do this!
+
+// ❌ Bad: Short secret
+const secret = 'short' // Minimum 16 characters required
+```
+
+**Generate secure secrets:**
+
+```bash
+# Generate a secure 32-byte secret
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# Or use OpenSSL
+openssl rand -hex 32
+```
+
+**Add to environment:**
+
+```bash
+# .env
+CURSOR_SECRET=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6
+```
+
+### Algorithm Selection
+
+Choose HMAC algorithm based on security requirements:
+
+```typescript
+// SHA-256 (default) - Fast, secure for most use cases
+security: { secret, algorithm: 'sha256' }
+
+// SHA-384 - Higher security, slightly slower
+security: { secret, algorithm: 'sha384' }
+
+// SHA-512 - Maximum security, larger signatures
+security: { secret, algorithm: 'sha512' }
+```
+
+### Migration from Unsigned Cursors
+
+If you have existing unsigned cursors in client apps:
+
+```typescript
+// Option 1: Gradual migration with fallback
+async function paginateWithMigration(query, options) {
+  try {
+    // Try with security first
+    return await paginateCursor(query, {
+      ...options,
+      security: { secret: CURSOR_SECRET }
+    })
+  } catch (error) {
+    if (error instanceof BadRequestError && options.cursor) {
+      // Fallback: try without security for old cursors
+      return await paginateCursor(query, {
+        ...options,
+        security: undefined
+      })
+    }
+    throw error
+  }
+}
+
+// Option 2: Version-prefixed cursors
+const version = 'v2'
+const cursor = `${version}:${signedCursor}`
+
+// Parse and route based on version
+if (cursor.startsWith('v2:')) {
+  // Use new signed pagination
+} else {
+  // Use old unsigned pagination
+}
+```
+
 ## Best Practices
 
 ### 1. Always Include Tie-Breaker

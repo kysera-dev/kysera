@@ -18,7 +18,14 @@ DatabaseError (base)
 ├── NotFoundError
 ├── BadRequestError
 ├── NotNullError
-└── CheckConstraintError
+├── CheckConstraintError
+├── SoftDeleteError
+│   └── RecordNotDeletedError
+├── AuditError
+│   ├── AuditRestoreError
+│   └── AuditMissingValuesError
+└── TimestampsError
+    └── TimestampColumnMissingError
 ```
 
 ## Error Classes

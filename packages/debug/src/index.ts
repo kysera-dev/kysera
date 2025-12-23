@@ -36,3 +36,6 @@ export { type ProfilerSummary, type ProfilerOptions, QueryProfiler } from './pro
 
 // Formatting
 export { formatSQL, formatSQLPretty, minifySQL, highlightSQL } from './format.js'
+
+// Utilities
+export { CircularBuffer } from './circular-buffer.js'

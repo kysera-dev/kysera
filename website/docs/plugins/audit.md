@@ -297,16 +297,47 @@ All bulk methods use batch audit logging:
 
 ## Database-Specific Plugins
 
-```typescript
-// PostgreSQL-optimized
-import { auditPluginPostgreSQL } from '@kysera/audit'
+For optimal compatibility, use the database-specific audit plugin:
 
-// MySQL-optimized
+| Database   | Plugin                     | Notes                            |
+| ---------- | -------------------------- | -------------------------------- |
+| PostgreSQL | `auditPluginPostgreSQL()`  | Full feature support             |
+| MySQL      | `auditPluginMySQL()`       | DATETIME timestamp handling      |
+| SQLite     | `auditPluginSQLite()`      | SQLite-specific optimizations    |
+
+### MySQL Timestamp Handling
+
+MySQL's DATETIME type requires specific formatting:
+
+```typescript
 import { auditPluginMySQL } from '@kysera/audit'
 
-// SQLite-optimized
+const plugins = [
+  auditPluginMySQL({
+    tableName: 'audit_logs',
+    getUserId: () => getCurrentUserId()
+  })
+]
+
+const executor = await createExecutor(db, plugins)
+```
+
+### All Database-Specific Variants
+
+```typescript
+// PostgreSQL-optimized (ISO8601 timestamps)
+import { auditPluginPostgreSQL } from '@kysera/audit'
+
+// MySQL-optimized (DATETIME format: 'YYYY-MM-DD HH:MM:SS')
+import { auditPluginMySQL } from '@kysera/audit'
+
+// SQLite-optimized (ISO8601 timestamps)
 import { auditPluginSQLite } from '@kysera/audit'
 ```
+
+:::note
+All database-specific plugins currently use the same core implementation with database-appropriate timestamp formatting. The generic `auditPlugin()` also works across all databases. The database-specific variants are provided for future optimizations and explicit type clarity.
+:::
 
 ## Best Practices
 

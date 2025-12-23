@@ -37,6 +37,15 @@ export * from './helpers'
 // Types and Logger
 export * from './types'
 export * from './logger'
+
+// Cursor Security
+export * from './cursor-crypto'
+
+// Dialect Detection
+export * from './dialect-detection'
+
+// Version
+export * from './version'
 ```
 
 :::info Modules Moved to Separate Packages
@@ -81,7 +90,7 @@ const result = await paginateCursor(query, {
 
 **Pagination Bounds:**
 - `MAX_PAGE`: 10,000 (maximum page number)
-- `MAX_LIMIT`: 100 (maximum items per page)
+- `MAX_LIMIT`: 10,000 (maximum items per page)
 - Default limit: 20 items
 - These bounds prevent excessive database load and memory usage
 
@@ -124,6 +133,72 @@ import { consoleLogger, silentLogger, createPrefixedLogger } from '@kysera/core'
 const myLogger = createPrefixedLogger('[myapp]', consoleLogger)
 ```
 
+### Cursor Security
+
+Cryptographic functions for securing pagination cursors with HMAC signing and AES-256-GCM encryption.
+
+```typescript
+import { signCursor, verifyCursor, encryptCursor, decryptCursor } from '@kysera/core'
+
+// Sign a cursor with HMAC
+const signed = signCursor(cursor, 'my-secret-key')
+
+// Verify and extract cursor
+const original = verifyCursor(signed, 'my-secret-key')
+
+// Encrypt cursor with AES-256-GCM
+const encrypted = encryptCursor(cursor, 'my-secret-key')
+
+// Decrypt cursor
+const decrypted = decryptCursor(encrypted, 'my-secret-key')
+```
+
+**Exports:**
+- `signCursor(cursor, secret, algorithm?)` - Sign cursor with HMAC
+- `verifyCursor(signedCursor, secret, algorithm?)` - Verify and extract cursor
+- `encryptCursor(cursor, secret)` - Encrypt cursor with AES-256-GCM
+- `decryptCursor(encryptedCursor, secret)` - Decrypt cursor
+- `CursorSecurityOptions` - Security options type
+
+### Dialect Detection
+
+Automatic database dialect detection from Kysely instances.
+
+```typescript
+import { detectDialect } from '@kysera/core'
+
+const dialect = detectDialect(db)
+// Returns: 'postgres' | 'mysql' | 'sqlite' | 'mssql'
+
+// Use for dialect-specific logic
+if (dialect === 'postgres') {
+  // PostgreSQL-specific code
+}
+```
+
+**Exports:**
+- `detectDialect(executor)` - Detect database dialect from Kysely instance
+- `Dialect` - Type for supported dialects
+
+### Version
+
+Package version information and utilities.
+
+```typescript
+import { VERSION, getPackageVersion, formatVersionString, isDevelopmentVersion } from '@kysera/core'
+
+console.log(VERSION) // '0.7.3'
+console.log(getPackageVersion()) // '0.7.3'
+console.log(formatVersionString('v')) // 'v0.7.3'
+console.log(isDevelopmentVersion()) // false (true in development)
+```
+
+**Exports:**
+- `VERSION` - Current package version constant
+- `getPackageVersion()` - Get package version
+- `formatVersionString(prefix?)` - Format version with optional prefix
+- `isDevelopmentVersion()` - Check if running in development mode
+
 ## Types
 
 ### Executor
@@ -165,7 +240,7 @@ interface KyseraLogger {
 
 ```typescript
 interface OffsetOptions {
-  /** Maximum rows to return (default: 20, max: 100) */
+  /** Maximum rows to return (default: 20, max: 10,000) */
   limit?: number
   /** Rows to skip (default: 0) */
   offset?: number
@@ -195,7 +270,7 @@ function applyOffset<DB, TB, O>(
 **Features:**
 
 - No COUNT(\*) query (~50% faster than paginate on large tables)
-- Limit bounds: 1-100 (prevents accidental large queries)
+- Limit bounds: 1-10,000 (prevents accidental large queries)
 - Offset must be non-negative
 - SQLite compatible (auto-adds LIMIT when OFFSET is used)
 

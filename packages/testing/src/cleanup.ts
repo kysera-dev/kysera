@@ -257,7 +257,7 @@ function tryMultipleDetectionStrategies<DB>(db: Kysely<DB>): DatabaseDialect | n
 function tryGetExecutorStrategy<DB>(db: Kysely<DB>): DatabaseDialect | null {
   try {
     // Type assertion is necessary for accessing internal Kysely properties
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Internal use of deprecated interface
+     
     const dbWithAdapter = db as unknown as DatabaseExecutorWithAdapter
     const executor = dbWithAdapter.getExecutor?.()
     const adapter = executor?.adapter
@@ -276,6 +276,9 @@ function tryGetExecutorStrategy<DB>(db: Kysely<DB>): DatabaseDialect | null {
     }
     if (dialectName.includes('sqlite')) {
       return 'sqlite'
+    }
+    if (dialectName.includes('mssql') || dialectName.includes('sqlserver')) {
+      return 'mssql'
     }
 
     return null
@@ -332,6 +335,9 @@ function checkPropertyForDialect(value: unknown): DatabaseDialect | null {
   if (stringified.includes('sqlite')) {
     return 'sqlite'
   }
+  if (stringified.includes('mssql') || stringified.includes('sqlserver')) {
+    return 'mssql'
+  }
 
   return null
 }
@@ -376,15 +382,26 @@ async function cleanUsingTruncate<DB>(
   providedDialect?: DatabaseDialect,
   logger: KyseraLogger = silentLogger
 ): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Internal use for backward compatibility
+   
   const dialect = detectDialect(db, providedDialect, logger)
 
-  if (dialect === 'postgres') {
-    await cleanPostgres(db, tables)
-  } else if (dialect === 'mysql') {
-    await cleanMysql(db, tables)
-  } else {
-    await cleanSqlite(db, tables)
+  switch (dialect) {
+    case 'postgres':
+      await cleanPostgres(db, tables)
+      break
+    case 'mysql':
+      await cleanMysql(db, tables)
+      break
+    case 'mssql':
+      await cleanMssql(db, tables)
+      break
+    case 'sqlite':
+      await cleanSqlite(db, tables)
+      break
+    default:
+      // Fall back to SQLite for unknown dialects
+      await cleanSqlite(db, tables)
+      break
   }
 }
 
@@ -416,6 +433,58 @@ async function cleanMysql<DB>(db: Kysely<DB>, tables: string[]): Promise<void> {
   }
 
   await sql.raw('SET FOREIGN_KEY_CHECKS = 1').execute(db)
+}
+
+/**
+ * Execute TRUNCATE TABLE statement for MSSQL.
+ *
+ * MSSQL TRUNCATE considerations:
+ * - Cannot truncate tables with foreign key constraints (must disable FKs first)
+ * - TRUNCATE resets IDENTITY columns automatically
+ * - Syntax: TRUNCATE TABLE [schema].[table] or TRUNCATE TABLE [table]
+ * - Bracket escaping for identifiers: [table_name]
+ *
+ * Note: DDL statements like TRUNCATE don't support parameterization.
+ * Security is ensured through strict identifier validation which prevents
+ * all SQL injection vectors (only allows [a-zA-Z0-9_] patterns).
+ *
+ * @internal
+ */
+async function truncateTableMssql<DB>(db: Kysely<DB>, tableName: string): Promise<void> {
+  const validTable = validateIdentifier(tableName)
+  // MSSQL uses square brackets for identifier quoting
+  // Default schema is 'dbo' but we omit it to allow any schema
+  await sql.raw(`TRUNCATE TABLE [${validTable}]`).execute(db)
+}
+
+/**
+ * Clean MSSQL database using TRUNCATE.
+ *
+ * MSSQL foreign key handling strategy:
+ * - Use NOCHECK CONSTRAINT to temporarily disable FK checks
+ * - Execute TRUNCATE on each table
+ * - Re-enable constraints with CHECK CONSTRAINT
+ *
+ * Alternative approach for tables with foreign keys:
+ * - Could use DELETE instead of TRUNCATE (slower but FK-safe)
+ * - Could use DBCC CHECKIDENT to reset identity columns after DELETE
+ *
+ * Current implementation uses the constraint disable approach for consistency
+ * with PostgreSQL and MySQL patterns and better performance.
+ *
+ * @internal
+ */
+async function cleanMssql<DB>(db: Kysely<DB>, tables: string[]): Promise<void> {
+  // MSSQL: Disable FK checks globally, truncate, re-enable
+  // Note: NOCHECK CONSTRAINT ALL is supported in MSSQL 2005+
+  await sql.raw('EXEC sp_MSforeachtable "ALTER TABLE ? NOCHECK CONSTRAINT ALL"').execute(db)
+
+  for (const table of tables) {
+    await truncateTableMssql(db, table)
+  }
+
+  // Re-enable all constraints
+  await sql.raw('EXEC sp_MSforeachtable "ALTER TABLE ? WITH CHECK CHECK CONSTRAINT ALL"').execute(db)
 }
 
 /**

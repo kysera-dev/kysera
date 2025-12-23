@@ -9,6 +9,8 @@ export * from './table-operations.js'
 export * from './helpers.js'
 export * from './upsert.js'
 export * from './context-aware.js'
+export * from './primary-key-utils.js'
+export * from './column-validation.js'
 
 // Re-export core types from @kysera/executor for convenience
 export type { Plugin, QueryBuilderContext } from '@kysera/executor'

@@ -44,9 +44,16 @@ export class SelectTransformer<DB = unknown> {
     // Check for context
     const ctx = rlsContext.getContextOrNull()
     if (!ctx) {
-      // No context - return original query
-      // In production, you might want to throw an error here
-      return qb
+      // SECURITY FIX (H-11): This should never happen as plugin.interceptQuery
+      // now handles missing context. If we reach here, apply defensive WHERE FALSE
+      // to prevent unfiltered queries from leaking through.
+      // This is a defense-in-depth measure.
+      return applyWhereCondition(
+        qb,
+        createRawCondition('FALSE') as unknown as string,
+        '=',
+        true
+      ) as SelectQueryBuilder<DB, TB, O>
     }
 
     // Check if system user (bypass RLS)

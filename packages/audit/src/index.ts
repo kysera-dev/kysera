@@ -317,6 +317,12 @@ interface ExtendedRepositoryInternal<T = unknown>
 // ============================================================================
 
 /**
+ * Global lock for audit table creation to prevent race conditions
+ * Key: auditTable name, Value: Promise that resolves when table creation is complete
+ */
+const auditTableCreationLocks = new Map<string, Promise<void>>()
+
+/**
  * Check if audit table exists
  */
 async function checkAuditTableExists<DB>(
@@ -1246,10 +1252,40 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
     priority: -100, // Run last to audit after all other transformations
 
     async onInit<DB>(executor: Kysely<DB>): Promise<void> {
-      const exists = await checkAuditTableExists(executor, auditTable)
-      if (!exists) {
-        await createAuditTable(executor, auditTable)
+      // Check if another initialization is already in progress for this table
+      const existingLock = auditTableCreationLocks.get(auditTable)
+      if (existingLock) {
+        // Wait for the ongoing initialization to complete
+        await existingLock
+        return
       }
+
+      // Create a lock promise IMMEDIATELY to prevent race conditions
+      // The lock is set BEFORE any async work to ensure only one initialization proceeds
+      const lockPromise = (async () => {
+        try {
+          // Check if table exists (inside the lock)
+          const exists = await checkAuditTableExists(executor, auditTable)
+          if (!exists) {
+            await createAuditTable(executor, auditTable)
+          }
+        } finally {
+          // Clean up lock after completion
+          auditTableCreationLocks.delete(auditTable)
+        }
+      })()
+
+      // Store the lock SYNCHRONOUSLY before any await
+      auditTableCreationLocks.set(auditTable, lockPromise)
+
+      // Wait for creation to complete
+      await lockPromise
+    },
+
+    async onDestroy(): Promise<void> {
+      // Clean up any remaining locks
+      auditTableCreationLocks.clear()
+      logger.debug('Audit plugin destroyed, cleared table creation locks')
     },
 
     extendRepository<T extends object>(repo: T): T {

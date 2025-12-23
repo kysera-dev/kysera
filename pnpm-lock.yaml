@@ -369,6 +369,10 @@ importers:
         version: 4.1.13
 
   packages/core:
+    dependencies:
+      '@kysera/executor':
+        specifier: workspace:*
+        version: link:../executor
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.13

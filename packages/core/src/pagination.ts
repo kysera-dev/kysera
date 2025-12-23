@@ -1,6 +1,13 @@
 import type { SelectQueryBuilder, ExpressionBuilder } from 'kysely'
 import { sql } from 'kysely'
 import { BadRequestError, type DatabaseDialect } from './errors.js'
+import {
+  signCursor,
+  verifyCursor,
+  encryptCursor,
+  decryptCursor,
+  type CursorSecurityOptions
+} from './cursor-crypto.js'
 
 /**
  * Pagination bounds constants
@@ -38,8 +45,11 @@ const decodeBase64 = (str: string): string => {
  * the values of the order-by columns from the last row, which can later
  * be decoded to build WHERE clauses for the next page.
  *
+ * If security options are provided, the cursor will be signed and/or encrypted.
+ *
  * @param orderBy - Array of column ordering specifications used to determine which columns to encode
  * @param lastRow - The last row of the current page containing the values to encode
+ * @param security - Optional security options for signing/encryption
  * @returns Encoded cursor string suitable for use in pagination
  *
  * @example
@@ -48,9 +58,17 @@ const decodeBase64 = (str: string): string => {
  * const lastRow = { id: 1, created_at: new Date('2024-01-01') }
  * const cursor = encodeCursor(orderBy, lastRow)
  * // Returns: "Y3JlYXRlZF9hdA==:IjIwMjQtMDEtMDFUMDA6MDA6MDAuMDAwWiI="
+ *
+ * // With security
+ * const secureCursor = encodeCursor(orderBy, lastRow, { secret: 'my-secret' })
+ * // Returns signed cursor: "Y3JlYXRlZF9hdA==:IjIwMjQtMDEtMDFUMDA6MDA6MDAuMDAwWiI=.signature"
  * ```
  */
-function encodeCursor<T>(orderBy: Array<{ column: keyof T & string }>, lastRow: T): string {
+function encodeCursor<T>(
+  orderBy: Array<{ column: keyof T & string }>,
+  lastRow: T,
+  security?: CursorSecurityOptions
+): string {
   if (orderBy.length === 1) {
     // Single column optimization: encode column and value separately
     const column = orderBy[0]!.column
@@ -60,12 +78,32 @@ function encodeCursor<T>(orderBy: Array<{ column: keyof T & string }>, lastRow: 
     if (value === undefined || value === null) {
       // Fall back to multi-column encoding which handles undefined correctly
       const cursorObj = { [column]: value }
-      return encodeBase64(JSON.stringify(cursorObj))
+      let cursor = encodeBase64(JSON.stringify(cursorObj))
+
+      // Apply security if configured
+      if (security) {
+        if (security.encrypt) {
+          cursor = encryptCursor(cursor, security.secret)
+        }
+        cursor = signCursor(cursor, security.secret, security.algorithm)
+      }
+
+      return cursor
     }
 
     const columnB64 = encodeBase64(String(column))
     const valueB64 = encodeBase64(JSON.stringify(value))
-    return `${columnB64}:${valueB64}`
+    let cursor = `${columnB64}:${valueB64}`
+
+    // Apply security if configured
+    if (security) {
+      if (security.encrypt) {
+        cursor = encryptCursor(cursor, security.secret)
+      }
+      cursor = signCursor(cursor, security.secret, security.algorithm)
+    }
+
+    return cursor
   }
 
   // Multi-column: use JSON encoding
@@ -77,7 +115,19 @@ function encodeCursor<T>(orderBy: Array<{ column: keyof T & string }>, lastRow: 
     {} as Record<string, unknown>
   )
 
-  return encodeBase64(JSON.stringify(cursorObj))
+  let cursor = encodeBase64(JSON.stringify(cursorObj))
+
+  // Apply security if configured
+  if (security) {
+    if (security.encrypt) {
+      // Encrypt first, then optionally sign
+      cursor = encryptCursor(cursor, security.secret)
+    }
+    // Sign the cursor (or encrypted cursor)
+    cursor = signCursor(cursor, security.secret, security.algorithm)
+  }
+
+  return cursor
 }
 
 /**
@@ -91,9 +141,13 @@ function encodeCursor<T>(orderBy: Array<{ column: keyof T & string }>, lastRow: 
  * The function first attempts to decode as single-column format (presence of colon),
  * and falls back to multi-column format if that fails.
  *
+ * If security options are provided, the cursor will be verified and/or decrypted.
+ *
  * @param cursor - The encoded cursor string to decode
+ * @param security - Optional security options for verification/decryption
  * @returns Decoded cursor object with column names as keys and their values
  * @throws {BadRequestError} When cursor format is invalid or cannot be decoded
+ * @throws {BadRequestError} When cursor signature is invalid or decryption fails
  * @throws {Error} When decoded value is not a valid object
  *
  * @example
@@ -101,16 +155,33 @@ function encodeCursor<T>(orderBy: Array<{ column: keyof T & string }>, lastRow: 
  * const cursor = "Y3JlYXRlZF9hdA==:IjIwMjQtMDEtMDFUMDA6MDA6MDAuMDAwWiI="
  * const decoded = decodeCursor(cursor)
  * // Returns: { created_at: "2024-01-01T00:00:00.000Z" }
+ *
+ * // With security
+ * const signedCursor = "Y3JlYXRlZF9hdA==:IjIwMjQtMDEtMDFUMDA6MDA6MDAuMDAwWiI=.signature"
+ * const decoded = decodeCursor(signedCursor, { secret: 'my-secret' })
+ * // Verifies signature and returns: { created_at: "2024-01-01T00:00:00.000Z" }
  * ```
  */
-function decodeCursor(cursor: string): Record<string, unknown> {
+function decodeCursor(cursor: string, security?: CursorSecurityOptions): Record<string, unknown> {
+  let decodedCursor = cursor
+
+  // Apply security verification/decryption if configured
+  if (security) {
+    // Verify signature first
+    decodedCursor = verifyCursor(decodedCursor, security.secret, security.algorithm)
+    // Decrypt if encryption was enabled
+    if (security.encrypt) {
+      decodedCursor = decryptCursor(decodedCursor, security.secret)
+    }
+  }
+
   // Try multi-column format first (more reliable detection)
   // Multi-column format: base64(JSON.stringify({...}))
   // Single-column format: base64(column):base64(value)
 
   // First, try to decode as multi-column JSON object
   try {
-    const decoded: unknown = JSON.parse(decodeBase64(cursor))
+    const decoded: unknown = JSON.parse(decodeBase64(decodedCursor))
     // Type guard: ensure decoded is an object
     if (typeof decoded === 'object' && decoded !== null && !Array.isArray(decoded)) {
       return decoded as Record<string, unknown>
@@ -121,9 +192,9 @@ function decodeCursor(cursor: string): Record<string, unknown> {
   }
 
   // Try single-column format (has colon separator at base64 level, not decoded level)
-  if (cursor.includes(':') && cursor.split(':').length === 2) {
+  if (decodedCursor.includes(':') && decodedCursor.split(':').length === 2) {
     try {
-      const [columnB64, valueB64] = cursor.split(':') as [string, string]
+      const [columnB64, valueB64] = decodedCursor.split(':') as [string, string]
       const column = decodeBase64(columnB64)
       const value: unknown = JSON.parse(decodeBase64(valueB64))
       return { [column]: value }
@@ -134,7 +205,7 @@ function decodeCursor(cursor: string): Record<string, unknown> {
   }
 
   // If we got here, multi-column decode succeeded but wasn't an object
-  const decoded: unknown = JSON.parse(decodeBase64(cursor))
+  const decoded: unknown = JSON.parse(decodeBase64(decodedCursor))
 
   // Type guard: ensure decoded is an object
   if (typeof decoded !== 'object' || decoded === null || Array.isArray(decoded)) {
@@ -277,6 +348,11 @@ export interface CursorOptions<T> {
    * Required for MSSQL which uses different OFFSET/FETCH syntax
    */
   dialect?: DatabaseDialect | undefined
+  /**
+   * Security options for cursor signing and/or encryption
+   * Prevents cursor tampering and unauthorized data access
+   */
+  security?: CursorSecurityOptions | undefined
 }
 
 /**
@@ -334,7 +410,7 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
   options: CursorOptions<O>
 ): Promise<PaginatedResult<O>> {
-  const { orderBy, cursor, dialect } = options
+  const { orderBy, cursor, dialect, security } = options
 
   // Apply bounds checking to limit parameter
   // Allow 0 as a special case (same as offset pagination)
@@ -346,7 +422,7 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
     // Decode and validate cursor
     let decoded: Record<string, unknown>
     try {
-      decoded = decodeCursor(cursor)
+      decoded = decodeCursor(cursor, security)
     } catch (error) {
       throw new BadRequestError(
         `Invalid pagination cursor: unable to decode - ${error instanceof Error ? error.message : String(error)}`
@@ -450,11 +526,11 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
 
   // Encode cursors from first and last rows (optimized for single-column cursors)
   const nextCursor =
-    hasNext && data.length > 0 ? encodeCursor(orderBy, data[data.length - 1] as O) : undefined
+    hasNext && data.length > 0 ? encodeCursor(orderBy, data[data.length - 1] as O, security) : undefined
 
   // prevCursor is the first row of current page - allows going back
   // Only set if we have a cursor (meaning we're not on first page) and we have data
-  const prevCursor = cursor && data.length > 0 ? encodeCursor(orderBy, data[0] as O) : undefined
+  const prevCursor = cursor && data.length > 0 ? encodeCursor(orderBy, data[0] as O, security) : undefined
 
   const result: PaginatedResult<O> = {
     data,

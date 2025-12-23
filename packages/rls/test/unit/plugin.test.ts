@@ -163,7 +163,7 @@ describe('rlsPlugin', () => {
       const plugin = rlsPlugin({
         schema,
         logger,
-        skipTables: ['system_logs'],
+        excludeTables: ['system_logs'],
         bypassRoles: ['admin']
       })
 
@@ -174,7 +174,7 @@ describe('rlsPlugin', () => {
         '[RLS] Initializing RLS plugin',
         expect.objectContaining({
           tables: 2,
-          skipTables: 1,
+          excludeTables: 1,
           bypassRoles: 1
         })
       )
@@ -193,10 +193,10 @@ describe('rlsPlugin', () => {
       await plugin.onInit!(mockExecutor)
     })
 
-    it('should skip excluded tables (skipTables option)', () => {
+    it('should skip excluded tables (excludeTables option)', () => {
       const pluginWithSkip = rlsPlugin({
         schema,
-        skipTables: ['system_logs']
+        excludeTables: ['system_logs']
       })
 
       const qb = new MockQueryBuilder()
@@ -224,22 +224,13 @@ describe('rlsPlugin', () => {
       expect(qb.getWhereCalls()).toHaveLength(0)
     })
 
-    it('should skip when no context is set and requireContext is false', () => {
-      const qb = new MockQueryBuilder()
-      const context: QueryBuilderContext = {
-        operation: 'select',
-        table: 'posts',
-        metadata: {}
-      }
-
-      const result = plugin.interceptQuery!(qb as unknown as AnyQueryBuilder, context)
-      expect(result).toBe(qb)
-    })
-
-    it('should throw when no context is set and requireContext is true', () => {
-      const pluginWithRequireContext = rlsPlugin({
+    it('should return empty results when no context is set with new secure defaults', () => {
+      // With new defaults (requireContext: true), this would throw
+      // But we can test the requireContext: false, allowUnfilteredQueries: false case
+      const pluginWithoutRequire = rlsPlugin({
         schema,
-        requireContext: true
+        requireContext: false,
+        allowUnfilteredQueries: false
       })
 
       const qb = new MockQueryBuilder()
@@ -249,9 +240,50 @@ describe('rlsPlugin', () => {
         metadata: {}
       }
 
+      const result = pluginWithoutRequire.interceptQuery!(qb as unknown as AnyQueryBuilder, context)
+      // Should return query builder with WHERE FALSE (returns empty results)
+      expect(result).toBeDefined()
+      // The query should have a where clause applied (WHERE FALSE)
+      const whereCalls = qb.getWhereCalls()
+      // Due to WHERE FALSE being applied, we should have at least one where call
+      expect(whereCalls.length).toBeGreaterThan(0)
+    })
+
+    it('should throw when no context is set and requireContext is true (default)', () => {
+      // requireContext defaults to true now, so default plugin behavior should throw
+      const qb = new MockQueryBuilder()
+      const context: QueryBuilderContext = {
+        operation: 'select',
+        table: 'posts',
+        metadata: {}
+      }
+
       expect(() =>
-        pluginWithRequireContext.interceptQuery!(qb as unknown as AnyQueryBuilder, context)
+        plugin.interceptQuery!(qb as unknown as AnyQueryBuilder, context)
       ).toThrow(RLSContextError)
+      expect(() =>
+        plugin.interceptQuery!(qb as unknown as AnyQueryBuilder, context)
+      ).toThrow(/RLS context required but not found/)
+    })
+
+    it('should allow unfiltered queries when explicitly enabled', () => {
+      const pluginWithUnfiltered = rlsPlugin({
+        schema,
+        requireContext: false,
+        allowUnfilteredQueries: true
+      })
+
+      const qb = new MockQueryBuilder()
+      const context: QueryBuilderContext = {
+        operation: 'select',
+        table: 'posts',
+        metadata: {}
+      }
+
+      const result = pluginWithUnfiltered.interceptQuery!(qb as unknown as AnyQueryBuilder, context)
+      // Should return original query builder (unfiltered)
+      expect(result).toBe(qb)
+      expect(qb.getWhereCalls()).toHaveLength(0)
     })
 
     it('should skip for system users (ctx.auth.isSystem)', async () => {
@@ -375,7 +407,7 @@ describe('rlsPlugin', () => {
       const pluginWithLogger = rlsPlugin({
         schema,
         logger,
-        skipTables: ['system_logs']
+        excludeTables: ['system_logs']
       })
 
       await pluginWithLogger.onInit!(mockExecutor)
@@ -625,7 +657,7 @@ describe('rlsPlugin', () => {
     it('should skip excluded tables in extendRepository', async () => {
       const pluginWithSkip = rlsPlugin({
         schema,
-        skipTables: ['posts']
+        excludeTables: ['posts']
       })
 
       await pluginWithSkip.onInit!(mockExecutor)

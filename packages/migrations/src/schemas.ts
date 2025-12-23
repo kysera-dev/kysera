@@ -5,22 +5,29 @@ import { z } from 'zod'
 // ============================================================================
 
 /**
+ * Schema for KyseraLogger interface.
+ * Validates that an object has the required logger methods.
+ */
+const LoggerSchema = z
+  .object({
+    trace: z.function(),
+    debug: z.function(),
+    info: z.function(),
+    warn: z.function(),
+    error: z.function(),
+    fatal: z.function()
+  })
+  .passthrough() // Allow additional properties
+
+/**
  * Schema for MigrationRunnerOptions
  * Validates configuration options for the migration runner
  */
 export const MigrationRunnerOptionsSchema = z.object({
   /** Enable dry run mode (preview only, no changes) */
   dryRun: z.boolean().default(false),
-  /**
-   * Logger implementing KyseraLogger interface from @kysera/core.
-   * Uses z.any() because:
-   * 1. Logger is an object with methods (debug, info, warn, error)
-   * 2. Zod function schemas don't compose well for interface validation
-   * 3. Runtime type checking of loggers adds unnecessary overhead
-   * 4. TypeScript interface already provides compile-time type safety
-   * @see KyseraLogger from @kysera/core for the expected interface
-   */
-  logger: z.any().optional(),
+  /** Logger implementing KyseraLogger interface from @kysera/core */
+  logger: LoggerSchema.optional(),
   /** Wrap each migration in a transaction */
   useTransactions: z.boolean().default(false),
   /** Stop on first error */
@@ -59,11 +66,8 @@ export const MigrationDefinitionSchema = z.object({
  * Validates options passed to migration plugins
  */
 export const MigrationPluginOptionsSchema = z.object({
-  /**
-   * Optional logger for the plugin.
-   * Uses z.any() - see MigrationRunnerOptionsSchema.logger for rationale.
-   */
-  logger: z.any().optional()
+  /** Optional logger for the plugin */
+  logger: LoggerSchema.optional()
 })
 
 // ============================================================================
@@ -74,25 +78,22 @@ export const MigrationPluginOptionsSchema = z.object({
  * Schema for MigrationPlugin
  * Validates migration plugin structure.
  *
- * Note: Lifecycle hooks use z.any() for the following reasons:
- * 1. Each hook has a unique signature with generic types (Migration<DB>)
- * 2. Zod cannot express generic type parameters in function schemas
- * 3. TypeScript interface (MigrationPlugin) provides compile-time safety
- * 4. Runtime validation of callbacks adds overhead without benefit
+ * Note: Lifecycle hooks are validated as functions. Full type safety for
+ * generic parameters (Migration<DB>) is provided by TypeScript interfaces.
  */
 export const MigrationPluginSchema = z.object({
   /** Plugin name */
   name: z.string().min(1, 'Plugin name is required'),
   /** Plugin version */
   version: z.string().min(1, 'Plugin version is required'),
-  /** Called once when the runner is initialized - see MigrationPlugin.onInit for signature */
-  onInit: z.any().optional(),
-  /** Called before migration execution - see MigrationPlugin.beforeMigration for signature */
-  beforeMigration: z.any().optional(),
-  /** Called after successful migration execution - see MigrationPlugin.afterMigration for signature */
-  afterMigration: z.any().optional(),
-  /** Called on migration error - see MigrationPlugin.onMigrationError for signature */
-  onMigrationError: z.any().optional()
+  /** Called once when the runner is initialized */
+  onInit: z.function().optional(),
+  /** Called before migration execution */
+  beforeMigration: z.function().optional(),
+  /** Called after successful migration execution */
+  afterMigration: z.function().optional(),
+  /** Called on migration error */
+  onMigrationError: z.function().optional()
 })
 
 // ============================================================================

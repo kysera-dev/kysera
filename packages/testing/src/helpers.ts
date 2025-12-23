@@ -151,6 +151,35 @@ export async function countRows<DB>(db: Kysely<DB>, table: string): Promise<numb
 }
 
 /**
+ * Internal helper to build and execute a query with dynamic conditions.
+ *
+ * @param db - Kysely database instance
+ * @param table - Table name
+ * @param where - Conditions to match
+ * @returns The matched row or undefined
+ * @internal
+ */
+async function findRow<DB>(
+  db: Kysely<DB>,
+  table: string,
+  where: Record<string, unknown>
+): Promise<unknown> {
+  // Build query dynamically - requires any cast for runtime table/column names
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- Dynamic query building
+  const anyDb = db as any
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
+  let query = anyDb.selectFrom(table).selectAll()
+
+  for (const [key, value] of Object.entries(where)) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
+    query = query.where(key, '=', value)
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
+  return await query.executeTakeFirst()
+}
+
+/**
  * Assert that a row exists in a table.
  *
  * @param db - Kysely database instance
@@ -175,19 +204,7 @@ export async function assertRowExists<DB>(
   table: string,
   where: Record<string, unknown>
 ): Promise<unknown> {
-  // Build query dynamically - requires any cast for runtime table/column names
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- Dynamic query building
-  const anyDb = db as any
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
-  let query = anyDb.selectFrom(table).selectAll()
-
-  for (const [key, value] of Object.entries(where)) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
-    query = query.where(key, '=', value)
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
-  const row = await query.executeTakeFirst()
+  const row = await findRow(db, table, where)
 
   if (!row) {
     throw new Error(`Expected row to exist in ${table} with conditions: ${JSON.stringify(where)}`)
@@ -218,19 +235,7 @@ export async function assertRowNotExists<DB>(
   table: string,
   where: Record<string, unknown>
 ): Promise<void> {
-  // Build query dynamically - requires any cast for runtime table/column names
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- Dynamic query building
-  const anyDb = db as any
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
-  let query = anyDb.selectFrom(table).selectAll()
-
-  for (const [key, value] of Object.entries(where)) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
-    query = query.where(key, '=', value)
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
-  const row = await query.executeTakeFirst()
+  const row = await findRow(db, table, where)
 
   if (row) {
     throw new Error(

@@ -200,6 +200,15 @@ export async function setupMigrations(db: Kysely<unknown>): Promise<void> {
     .addColumn('name', 'varchar(255)', col => col.primaryKey())
     .addColumn('executed_at', 'timestamp', col => col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`))
     .execute()
+
+  // Create index on name column for faster lookups
+  // Using IF NOT EXISTS equivalent: ignore errors if index already exists
+  try {
+    await db.schema.createIndex('idx_migrations_name').on('migrations').column('name').execute()
+  } catch (error) {
+    // Index already exists or table doesn't support concurrent index creation
+    // Safe to ignore as primary key provides index functionality
+  }
 }
 
 // ============================================================================

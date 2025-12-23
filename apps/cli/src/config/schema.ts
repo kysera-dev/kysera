@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { AuditOptionsSchema } from '@kysera/audit'
-import { SoftDeleteOptionsSchema } from '@kysera/soft-delete'
+import { SoftDeleteOptionsSchema } from '@kysera/soft-delete/schema'
 import { TimestampsOptionsSchema } from '@kysera/timestamps'
 
 // Database connection schema

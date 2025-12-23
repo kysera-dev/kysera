@@ -8,7 +8,7 @@ import type { Kysely, Transaction } from 'kysely'
 import { sql } from 'kysely'
 import type { KyseraExecutor, KyseraTransaction } from '@kysera/executor'
 import { isKyseraExecutor, getPlugins, wrapTransaction } from '@kysera/executor'
-import { silentLogger, type KyseraLogger } from '@kysera/core'
+import { silentLogger, type KyseraLogger, detectDialect } from '@kysera/core'
 import type { DbContext, TransactionOptions } from './types.js'
 import {
   DB_CONTEXT_SYMBOL,
@@ -22,7 +22,8 @@ import {
  *
  * Uses a unified detection mechanism that checks:
  * 1. Internal IN_TRANSACTION_SYMBOL marker (set by withTransaction)
- * 2. Kysely's isTransaction property (for raw Transaction instances)
+ * 2. KyseraTransaction marker (__kysera property with __rawDb.isTransaction)
+ * 3. Kysely's isTransaction property (for raw Transaction instances)
  *
  * The internal marker takes precedence to ensure reliable detection
  * across nested transactions and savepoints.
@@ -37,8 +38,42 @@ function detectTransaction<DB>(
     return true
   }
 
+  // Check for KyseraTransaction marker (wrapped transaction with plugins)
+  // This ensures we don't assume Kysely internals on wrapped executors
+  if (isKyseraTransaction(db)) {
+    return true
+  }
+
   // Fallback to Kysely's isTransaction property (for raw Transaction instances)
+  // Only safe when not a KyseraExecutor (already checked above)
   return 'isTransaction' in db && db.isTransaction
+}
+
+/**
+ * Check if a database instance is a KyseraTransaction.
+ * KyseraTransaction has __kysera marker and wraps a Transaction instance.
+ *
+ * @internal
+ */
+function isKyseraTransaction<DB>(
+  db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>
+): db is KyseraTransaction<DB> {
+  // Check for KyseraExecutor marker
+  if (!('__kysera' in db && db.__kysera)) {
+    return false
+  }
+
+  // Type assertion is safe here because we just checked __kysera exists
+  const executor = db
+
+  // Check if __rawDb exists (it might be missing on malformed executors)
+  if (!executor.__rawDb) {
+    return false
+  }
+
+  // Check if the raw database is a transaction
+  const rawDb = executor.__rawDb as unknown as { isTransaction?: boolean }
+  return rawDb.isTransaction === true
 }
 
 /**
@@ -117,7 +152,7 @@ function incrementSavepointCounter<DB>(
 }
 
 /**
- * Extended transaction options with logger support.
+ * Extended transaction options with logger support and rollback error handling.
  */
 export interface TransactionOptionsWithLogger extends TransactionOptions {
   /**
@@ -125,6 +160,26 @@ export interface TransactionOptionsWithLogger extends TransactionOptions {
    * Defaults to silentLogger (no-op).
    */
   logger?: KyseraLogger
+  /**
+   * How to handle savepoint rollback errors in nested transactions.
+   *
+   * - 'log-only' (default): Log rollback errors but don't throw (original error is more important)
+   * - 'throw': Throw rollback error instead of original error (useful for debugging)
+   * - 'callback': Call onRollbackError callback with both errors (for custom handling)
+   *
+   * @default 'log-only'
+   */
+  rollbackErrorMode?: 'log-only' | 'throw' | 'callback'
+  /**
+   * Callback invoked when savepoint rollback fails (only used with rollbackErrorMode: 'callback').
+   *
+   * Receives both the original error that triggered the rollback and the rollback error.
+   * This allows custom error handling logic (e.g., logging to external service, alerting, etc.)
+   *
+   * @param originalError - The error that caused the savepoint to rollback
+   * @param rollbackError - The error that occurred during rollback
+   */
+  onRollbackError?: (originalError: unknown, rollbackError: unknown) => void | Promise<void>
 }
 
 /**
@@ -204,13 +259,35 @@ export interface TransactionOptionsWithLogger extends TransactionOptions {
  *   return await operation(ctx);
  * }, { logger: consoleLogger });
  * ```
+ *
+ * @example With rollback error handling
+ * ```typescript
+ * // Throw rollback error instead of original error (debugging)
+ * await withTransaction(db, async (ctx) => {
+ *   // ...
+ * }, { rollbackErrorMode: 'throw' });
+ *
+ * // Custom error handling callback
+ * await withTransaction(db, async (ctx) => {
+ *   // ...
+ * }, {
+ *   rollbackErrorMode: 'callback',
+ *   onRollbackError: async (originalError, rollbackError) => {
+ *     await logToMonitoring({
+ *       type: 'savepoint_rollback_failure',
+ *       originalError,
+ *       rollbackError
+ *     });
+ *   }
+ * });
+ * ```
  */
 export async function withTransaction<DB, T>(
   db: Kysely<DB> | KyseraExecutor<DB> | DbContext<DB>,
   fn: (ctx: DbContext<DB>) => Promise<T>,
   options: TransactionOptionsWithLogger = {}
 ): Promise<T> {
-  const { logger = silentLogger } = options
+  const { logger = silentLogger, rollbackErrorMode = 'log-only', onRollbackError } = options
 
   // Handle DbContext input - extract the db instance
   const actualDb: Kysely<DB> | KyseraExecutor<DB> = isDbContext<DB>(db)
@@ -225,9 +302,18 @@ export async function withTransaction<DB, T>(
     // This prevents SQL injection through savepoint name construction
     const savepointName = 'kysera_sp_' + String(savepointId)
 
+    // Detect dialect for savepoint syntax
+    const dialect = detectDialect(actualDb)
+
     try {
-      // Create savepoint - use Kysely sql template literal
-      await sql`SAVEPOINT ${sql.id(savepointName)}`.execute(actualDb as Transaction<DB>)
+      // Create savepoint - use dialect-specific syntax
+      // PostgreSQL/MySQL/SQLite: SAVEPOINT name
+      // MSSQL: SAVE TRANSACTION name
+      if (dialect === 'mssql') {
+        await sql`SAVE TRANSACTION ${sql.id(savepointName)}`.execute(actualDb as Transaction<DB>)
+      } else {
+        await sql`SAVEPOINT ${sql.id(savepointName)}`.execute(actualDb as Transaction<DB>)
+      }
 
       // Create context with same db (already in transaction)
       const ctx: DbContext<DB> = {
@@ -240,19 +326,46 @@ export async function withTransaction<DB, T>(
       const result = await fn(ctx)
 
       // Release savepoint on success
-      await sql`RELEASE SAVEPOINT ${sql.id(savepointName)}`.execute(actualDb as Transaction<DB>)
+      // PostgreSQL/MySQL/SQLite: RELEASE SAVEPOINT name
+      // MSSQL: Does not support RELEASE, savepoint is automatically released on commit
+      if (dialect !== 'mssql') {
+        await sql`RELEASE SAVEPOINT ${sql.id(savepointName)}`.execute(actualDb as Transaction<DB>)
+      }
 
       return result
     } catch (error) {
       // Rollback to savepoint on error
       try {
-        await sql`ROLLBACK TO SAVEPOINT ${sql.id(savepointName)}`.execute(
-          actualDb as Transaction<DB>
-        )
+        // PostgreSQL/MySQL/SQLite: ROLLBACK TO SAVEPOINT name
+        // MSSQL: ROLLBACK TRANSACTION name
+        if (dialect === 'mssql') {
+          await sql`ROLLBACK TRANSACTION ${sql.id(savepointName)}`.execute(
+            actualDb as Transaction<DB>
+          )
+        } else {
+          await sql`ROLLBACK TO SAVEPOINT ${sql.id(savepointName)}`.execute(
+            actualDb as Transaction<DB>
+          )
+        }
       } catch (rollbackError) {
-        // Log rollback failure to prevent silent errors
-        // Original error is more important, so we do not throw here
-        logger.error('Savepoint rollback failed for ' + savepointName + ':', rollbackError)
+        // Handle rollback errors based on configured mode
+        switch (rollbackErrorMode) {
+          case 'throw':
+            // Throw rollback error instead of original error (useful for debugging)
+            throw rollbackError
+          case 'callback':
+            // Call custom callback with both errors
+            if (onRollbackError) {
+              await onRollbackError(error, rollbackError)
+            }
+            break
+          case 'log-only':
+          default:
+            // Log rollback failure (default behavior)
+            // Original error is more important, so we do not throw here
+            logger.error('Savepoint rollback failed for ' + savepointName + ':', rollbackError)
+            break
+        }
       }
       throw error
     }

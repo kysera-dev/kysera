@@ -406,6 +406,141 @@ describe('cleanDatabase - truncate strategy - SQLite', () => {
   })
 })
 
+describe('cleanDatabase - truncate strategy - MSSQL', () => {
+  let mock: MockDbWithTracking
+
+  beforeEach(() => {
+    mock = createMockDbWithRawTracking('MssqlDialect')
+  })
+
+  it('should disable FK checks before truncating', async () => {
+    await cleanDatabase(mock.db, 'truncate', ['users'])
+
+    expect(
+      mock.rawCalls.some(
+        sql => sql.includes('sp_MSforeachtable') && sql.includes('NOCHECK CONSTRAINT ALL')
+      )
+    ).toBe(true)
+  })
+
+  it('should re-enable FK checks after truncating', async () => {
+    await cleanDatabase(mock.db, 'truncate', ['users'])
+
+    expect(
+      mock.rawCalls.some(
+        sql => sql.includes('sp_MSforeachtable') && sql.includes('CHECK CONSTRAINT ALL')
+      )
+    ).toBe(true)
+  })
+
+  it('should truncate tables with square bracket escaping', async () => {
+    await cleanDatabase(mock.db, 'truncate', ['users'])
+
+    expect(mock.rawCalls.some(sql => sql.includes('TRUNCATE TABLE [users]'))).toBe(true)
+  })
+
+  it('should execute operations in correct order', async () => {
+    await cleanDatabase(mock.db, 'truncate', ['users'])
+
+    // Order: disable FK -> truncate -> enable FK
+    const disableIdx = mock.rawCalls.findIndex(sql => sql.includes('NOCHECK CONSTRAINT ALL'))
+    const truncateIdx = mock.rawCalls.findIndex(sql => sql.includes('TRUNCATE TABLE'))
+    const enableIdx = mock.rawCalls.findIndex(
+      sql => sql.includes('CHECK CONSTRAINT ALL') && !sql.includes('NOCHECK')
+    )
+
+    expect(disableIdx).toBeGreaterThanOrEqual(0)
+    expect(truncateIdx).toBeGreaterThanOrEqual(0)
+    expect(enableIdx).toBeGreaterThanOrEqual(0)
+    expect(disableIdx).toBeLessThan(truncateIdx)
+    expect(truncateIdx).toBeLessThan(enableIdx)
+  })
+
+  it('should handle multiple tables', async () => {
+    await cleanDatabase(mock.db, 'truncate', ['users', 'posts', 'comments'])
+
+    const truncateCalls = mock.rawCalls.filter(sql => sql.includes('TRUNCATE TABLE'))
+    expect(truncateCalls).toHaveLength(3)
+    expect(truncateCalls.some(sql => sql.includes('[users]'))).toBe(true)
+    expect(truncateCalls.some(sql => sql.includes('[posts]'))).toBe(true)
+    expect(truncateCalls.some(sql => sql.includes('[comments]'))).toBe(true)
+  })
+
+  it('should handle single table', async () => {
+    await cleanDatabase(mock.db, 'truncate', ['users'])
+
+    const truncateCalls = mock.rawCalls.filter(sql => sql.includes('TRUNCATE TABLE [users]'))
+    expect(truncateCalls).toHaveLength(1)
+  })
+
+  it('should use explicit dialect from options', async () => {
+    // Create PostgreSQL mock but override with MSSQL dialect
+    const pgMock = createMockDbWithRawTracking('PostgresDialect')
+
+    await cleanDatabase(pgMock.db, 'truncate', { dialect: 'mssql', tables: ['users'] })
+
+    // Should use MSSQL syntax (square brackets) not PostgreSQL (CASCADE)
+    expect(pgMock.rawCalls.some(sql => sql.includes('TRUNCATE TABLE [users]'))).toBe(true)
+    expect(pgMock.rawCalls.some(sql => sql.includes('CASCADE'))).toBe(false)
+    expect(pgMock.rawCalls.some(sql => sql.includes('NOCHECK CONSTRAINT ALL'))).toBe(true)
+  })
+
+  it('should detect MssqlDialect from constructor name', async () => {
+    await cleanDatabase(mock.db, 'truncate', ['users'])
+
+    // Should detect MSSQL and use appropriate syntax
+    expect(mock.rawCalls.some(sql => sql.includes('[users]'))).toBe(true)
+  })
+
+  it('should detect SqlServerDialect variant', async () => {
+    const sqlServerMock = createMockDbWithRawTracking('SqlServerDialect')
+
+    await cleanDatabase(sqlServerMock.db, 'truncate', ['users'])
+
+    // Should detect as MSSQL and use square brackets
+    expect(sqlServerMock.rawCalls.some(sql => sql.includes('[users]'))).toBe(true)
+  })
+
+  it('should handle tables with valid identifier patterns', async () => {
+    await cleanDatabase(mock.db, 'truncate', ['user_table', 'UserPosts123', '_internal_table'])
+
+    expect(mock.rawCalls.some(sql => sql.includes('[user_table]'))).toBe(true)
+    expect(mock.rawCalls.some(sql => sql.includes('[UserPosts123]'))).toBe(true)
+    expect(mock.rawCalls.some(sql => sql.includes('[_internal_table]'))).toBe(true)
+  })
+
+  it('should handle errors during constraint disable', async () => {
+    const mockExecuteQuery = vi.fn().mockRejectedValue(new Error('Constraint disable failed'))
+
+    const errorDb = {
+      deleteFrom: vi.fn().mockReturnValue({
+        execute: vi.fn().mockResolvedValue({ numDeletedRows: 0n })
+      }),
+      getExecutor: vi.fn(() => ({
+        adapter: {
+          dialect: {
+            constructor: {
+              name: 'MssqlDialect'
+            }
+          }
+        },
+        transformQuery: vi.fn((node: unknown) => node),
+        compileQuery: vi.fn((node: unknown) => ({
+          sql: 'EXEC sp_MSforeachtable "ALTER TABLE ? NOCHECK CONSTRAINT ALL"',
+          parameters: [],
+          query: node
+        })),
+        executeQuery: mockExecuteQuery,
+        provideConnection: vi.fn()
+      }))
+    } as MockDb
+
+    await expect(cleanDatabase(errorDb, 'truncate', ['users'])).rejects.toThrow(
+      'Constraint disable failed'
+    )
+  })
+})
+
 describe('cleanDatabase - SQL injection prevention', () => {
   it('should reject invalid table names with special characters', async () => {
     const mockDb = createMockDb()

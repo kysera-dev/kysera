@@ -64,7 +64,9 @@ describe('gracefulShutdown', () => {
       debug: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn()
+      error: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn()
     }
 
     await expect(gracefulShutdown(db as any, { logger })).rejects.toThrow('Destroy failed')

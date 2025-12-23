@@ -5,6 +5,7 @@
  */
 
 import type { QueryMetrics } from '@kysera/core'
+import { CircularBuffer } from './circular-buffer.js'
 
 /**
  * Query profiler summary.
@@ -64,9 +65,7 @@ export interface ProfilerOptions {
  * ```
  */
 export class QueryProfiler {
-  private queries: QueryMetrics[] = []
-  private queriesWriteIndex = 0
-  private readonly maxQueries: number
+  private readonly queriesBuffer: CircularBuffer<QueryMetrics>
 
   /**
    * Create a new query profiler.
@@ -74,7 +73,7 @@ export class QueryProfiler {
    * @param options - Profiler options
    */
   constructor(options: ProfilerOptions = {}) {
-    this.maxQueries = options.maxQueries ?? 1000
+    this.queriesBuffer = new CircularBuffer<QueryMetrics>(options.maxQueries ?? 1000)
   }
 
   /**
@@ -86,13 +85,7 @@ export class QueryProfiler {
    * @param metric - Query metrics to record
    */
   record(metric: QueryMetrics): void {
-    // O(1) circular buffer: overwrite oldest entry when full
-    if (this.queries.length < this.maxQueries) {
-      this.queries.push(metric)
-    } else {
-      this.queries[this.queriesWriteIndex % this.maxQueries] = metric
-    }
-    this.queriesWriteIndex++
+    this.queriesBuffer.add(metric)
   }
 
   /**
@@ -151,15 +144,14 @@ export class QueryProfiler {
    * Clear all recorded queries.
    */
   clear(): void {
-    this.queries = []
-    this.queriesWriteIndex = 0
+    this.queriesBuffer.clear()
   }
 
   /**
    * Get the number of recorded queries.
    */
   get count(): number {
-    return this.queries.length
+    return this.queriesBuffer.size
   }
 
   /**
@@ -169,11 +161,6 @@ export class QueryProfiler {
    * @returns Array of queries in chronological order
    */
   private getOrderedQueries(): QueryMetrics[] {
-    if (this.queries.length < this.maxQueries) {
-      return [...this.queries]
-    }
-    // Buffer is full, reconstruct chronological order
-    const start = this.queriesWriteIndex % this.maxQueries
-    return [...this.queries.slice(start), ...this.queries.slice(0, start)]
+    return this.queriesBuffer.getOrdered()
   }
 }

@@ -1,13 +1,14 @@
-import type { Executor } from '@kysera/core'
+import type { AnyExecutor } from '@kysera/core'
 
-// Re-export Executor for backwards compatibility
-export type { Executor }
+// Re-export AnyExecutor as Executor for backwards compatibility
+// This ensures repositories work with both raw Kysely and KyseraExecutor
+export type Executor<DB> = AnyExecutor<DB>
 
 /**
  * A map of table names to repository factory functions
  */
 export type RepositoryFactoryMap<DB, Repos> = {
-  [K in keyof Repos]: (executor: Executor<DB>) => Repos[K]
+  [K in keyof Repos]: (executor: AnyExecutor<DB>) => Repos[K]
 }
 
 /**
@@ -41,8 +42,8 @@ export type RepositoryFactoryMap<DB, Repos> = {
  */
 export function createRepositoriesFactory<DB, Repos extends Record<string, unknown>>(
   factories: RepositoryFactoryMap<DB, Repos>
-): (executor: Executor<DB>) => Repos {
-  return (executor: Executor<DB>): Repos => {
+): (executor: AnyExecutor<DB>) => Repos {
+  return (executor: AnyExecutor<DB>): Repos => {
     const repos = {} as Repos
 
     for (const [key, factory] of Object.entries(factories)) {

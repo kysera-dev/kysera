@@ -7,7 +7,7 @@ import {
   sql,
   type Generated
 } from 'kysely'
-import type { Dialect } from '@kysera/core'
+import type { Dialect } from '../../src/types.js'
 import { Pool } from 'pg'
 import { createPool } from 'mysql2'
 import Database from 'better-sqlite3'

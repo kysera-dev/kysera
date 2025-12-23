@@ -2,8 +2,16 @@
  * Universal logging interface for the Kysera ecosystem.
  *
  * This interface provides a standardized way to log messages across all Kysera packages.
- * It follows common logging levels (debug, info, warn, error) and can be implemented
- * with any logging library (winston, pino, bunyan, etc.) or custom implementation.
+ * It follows common logging levels (trace, debug, info, warn, error, fatal) and can be
+ * implemented with any logging library (winston, pino, bunyan, etc.) or custom implementation.
+ *
+ * **Log levels (from least to most severe):**
+ * - `trace`: Very detailed diagnostic information (e.g., function entry/exit, variable values)
+ * - `debug`: Detailed information for debugging purposes
+ * - `info`: General informational messages about application progress
+ * - `warn`: Warning messages for potentially harmful situations
+ * - `error`: Error messages for failures that don't crash the application
+ * - `fatal`: Critical errors that cause application termination
  *
  * @example
  * ```typescript
@@ -18,10 +26,12 @@
  * })
  *
  * const customLogger: KyseraLogger = {
+ *   trace: (msg, ...args) => winstonLogger.silly(msg, ...args), // Winston uses 'silly' for trace
  *   debug: (msg, ...args) => winstonLogger.debug(msg, ...args),
  *   info: (msg, ...args) => winstonLogger.info(msg, ...args),
  *   warn: (msg, ...args) => winstonLogger.warn(msg, ...args),
- *   error: (msg, ...args) => winstonLogger.error(msg, ...args)
+ *   error: (msg, ...args) => winstonLogger.error(msg, ...args),
+ *   fatal: (msg, ...args) => winstonLogger.error(msg, ...args) // Or use crit/emerg
  * }
  *
  * // Use with Kysera packages
@@ -29,10 +39,12 @@
  * ```
  */
 export interface KyseraLogger {
+  trace(message: string, ...args: unknown[]): void
   debug(message: string, ...args: unknown[]): void
   info(message: string, ...args: unknown[]): void
   warn(message: string, ...args: unknown[]): void
   error(message: string, ...args: unknown[]): void
+  fatal(message: string, ...args: unknown[]): void
 }
 
 /**
@@ -40,6 +52,14 @@ export interface KyseraLogger {
  *
  * This is the default logger used by Kysera packages when no custom logger is provided.
  * All log messages are prefixed with `[kysera:level]` for easy filtering and identification.
+ *
+ * **Log level mapping:**
+ * - `trace` → `console.debug` (browsers don't have console.trace for logging)
+ * - `debug` → `console.debug`
+ * - `info` → `console.info`
+ * - `warn` → `console.warn`
+ * - `error` → `console.error`
+ * - `fatal` → `console.error` (with FATAL prefix for visibility)
  *
  * @example
  * ```typescript
@@ -49,18 +69,26 @@ export interface KyseraLogger {
  * const orm = await createORM(db, [], { logger: consoleLogger })
  *
  * // Direct usage
+ * consoleLogger.trace('Function entry', { functionName: 'createUser' })
+ * // Output: [kysera:trace] Function entry { functionName: 'createUser' }
+ *
  * consoleLogger.info('User created', { userId: 123 })
  * // Output: [kysera:info] User created { userId: 123 }
  *
  * consoleLogger.error('Database error', error)
  * // Output: [kysera:error] Database error [Error object]
+ *
+ * consoleLogger.fatal('Critical failure', error)
+ * // Output: [kysera:fatal] FATAL: Critical failure [Error object]
  * ```
  */
 export const consoleLogger: KyseraLogger = {
+  trace: (msg, ...args) => console.debug(`[kysera:trace] ${msg}`, ...args),
   debug: (msg, ...args) => console.debug(`[kysera:debug] ${msg}`, ...args),
   info: (msg, ...args) => console.info(`[kysera:info] ${msg}`, ...args),
   warn: (msg, ...args) => console.warn(`[kysera:warn] ${msg}`, ...args),
-  error: (msg, ...args) => console.error(`[kysera:error] ${msg}`, ...args)
+  error: (msg, ...args) => console.error(`[kysera:error] ${msg}`, ...args),
+  fatal: (msg, ...args) => console.error(`[kysera:fatal] FATAL: ${msg}`, ...args)
 }
 
 /**
@@ -86,6 +114,9 @@ export const consoleLogger: KyseraLogger = {
  * ```
  */
 export const silentLogger: KyseraLogger = {
+  trace: () => {
+    /* intentionally empty */
+  },
   debug: () => {
     /* intentionally empty */
   },
@@ -96,6 +127,9 @@ export const silentLogger: KyseraLogger = {
     /* intentionally empty */
   },
   error: () => {
+    /* intentionally empty */
+  },
+  fatal: () => {
     /* intentionally empty */
   }
 }
@@ -116,6 +150,9 @@ export const silentLogger: KyseraLogger = {
  *
  * // Create package-specific logger
  * const auditLogger = createPrefixedLogger('audit', consoleLogger)
+ * auditLogger.trace('Function entry', { function: 'recordAudit' })
+ * // Output: [kysera:trace] [audit] Function entry { function: 'recordAudit' }
+ *
  * auditLogger.info('User action recorded', { userId: 123, action: 'login' })
  * // Output: [kysera:info] [audit] User action recorded { userId: 123, action: 'login' }
  *
@@ -123,6 +160,9 @@ export const silentLogger: KyseraLogger = {
  * const authLogger = createPrefixedLogger('auth')
  * authLogger.warn('Failed login attempt', { username: 'alice' })
  * // Output: [kysera:warn] [auth] Failed login attempt { username: 'alice' }
+ *
+ * authLogger.fatal('Authentication system crashed', error)
+ * // Output: [kysera:fatal] [auth] FATAL: Authentication system crashed [Error object]
  *
  * // Use with custom base logger
  * const myLogger = createPrefixedLogger('my-app', customWinstonLogger)
@@ -133,9 +173,11 @@ export function createPrefixedLogger(
   baseLogger: KyseraLogger = consoleLogger
 ): KyseraLogger {
   return {
+    trace: (msg, ...args) => baseLogger.trace(`[${prefix}] ${msg}`, ...args),
     debug: (msg, ...args) => baseLogger.debug(`[${prefix}] ${msg}`, ...args),
     info: (msg, ...args) => baseLogger.info(`[${prefix}] ${msg}`, ...args),
     warn: (msg, ...args) => baseLogger.warn(`[${prefix}] ${msg}`, ...args),
-    error: (msg, ...args) => baseLogger.error(`[${prefix}] ${msg}`, ...args)
+    error: (msg, ...args) => baseLogger.error(`[${prefix}] ${msg}`, ...args),
+    fatal: (msg, ...args) => baseLogger.fatal(`[${prefix}] ${msg}`, ...args)
   }
 }

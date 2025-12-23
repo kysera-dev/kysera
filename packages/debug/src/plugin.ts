@@ -15,6 +15,7 @@ import type {
 } from 'kysely'
 import { DefaultQueryCompiler } from 'kysely'
 import { consoleLogger, type KyseraLogger, type QueryMetrics } from '@kysera/core'
+import { CircularBuffer } from './circular-buffer.js'
 
 // Re-export QueryMetrics for backwards compatibility
 export type { QueryMetrics }
@@ -75,10 +76,8 @@ interface QueryData {
  * @internal
  */
 class DebugPlugin implements KyselyPlugin {
-  private metrics: QueryMetrics[] = []
-  private metricsWriteIndex = 0
+  private readonly metricsBuffer: CircularBuffer<QueryMetrics>
   private queryData = new WeakMap<object, QueryData>()
-  private readonly maxMetrics: number
   private readonly logger: KyseraLogger
   private readonly options: Required<
     Pick<DebugOptions, 'logQuery' | 'logParams' | 'slowQueryThreshold'>
@@ -87,7 +86,7 @@ class DebugPlugin implements KyselyPlugin {
 
   constructor(options: DebugOptions = {}) {
     this.logger = options.logger ?? consoleLogger
-    this.maxMetrics = options.maxMetrics ?? 1000
+    this.metricsBuffer = new CircularBuffer<QueryMetrics>(options.maxMetrics ?? 1000)
     this.onSlowQuery = options.onSlowQuery
     this.options = {
       logQuery: options.logQuery ?? true,
@@ -128,13 +127,8 @@ class DebugPlugin implements KyselyPlugin {
         timestamp: Date.now()
       }
 
-      // O(1) circular buffer: overwrite oldest entry when full
-      if (this.metrics.length < this.maxMetrics) {
-        this.metrics.push(metric)
-      } else {
-        this.metrics[this.metricsWriteIndex % this.maxMetrics] = metric
-      }
-      this.metricsWriteIndex++
+      // Add to circular buffer (O(1) operation)
+      this.metricsBuffer.add(metric)
 
       if (this.options.logQuery) {
         const message = this.options.logParams
@@ -158,18 +152,11 @@ class DebugPlugin implements KyselyPlugin {
   }
 
   getMetrics(): QueryMetrics[] {
-    // Return metrics in chronological order
-    if (this.metrics.length < this.maxMetrics) {
-      return [...this.metrics]
-    }
-    // Buffer is full, reconstruct chronological order
-    const start = this.metricsWriteIndex % this.maxMetrics
-    return [...this.metrics.slice(start), ...this.metrics.slice(0, start)]
+    return this.metricsBuffer.getOrdered()
   }
 
   clearMetrics(): void {
-    this.metrics = []
-    this.metricsWriteIndex = 0
+    this.metricsBuffer.clear()
   }
 }
 

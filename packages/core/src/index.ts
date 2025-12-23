@@ -24,6 +24,12 @@ export * from './error-codes.js'
 // Pagination
 export * from './pagination.js'
 
+// Cursor cryptography
+export * from './cursor-crypto.js'
+
+// Dialect detection
+export * from './dialect-detection.js'
+
 // Helpers
 export * from './helpers.js'
 
@@ -32,3 +38,6 @@ export * from './types.js'
 
 // Logger
 export * from './logger.js'
+
+// Version
+export * from './version.js'

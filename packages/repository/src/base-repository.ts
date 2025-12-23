@@ -11,6 +11,8 @@ import type {
 import { normalizePrimaryKeyConfig, getPrimaryKeyColumns } from './types.js'
 import { NotFoundError, getEnv } from '@kysera/core'
 import type { ValidationSchema } from './validation-adapter.js'
+import { extractPrimaryKey } from './primary-key-utils.js'
+import { withTransaction } from '@kysera/dal'
 
 /**
  * Core repository interface
@@ -144,24 +146,11 @@ export interface TableOperations<Table> {
 
 /**
  * Extract primary key value from an entity based on config
+ * @deprecated Use extractPrimaryKey from primary-key-utils.ts instead
+ * @internal Kept for backward compatibility, wraps the shared utility
  */
-function extractPrimaryKey<Entity, PK>(entity: Entity, pkConfig: PrimaryKeyConfig): PK {
-  const columns = getPrimaryKeyColumns(pkConfig.columns)
-
-  if (columns.length === 1) {
-    const column = columns[0]
-    if (!column) {
-      throw new Error('Primary key configuration is invalid: no columns defined')
-    }
-    return (entity as Record<string, unknown>)[column] as PK
-  }
-
-  // For composite keys, return an object
-  const result: Record<string, unknown> = {}
-  for (const column of columns) {
-    result[column] = (entity as Record<string, unknown>)[column]
-  }
-  return result as PK
+function extractPrimaryKeyFromEntity<Entity, PK>(entity: Entity, pkConfig: PrimaryKeyConfig): PK {
+  return extractPrimaryKey(entity, pkConfig) as PK
 }
 
 /**
@@ -322,7 +311,14 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
     },
 
     async transaction<R>(fn: (trx: Transaction<DB>) => Promise<R>): Promise<R> {
-      return db.transaction().execute(fn)
+      // Delegate to DAL's withTransaction for:
+      // 1. Savepoint support (nested transactions)
+      // 2. Plugin propagation (soft-delete, RLS, etc.)
+      // 3. Transaction markers for proper nesting detection
+      return withTransaction(db, async ctx => {
+        // Extract the raw transaction from the context
+        return fn(ctx.db as Transaction<DB>)
+      })
     },
 
     async paginate(options: {
@@ -389,7 +385,7 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
         if (lastItem) {
           nextCursor = {
             value: lastItem[orderBy],
-            id: extractPrimaryKey<Entity, PK>(lastItem, pkConfig)
+            id: extractPrimaryKeyFromEntity<Entity, PK>(lastItem, pkConfig)
           }
         }
       }

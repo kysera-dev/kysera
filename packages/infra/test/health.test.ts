@@ -314,7 +314,9 @@ describe('performHealthCheck', () => {
       debug: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn()
+      error: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn()
     }
 
     const db = createMockDb({})
@@ -335,7 +337,9 @@ describe('performHealthCheck', () => {
       debug: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn()
+      error: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn()
     }
 
     const db = createMockDb({})
@@ -364,7 +368,9 @@ describe('performHealthCheck', () => {
       debug: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn()
+      error: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn()
     }
 
     const options: HealthCheckOptions = {
@@ -664,7 +670,9 @@ describe('HealthMonitor', () => {
       debug: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn()
+      error: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn()
     }
 
     const options: HealthMonitorOptions = {
@@ -765,7 +773,9 @@ describe('HealthMonitor', () => {
       debug: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn()
+      error: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn()
     }
 
     // Mock Date.now to simulate slow latency
@@ -794,7 +804,9 @@ describe('HealthMonitor', () => {
       debug: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn()
+      error: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn()
     }
 
     // Mock Date.now to simulate medium latency
@@ -823,7 +835,9 @@ describe('HealthMonitor', () => {
       debug: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn()
+      error: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn()
     }
 
     const db = createMockDb({})
@@ -948,7 +962,9 @@ describe('HealthMonitor', () => {
       debug: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn()
+      error: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn()
     }
 
     const db = createMockDb({ shouldFail: true, error: new Error('Database down') })

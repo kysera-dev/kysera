@@ -73,16 +73,28 @@ export async function checkDatabaseHealth<DB>(
   try {
     // Simple query to check connection with timeout
     const timeoutMs = 5000 // 5 second timeout for health checks
+
+    // Create AbortController for proper cleanup
+    const abortController = new AbortController()
+    let timeoutId: NodeJS.Timeout | undefined
+
     const queryPromise = db.selectNoFrom(eb => eb.val(1).as('ping')).execute()
 
-    await Promise.race([
-      queryPromise,
-      new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error(`Health check timed out after ${String(timeoutMs)}ms`))
-        }, timeoutMs)
-      })
-    ])
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        abortController.abort()
+        reject(new Error(`Health check timed out after ${String(timeoutMs)}ms`))
+      }, timeoutMs)
+    })
+
+    try {
+      await Promise.race([queryPromise, timeoutPromise])
+    } finally {
+      // Clean up timeout to prevent memory leaks
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId)
+      }
+    }
 
     const latency = Date.now() - start
     const status = getStatusFromLatency(latency)

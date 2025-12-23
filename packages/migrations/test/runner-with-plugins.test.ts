@@ -17,10 +17,12 @@ import { safeDbDestroy, safeSqliteClose } from './helpers/cleanup.js'
 // Helper to create a test logger that captures output
 function createTestLogger(logs: string[]): KyseraLogger {
   return {
+    trace: (msg: string) => logs.push(`[trace] ${msg}`),
     debug: (msg: string) => logs.push(`[debug] ${msg}`),
     info: (msg: string) => logs.push(`[info] ${msg}`),
     warn: (msg: string) => logs.push(`[warn] ${msg}`),
-    error: (msg: string) => logs.push(`[error] ${msg}`)
+    error: (msg: string) => logs.push(`[error] ${msg}`),
+    fatal: (msg: string) => logs.push(`[fatal] ${msg}`)
   }
 }
 

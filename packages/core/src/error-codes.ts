@@ -127,7 +127,15 @@ export const PluginErrorCodes = {
   /** Duplicate plugin */
   PLUGIN_DUPLICATE: 'PLUGIN_DUPLICATE',
   /** Plugin not found */
-  PLUGIN_NOT_FOUND: 'PLUGIN_NOT_FOUND'
+  PLUGIN_NOT_FOUND: 'PLUGIN_NOT_FOUND',
+  /** Soft delete error */
+  SOFT_DELETE_ERROR: 'SOFT_DELETE_ERROR',
+  /** Record not deleted */
+  RECORD_NOT_DELETED: 'RECORD_NOT_DELETED',
+  /** Timestamps error */
+  TIMESTAMPS_ERROR: 'TIMESTAMPS_ERROR',
+  /** Timestamp column missing */
+  TIMESTAMP_COLUMN_MISSING: 'TIMESTAMP_COLUMN_MISSING'
 } as const
 
 // ============================================================================
@@ -145,7 +153,13 @@ export const AuditErrorCodes = {
   /** Old values not captured */
   AUDIT_OLD_VALUES_MISSING: 'AUDIT_OLD_VALUES_MISSING',
   /** Audit table creation failed */
-  AUDIT_TABLE_CREATION_FAILED: 'AUDIT_TABLE_CREATION_FAILED'
+  AUDIT_TABLE_CREATION_FAILED: 'AUDIT_TABLE_CREATION_FAILED',
+  /** Audit error */
+  AUDIT_ERROR: 'AUDIT_ERROR',
+  /** Audit restore error */
+  AUDIT_RESTORE_ERROR: 'AUDIT_RESTORE_ERROR',
+  /** Audit missing values */
+  AUDIT_MISSING_VALUES: 'AUDIT_MISSING_VALUES'
 } as const
 
 // ============================================================================

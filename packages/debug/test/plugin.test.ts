@@ -116,7 +116,14 @@ describe('withDebug', () => {
   describe('default options', () => {
     it('should use default logQuery=true', () => {
       const mockDb = createMockDb<TestDB>()
-      const mockLogger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+      const mockLogger = {
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        fatal: vi.fn()
+      }
 
       // Default should log queries
       withDebug(mockDb, { logger: mockLogger })
@@ -147,7 +154,14 @@ describe('withDebug', () => {
   describe('custom options', () => {
     it('should accept custom logger', () => {
       const mockDb = createMockDb<TestDB>()
-      const customLogger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+      const customLogger = {
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        fatal: vi.fn()
+      }
 
       const debugDb = withDebug(mockDb, { logger: customLogger })
 
@@ -189,7 +203,14 @@ describe('withDebug', () => {
 
     it('should accept all options together', () => {
       const mockDb = createMockDb<TestDB>()
-      const customLogger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+      const customLogger = {
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        fatal: vi.fn()
+      }
       const onSlowQuery = vi.fn()
 
       const debugDb = withDebug(mockDb, {
@@ -289,7 +310,14 @@ describe('DebugPlugin', () => {
   describe('logging behavior', () => {
     it('should log query when logQuery=true', async () => {
       const mockDb = createMockDb<TestDB>()
-      const mockLogger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+      const mockLogger = {
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        fatal: vi.fn()
+      }
 
       withDebug(mockDb, { logQuery: true, logger: mockLogger })
 
@@ -312,7 +340,14 @@ describe('DebugPlugin', () => {
 
     it('should not log query when logQuery=false', async () => {
       const mockDb = createMockDb<TestDB>()
-      const mockLogger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+      const mockLogger = {
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        fatal: vi.fn()
+      }
 
       withDebug(mockDb, { logQuery: false, logger: mockLogger })
 
@@ -386,7 +421,14 @@ describe('DebugPlugin', () => {
 
     it('should log warning when slow query and no callback', async () => {
       const mockDb = createMockDb<TestDB>()
-      const mockLogger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+      const mockLogger = {
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        fatal: vi.fn()
+      }
 
       // Very low threshold, no onSlowQuery callback
       withDebug(mockDb, { slowQueryThreshold: 0, logger: mockLogger, logQuery: false })

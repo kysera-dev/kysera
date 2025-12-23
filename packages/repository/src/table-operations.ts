@@ -10,19 +10,60 @@ import type { Executor } from './helpers.js'
 import type {
   PrimaryKeyConfig,
   PrimaryKeyInput,
-  CompositeKeyValue,
-  PrimaryKeyValue,
   Dialect
 } from './types.js'
 import type { DialectConfig } from './types.js'
 import { getPrimaryKeyColumns, normalizePrimaryKeyInput, isCompositeKey } from './types.js'
 import { DatabaseError } from '@kysera/core'
+import { extractPrimaryKey } from './primary-key-utils.js'
+import type { ColumnValidationOptions } from './column-validation.js'
+import { validateConditions } from './column-validation.js'
 
 /**
- * Type helper to convert unknown results to typed results
- * This is safe because we control the query structure and validate inputs
+ * Type helper to convert unknown results to typed results.
+ *
+ * This addresses H-8: Unchecked type casts.
+ *
+ * In development mode, performs runtime validation:
+ * - Ensures non-null results are objects
+ * - Logs warnings for suspicious data structures
+ *
+ * In production mode, performs minimal checks for performance.
+ *
+ * This is safe because:
+ * 1. We control the query structure (all queries use selectAll/returning)
+ * 2. Input data is validated by Zod schemas at repository layer
+ * 3. Kysely ensures database schema matches TypeScript types
+ * 4. Development mode validation catches structural mismatches early
+ *
+ * @param results - Query result to cast
+ * @returns Typed result
  */
 function castResults<T>(results: unknown): T {
+  // Development mode: runtime validation
+  if (process.env['NODE_ENV'] === 'development') {
+    // Validate non-null results are objects or arrays
+    if (results !== null && results !== undefined) {
+      if (Array.isArray(results)) {
+        // Validate array elements are objects
+        for (let i = 0; i < results.length; i++) {
+          const item = results[i]
+          if (item !== null && typeof item !== 'object') {
+            console.warn(
+              `[Kysera] Type cast warning: Array element at index ${i} is not an object. ` +
+                `Expected object, got ${typeof item}. This may indicate a query structure mismatch.`
+            )
+          }
+        }
+      } else if (typeof results !== 'object') {
+        console.warn(
+          `[Kysera] Type cast warning: Result is not an object. ` +
+            `Expected object, got ${typeof results}. This may indicate a query structure mismatch.`
+        )
+      }
+    }
+  }
+
   return results as T
 }
 
@@ -295,16 +336,30 @@ function buildDeleteWherePrimaryKeyIn<DB, TableName extends keyof DB>(
 }
 
 /**
- * Helper to build dynamic where clauses from conditions
+ * Helper to build dynamic where clauses from conditions.
+ *
+ * SECURITY NOTE: Column names are validated in development mode by default.
+ * In production, validation is disabled for performance unless explicitly enabled.
+ *
+ * @param query - Base query builder
+ * @param conditions - Conditions with column names as keys
+ * @param pkConfig - Primary key configuration (for validation whitelist)
+ * @param validationOptions - Column validation options
+ * @returns Query with WHERE clauses applied
  */
 function buildDynamicWhere<DB, TableName extends keyof DB>(
   query: DynamicSelectQuery<DB, TableName>,
-  conditions: Record<string, unknown>
+  conditions: Record<string, unknown>,
+  pkConfig: PrimaryKeyConfig,
+  validationOptions?: ColumnValidationOptions
 ): DynamicSelectQuery<DB, TableName> {
+  // Validate column names against schema whitelist (development mode by default)
+  const validatedConditions = validateConditions(conditions, pkConfig, validationOptions)
+
   let result = query
-  for (const [key, value] of Object.entries(conditions)) {
+  for (const [key, value] of Object.entries(validatedConditions)) {
     // Type assertion needed: Column names are dynamic at runtime
-    // Runtime safety: Validated by Zod schemas in repository layer
+    // Runtime safety: Validated by validateConditions above
     result = result.where(key as never, '=', value as never) as DynamicSelectQuery<DB, TableName>
   }
   return result
@@ -330,23 +385,11 @@ function buildOrderByAndPaginate<DB, TableName extends keyof DB>(
 
 /**
  * Extract primary key value from a row
+ * @deprecated Use extractPrimaryKey from primary-key-utils.ts instead
+ * @internal Kept for backward compatibility
  */
 function extractPrimaryKeyFromRow<T>(row: T, pkConfig: PrimaryKeyConfig): PrimaryKeyInput {
-  const columns = getPrimaryKeyColumns(pkConfig.columns)
-
-  if (columns.length === 1) {
-    const column = columns[0]
-    if (!column) {
-      throw new Error('Primary key configuration is invalid: no columns defined')
-    }
-    return (row as Record<string, unknown>)[column] as PrimaryKeyInput
-  }
-
-  const result: CompositeKeyValue = {}
-  for (const column of columns) {
-    result[column] = (row as Record<string, unknown>)[column] as PrimaryKeyValue
-  }
-  return result
+  return extractPrimaryKey(row, pkConfig)
 }
 
 /**
@@ -420,7 +463,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
 
     async selectWhere(conditions: Record<string, unknown>): Promise<SelectTable[]> {
       const baseQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
-      const query = buildDynamicWhere(baseQuery, conditions)
+      const query = buildDynamicWhere(baseQuery, conditions, pkConfig)
       const result = await query.execute()
 
       return castResults<SelectTable[]>(result)
@@ -428,7 +471,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
 
     async selectOneWhere(conditions: Record<string, unknown>): Promise<SelectTable | undefined> {
       const baseQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
-      const query = buildDynamicWhere(baseQuery, conditions)
+      const query = buildDynamicWhere(baseQuery, conditions, pkConfig)
       const result = await query.executeTakeFirst()
 
       return castResults<SelectTable | undefined>(result)
