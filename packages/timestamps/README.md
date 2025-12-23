@@ -1,6 +1,6 @@
 # @kysera/timestamps
 
-> Automatic timestamp management plugin for Kysera (v0.7.3) - Zero-configuration `created_at` and `updated_at` tracking through @kysera/executor's Unified Execution Layer with powerful query helpers.
+> Automatic timestamp management plugin for Kysera - Zero-configuration `created_at` and `updated_at` tracking through @kysera/executor's Unified Execution Layer with powerful query helpers.
 
 [![Version](https://img.shields.io/npm/v/@kysera/timestamps.svg)](https://www.npmjs.com/package/@kysera/timestamps)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
