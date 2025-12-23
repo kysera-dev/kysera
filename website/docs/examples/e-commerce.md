@@ -73,7 +73,7 @@ export interface OrderItemsTable {
 export interface InventoryMovementsTable {
   id: Generated<number>
   product_id: number
-  quantity_change: number  // Note: actual field name is quantity_change
+  quantity_change: number // Note: actual field name is quantity_change
   reason: string
   created_at: Generated<Date>
 }
@@ -112,7 +112,7 @@ The most critical operation - must be atomic. This example uses optimistic locki
 ```typescript
 // From examples/e-commerce/src/index.ts (lines 88-122)
 
-const order = await db.transaction().execute(async (trx) => {
+const order = await db.transaction().execute(async trx => {
   const transactionalProductRepo = createProductRepository(trx)
   const transactionalCartRepo = createCartRepository(trx)
   const transactionalOrderRepo = createOrderRepository(trx)
@@ -164,7 +164,7 @@ const executor = await createExecutor(db, [
 ])
 
 // Use withTransaction with executor (plugins propagated)
-const order = await withTransaction(executor, async (ctx) => {
+const order = await withTransaction(executor, async ctx => {
   const transactionalProductRepo = createProductRepository(ctx.db)
   const transactionalCartRepo = createCartRepository(ctx.db)
   const transactionalOrderRepo = createOrderRepository(ctx.db)
@@ -223,6 +223,7 @@ async decreaseStock(productId: number, quantity: number): Promise<Product> {
 ```
 
 **Key Points:**
+
 - **No explicit locking** (`forUpdate()`) is used - this is optimistic locking
 - The `WHERE stock >= quantity` clause ensures atomicity
 - If stock is insufficient, the UPDATE affects 0 rows
@@ -281,7 +282,7 @@ console.log(`Order status: ${deliveredOrder.status}`)
 
 // Try invalid transition (should fail)
 try {
-  await orderRepo.updateStatus(order.id, 'pending')  // delivered → pending ❌
+  await orderRepo.updateStatus(order.id, 'pending') // delivered → pending ❌
   console.log('ERROR: Should have failed!')
 } catch (error) {
   console.log(`✓ Correctly rejected invalid transition: ${(error as Error).message}`)
@@ -377,6 +378,7 @@ async getCartWithProducts(userId: number): Promise<CartItemWithProduct[]> {
 ```
 
 **Key Points:**
+
 - Cart items only store `product_id` and `quantity`
 - Prices are always fetched from the products table via JOIN
 - Subtotals are calculated at query time: `products.price * cart_items.quantity`
@@ -414,7 +416,7 @@ The example includes the `inventory_movements` table in the schema but doesn't c
 ```typescript
 // ⚠️ This is NOT in the example - it's an alternative approach
 async function checkoutWithPessimisticLocking(userId: number): Promise<Order> {
-  return db.transaction().execute(async (trx) => {
+  return db.transaction().execute(async trx => {
     // Lock cart items and products to prevent concurrent modifications
     const cartItems = await trx
       .selectFrom('cart_items')
@@ -428,7 +430,7 @@ async function checkoutWithPessimisticLocking(userId: number): Promise<Order> {
         'products.price',
         'products.stock'
       ])
-      .forUpdate()  // ⚠️ Locks selected rows
+      .forUpdate() // ⚠️ Locks selected rows
       .execute()
 
     // ... rest of checkout logic
@@ -437,6 +439,7 @@ async function checkoutWithPessimisticLocking(userId: number): Promise<Order> {
 ```
 
 **Trade-offs:**
+
 - ✅ Guarantees no concurrent modifications
 - ✅ No retry logic needed
 - ❌ Can cause lock contention under high load
@@ -453,7 +456,7 @@ await trx
   .insertInto('inventory_movements')
   .values({
     product_id: item.product_id,
-    quantity_change: -item.quantity,  // Negative for sales
+    quantity_change: -item.quantity, // Negative for sales
     reason: 'sale'
   })
   .execute()
@@ -476,16 +479,19 @@ pnpm dev
 This example uses the following packages:
 
 **Kysera packages (actively used):**
+
 - `@kysera/core` - Core types, `Executor` type, and error handling
 - `@kysera/infra` - Health checks via `checkDatabaseHealth()`
 
 **Kysera packages (listed but not currently used):**
+
 - `@kysera/repository` - Not used (example uses custom repository pattern)
 - `@kysera/audit` - Not used yet (planned)
 - `@kysera/timestamps` - Not used yet (planned)
 - `@kysera/debug` - Not used yet (planned)
 
 **Other dependencies:**
+
 - `kysely` - SQL query builder
 - `pg` - PostgreSQL driver
 - `zod` - Runtime validation

@@ -28,9 +28,9 @@ const orm = await createORM(db, [
   })
 ])
 
-const userRepo = orm.createRepository((executor) => {
+const userRepo = orm.createRepository(executor => {
   const factory = createRepositoryFactory(executor)
-  return factory.create({ tableName: 'users', /* ... */ })
+  return factory.create({ tableName: 'users' /* ... */ })
 })
 
 // All operations are automatically audited
@@ -46,16 +46,16 @@ const history = await userRepo.getAuditHistory(userId)
 
 ```typescript
 interface AuditOptions {
-  auditTable?: string                        // Default: 'audit_logs'
-  primaryKeyColumn?: string                  // Default: 'id'
-  captureOldValues?: boolean                 // Default: true
-  captureNewValues?: boolean                 // Default: true
-  skipSystemOperations?: boolean             // Default: false
-  tables?: string[]                          // Whitelist tables
-  excludeTables?: string[]                   // Blacklist tables
+  auditTable?: string // Default: 'audit_logs'
+  primaryKeyColumn?: string // Default: 'id'
+  captureOldValues?: boolean // Default: true
+  captureNewValues?: boolean // Default: true
+  skipSystemOperations?: boolean // Default: false
+  tables?: string[] // Whitelist tables
+  excludeTables?: string[] // Blacklist tables
   getUserId?: () => string | null
   getTimestamp?: () => Date | string
-  metadata?: () => Record<string, unknown>   // Custom metadata
+  metadata?: () => Record<string, unknown> // Custom metadata
   logger?: KyseraLogger
 }
 ```
@@ -96,24 +96,24 @@ interface AuditLogEntry {
   table_name: string
   entity_id: string
   operation: 'INSERT' | 'UPDATE' | 'DELETE'
-  old_values: string | null      // JSON
-  new_values: string | null      // JSON
+  old_values: string | null // JSON
+  new_values: string | null // JSON
   changed_by: string | null
   changed_at: string
-  metadata: string | null        // JSON
+  metadata: string | null // JSON
 }
 ```
 
 ## Added Methods
 
-| Method | Description |
-|--------|-------------|
-| `getAuditHistory(entityId, options?)` | Get change history for an entity |
-| `getAuditLogs(entityId, options?)` | Alias for getAuditHistory |
-| `getAuditLog(auditId)` | Get specific audit log entry |
-| `getTableAuditLogs(filters?)` | Query audit logs across the table with filters |
-| `getUserChanges(userId, options?)` | Get all changes made by a specific user |
-| `restoreFromAudit(auditId)` | Restore entity to previous state |
+| Method                                | Description                                    |
+| ------------------------------------- | ---------------------------------------------- |
+| `getAuditHistory(entityId, options?)` | Get change history for an entity               |
+| `getAuditLogs(entityId, options?)`    | Alias for getAuditHistory                      |
+| `getAuditLog(auditId)`                | Get specific audit log entry                   |
+| `getTableAuditLogs(filters?)`         | Query audit logs across the table with filters |
+| `getUserChanges(userId, options?)`    | Get all changes made by a specific user        |
+| `restoreFromAudit(auditId)`           | Restore entity to previous state               |
 
 ## Querying Audit Logs
 
@@ -131,8 +131,8 @@ const history = await userRepo.getAuditHistory(userId, {
 const entry = await userRepo.getAuditLog(auditLogId)
 
 // Access parsed values
-console.log(history[0].old_values)  // Parsed object
-console.log(history[0].new_values)  // Parsed object
+console.log(history[0].old_values) // Parsed object
+console.log(history[0].new_values) // Parsed object
 ```
 
 ### Table-Wide Queries
@@ -270,7 +270,7 @@ import { auditPluginSQLite } from '@kysera/audit'
 
 ```typescript
 auditPlugin({
-  excludeTables: ['audit_logs']  // Prevent infinite loop
+  excludeTables: ['audit_logs'] // Prevent infinite loop
 })
 ```
 

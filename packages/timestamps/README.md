@@ -77,21 +77,23 @@ interface Database {
 // Create database connection
 const db = new Kysely<Database>({
   dialect: new PostgresDialect({
-    pool: new Pool({ /* config */ })
+    pool: new Pool({
+      /* config */
+    })
   })
 })
 
 // Create plugin container with timestamps plugin
 const orm = await createORM(db, [
-  timestampsPlugin()  // ✨ That's it!
+  timestampsPlugin() // ✨ That's it!
 ])
 
 // Create repository
-const userRepo = orm.createRepository((executor) => {
+const userRepo = orm.createRepository(executor => {
   const factory = createRepositoryFactory(executor)
   return factory.create<'users', User>({
     tableName: 'users',
-    mapRow: (row) => row as User,
+    mapRow: row => row as User,
     schemas: {
       create: z.object({
         email: z.string().email(),
@@ -107,15 +109,15 @@ const user = await userRepo.create({
   name: 'Alice'
 })
 
-console.log(user.created_at)  // ✅ 2024-01-15T10:30:00.000Z
-console.log(user.updated_at)  // null (only set on update)
+console.log(user.created_at) // ✅ 2024-01-15T10:30:00.000Z
+console.log(user.updated_at) // null (only set on update)
 
 // Update - updated_at set automatically!
 const updated = await userRepo.update(user.id, {
   name: 'Alice Smith'
 })
 
-console.log(updated.updated_at)  // ✅ 2024-01-15T10:35:00.000Z
+console.log(updated.updated_at) // ✅ 2024-01-15T10:35:00.000Z
 ```
 
 ---
@@ -167,9 +169,9 @@ const plugin = timestampsPlugin({
   updatedAtColumn: 'updated_at',
   setUpdatedAtOnInsert: false,
   dateFormat: 'iso',
-  tables: undefined,        // All tables
+  tables: undefined, // All tables
   excludeTables: undefined, // No exclusions
-  primaryKeyColumn: 'id'    // Default primary key
+  primaryKeyColumn: 'id' // Default primary key
 })
 ```
 
@@ -195,8 +197,8 @@ interface Database {
   posts: {
     id: Generated<number>
     title: string
-    created: Generated<Date>      // ✅ Custom name
-    modified: Date | null          // ✅ Custom name
+    created: Generated<Date> // ✅ Custom name
+    modified: Date | null // ✅ Custom name
   }
 }
 ```
@@ -230,11 +232,13 @@ const plugin = timestampsPlugin({
 #### When to Use Each
 
 **Use Whitelist (`tables`) when:**
+
 - You have many tables but only a few need timestamps
 - You want explicit control over timestamp tables
 - You're migrating incrementally
 
 **Use Blacklist (`excludeTables`) when:**
+
 - Most tables need timestamps
 - Only a few system tables should be excluded
 - You want timestamps by default
@@ -317,12 +321,12 @@ const user = await userRepo.create({
   name: 'Alice'
 })
 
-console.log(user.created_at)  // 2024-01-15T10:30:00.000Z
-console.log(user.updated_at)  // 2024-01-15T10:30:00.000Z (same!)
+console.log(user.created_at) // 2024-01-15T10:30:00.000Z
+console.log(user.updated_at) // 2024-01-15T10:30:00.000Z (same!)
 
 // On update, updated_at changes
 const updated = await userRepo.update(user.id, { name: 'Alice Smith' })
-console.log(updated.updated_at)  // 2024-01-15T10:35:00.000Z (different)
+console.log(updated.updated_at) // 2024-01-15T10:35:00.000Z (different)
 ```
 
 ### Custom Primary Key Column
@@ -346,7 +350,7 @@ const plugin = timestampsPlugin({
 // Database schema
 interface Database {
   users: {
-    user_id: Generated<number>  // Custom primary key
+    user_id: Generated<number> // Custom primary key
     email: string
     name: string
     created_at: Generated<Date>
@@ -378,8 +382,8 @@ const user = await userRepo.create({
 // INSERT INTO users (email, name, created_at)
 // VALUES ('bob@example.com', 'Bob', '2024-01-15T10:30:00.000Z')
 
-console.log(user.created_at)  // ✅ 2024-01-15T10:30:00.000Z
-console.log(user.updated_at)  // null (default behavior)
+console.log(user.created_at) // ✅ 2024-01-15T10:30:00.000Z
+console.log(user.updated_at) // null (default behavior)
 ```
 
 **Manual Override:**
@@ -389,10 +393,10 @@ console.log(user.updated_at)  // null (default behavior)
 const user = await userRepo.create({
   email: 'charlie@example.com',
   name: 'Charlie',
-  created_at: '2020-01-01T00:00:00.000Z'  // ✅ Uses this instead
+  created_at: '2020-01-01T00:00:00.000Z' // ✅ Uses this instead
 })
 
-console.log(user.created_at)  // 2020-01-01T00:00:00.000Z
+console.log(user.created_at) // 2020-01-01T00:00:00.000Z
 ```
 
 ### On Update
@@ -409,7 +413,7 @@ const updated = await userRepo.update(userId, {
 // SET name = 'New Name', updated_at = '2024-01-15T10:35:00.000Z'
 // WHERE id = 1
 
-console.log(updated.updated_at)  // ✅ 2024-01-15T10:35:00.000Z
+console.log(updated.updated_at) // ✅ 2024-01-15T10:35:00.000Z
 ```
 
 **Manual Override:**
@@ -418,7 +422,7 @@ console.log(updated.updated_at)  // ✅ 2024-01-15T10:35:00.000Z
 // Provide your own updated_at
 const updated = await userRepo.update(userId, {
   name: 'New Name',
-  updated_at: '2024-01-01T00:00:00.000Z'  // ✅ Uses this instead
+  updated_at: '2024-01-01T00:00:00.000Z' // ✅ Uses this instead
 })
 ```
 
@@ -433,18 +437,19 @@ const user = await userRepo.createWithoutTimestamps({
   name: 'System User'
 })
 
-console.log(user.created_at)  // null (not set)
-console.log(user.updated_at)  // null (not set)
+console.log(user.created_at) // null (not set)
+console.log(user.updated_at) // null (not set)
 
 // Update without modifying updated_at
 const updated = await userRepo.updateWithoutTimestamp(userId, {
   name: 'Silent Update'
 })
 
-console.log(updated.updated_at)  // null (unchanged)
+console.log(updated.updated_at) // null (unchanged)
 ```
 
 **Use Cases:**
+
 - Migrating historical data with specific timestamps
 - System operations that shouldn't update timestamps
 - Preserving original timestamps when copying records
@@ -542,7 +547,7 @@ const latest50 = await userRepo.findRecentlyCreated(50)
 
 // Get latest user
 const latestUser = await userRepo.findRecentlyCreated(1)
-console.log(latestUser[0])  // Most recent user
+console.log(latestUser[0]) // Most recent user
 ```
 
 #### findRecentlyUpdated
@@ -605,15 +610,16 @@ const users = await userRepo.createMany([
 
 // All records created with the same timestamp
 users.forEach(user => {
-  console.log(user.created_at)  // Same timestamp for all
+  console.log(user.created_at) // Same timestamp for all
 })
 
 // Empty arrays are handled gracefully
 const empty = await userRepo.createMany([])
-console.log(empty.length)  // 0
+console.log(empty.length) // 0
 ```
 
 **Performance Benefits:**
+
 - Single database roundtrip instead of N queries
 - All records get the same timestamp (consistent)
 - ~10-100x faster than individual creates for large batches
@@ -646,8 +652,8 @@ const updated = await userRepo.updateMany(userIds, {
 
 // All records updated with same timestamp
 updated.forEach(user => {
-  console.log(user.status)       // 'active'
-  console.log(user.updated_at)   // Same timestamp for all
+  console.log(user.status) // 'active'
+  console.log(user.updated_at) // Same timestamp for all
 })
 
 // Works with string IDs too
@@ -656,10 +662,11 @@ await userRepo.updateMany(stringIds, { verified: true })
 
 // Empty arrays are handled gracefully
 const empty = await userRepo.updateMany([], { status: 'inactive' })
-console.log(empty.length)  // 0
+console.log(empty.length) // 0
 ```
 
 **Performance Benefits:**
+
 - Single UPDATE query with WHERE id IN clause
 - Single SELECT to fetch updated records
 - Much faster than individual updates
@@ -692,21 +699,18 @@ const userIds = [1, 2, 3, 4, 5]
 await userRepo.touchMany(userIds)
 
 // Verify all were touched
-const touched = await db
-  .selectFrom('users')
-  .selectAll()
-  .where('id', 'in', userIds)
-  .execute()
+const touched = await db.selectFrom('users').selectAll().where('id', 'in', userIds).execute()
 
 touched.forEach(user => {
-  console.log(user.updated_at)  // All have same new timestamp
+  console.log(user.updated_at) // All have same new timestamp
 })
 
 // Empty arrays are handled gracefully
-await userRepo.touchMany([])  // No-op
+await userRepo.touchMany([]) // No-op
 ```
 
 **Performance Benefits:**
+
 - Single UPDATE query setting only timestamp column
 - No data fetched or returned
 - Extremely fast even for large batches
@@ -846,7 +850,7 @@ const user = await userRepo.create({ email: 'test@example.com', name: 'Test' })
 Timestamps work seamlessly with transactions:
 
 ```typescript
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const txRepo = userRepo.withTransaction(trx)
 
   const user = await txRepo.create({
@@ -897,11 +901,11 @@ function createUserRepository(executor: Executor<Database>) {
   const factory = createRepositoryFactory(executor)
   return factory.create<'users', User>({
     tableName: 'users',
-    mapRow: (row) => ({
+    mapRow: row => ({
       id: row.id,
       email: row.email,
       name: row.name,
-      createdAt: new Date(row.created_at),      // Convert to Date
+      createdAt: new Date(row.created_at), // Convert to Date
       updatedAt: row.updated_at ? new Date(row.updated_at) : null
     }),
     schemas: {
@@ -1035,10 +1039,10 @@ const after: User[] = await userRepo.findCreatedAfter('2024-01-01')
 const between: User[] = await userRepo.findCreatedBetween('2024-01-01', '2024-12-31')
 
 // ❌ Type error: wrong argument type
-await userRepo.findCreatedAfter(12345)  // Error: number not assignable
+await userRepo.findCreatedAfter(12345) // Error: number not assignable
 
 // ❌ Type error: method doesn't exist
-await userRepo.nonExistentMethod()  // Error: method doesn't exist
+await userRepo.nonExistentMethod() // Error: method doesn't exist
 ```
 
 ### Database Schema Types
@@ -1051,15 +1055,15 @@ interface Database {
     id: Generated<number>
     email: string
     name: string
-    created_at: Generated<Date>  // Auto-generated
-    updated_at: Date | null       // Nullable
+    created_at: Generated<Date> // Auto-generated
+    updated_at: Date | null // Nullable
   }
 }
 
 // TypeScript ensures correct column types
 const plugin = timestampsPlugin({
-  createdAtColumn: 'created_at',  // ✅ Must match schema
-  updatedAtColumn: 'updated_at'   // ✅ Must match schema
+  createdAtColumn: 'created_at', // ✅ Must match schema
+  updatedAtColumn: 'updated_at' // ✅ Must match schema
 })
 ```
 
@@ -1075,20 +1079,21 @@ Creates a timestamps plugin instance.
 
 ```typescript
 interface TimestampsOptions {
-  createdAtColumn?: string          // Default: 'created_at'
-  updatedAtColumn?: string          // Default: 'updated_at'
-  setUpdatedAtOnInsert?: boolean    // Default: false
-  tables?: string[]                 // Default: undefined (all tables)
-  excludeTables?: string[]          // Default: undefined
-  getTimestamp?: () => Date | string | number  // Custom generator
-  dateFormat?: 'iso' | 'unix' | 'date'  // Default: 'iso'
-  primaryKeyColumn?: string         // Default: 'id'
+  createdAtColumn?: string // Default: 'created_at'
+  updatedAtColumn?: string // Default: 'updated_at'
+  setUpdatedAtOnInsert?: boolean // Default: false
+  tables?: string[] // Default: undefined (all tables)
+  excludeTables?: string[] // Default: undefined
+  getTimestamp?: () => Date | string | number // Custom generator
+  dateFormat?: 'iso' | 'unix' | 'date' // Default: 'iso'
+  primaryKeyColumn?: string // Default: 'id'
 }
 ```
 
 **Returns:** `Plugin` instance
 
 **Example:**
+
 ```typescript
 const plugin = timestampsPlugin({
   createdAtColumn: 'created',
@@ -1106,6 +1111,7 @@ const plugin = timestampsPlugin({
 Find records created after a date.
 
 **Parameters:**
+
 - `date: Date | string | number` - Date to compare against
 
 **Returns:** `Promise<T[]>`
@@ -1117,6 +1123,7 @@ Find records created after a date.
 Find records created before a date.
 
 **Parameters:**
+
 - `date: Date | string | number` - Date to compare against
 
 **Returns:** `Promise<T[]>`
@@ -1128,6 +1135,7 @@ Find records created before a date.
 Find records created between two dates (inclusive).
 
 **Parameters:**
+
 - `startDate: Date | string | number` - Start date
 - `endDate: Date | string | number` - End date
 
@@ -1140,6 +1148,7 @@ Find records created between two dates (inclusive).
 Find records updated after a date.
 
 **Parameters:**
+
 - `date: Date | string | number` - Date to compare against
 
 **Returns:** `Promise<T[]>`
@@ -1151,6 +1160,7 @@ Find records updated after a date.
 Get most recently created records.
 
 **Parameters:**
+
 - `limit?: number` - Number of records (default: 10)
 
 **Returns:** `Promise<T[]>`
@@ -1162,6 +1172,7 @@ Get most recently created records.
 Get most recently updated records.
 
 **Parameters:**
+
 - `limit?: number` - Number of records (default: 10)
 
 **Returns:** `Promise<T[]>`
@@ -1173,6 +1184,7 @@ Get most recently updated records.
 Create a record without adding timestamps.
 
 **Parameters:**
+
 - `input: unknown` - Create data
 
 **Returns:** `Promise<T>`
@@ -1184,6 +1196,7 @@ Create a record without adding timestamps.
 Update a record without modifying updated_at.
 
 **Parameters:**
+
 - `id: number` - Record ID
 - `input: unknown` - Update data
 
@@ -1196,6 +1209,7 @@ Update a record without modifying updated_at.
 Update only the updated_at timestamp.
 
 **Parameters:**
+
 - `id: number` - Record ID
 
 **Returns:** `Promise<void>`
@@ -1215,11 +1229,13 @@ Get configured column names.
 Create multiple records with timestamps in a single bulk INSERT operation.
 
 **Parameters:**
+
 - `inputs: unknown[]` - Array of create data objects
 
 **Returns:** `Promise<T[]>` - Array of created records
 
 **Example:**
+
 ```typescript
 const users = await userRepo.createMany([
   { name: 'Alice', email: 'alice@example.com' },
@@ -1234,12 +1250,14 @@ const users = await userRepo.createMany([
 Update multiple records with the same data, automatically setting updated_at.
 
 **Parameters:**
+
 - `ids: (number | string)[]` - Array of record IDs to update
 - `input: unknown` - Update data (applied to all records)
 
 **Returns:** `Promise<T[]>` - Array of updated records
 
 **Example:**
+
 ```typescript
 const updated = await userRepo.updateMany([1, 2, 3], {
   status: 'active'
@@ -1253,11 +1271,13 @@ const updated = await userRepo.updateMany([1, 2, 3], {
 Update only the updated_at timestamp for multiple records.
 
 **Parameters:**
+
 - `ids: (number | string)[]` - Array of record IDs to touch
 
 **Returns:** `Promise<void>`
 
 **Example:**
+
 ```typescript
 await userRepo.touchMany([1, 2, 3, 4, 5])
 ```
@@ -1274,14 +1294,14 @@ interface Database {
   users: {
     id: Generated<number>
     created_at: Generated<Date>
-    updated_at: Date | null  // ✅ Null until first update
+    updated_at: Date | null // ✅ Null until first update
   }
 }
 
 // ❌ Bad: updated_at not nullable
 interface Database {
   users: {
-    updated_at: Date  // ❌ What value on insert?
+    updated_at: Date // ❌ What value on insert?
   }
 }
 ```
@@ -1292,14 +1312,14 @@ interface Database {
 // ✅ Good: created_at is generated
 interface Database {
   users: {
-    created_at: Generated<Date>  // ✅ Auto-generated
+    created_at: Generated<Date> // ✅ Auto-generated
   }
 }
 
 // ⚠️ OK but verbose: created_at is optional
 interface Database {
   users: {
-    created_at: Date  // Must be provided or plugin adds it
+    created_at: Date // Must be provided or plugin adds it
   }
 }
 ```
@@ -1336,12 +1356,12 @@ const plugin = timestampsPlugin({
 ```typescript
 // ✅ Good: ISO strings work everywhere
 const plugin = timestampsPlugin({
-  dateFormat: 'iso'  // Portable across databases
+  dateFormat: 'iso' // Portable across databases
 })
 
 // ⚠️ OK: Unix timestamps for performance
 const plugin = timestampsPlugin({
-  dateFormat: 'unix'  // Good for INTEGER columns
+  dateFormat: 'unix' // Good for INTEGER columns
 })
 ```
 
@@ -1362,11 +1382,11 @@ CREATE INDEX idx_users_updated_at ON users(updated_at);
 
 ```typescript
 // ✅ Good: Lightweight activity tracking
-await userRepo.touch(userId)  // Only updates timestamp
+await userRepo.touch(userId) // Only updates timestamp
 
 // ❌ Bad: Unnecessary data transfer
 const user = await userRepo.findById(userId)
-await userRepo.update(userId, user)  // Fetches + updates all fields
+await userRepo.update(userId, user) // Fetches + updates all fields
 ```
 
 ### 8. Use Batch Operations for Multiple Records
@@ -1413,20 +1433,20 @@ for (const id of [1, 2, 3, 4, 5]) {
 
 ### Plugin Overhead
 
-| Operation | Base | With Timestamps | Overhead |
-|-----------|------|----------------|----------|
-| **create** | 2ms | 2.05ms | +0.05ms |
-| **update** | 2ms | 2.05ms | +0.05ms |
-| **findById** | 1ms | 1ms | 0ms |
-| **findRecentlyCreated** | - | 5ms | N/A |
+| Operation               | Base | With Timestamps | Overhead |
+| ----------------------- | ---- | --------------- | -------- |
+| **create**              | 2ms  | 2.05ms          | +0.05ms  |
+| **update**              | 2ms  | 2.05ms          | +0.05ms  |
+| **findById**            | 1ms  | 1ms             | 0ms      |
+| **findRecentlyCreated** | -    | 5ms             | N/A      |
 
 ### Timestamp Format Performance
 
-| Format | Generation Time | Storage Size | Query Performance |
-|--------|----------------|--------------|-------------------|
-| **ISO** | ~0.001ms | 24-27 bytes | Medium |
-| **Unix** | ~0.0005ms | 4-8 bytes | Fast |
-| **Date** | ~0.001ms | Varies | Medium |
+| Format   | Generation Time | Storage Size | Query Performance |
+| -------- | --------------- | ------------ | ----------------- |
+| **ISO**  | ~0.001ms        | 24-27 bytes  | Medium            |
+| **Unix** | ~0.0005ms       | 4-8 bytes    | Fast              |
+| **Date** | ~0.001ms        | Varies       | Medium            |
 
 **Recommendation:** Use `unix` for high-performance time-series data, `iso` for general use.
 
@@ -1468,6 +1488,7 @@ const sorted = all.sort((a, b) => b.createdAt - a.createdAt)
 **Solutions:**
 
 1. **Check plugin is registered:**
+
 ```typescript
 // ❌ Plugin not registered
 const orm = await createORM(db, [])
@@ -1477,19 +1498,21 @@ const orm = await createORM(db, [timestampsPlugin()])
 ```
 
 2. **Check table is not excluded:**
+
 ```typescript
 // Check configuration
 const plugin = timestampsPlugin({
-  excludeTables: ['users']  // ❌ Users excluded!
+  excludeTables: ['users'] // ❌ Users excluded!
 })
 
 // Fix: Remove from exclusions
 const plugin = timestampsPlugin({
-  excludeTables: []  // ✅ No exclusions
+  excludeTables: [] // ✅ No exclusions
 })
 ```
 
 3. **Check column exists in database:**
+
 ```sql
 -- Check schema
 DESCRIBE users;
@@ -1507,17 +1530,17 @@ WHERE table_name = 'users';
 ```typescript
 // For TIMESTAMP/DATETIME columns
 const plugin = timestampsPlugin({
-  dateFormat: 'iso'  // ✅ ISO string
+  dateFormat: 'iso' // ✅ ISO string
 })
 
 // For INTEGER columns
 const plugin = timestampsPlugin({
-  dateFormat: 'unix'  // ✅ Unix timestamp
+  dateFormat: 'unix' // ✅ Unix timestamp
 })
 
 // For DATE columns
 const plugin = timestampsPlugin({
-  dateFormat: 'date'  // ✅ Date object
+  dateFormat: 'date' // ✅ Date object
 })
 ```
 
@@ -1531,15 +1554,15 @@ const plugin = timestampsPlugin({
 // ❌ Wrong: Direct factory (no plugin extensions)
 const factory = createRepositoryFactory(db)
 const userRepo = factory.create(/* ... */)
-await userRepo.findRecentlyCreated()  // ❌ Undefined
+await userRepo.findRecentlyCreated() // ❌ Undefined
 
 // ✅ Correct: Plugin container with plugins
 const orm = await createORM(db, [timestampsPlugin()])
-const userRepo = orm.createRepository((executor) => {
+const userRepo = orm.createRepository(executor => {
   const factory = createRepositoryFactory(executor)
   return factory.create(/* ... */)
 })
-await userRepo.findRecentlyCreated()  // ✅ Works!
+await userRepo.findRecentlyCreated() // ✅ Works!
 ```
 
 ### Timestamps in Transactions
@@ -1549,13 +1572,17 @@ await userRepo.findRecentlyCreated()  // ✅ Works!
 **Solution:** Use `withTransaction`:
 
 ```typescript
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   // ❌ Wrong: Using original repo
-  await userRepo.create({ /* ... */ })
+  await userRepo.create({
+    /* ... */
+  })
 
   // ✅ Correct: Use transaction repo
   const txRepo = userRepo.withTransaction(trx)
-  await txRepo.create({ /* ... */ })  // ✅ Timestamps added
+  await txRepo.create({
+    /* ... */
+  }) // ✅ Timestamps added
 })
 ```
 

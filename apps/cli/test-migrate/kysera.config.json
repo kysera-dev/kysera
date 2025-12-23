@@ -1,1 +1,1 @@
-{"database":{"dialect":"sqlite","database":"test.db"}}
+{ "database": { "dialect": "sqlite", "database": "test.db" } }

@@ -7,14 +7,14 @@
 /**
  * Factory function type.
  */
-export type FactoryFunction<T> = (overrides?: Partial<T>) => T;
+export type FactoryFunction<T> = (overrides?: Partial<T>) => T
 
 /**
  * Factory definition - values or functions that return values.
  */
 export type FactoryDefaults<T extends Record<string, unknown>> = {
-  [K in keyof T]: T[K] | (() => T[K]);
-};
+  [K in keyof T]: T[K] | (() => T[K])
+}
 
 /**
  * Create a generic test data factory.
@@ -61,22 +61,22 @@ export function createFactory<T extends Record<string, unknown>>(
   defaults: FactoryDefaults<T>
 ): FactoryFunction<T> {
   return (overrides = {}) => {
-    const result = {} as T;
+    const result = {} as T
 
     // Apply defaults
     for (const [key, value] of Object.entries(defaults)) {
       // Value can be either a function or a direct value - function invocation requires any
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- Factory function invocation
-      result[key as keyof T] = typeof value === 'function' ? (value as () => any)() : value;
+      result[key as keyof T] = typeof value === 'function' ? (value as () => any)() : value
     }
 
     // Apply overrides
     for (const [key, value] of Object.entries(overrides)) {
-      result[key as keyof T] = value as T[keyof T];
+      result[key as keyof T] = value as T[keyof T]
     }
 
-    return result;
-  };
+    return result
+  }
 }
 
 /**
@@ -111,9 +111,7 @@ export function createMany<T>(
   count: number,
   overridesFn?: (index: number) => Partial<T>
 ): T[] {
-  return Array.from({ length: count }, (_, index) =>
-    factory(overridesFn?.(index))
-  );
+  return Array.from({ length: count }, (_, index) => factory(overridesFn?.(index)))
 }
 
 /**
@@ -141,25 +139,25 @@ export function createMany<T>(
 export function createSequenceFactory<T extends Record<string, unknown>>(
   defaults: (sequence: number) => FactoryDefaults<T>
 ): FactoryFunction<T> {
-  let sequence = 0;
+  let sequence = 0
 
   return (overrides = {}) => {
-    sequence++;
-    const currentDefaults = defaults(sequence);
-    const result = {} as T;
+    sequence++
+    const currentDefaults = defaults(sequence)
+    const result = {} as T
 
     // Apply defaults
     for (const [key, value] of Object.entries(currentDefaults)) {
       // Value can be either a function or a direct value - function invocation requires any
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- Factory function invocation
-      result[key as keyof T] = typeof value === 'function' ? (value as () => any)() : value;
+      result[key as keyof T] = typeof value === 'function' ? (value as () => any)() : value
     }
 
     // Apply overrides
     for (const [key, value] of Object.entries(overrides)) {
-      result[key as keyof T] = value as T[keyof T];
+      result[key as keyof T] = value as T[keyof T]
     }
 
-    return result;
-  };
+    return result
+  }
 }

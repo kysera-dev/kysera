@@ -1,6 +1,6 @@
 ---
 sidebar_position: 3
-title: "@kysera/repository"
+title: '@kysera/repository'
 description: Repository pattern package API reference
 ---
 
@@ -42,12 +42,7 @@ export { createORM, withPlugins } from './plugin'
 export type { PluginOrm, ApplyPluginsFunction } from './plugin'
 
 // Validation
-export {
-  getValidationMode,
-  shouldValidate,
-  createValidator,
-  safeParse
-} from './validation'
+export { getValidationMode, shouldValidate, createValidator, safeParse } from './validation'
 
 // Validation adapters
 export {
@@ -87,9 +82,7 @@ export * from './types'
 Create a typed repository factory that provides methods for creating individual repositories.
 
 ```typescript
-function createRepositoryFactory<DB>(
-  executor: Executor<DB>
-): {
+function createRepositoryFactory<DB>(executor: Executor<DB>): {
   executor: Executor<DB>
   create<TableName extends keyof DB & string, Entity, PK = number>(
     config: RepositoryConfig<TableName, Entity, PK>
@@ -105,20 +98,20 @@ type Executor<DB> = Kysely<DB> | Transaction<DB>
 ```typescript
 interface RepositoryConfig<TableName, Entity, PK = number> {
   tableName: TableName
-  primaryKey?: PrimaryKeyColumn           // Default: 'id'
-  primaryKeyType?: PrimaryKeyTypeHint     // Default: 'number'
+  primaryKey?: PrimaryKeyColumn // Default: 'id'
+  primaryKeyType?: PrimaryKeyTypeHint // Default: 'number'
   mapRow: (row: Selectable<DB[TableName]>) => Entity
   schemas: {
-    entity?: ValidationSchema<Entity>     // Optional result validation
-    create: ValidationSchema              // Required input validation
-    update?: ValidationSchema             // Optional update validation (uses create.partial() if omitted)
+    entity?: ValidationSchema<Entity> // Optional result validation
+    create: ValidationSchema // Required input validation
+    update?: ValidationSchema // Optional update validation (uses create.partial() if omitted)
   }
-  validateDbResults?: boolean             // Default: NODE_ENV === 'development'
-  validationStrategy?: 'none' | 'strict'  // Default: 'strict'
+  validateDbResults?: boolean // Default: NODE_ENV === 'development'
+  validationStrategy?: 'none' | 'strict' // Default: 'strict'
 }
 
 // Primary key types
-type PrimaryKeyColumn = string | string[]  // Single: 'id', Composite: ['tenant_id', 'user_id']
+type PrimaryKeyColumn = string | string[] // Single: 'id', Composite: ['tenant_id', 'user_id']
 type PrimaryKeyTypeHint = 'number' | 'string' | 'uuid'
 ```
 
@@ -137,14 +130,14 @@ const CreateUserSchema = z.object({
 
 const userRepo = factory.create({
   tableName: 'users' as const,
-  mapRow: (row) => ({
+  mapRow: row => ({
     id: row.id,
     email: row.email,
     name: row.name,
     createdAt: row.created_at
   }),
   schemas: {
-    create: zodAdapter(CreateUserSchema),
+    create: zodAdapter(CreateUserSchema)
     // update automatically uses CreateUserSchema.partial()
   }
 })
@@ -164,12 +157,12 @@ const factory = createRepositoryFactory(db)
 
 const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
     create: nativeAdapter<CreateUserInput>(),
-    update: nativeAdapter<Partial<CreateUserInput>>(),
+    update: nativeAdapter<Partial<CreateUserInput>>()
   },
-  validateDbResults: false,
+  validateDbResults: false
 })
 ```
 
@@ -286,9 +279,9 @@ import { createRepositoriesFactory } from '@kysera/repository'
 
 // Define your repository factories
 const createRepos = createRepositoriesFactory({
-  users: (executor) => createUserRepository(executor),
-  posts: (executor) => createPostRepository(executor),
-  comments: (executor) => createCommentRepository(executor)
+  users: executor => createUserRepository(executor),
+  posts: executor => createPostRepository(executor),
+  comments: executor => createCommentRepository(executor)
 })
 
 // Normal usage with database instance
@@ -297,7 +290,7 @@ await repos.users.findById(1)
 await repos.posts.findAll()
 
 // Transaction usage (clean one-liner!)
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const repos = createRepos(trx)
   const user = await repos.users.create({ name: 'Alice', email: 'alice@example.com' })
   await repos.posts.create({ userId: user.id, title: 'Hello World' })
@@ -310,10 +303,7 @@ await db.transaction().execute(async (trx) => {
 Create a plugin container (repository manager) with plugin support. Despite its name, `createORM` is not a traditional ORM - it's a lightweight plugin container that manages repositories and provides unified plugin execution via `@kysera/executor`.
 
 ```typescript
-async function createORM<DB>(
-  db: Kysely<DB>,
-  plugins?: Plugin[]
-): Promise<PluginOrm<DB>>
+async function createORM<DB>(db: Kysely<DB>, plugins?: Plugin[]): Promise<PluginOrm<DB>>
 
 interface PluginOrm<DB> {
   /** Plugin-aware executor from @kysera/executor */
@@ -343,12 +333,14 @@ type ApplyPluginsFunction = <QB extends AnyQueryBuilder>(
 **What is createORM?**
 
 `createORM` is a **plugin container** and **repository manager**, not a traditional ORM. It provides:
+
 - Plugin initialization and lifecycle management
 - Unified query interception across repositories
 - Repository factory with plugin extensions
 - Transaction support for both Repository and DAL patterns
 
 **How it works:**
+
 1. Creates a plugin-aware executor using `createExecutor(db, plugins)` from `@kysera/executor`
 2. Plugins are validated, dependencies resolved, and initialized
 3. Query interceptors (`interceptQuery`) apply automatically via `applyPlugins` function
@@ -364,8 +356,8 @@ import { rlsPlugin } from '@kysera/rls'
 
 // Create plugin container (repository manager) with plugins
 const orm = await createORM(db, [
-  rlsPlugin({ schema: rlsSchema }),  // Query interceptor + repository extensions
-  softDeletePlugin()                  // Query interceptor + repository extensions
+  rlsPlugin({ schema: rlsSchema }), // Query interceptor + repository extensions
+  softDeletePlugin() // Query interceptor + repository extensions
 ])
 
 // Create repository factory function
@@ -373,9 +365,9 @@ const createUserRepository = (executor: Kysely<DB>, applyPlugins: ApplyPluginsFu
   const factory = createRepositoryFactory(executor)
   return factory.create({
     tableName: 'users',
-    mapRow: (row) => row,
+    mapRow: row => row,
     schemas: {
-      create: zodAdapter(CreateUserSchema),
+      create: zodAdapter(CreateUserSchema)
     }
   })
 }
@@ -384,11 +376,11 @@ const createUserRepository = (executor: Kysely<DB>, applyPlugins: ApplyPluginsFu
 const userRepo = orm.createRepository(createUserRepository)
 
 // Query interceptors applied automatically
-const users = await userRepo.findAll()  // RLS + soft-delete filters applied
+const users = await userRepo.findAll() // RLS + soft-delete filters applied
 
 // Extension methods available from plugins
-await userRepo.softDelete(userId)       // from softDeletePlugin
-await userRepo.restore(userId)          // from softDeletePlugin
+await userRepo.softDelete(userId) // from softDeletePlugin
+await userRepo.restore(userId) // from softDeletePlugin
 ```
 
 ### CQRS-lite Pattern: Repository + DAL
@@ -412,7 +404,7 @@ const getUserStats = createQuery((ctx, userId: number) =>
 )
 
 // Use both patterns in transaction
-await orm.transaction(async (ctx) => {
+await orm.transaction(async ctx => {
   // Repository for writes (with validation and extension methods)
   const userRepo = orm.createRepository(createUserRepository)
   const user = await userRepo.create({ email: 'test@example.com', name: 'Test' })
@@ -434,13 +426,10 @@ import { createORM } from '@kysera/repository'
 import { createContext } from '@kysera/dal'
 
 // Create executor with plugins once
-const executor = await createExecutor(db, [
-  rlsPlugin({ schema: rlsSchema }),
-  softDeletePlugin()
-])
+const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema }), softDeletePlugin()])
 
 // Option 1: Use with Repository pattern
-const orm = await createORM(executor, [])  // No additional plugins needed
+const orm = await createORM(executor, []) // No additional plugins needed
 const userRepo = orm.createRepository(createUserRepository)
 
 // Option 2: Use with DAL pattern (same executor, same plugins)
@@ -451,6 +440,7 @@ const users = await getUsersQuery(dalCtx)
 ```
 
 **Benefits of shared executor:**
+
 - Single source of truth for plugin configuration
 - Query interceptors work consistently in both Repository and DAL
 - Better performance (plugins initialized once)
@@ -466,14 +456,12 @@ All adapters implement this unified interface:
 
 ```typescript
 interface ValidationSchema<T = unknown> {
-  parse(data: unknown): T                      // Parse and validate (throws on error)
+  parse(data: unknown): T // Parse and validate (throws on error)
   safeParse(data: unknown): ValidationResult<T> // Safe parse (returns result)
-  partial?(): ValidationSchema<Partial<T>>     // Make all fields optional (for update)
+  partial?(): ValidationSchema<Partial<T>> // Make all fields optional (for update)
 }
 
-type ValidationResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: ValidationError }
+type ValidationResult<T> = { success: true; data: T } | { success: false; error: ValidationError }
 ```
 
 ### zodAdapter
@@ -601,26 +589,26 @@ const createUserRepo = (executor: Kysely<DB>, applyPlugins: ApplyPluginsFunction
   const factory = createRepositoryFactory(executor)
   return factory.create({
     tableName: 'users',
-    mapRow: (row) => ({
+    mapRow: row => ({
       id: row.id,
       email: row.email,
       name: row.name
     }),
     schemas: {
-      create: zodAdapter(z.object({
-        email: z.string().email(),
-        name: z.string()
-      }))
+      create: zodAdapter(
+        z.object({
+          email: z.string().email(),
+          name: z.string()
+        })
+      )
     }
   })
 }
 
 // Create repository with soft delete plugin
-const userRepo = await withPlugins(
-  createUserRepo,
-  db,
-  [softDeletePlugin({ deletedAtColumn: 'deleted_at' })]
-)
+const userRepo = await withPlugins(createUserRepo, db, [
+  softDeletePlugin({ deletedAtColumn: 'deleted_at' })
+])
 
 // Use extended methods from plugin
 await userRepo.softDelete(1)
@@ -628,11 +616,13 @@ await userRepo.restore(2)
 ```
 
 **When to use:**
+
 - Simple single repository setup with plugins
 - You don't need DAL integration
 - You want minimal boilerplate
 
 **Use `createORM()` instead when:**
+
 - Creating multiple repositories with shared plugins
 - You need DAL integration (`createContext`, `transaction`)
 - You want CQRS-lite pattern support
@@ -664,19 +654,13 @@ import type { Executor } from '@kysera/core'
 
 class UserRepository extends ContextAwareRepository<Database, 'users'> {
   async create(data: { email: string; name: string }): Promise<User> {
-    return this.db
-      .insertInto(this.tableName)
-      .values(data)
-      .returningAll()
-      .executeTakeFirstOrThrow()
+    return this.db.insertInto(this.tableName).values(data).returningAll().executeTakeFirstOrThrow()
   }
 
   async findById(id: number): Promise<User | null> {
-    return this.db
-      .selectFrom(this.tableName)
-      .selectAll()
-      .where('id', '=', id)
-      .executeTakeFirst() ?? null
+    return (
+      this.db.selectFrom(this.tableName).selectAll().where('id', '=', id).executeTakeFirst() ?? null
+    )
   }
 }
 
@@ -685,7 +669,7 @@ const userRepo = new UserRepository(db, 'users')
 const user = await userRepo.findById(1)
 
 // Transaction usage - clean executor switching!
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const txUserRepo = userRepo.withExecutor(trx)
   const txPostRepo = postRepo.withExecutor(trx)
 
@@ -696,6 +680,7 @@ await db.transaction().execute(async (trx) => {
 ```
 
 **Benefits:**
+
 - Clean API: No `executor` parameter in every method
 - Type-safe: `withExecutor()` returns same repository type with all methods
 - Preserves instance: Custom properties and methods are preserved
@@ -745,37 +730,52 @@ async function upsertMany<DB, Table, Row>(
 import { upsert, upsertMany } from '@kysera/repository'
 
 // Single record upsert
-const wallet = await upsert(db, 'wallets', {
-  name: 'Main Wallet',
-  balance: 1000
-}, {
-  conflictColumns: ['name'],
-  returning: true
-})
+const wallet = await upsert(
+  db,
+  'wallets',
+  {
+    name: 'Main Wallet',
+    balance: 1000
+  },
+  {
+    conflictColumns: ['name'],
+    returning: true
+  }
+)
 
 // Upsert with specific update columns
-await upsert(db, 'users', {
-  email: 'alice@example.com',
-  name: 'Alice Updated',
-  role: 'admin'
-}, {
-  conflictColumns: ['email'],
-  updateColumns: ['name'],  // Only update name, not role
-  returning: true
-})
+await upsert(
+  db,
+  'users',
+  {
+    email: 'alice@example.com',
+    name: 'Alice Updated',
+    role: 'admin'
+  },
+  {
+    conflictColumns: ['email'],
+    updateColumns: ['name'], // Only update name, not role
+    returning: true
+  }
+)
 
 // Batch upsert
-const prices = await upsertMany(db, 'price_history', [
-  { pair: 'BTC/USD', timestamp: now, price: 50000 },
-  { pair: 'ETH/USD', timestamp: now, price: 3000 },
-], {
-  conflictColumns: ['pair', 'timestamp'],
-  updateColumns: ['price'],
-  returning: true
-})
+const prices = await upsertMany(
+  db,
+  'price_history',
+  [
+    { pair: 'BTC/USD', timestamp: now, price: 50000 },
+    { pair: 'ETH/USD', timestamp: now, price: 3000 }
+  ],
+  {
+    conflictColumns: ['pair', 'timestamp'],
+    updateColumns: ['price'],
+    returning: true
+  }
+)
 
 // Upsert in transaction
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   await upsertMany(trx, 'inventory', items, {
     conflictColumns: ['sku'],
     updateColumns: ['quantity', 'updated_at']
@@ -854,7 +854,9 @@ interface BaseRepository<DB, Entity, PK = number> {
 
   // Pagination
   paginate(options: PaginateOptions): Promise<PaginateResult<Entity>>
-  paginateCursor<K extends keyof Entity>(options: PaginateCursorOptions<Entity, K>): Promise<PaginateCursorResult<Entity, K>>
+  paginateCursor<K extends keyof Entity>(
+    options: PaginateCursorOptions<Entity, K>
+  ): Promise<PaginateCursorResult<Entity, K>>
 
   // Transaction
   transaction<R>(fn: (trx: Transaction<DB>) => Promise<R>): Promise<R>
@@ -992,9 +994,9 @@ const factory = createRepositoryFactory(db)
 const tenantUserRepo = factory.create({
   tableName: 'tenant_users',
   primaryKey: ['tenant_id', 'user_id'],
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
-    create: zodAdapter(CreateTenantUserSchema),
+    create: zodAdapter(CreateTenantUserSchema)
   }
 })
 
@@ -1031,8 +1033,8 @@ const getDashboardStats = createQuery((ctx, userId: number) =>
     .select([
       'users.id',
       'users.name',
-      (eb) => eb.fn.count('posts.id').as('post_count'),
-      (eb) => eb.fn.count('comments.id').as('comment_count')
+      eb => eb.fn.count('posts.id').as('post_count'),
+      eb => eb.fn.count('comments.id').as('comment_count')
     ])
     .where('users.id', '=', userId)
     .groupBy(['users.id', 'users.name'])
@@ -1040,7 +1042,7 @@ const getDashboardStats = createQuery((ctx, userId: number) =>
 )
 
 // Mix patterns in transaction
-const result = await orm.transaction(async (ctx) => {
+const result = await orm.transaction(async ctx => {
   // Repository for writes (with validation and extension methods)
   const userRepo = orm.createRepository(createUserRepository)
   const user = await userRepo.create({
@@ -1056,6 +1058,7 @@ const result = await orm.transaction(async (ctx) => {
 ```
 
 **Benefits:**
+
 - Repository for CRUD with validation and type safety
 - DAL for complex queries with full Kysely flexibility
 - Shared plugins across both patterns (soft-delete, RLS, etc.)
@@ -1067,41 +1070,42 @@ Control validation behavior via environment variables or options:
 
 ```typescript
 // Environment variables (in order of precedence)
-KYSERA_VALIDATION_MODE=always   // Always validate
-KYSERA_VALIDATION_MODE=never    // Never validate
-KYSERA_VALIDATION_MODE=development  // Validate in development
-KYSERA_VALIDATION_MODE=production   // Don't validate in production
-NODE_ENV=development  // Fallback: enables validation
+KYSERA_VALIDATION_MODE = always // Always validate
+KYSERA_VALIDATION_MODE = never // Never validate
+KYSERA_VALIDATION_MODE = development // Validate in development
+KYSERA_VALIDATION_MODE = production // Don't validate in production
+NODE_ENV = development // Fallback: enables validation
 
 // Repository-level control
 const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
-    create: zodAdapter(UserSchema),
+    create: zodAdapter(UserSchema)
   },
-  validateDbResults: true,      // Validate DB results
-  validationStrategy: 'strict'   // 'strict' | 'none'
+  validateDbResults: true, // Validate DB results
+  validationStrategy: 'strict' // 'strict' | 'none'
 })
 
 // Validation helpers
 import { getValidationMode, shouldValidate } from '@kysera/repository'
 
-console.log(getValidationMode())  // 'development' | 'production' | 'always' | 'never'
-console.log(shouldValidate())     // boolean
+console.log(getValidationMode()) // 'development' | 'production' | 'always' | 'never'
+console.log(shouldValidate()) // boolean
 ```
 
 ## Database Support
 
-| Feature | PostgreSQL | MySQL | SQLite |
-|---------|------------|-------|--------|
-| RETURNING | Native | Emulated | Native |
-| Bulk Insert | Single query | Single query | Single query |
-| Boolean | true/false | 1/0 | 1/0 |
-| Composite Keys | ✓ | ✓ | ✓ |
-| UUID | ✓ | ✓ | ✓ |
+| Feature        | PostgreSQL   | MySQL        | SQLite       |
+| -------------- | ------------ | ------------ | ------------ |
+| RETURNING      | Native       | Emulated     | Native       |
+| Bulk Insert    | Single query | Single query | Single query |
+| Boolean        | true/false   | 1/0          | 1/0          |
+| Composite Keys | ✓            | ✓            | ✓            |
+| UUID           | ✓            | ✓            | ✓            |
 
 **Notes:**
+
 - MySQL doesn't support RETURNING clause - Kysera automatically emulates it by fetching inserted/updated records
 - All databases support composite primary keys
 - Boolean values are automatically normalized

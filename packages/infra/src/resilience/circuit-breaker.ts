@@ -4,23 +4,25 @@
  * @module @kysera/infra/resilience
  */
 
-import { DatabaseError, ErrorCodes } from '@kysera/core';
+import { DatabaseError, ErrorCodes } from '@kysera/core'
 
 /**
  * Circuit breaker state.
  */
-export type CircuitState = 'closed' | 'open' | 'half-open';
+export type CircuitState = 'closed' | 'open' | 'half-open'
 
 /**
  * Circuit breaker state snapshot.
  */
 export interface CircuitBreakerState {
   /** Current state */
-  state: CircuitState;
+  state: CircuitState
   /** Number of consecutive failures */
-  failures: number;
+  failures: number
   /** Timestamp of last failure (if any) */
-  lastFailureTime: number | undefined;
+  lastFailureTime: number | undefined
+  /** Whether a test request is in progress during half-open state */
+  isTestingHalfOpen: boolean
 }
 
 /**
@@ -31,18 +33,28 @@ export interface CircuitBreakerOptions {
    * Number of failures before opening the circuit.
    * @default 5
    */
-  threshold?: number;
+  threshold?: number
 
   /**
    * Time in milliseconds before attempting to close the circuit.
    * @default 60000 (1 minute)
    */
-  resetTimeMs?: number;
+  resetTimeMs?: number
 
   /**
    * Callback invoked when circuit state changes.
    */
-  onStateChange?: (newState: CircuitState, previousState: CircuitState) => void;
+  onStateChange?: (newState: CircuitState, previousState: CircuitState) => void
+}
+
+/**
+ * Error thrown when circuit breaker rejects a request.
+ */
+export class CircuitBreakerError extends DatabaseError {
+  constructor(message: string) {
+    super(message, ErrorCodes.DB_CONNECTION_FAILED)
+    this.name = 'CircuitBreakerError'
+  }
 }
 
 /**
@@ -68,7 +80,7 @@ export interface CircuitBreakerOptions {
  *     db.selectFrom('users').execute()
  *   );
  * } catch (error) {
- *   if (error.message.includes('Circuit breaker is open')) {
+ *   if (error instanceof CircuitBreakerError) {
  *     console.log('Service unavailable, try again later');
  *   }
  * }
@@ -88,13 +100,17 @@ export interface CircuitBreakerOptions {
  * ```
  */
 export class CircuitBreaker {
-  private failures = 0;
-  private lastFailureTime: number | undefined = undefined;
-  private state: CircuitState = 'closed';
+  private failures = 0
+  private lastFailureTime: number | undefined = undefined
+  private state: CircuitState = 'closed'
+  private isTestingHalfOpen = false
+  private stateMutex: Promise<void> = Promise.resolve()
 
-  private readonly threshold: number;
-  private readonly resetTimeMs: number;
-  private readonly onStateChange: ((newState: CircuitState, previousState: CircuitState) => void) | undefined;
+  private readonly threshold: number
+  private readonly resetTimeMs: number
+  private readonly onStateChange:
+    | ((newState: CircuitState, previousState: CircuitState) => void)
+    | undefined
 
   /**
    * Create a new circuit breaker.
@@ -104,58 +120,93 @@ export class CircuitBreaker {
    */
   constructor(thresholdOrOptions: number | CircuitBreakerOptions = 5, resetTimeMs = 60000) {
     if (typeof thresholdOrOptions === 'number') {
-      this.threshold = thresholdOrOptions;
-      this.resetTimeMs = resetTimeMs;
+      this.threshold = thresholdOrOptions
+      this.resetTimeMs = resetTimeMs
     } else {
-      this.threshold = thresholdOrOptions.threshold ?? 5;
-      this.resetTimeMs = thresholdOrOptions.resetTimeMs ?? 60000;
-      this.onStateChange = thresholdOrOptions.onStateChange;
+      this.threshold = thresholdOrOptions.threshold ?? 5
+      this.resetTimeMs = thresholdOrOptions.resetTimeMs ?? 60000
+      this.onStateChange = thresholdOrOptions.onStateChange
     }
   }
 
   /**
    * Execute a function with circuit breaker protection.
    *
+   * Uses a mutex to prevent race conditions during state transitions,
+   * particularly in half-open state where only one test request should proceed.
+   *
    * @param fn - Function to execute
    * @returns Result of the function
-   * @throws {DatabaseError} If circuit is open
+   * @throws {CircuitBreakerError} If circuit is open or testing recovery
    * @throws Original error if function fails
    */
   async execute<T>(fn: () => Promise<T>): Promise<T> {
-    // Check if circuit should be reset
-    if (
-      this.state === 'open' &&
-      this.lastFailureTime &&
-      Date.now() - this.lastFailureTime > this.resetTimeMs
-    ) {
-      this.setState('half-open');
-    }
+    // Acquire mutex to prevent concurrent state transitions
+    await this.stateMutex
 
-    // If circuit is open, fail fast
-    if (this.state === 'open') {
-      throw new DatabaseError('Circuit breaker is open', ErrorCodes.DB_CONNECTION_FAILED);
-    }
+    let releaseMutex: (() => void) | undefined
+    const mutexPromise = new Promise<void>(resolve => {
+      releaseMutex = resolve
+    })
+    this.stateMutex = mutexPromise
 
     try {
-      const result = await fn();
+      // Check if circuit should be reset
+      if (
+        this.state === 'open' &&
+        this.lastFailureTime &&
+        Date.now() - this.lastFailureTime > this.resetTimeMs
+      ) {
+        this.setState('half-open')
+      }
 
-      // Reset on success
+      // If circuit is open, fail fast
+      if (this.state === 'open') {
+        throw new CircuitBreakerError('Circuit breaker is open')
+      }
+
+      // If circuit is half-open and a test is already in progress, reject
       if (this.state === 'half-open') {
-        this.setState('closed');
-        this.failures = 0;
+        if (this.isTestingHalfOpen) {
+          throw new CircuitBreakerError('Circuit breaker is testing recovery')
+        }
+        this.isTestingHalfOpen = true
       }
 
-      return result;
-    } catch (error) {
-      this.failures++;
-      this.lastFailureTime = Date.now();
+      // Release mutex before executing fn (we've secured our state)
+      releaseMutex?.()
+      releaseMutex = undefined
 
-      // Open circuit if threshold exceeded
-      if (this.failures >= this.threshold) {
-        this.setState('open');
+      try {
+        const result = await fn()
+
+        // Reset on success
+        if (this.state === 'half-open') {
+          this.isTestingHalfOpen = false
+          this.setState('closed')
+          this.failures = 0
+        }
+
+        return result
+      } catch (error) {
+        // Reset testing flag on failure in half-open state
+        if (this.state === 'half-open') {
+          this.isTestingHalfOpen = false
+        }
+
+        this.failures++
+        this.lastFailureTime = Date.now()
+
+        // Open circuit if threshold exceeded or failed in half-open
+        if (this.failures >= this.threshold || this.state === 'half-open') {
+          this.setState('open')
+        }
+
+        throw error
       }
-
-      throw error;
+    } finally {
+      // Ensure mutex is always released
+      releaseMutex?.()
     }
   }
 
@@ -163,9 +214,10 @@ export class CircuitBreaker {
    * Reset the circuit breaker to closed state.
    */
   reset(): void {
-    this.failures = 0;
-    this.lastFailureTime = undefined;
-    this.setState('closed');
+    this.failures = 0
+    this.lastFailureTime = undefined
+    this.isTestingHalfOpen = false
+    this.setState('closed')
   }
 
   /**
@@ -178,7 +230,8 @@ export class CircuitBreaker {
       state: this.state,
       failures: this.failures,
       lastFailureTime: this.lastFailureTime,
-    };
+      isTestingHalfOpen: this.isTestingHalfOpen
+    }
   }
 
   /**
@@ -187,7 +240,7 @@ export class CircuitBreaker {
    * @returns True if circuit is open
    */
   isOpen(): boolean {
-    return this.state === 'open';
+    return this.state === 'open'
   }
 
   /**
@@ -196,7 +249,7 @@ export class CircuitBreaker {
    * @returns True if circuit is closed
    */
   isClosed(): boolean {
-    return this.state === 'closed';
+    return this.state === 'closed'
   }
 
   /**
@@ -205,9 +258,10 @@ export class CircuitBreaker {
    * Useful for manual intervention when problems are detected.
    */
   forceOpen(): void {
-    this.failures = this.threshold;
-    this.lastFailureTime = Date.now();
-    this.setState('open');
+    this.failures = this.threshold
+    this.lastFailureTime = Date.now()
+    this.isTestingHalfOpen = false
+    this.setState('open')
   }
 
   /**
@@ -215,9 +269,9 @@ export class CircuitBreaker {
    */
   private setState(newState: CircuitState): void {
     if (this.state !== newState) {
-      const previousState = this.state;
-      this.state = newState;
-      this.onStateChange?.(newState, previousState);
+      const previousState = this.state
+      this.state = newState
+      this.onStateChange?.(newState, previousState)
     }
   }
 }

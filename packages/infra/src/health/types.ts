@@ -4,25 +4,25 @@
  * @module @kysera/infra/health
  */
 
-import type { QueryMetrics } from '@kysera/core';
+import type { QueryMetrics } from '@kysera/core'
 
 /**
  * Health status levels.
  */
-export type HealthStatus = 'healthy' | 'degraded' | 'unhealthy';
+export type HealthStatus = 'healthy' | 'degraded' | 'unhealthy'
 
 /**
  * Individual health check result.
  */
 export interface HealthCheck {
   /** Name of the health check */
-  name: string;
+  name: string
   /** Current status */
-  status: HealthStatus;
+  status: HealthStatus
   /** Human-readable message */
-  message?: string;
+  message?: string
   /** Additional details */
-  details?: Record<string, unknown>;
+  details?: Record<string, unknown>
 }
 
 /**
@@ -30,15 +30,15 @@ export interface HealthCheck {
  */
 export interface HealthCheckResult {
   /** Overall health status (worst of all checks) */
-  status: HealthStatus;
+  status: HealthStatus
   /** Individual health checks */
-  checks: HealthCheck[];
+  checks: HealthCheck[]
   /** Error messages if any */
-  errors?: string[];
+  errors?: string[]
   /** Collected metrics */
-  metrics?: HealthMetrics;
+  metrics?: HealthMetrics
   /** Timestamp of the health check */
-  timestamp: Date;
+  timestamp: Date
 }
 
 /**
@@ -46,23 +46,23 @@ export interface HealthCheckResult {
  */
 export interface HealthMetrics {
   /** Database version string */
-  databaseVersion?: string;
+  databaseVersion?: string
   /** Connection pool metrics */
   poolMetrics?: {
-    totalConnections: number;
-    activeConnections: number;
-    idleConnections: number;
-    waitingRequests: number;
-  };
+    totalConnections: number
+    activeConnections: number
+    idleConnections: number
+    waitingRequests: number
+  }
   /** Query performance metrics */
   queryMetrics?: {
-    totalQueries?: number;
-    avgResponseTime?: number;
-    slowQueries?: number;
-    errors?: number;
-  };
+    totalQueries?: number
+    avgResponseTime?: number
+    slowQueries?: number
+    errors?: number
+  }
   /** Health check latency in milliseconds */
-  checkLatency?: number;
+  checkLatency?: number
 }
 
 /**
@@ -73,9 +73,10 @@ export interface HealthMetrics {
  *
  * @typeParam _DB - Database type (used for type inference with Kysely, underscore prefix indicates intentionally unused)
  */
+// eslint-disable-next-line @typescript-eslint/naming-convention
 export interface DatabaseWithMetrics<_DB = unknown> {
   /** Get collected query metrics */
-  getMetrics(): QueryMetrics[];
+  getMetrics(): QueryMetrics[]
   /** Clear all collected metrics */
-  clearMetrics(): void;
+  clearMetrics(): void
 }

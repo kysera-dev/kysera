@@ -1,6 +1,6 @@
-import type { Selectable } from 'kysely';
-import type { Executor } from './helpers.js';
-import { applyOffset, type OffsetOptions } from '@kysera/core';
+import type { Selectable } from 'kysely'
+import type { Executor } from './helpers.js'
+import { applyOffset, type OffsetOptions } from '@kysera/core'
 
 /**
  * Abstract repository class that supports executor switching for transactions.
@@ -113,15 +113,15 @@ export abstract class ContextAwareRepository<DB, Table extends string> {
    */
   withExecutor(executor: Executor<DB>): this {
     // Create a new instance with the same prototype chain
-    const clone = Object.create(Object.getPrototypeOf(this));
+    const clone = Object.create(Object.getPrototypeOf(this))
 
     // Copy all properties from the current instance to the clone
-    Object.assign(clone, this);
+    Object.assign(clone, this)
 
     // Replace only the executor
-    clone.executor = executor;
+    clone.executor = executor
 
-    return clone;
+    return clone
   }
 
   /**
@@ -144,7 +144,7 @@ export abstract class ContextAwareRepository<DB, Table extends string> {
    * ```
    */
   protected get db(): Executor<DB> {
-    return this.executor;
+    return this.executor
   }
 
   /**
@@ -182,9 +182,9 @@ export abstract class ContextAwareRepository<DB, Table extends string> {
       .selectFrom(this.tableName)
       .selectAll()
       .where(field, '=', value)
-      .executeTakeFirst();
+      .executeTakeFirst()
 
-    return result ?? null;
+    return result ?? null
   }
 
   /**
@@ -230,19 +230,16 @@ export abstract class ContextAwareRepository<DB, Table extends string> {
     value: unknown,
     options?: OffsetOptions & { orderBy?: string; direction?: 'asc' | 'desc' }
   ): Promise<Selectable<DB[Table & keyof DB]>[]> {
-    let query = (this.db as any)
-      .selectFrom(this.tableName)
-      .selectAll()
-      .where(field, '=', value);
+    let query = (this.db as any).selectFrom(this.tableName).selectAll().where(field, '=', value)
 
     if (options?.orderBy) {
-      query = query.orderBy(options.orderBy, options.direction ?? 'desc');
+      query = query.orderBy(options.orderBy, options.direction ?? 'desc')
     }
 
     if (options?.limit !== undefined || options?.offset !== undefined) {
-      query = applyOffset(query, options);
+      query = applyOffset(query, options)
     }
 
-    return query.execute();
+    return await query.execute()
   }
 }

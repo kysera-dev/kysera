@@ -21,18 +21,18 @@ export const OrderSchema = z.object({
   status: z.enum(['pending', 'processing', 'shipped', 'delivered', 'cancelled']),
   total_amount: z.number().positive(),
   created_at: z.date(),
-  updated_at: z.date().nullable(),
+  updated_at: z.date().nullable()
 })
 
 export const CreateOrderSchema = z.object({
   user_id: z.number(),
   status: z.enum(['pending', 'processing', 'shipped', 'delivered', 'cancelled']).optional(),
-  total_amount: z.number().positive(),
+  total_amount: z.number().positive()
 })
 
 export const UpdateOrderSchema = z.object({
   status: z.enum(['pending', 'processing', 'shipped', 'delivered', 'cancelled']).optional(),
-  total_amount: z.number().positive().optional(),
+  total_amount: z.number().positive().optional()
 })
 
 // State machine for order status transitions
@@ -83,9 +83,7 @@ export function createOrderRepository(executor: Executor<Database>) {
         .execute()
 
       const orders = rows.map(mapOrderRow)
-      return validateDbResults
-        ? orders.map(o => OrderSchema.parse(o))
-        : orders
+      return validateDbResults ? orders.map(o => OrderSchema.parse(o)) : orders
     },
 
     async findByStatus(status: OrderStatus): Promise<Order[]> {
@@ -97,9 +95,7 @@ export function createOrderRepository(executor: Executor<Database>) {
         .execute()
 
       const orders = rows.map(mapOrderRow)
-      return validateDbResults
-        ? orders.map(o => OrderSchema.parse(o))
-        : orders
+      return validateDbResults ? orders.map(o => OrderSchema.parse(o)) : orders
     },
 
     async create(input: unknown): Promise<Order> {
@@ -110,7 +106,7 @@ export function createOrderRepository(executor: Executor<Database>) {
         .values({
           ...validated,
           status: validated.status || 'pending',
-          updated_at: null,
+          updated_at: null
         })
         .returningAll()
         .executeTakeFirstOrThrow()

@@ -12,30 +12,37 @@ export interface RetryOptions {
    * Maximum number of retry attempts.
    * @default 3
    */
-  maxAttempts?: number;
+  maxAttempts?: number
 
   /**
    * Initial delay between retries in milliseconds.
    * @default 1000
    */
-  delayMs?: number;
+  delayMs?: number
+
+  /**
+   * Maximum delay between retries in milliseconds.
+   * Caps the exponential backoff to prevent excessive wait times.
+   * @default 30000
+   */
+  maxDelayMs?: number
 
   /**
    * Use exponential backoff for delays.
    * @default true
    */
-  backoff?: boolean;
+  backoff?: boolean
 
   /**
    * Custom function to determine if error should be retried.
    * @default isTransientError
    */
-  shouldRetry?: (error: unknown) => boolean;
+  shouldRetry?: (error: unknown) => boolean
 
   /**
    * Callback invoked on each retry attempt.
    */
-  onRetry?: (attempt: number, error: unknown) => void;
+  onRetry?: (attempt: number, error: unknown) => void
 }
 
 /**
@@ -70,8 +77,8 @@ const TRANSIENT_ERROR_CODES = new Set([
 
   // SQLite
   'SQLITE_BUSY',
-  'SQLITE_LOCKED',
-]);
+  'SQLITE_LOCKED'
+])
 
 /**
  * Check if error is transient (can be retried).
@@ -97,12 +104,12 @@ const TRANSIENT_ERROR_CODES = new Set([
  */
 export function isTransientError(error: unknown): boolean {
   if (error === null || error === undefined || typeof error !== 'object') {
-    return false;
+    return false
   }
-  const code = (error as { code?: string }).code;
-  if (!code) return false;
+  const code = (error as { code?: string }).code
+  if (!code) return false
 
-  return TRANSIENT_ERROR_CODES.has(code);
+  return TRANSIENT_ERROR_CODES.has(code)
 }
 
 /**
@@ -134,6 +141,7 @@ export function isTransientError(error: unknown): boolean {
  *   {
  *     maxAttempts: 5,
  *     delayMs: 500,
+ *     maxDelayMs: 10000,
  *     backoff: true,
  *     onRetry: (attempt, error) => {
  *       console.log(`Retry ${attempt}, error:`, error);
@@ -142,40 +150,46 @@ export function isTransientError(error: unknown): boolean {
  * );
  * ```
  */
-export async function withRetry<T>(
-  fn: () => Promise<T>,
-  options: RetryOptions = {}
-): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const {
     maxAttempts = 3,
     delayMs = 1000,
+    maxDelayMs = 30000,
     backoff = true,
     shouldRetry = isTransientError,
-    onRetry,
-  } = options;
+    onRetry
+  } = options
 
-  let lastError: unknown;
+  // Validate maxDelayMs is not less than delayMs
+  if (maxDelayMs < delayMs) {
+    throw new Error(
+      `maxDelayMs (${String(maxDelayMs)}) must be greater than or equal to delayMs (${String(delayMs)})`
+    )
+  }
+
+  let lastError: unknown
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return await fn();
+      return await fn()
     } catch (error) {
-      lastError = error;
+      lastError = error
 
       // Don't retry if this is the last attempt or error is not retryable
       if (attempt === maxAttempts || !shouldRetry(error)) {
-        throw error;
+        throw error
       }
 
-      onRetry?.(attempt, error);
+      onRetry?.(attempt, error)
 
-      // Calculate delay with optional exponential backoff
-      const delay = backoff ? delayMs * Math.pow(2, attempt - 1) : delayMs;
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      // Calculate delay with optional exponential backoff, capped at maxDelayMs
+      const rawDelay = backoff ? delayMs * Math.pow(2, attempt - 1) : delayMs
+      const delay = Math.min(rawDelay, maxDelayMs)
+      await new Promise(resolve => setTimeout(resolve, delay))
     }
   }
 
-  throw lastError;
+  throw lastError
 }
 
 /**
@@ -203,6 +217,6 @@ export function createRetryWrapper<TArgs extends unknown[], TResult>(
   options: RetryOptions = {}
 ): (...args: TArgs) => Promise<TResult> {
   return async (...args: TArgs): Promise<TResult> => {
-    return await withRetry(() => fn(...args), options);
-  };
+    return await withRetry(() => fn(...args), options)
+  }
 }

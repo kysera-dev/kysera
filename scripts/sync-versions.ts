@@ -20,12 +20,7 @@ async function syncVersions() {
   // Get all package.json files
   const packagePaths = await glob('**/package.json', {
     cwd: ROOT_DIR,
-    ignore: [
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/build/**',
-      '.test-*/**'
-    ]
+    ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '.test-*/**']
   })
 
   console.log(prism.gray(`Found ${packagePaths.length} package.json files`))
@@ -62,17 +57,13 @@ async function syncVersions() {
       }
 
       // Write back
-      await fs.writeFile(
-        fullPath,
-        JSON.stringify(pkg, null, 2) + '\n'
-      )
+      await fs.writeFile(fullPath, JSON.stringify(pkg, null, 2) + '\n')
 
       if (oldVersion !== TARGET_VERSION) {
         console.log(prism.green(`✅ ${relPath}: ${oldVersion} → ${TARGET_VERSION}`))
       } else {
         console.log(prism.gray(`⏭️  ${relPath}: already at ${TARGET_VERSION}`))
       }
-
     } catch (error) {
       console.error(prism.red(`❌ Failed to update ${relPath}:`), error)
     }

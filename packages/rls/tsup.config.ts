@@ -1,7 +1,7 @@
-import { defineConfig } from 'tsup';
-import { readFileSync } from 'node:fs';
+import { defineConfig } from 'tsup'
+import { readFileSync } from 'node:fs'
 
-const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
 export default defineConfig({
   entry: ['src/index.ts', 'src/native/index.ts'],
@@ -9,8 +9,8 @@ export default defineConfig({
   dts: {
     resolve: true,
     compilerOptions: {
-      composite: false,
-    },
+      composite: false
+    }
   },
   clean: true,
   sourcemap: true,
@@ -20,10 +20,11 @@ export default defineConfig({
   external: [
     'kysely',
     '@kysera/core',
+    '@kysera/executor',
     '@kysera/repository',
-    'node:async_hooks',
+    'node:async_hooks'
   ],
   define: {
-    __VERSION__: JSON.stringify(pkg.version),
-  },
-});
+    __VERSION__: JSON.stringify(pkg.version)
+  }
+})

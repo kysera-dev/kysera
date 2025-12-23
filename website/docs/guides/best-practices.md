@@ -14,29 +14,29 @@ Recommendations for using Kysera effectively in production applications.
 
 Choose the right pattern for your use case:
 
-| Use Case | Recommended |
-|----------|-------------|
-| Need repository extension plugins (audit.restore(), timestamps) | **Repository** |
-| Need query interceptor plugins (soft-delete, RLS filtering) | **Repository or DAL with KyseraExecutor** |
-| Multi-tenant application with RLS | **Repository or DAL with KyseraExecutor** |
-| Complex custom queries, analytics | **DAL** |
-| Vertical Slice Architecture | **DAL** |
-| Team prefers OOP patterns | **Repository** |
-| Team prefers functional patterns | **DAL** |
+| Use Case                                                        | Recommended                               |
+| --------------------------------------------------------------- | ----------------------------------------- |
+| Need repository extension plugins (audit.restore(), timestamps) | **Repository**                            |
+| Need query interceptor plugins (soft-delete, RLS filtering)     | **Repository or DAL with KyseraExecutor** |
+| Multi-tenant application with RLS                               | **Repository or DAL with KyseraExecutor** |
+| Complex custom queries, analytics                               | **DAL**                                   |
+| Vertical Slice Architecture                                     | **DAL**                                   |
+| Team prefers OOP patterns                                       | **Repository**                            |
+| Team prefers functional patterns                                | **DAL**                                   |
 
 ```typescript
 // Repository: Full plugin support (interceptors + extensions)
-const orm = await createORM(db, [softDeletePlugin(), auditPlugin()]);
-const userRepo = orm.createRepository(createUserRepository);
-await userRepo.softDelete(1);  // Plugin extension method works!
+const orm = await createORM(db, [softDeletePlugin(), auditPlugin()])
+const userRepo = orm.createRepository(createUserRepository)
+await userRepo.softDelete(1) // Plugin extension method works!
 
 // DAL with KyseraExecutor: Query interceptor plugins only
-import { createExecutor } from '@kysera/executor';
-const executor = await createExecutor(db, [softDeletePlugin()]);
-const getUsers = createQuery((ctx) =>
-  ctx.db.selectFrom('users').selectAll().execute()  // Soft-delete filter applied!
-);
-await getUsers(executor);
+import { createExecutor } from '@kysera/executor'
+const executor = await createExecutor(db, [softDeletePlugin()])
+const getUsers = createQuery(
+  ctx => ctx.db.selectFrom('users').selectAll().execute() // Soft-delete filter applied!
+)
+await getUsers(executor)
 
 // DAL: Pure functional queries, no plugins
 const getAnalytics = createQuery((ctx, userId: number) =>
@@ -45,7 +45,7 @@ const getAnalytics = createQuery((ctx, userId: number) =>
     .select([sql`count(*)`.as('total')])
     .where('user_id', '=', userId)
     .executeTakeFirst()
-);
+)
 ```
 
 :::tip
@@ -71,8 +71,8 @@ const user = await userRepo.findByIdWithValidationAndNotifications(userId)
 ```typescript
 // Good: Factory pattern with DI
 const createRepos = createRepositoriesFactory({
-  users: (executor) => createUserRepository(executor),
-  posts: (executor) => createPostRepository(executor)
+  users: executor => createUserRepository(executor),
+  posts: executor => createPostRepository(executor)
 })
 
 // Use in services
@@ -127,15 +127,15 @@ await profileRepo.create({ userId: user.id, ... })
 const userData = await validateData(input)
 const externalData = await fetchExternalService(input)
 
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   // Quick DB operations only
   await trx.insertInto('users').values(userData).execute()
 })
 
 // Bad: External calls inside transaction
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   await trx.insertInto('users').values(input).execute()
-  await sendEmail(input.email)  // External call holds lock!
+  await sendEmail(input.email) // External call holds lock!
 })
 ```
 
@@ -154,7 +154,7 @@ app.post('/users', async (req, res) => {
 // Bad: Rely only on repository validation
 app.post('/users', async (req, res) => {
   try {
-    const user = await userRepo.create(req.body)  // Unvalidated!
+    const user = await userRepo.create(req.body) // Unvalidated!
     res.json(user)
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -166,10 +166,10 @@ app.post('/users', async (req, res) => {
 
 ```typescript
 // Development: Full validation
-KYSERA_VALIDATION_MODE=always
+KYSERA_VALIDATION_MODE = always
 
 // Production: Input only
-KYSERA_VALIDATION_MODE=production
+KYSERA_VALIDATION_MODE = production
 ```
 
 ## Error Handling
@@ -201,7 +201,7 @@ try {
 try {
   await userRepo.create(data)
 } catch (error) {
-  console.log(error)  // No specific handling
+  console.log(error) // No specific handling
 }
 ```
 
@@ -229,13 +229,13 @@ try {
 const result = await paginateCursor(query, {
   orderBy: [
     { column: 'created_at', direction: 'desc' },
-    { column: 'id', direction: 'desc' }  // Tie-breaker
+    { column: 'id', direction: 'desc' } // Tie-breaker
   ],
   limit: 20
 })
 
 // Bad: Offset pagination at high pages
-const page = 10000  // Skip 200,000 rows!
+const page = 10000 // Skip 200,000 rows!
 const result = await paginate(query, { page, limit: 20 })
 ```
 
@@ -255,7 +255,7 @@ CREATE INDEX idx_posts_cursor ON posts (created_at DESC, id DESC);
 const orm = await createORM(db, [
   timestampsPlugin(), // 1. Modifies data first (adds timestamps)
   softDeletePlugin(), // 2. Filters queries (excludes soft-deleted)
-  auditPlugin()       // 3. Captures everything (outer layer)
+  auditPlugin() // 3. Captures everything (outer layer)
 ])
 ```
 
@@ -263,7 +263,7 @@ const orm = await createORM(db, [
 
 ```typescript
 auditPlugin({
-  excludeTables: ['audit_logs']  // Prevent infinite loop
+  excludeTables: ['audit_logs'] // Prevent infinite loop
 })
 ```
 
@@ -280,7 +280,7 @@ await userRepo.bulkUpdate([
 
 // Bad: Sequential operations
 for (const id of [1, 2]) {
-  await userRepo.update(id, { status: 'active' })  // Slow!
+  await userRepo.update(id, { status: 'active' }) // Slow!
 }
 ```
 
@@ -288,7 +288,7 @@ for (const id of [1, 2]) {
 
 ```typescript
 const debugDb = withDebug(db, {
-  maxMetrics: 1000  // Circular buffer prevents memory leaks (default: 1000)
+  maxMetrics: 1000 // Circular buffer prevents memory leaks (default: 1000)
 })
 ```
 
@@ -296,10 +296,7 @@ const debugDb = withDebug(db, {
 
 ```typescript
 // Good: Select only needed columns
-const users = await db
-  .selectFrom('users')
-  .select(['id', 'name'])
-  .execute()
+const users = await db.selectFrom('users').select(['id', 'name']).execute()
 
 // Bad: Select all when only need few
 const users = await db.selectFrom('users').selectAll().execute()
@@ -312,9 +309,9 @@ const names = users.map(u => u.name)
 
 ```typescript
 const createUserSchema = z.object({
-  email: z.string().email().toLowerCase(),  // Sanitize
-  name: z.string().min(1).max(100).trim(),  // Limit
-  role: z.enum(['user', 'admin'])           // Restrict
+  email: z.string().email().toLowerCase(), // Sanitize
+  name: z.string().min(1).max(100).trim(), // Limit
+  role: z.enum(['user', 'admin']) // Restrict
 })
 ```
 
@@ -322,12 +319,13 @@ const createUserSchema = z.object({
 
 ```typescript
 // Good: Parameterized (Kysely default)
-await db.selectFrom('users')
-  .where('email', '=', userInput)  // Safe
+await db
+  .selectFrom('users')
+  .where('email', '=', userInput) // Safe
   .execute()
 
 // Bad: String interpolation
-await sql`SELECT * FROM users WHERE email = '${userInput}'`  // SQL injection!
+await sql`SELECT * FROM users WHERE email = '${userInput}'` // SQL injection!
 ```
 
 ### Don't Log Sensitive Data
@@ -359,8 +357,8 @@ it('creates user', async () => {
 
 ```typescript
 const userFactory = createFactory({
-  email: (i) => `user${i}@test.com`,
-  name: (i) => `User ${i}`
+  email: i => `user${i}@test.com`,
+  name: i => `User ${i}`
 })
 
 const users = Array.from({ length: 10 }, () => userFactory())

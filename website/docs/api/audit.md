@@ -1,6 +1,6 @@
 ---
 sidebar_position: 10
-title: "@kysera/audit"
+title: '@kysera/audit'
 description: Audit logging plugin API reference
 ---
 
@@ -16,11 +16,11 @@ npm install @kysera/audit
 
 ## Overview
 
-| Metric | Value |
-|--------|-------|
-| **Version** | 0.7.0 |
-| **Bundle Size** | ~8 KB (minified) |
-| **Dependencies** | @kysera/core (workspace) |
+| Metric                | Value                               |
+| --------------------- | ----------------------------------- |
+| **Version**           | 0.7.0                               |
+| **Bundle Size**       | ~8 KB (minified)                    |
+| **Dependencies**      | @kysera/core (workspace)            |
 | **Peer Dependencies** | kysely >=0.28.8, @kysera/repository |
 
 ## Exports
@@ -228,6 +228,7 @@ async getAuditHistory(
 ```
 
 **Parameters:**
+
 - `entityId` - Primary key of the entity
 - `options.limit` - Maximum number of entries
 - `options.offset` - Number of entries to skip
@@ -235,6 +236,7 @@ async getAuditHistory(
 **Returns:** Array of audit log entries, most recent first
 
 **Example:**
+
 ```typescript
 // Get full history
 const history = await userRepo.getAuditHistory(userId)
@@ -277,11 +279,13 @@ async getAuditLog(auditId: number): Promise<AuditLogEntry | null>
 ```
 
 **Parameters:**
+
 - `auditId` - ID of the audit log entry
 
 **Returns:** The audit log entry or null
 
 **Example:**
+
 ```typescript
 const entry = await userRepo.getAuditLog(auditLogId)
 if (entry) {
@@ -299,11 +303,13 @@ async getTableAuditLogs(filters?: AuditFilters): Promise<AuditLogEntry[]>
 ```
 
 **Parameters:**
+
 - `filters` - Optional filters for the query
 
 **Returns:** Array of audit log entries matching the filters
 
 **Example:**
+
 ```typescript
 // Get all audit logs for the users table
 const allLogs = await userRepo.getTableAuditLogs()
@@ -345,6 +351,7 @@ async getUserChanges(
 ```
 
 **Parameters:**
+
 - `userId` - ID of the user whose changes to retrieve
 - `options.limit` - Maximum number of entries
 - `options.offset` - Number of entries to skip
@@ -352,6 +359,7 @@ async getUserChanges(
 **Returns:** Array of audit log entries for the user
 
 **Example:**
+
 ```typescript
 // Get all changes made by a specific user
 const userChanges = await userRepo.getUserChanges('admin-user-id')
@@ -378,11 +386,13 @@ async restoreFromAudit(auditId: number): Promise<T>
 ```
 
 **Parameters:**
+
 - `auditId` - ID of the audit log entry to restore from
 
 **Returns:** The restored entity
 
 **Example:**
+
 ```typescript
 // Restore user to previous state
 const restoredUser = await userRepo.restoreFromAudit(auditLogId)
@@ -403,11 +413,11 @@ interface AuditLogEntry {
   table_name: string
   entity_id: string
   operation: AuditOperation
-  old_values: string | null   // JSON string
-  new_values: string | null   // JSON string
+  old_values: string | null // JSON string
+  new_values: string | null // JSON string
   changed_by: string | null
   changed_at: string
-  metadata: string | null     // JSON string
+  metadata: string | null // JSON string
 }
 
 type AuditOperation = 'INSERT' | 'UPDATE' | 'DELETE'
@@ -535,11 +545,11 @@ const orm = await createORM(db, [
   })
 ])
 
-const userRepo = orm.createRepository((executor) => {
+const userRepo = orm.createRepository(executor => {
   const factory = createRepositoryFactory(executor)
   return factory.create({
     tableName: 'users',
-    mapRow: (row) => ({
+    mapRow: row => ({
       id: row.id,
       email: row.email,
       name: row.name
@@ -696,7 +706,7 @@ interface AuditLogEntry {
 
 ```typescript
 auditPlugin({
-  excludeTables: ['audit_logs']  // Prevent infinite loop
+  excludeTables: ['audit_logs'] // Prevent infinite loop
 })
 ```
 
@@ -777,9 +787,10 @@ CREATE INDEX idx_audit_logs_operation ON audit_logs(operation);
 
 ```typescript
 const orm = await createORM(db, [
-  timestampsPlugin(),     // Auto timestamps
-  softDeletePlugin(),     // Soft delete (audited)
-  auditPlugin({           // Comprehensive audit
+  timestampsPlugin(), // Auto timestamps
+  softDeletePlugin(), // Soft delete (audited)
+  auditPlugin({
+    // Comprehensive audit
     getUserId: () => currentUser?.id,
     excludeTables: ['audit_logs']
   })

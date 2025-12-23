@@ -1,6 +1,6 @@
 ---
 sidebar_position: 4
-title: "@kysera/infra"
+title: '@kysera/infra'
 description: Infrastructure utilities API reference
 ---
 
@@ -39,29 +39,27 @@ import {
   withRetry,
   CircuitBreaker,
   registerShutdownHandlers,
-  createMetricsPool,
-} from '@kysera/infra';
+  createMetricsPool
+} from '@kysera/infra'
 
 // Create metrics-enabled pool
-const metricsPool = createMetricsPool(pgPool);
+const metricsPool = createMetricsPool(pgPool)
 
 // Health monitoring
-const monitor = new HealthMonitor(db, { pool: metricsPool, intervalMs: 30000 });
-monitor.start((result) => {
-  if (result.status !== 'healthy') console.warn('Health issue:', result);
-});
+const monitor = new HealthMonitor(db, { pool: metricsPool, intervalMs: 30000 })
+monitor.start(result => {
+  if (result.status !== 'healthy') console.warn('Health issue:', result)
+})
 
 // Resilience patterns
-const breaker = new CircuitBreaker(5, 60000);
-const users = await breaker.execute(() =>
-  withRetry(() => db.selectFrom('users').execute())
-);
+const breaker = new CircuitBreaker(5, 60000)
+const users = await breaker.execute(() => withRetry(() => db.selectFrom('users').execute()))
 
 // Graceful shutdown
 registerShutdownHandlers(db, {
   timeout: 10000,
-  onShutdown: async () => monitor.stop(),
-});
+  onShutdown: async () => monitor.stop()
+})
 ```
 
 ## Health Monitoring
@@ -69,13 +67,14 @@ registerShutdownHandlers(db, {
 ### Basic Health Check
 
 ```typescript
-import { checkDatabaseHealth } from '@kysera/infra';
+import { checkDatabaseHealth } from '@kysera/infra'
 
-const result = await checkDatabaseHealth(db);
-console.log(result.status); // 'healthy' | 'degraded' | 'unhealthy'
+const result = await checkDatabaseHealth(db)
+console.log(result.status) // 'healthy' | 'degraded' | 'unhealthy'
 ```
 
 **Health Status Levels:**
+
 - `healthy` - Latency < 100ms
 - `degraded` - Latency 100-500ms
 - `unhealthy` - Latency > 500ms or connection failed
@@ -83,34 +82,34 @@ console.log(result.status); // 'healthy' | 'degraded' | 'unhealthy'
 ### With Pool Metrics
 
 ```typescript
-import { checkDatabaseHealth, createMetricsPool } from '@kysera/infra';
+import { checkDatabaseHealth, createMetricsPool } from '@kysera/infra'
 
-const metricsPool = createMetricsPool(pgPool);
-const result = await checkDatabaseHealth(db, metricsPool);
+const metricsPool = createMetricsPool(pgPool)
+const result = await checkDatabaseHealth(db, metricsPool)
 
-console.log(result.metrics?.poolMetrics);
+console.log(result.metrics?.poolMetrics)
 // { totalConnections: 10, activeConnections: 2, idleConnections: 8, waitingRequests: 0 }
 ```
 
 ### Continuous Monitoring
 
 ```typescript
-import { HealthMonitor } from '@kysera/infra';
+import { HealthMonitor } from '@kysera/infra'
 
 const monitor = new HealthMonitor(db, {
   pool: metricsPool,
-  intervalMs: 30000,
-});
+  intervalMs: 30000
+})
 
-monitor.start((result) => {
+monitor.start(result => {
   if (result.status !== 'healthy') {
     // Send alert, log to monitoring system
   }
-});
+})
 
-monitor.getLastCheck();  // Get last result
-await monitor.checkNow(); // Immediate check
-monitor.stop();
+monitor.getLastCheck() // Get last result
+await monitor.checkNow() // Immediate check
+monitor.stop()
 ```
 
 ## Resilience Patterns
@@ -118,21 +117,19 @@ monitor.stop();
 ### Retry with Exponential Backoff
 
 ```typescript
-import { withRetry, isTransientError } from '@kysera/infra';
+import { withRetry, isTransientError } from '@kysera/infra'
 
-const result = await withRetry(
-  () => db.selectFrom('users').execute(),
-  {
-    maxAttempts: 5,
-    delayMs: 500,
-    backoff: true,
-    onRetry: (attempt, error) => console.log(`Retry ${attempt}:`, error),
-    shouldRetry: isTransientError,
-  }
-);
+const result = await withRetry(() => db.selectFrom('users').execute(), {
+  maxAttempts: 5,
+  delayMs: 500,
+  backoff: true,
+  onRetry: (attempt, error) => console.log(`Retry ${attempt}:`, error),
+  shouldRetry: isTransientError
+})
 ```
 
 **Recognized Transient Errors:**
+
 - Network: `ECONNREFUSED`, `ETIMEDOUT`, `ECONNRESET`, `EPIPE`
 - PostgreSQL: `57P03`, `08006`, `40001`, `40P01` (deadlock)
 - MySQL: `ER_LOCK_DEADLOCK`, `ER_LOCK_WAIT_TIMEOUT`
@@ -141,20 +138,20 @@ const result = await withRetry(
 ### Circuit Breaker
 
 ```typescript
-import { CircuitBreaker } from '@kysera/infra';
+import { CircuitBreaker } from '@kysera/infra'
 
 // Constructor signature 1: Simple parameters
-const breaker1 = new CircuitBreaker(5, 60000); // threshold, resetTimeMs
+const breaker1 = new CircuitBreaker(5, 60000) // threshold, resetTimeMs
 
 // Constructor signature 2: Options object
 const breaker2 = new CircuitBreaker({
   threshold: 5,
   resetTimeMs: 60000,
-  onStateChange: (newState, oldState) => console.log(`${oldState} -> ${newState}`),
-});
+  onStateChange: (newState, oldState) => console.log(`${oldState} -> ${newState}`)
+})
 
 try {
-  const result = await breaker.execute(() => db.selectFrom('users').execute());
+  const result = await breaker.execute(() => db.selectFrom('users').execute())
 } catch (error) {
   if (error.message.includes('Circuit breaker is open')) {
     // Service unavailable
@@ -163,18 +160,19 @@ try {
 
 // Check circuit state
 if (breaker.isOpen()) {
-  console.log('Circuit is open - service unavailable');
+  console.log('Circuit is open - service unavailable')
 }
 if (breaker.isClosed()) {
-  console.log('Circuit is closed - operating normally');
+  console.log('Circuit is closed - operating normally')
 }
 
-breaker.getState();  // { state: 'open', failures: 5, lastFailureTime: ... }
-breaker.reset();     // Reset to closed
-breaker.forceOpen(); // Force open for maintenance
+breaker.getState() // { state: 'open', failures: 5, lastFailureTime: ... }
+breaker.reset() // Reset to closed
+breaker.forceOpen() // Force open for maintenance
 ```
 
 **Circuit States:**
+
 - `closed` - Normal operation
 - `open` - Too many failures, requests fail immediately
 - `half-open` - Testing recovery, allows one request
@@ -184,22 +182,22 @@ breaker.forceOpen(); // Force open for maintenance
 ```typescript
 const result = await breaker.execute(() =>
   withRetry(() => db.selectFrom('users').execute(), { maxAttempts: 3 })
-);
+)
 ```
 
 ## Connection Pool Metrics
 
 ```typescript
-import { createMetricsPool, isMetricsPool } from '@kysera/infra';
+import { createMetricsPool, isMetricsPool } from '@kysera/infra'
 
 // PostgreSQL
-const metricsPool = createMetricsPool(pgPool);
-const metrics = metricsPool.getMetrics();
+const metricsPool = createMetricsPool(pgPool)
+const metrics = metricsPool.getMetrics()
 // { total: 10, idle: 8, active: 2, waiting: 0 }
 
 // Type guard
 if (isMetricsPool(pool)) {
-  const metrics = pool.getMetrics();
+  const metrics = pool.getMetrics()
 }
 ```
 
@@ -208,43 +206,43 @@ if (isMetricsPool(pool)) {
 ### Automatic Signal Handlers
 
 ```typescript
-import { registerShutdownHandlers } from '@kysera/infra';
+import { registerShutdownHandlers } from '@kysera/infra'
 
 registerShutdownHandlers(db, {
   signals: ['SIGTERM', 'SIGINT'],
   timeout: 30000,
   onShutdown: async () => {
-    await flushCache();
-    monitor.stop();
-  },
-});
+    await flushCache()
+    monitor.stop()
+  }
+})
 ```
 
 ### Manual Shutdown
 
 ```typescript
-import { gracefulShutdown, shutdownDatabase } from '@kysera/infra';
+import { gracefulShutdown, shutdownDatabase } from '@kysera/infra'
 
 // With cleanup
 await gracefulShutdown(db, {
   timeout: 10000,
-  onShutdown: async () => console.log('Cleanup...'),
-});
+  onShutdown: async () => console.log('Cleanup...')
+})
 
 // Simple
-await shutdownDatabase(db);
+await shutdownDatabase(db)
 ```
 
 ### Shutdown Controller
 
 ```typescript
-import { createShutdownController } from '@kysera/infra';
+import { createShutdownController } from '@kysera/infra'
 
-const shutdown = createShutdownController(db, { timeout: 10000 });
-shutdown.registerSignals();
+const shutdown = createShutdownController(db, { timeout: 10000 })
+shutdown.registerSignals()
 
 if (!shutdown.isShuttingDown()) {
-  await shutdown.execute();
+  await shutdown.execute()
 }
 ```
 
@@ -253,20 +251,20 @@ if (!shutdown.isShuttingDown()) {
 ### Health Types
 
 ```typescript
-type HealthStatus = 'healthy' | 'degraded' | 'unhealthy';
+type HealthStatus = 'healthy' | 'degraded' | 'unhealthy'
 
 interface HealthCheckResult {
-  status: HealthStatus;
-  checks: HealthCheck[];
-  errors?: string[];
-  metrics?: HealthMetrics;
-  timestamp: Date;
+  status: HealthStatus
+  checks: HealthCheck[]
+  errors?: string[]
+  metrics?: HealthMetrics
+  timestamp: Date
 }
 
 interface HealthMonitorOptions {
-  pool?: MetricsPool;
-  intervalMs?: number; // Default: 30000
-  logger?: KyseraLogger;
+  pool?: MetricsPool
+  intervalMs?: number // Default: 30000
+  logger?: KyseraLogger
 }
 ```
 
@@ -274,25 +272,25 @@ interface HealthMonitorOptions {
 
 ```typescript
 interface RetryOptions {
-  maxAttempts?: number; // Default: 3
-  delayMs?: number;     // Default: 1000
-  backoff?: boolean;    // Default: true
-  shouldRetry?: (error: unknown) => boolean;
-  onRetry?: (attempt: number, error: unknown) => void;
+  maxAttempts?: number // Default: 3
+  delayMs?: number // Default: 1000
+  backoff?: boolean // Default: true
+  shouldRetry?: (error: unknown) => boolean
+  onRetry?: (attempt: number, error: unknown) => void
 }
 
-type CircuitState = 'closed' | 'open' | 'half-open';
+type CircuitState = 'closed' | 'open' | 'half-open'
 
 interface CircuitBreakerOptions {
-  threshold?: number;    // Default: 5
-  resetTimeMs?: number;  // Default: 60000
-  onStateChange?: (newState: CircuitState, previousState: CircuitState) => void;
+  threshold?: number // Default: 5
+  resetTimeMs?: number // Default: 60000
+  onStateChange?: (newState: CircuitState, previousState: CircuitState) => void
 }
 
 interface CircuitBreakerState {
-  state: CircuitState;
-  failures: number;
-  lastFailureTime: number | undefined;
+  state: CircuitState
+  failures: number
+  lastFailureTime: number | undefined
 }
 ```
 
@@ -301,18 +299,18 @@ interface CircuitBreakerState {
 ```typescript
 class CircuitBreaker {
   // Constructor signatures
-  constructor(threshold?: number, resetTimeMs?: number);
-  constructor(options?: CircuitBreakerOptions);
+  constructor(threshold?: number, resetTimeMs?: number)
+  constructor(options?: CircuitBreakerOptions)
 
   // Execute a function with circuit breaker protection
-  execute<T>(fn: () => Promise<T>): Promise<T>;
+  execute<T>(fn: () => Promise<T>): Promise<T>
 
   // State management
-  getState(): CircuitBreakerState;
-  isOpen(): boolean;      // Check if circuit is open
-  isClosed(): boolean;    // Check if circuit is closed
-  reset(): void;          // Reset to closed state
-  forceOpen(): void;      // Force circuit open
+  getState(): CircuitBreakerState
+  isOpen(): boolean // Check if circuit is open
+  isClosed(): boolean // Check if circuit is closed
+  reset(): void // Reset to closed state
+  forceOpen(): void // Force circuit open
 }
 ```
 
@@ -320,14 +318,14 @@ class CircuitBreaker {
 
 ```typescript
 interface PoolMetrics {
-  total: number;
-  idle: number;
-  active: number;
-  waiting: number;
+  total: number
+  idle: number
+  active: number
+  waiting: number
 }
 
 interface MetricsPool extends DatabasePool {
-  getMetrics(): PoolMetrics;
+  getMetrics(): PoolMetrics
 }
 ```
 
@@ -335,13 +333,13 @@ interface MetricsPool extends DatabasePool {
 
 ```typescript
 interface ShutdownOptions {
-  timeout?: number; // Default: 30000
-  onShutdown?: () => void | Promise<void>;
-  logger?: KyseraLogger;
+  timeout?: number // Default: 30000
+  onShutdown?: () => void | Promise<void>
+  logger?: KyseraLogger
 }
 
 interface RegisterShutdownOptions extends ShutdownOptions {
-  signals?: NodeJS.Signals[]; // Default: ['SIGTERM', 'SIGINT']
+  signals?: NodeJS.Signals[] // Default: ['SIGTERM', 'SIGINT']
 }
 ```
 

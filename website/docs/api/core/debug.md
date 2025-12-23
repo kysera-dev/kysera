@@ -15,10 +15,10 @@ npm install @kysera/debug
 
 ```typescript
 // Before (deprecated)
-import { withDebug, QueryProfiler, formatSQL } from '@kysera/core';
+import { withDebug, QueryProfiler, formatSQL } from '@kysera/core'
 
 // After
-import { withDebug, QueryProfiler, formatSQL } from '@kysera/debug';
+import { withDebug, QueryProfiler, formatSQL } from '@kysera/debug'
 ```
 
 See the full documentation at **[@kysera/debug](/docs/api/debug)**.
@@ -52,12 +52,12 @@ function withDebug<DB>(
 
 ```typescript
 interface DebugOptions {
-  logQuery?: boolean           // Log queries (default: true)
-  logParams?: boolean          // Log parameters (default: false)
-  slowQueryThreshold?: number  // Slow query threshold in ms (default: 100)
+  logQuery?: boolean // Log queries (default: true)
+  logParams?: boolean // Log parameters (default: false)
+  slowQueryThreshold?: number // Slow query threshold in ms (default: 100)
   onSlowQuery?: (sql: string, duration: number) => void
-  logger?: KyseraLogger        // Logger instance
-  maxMetrics?: number          // Max metrics to keep (default: 1000)
+  logger?: KyseraLogger // Logger instance
+  maxMetrics?: number // Max metrics to keep (default: 1000)
 }
 ```
 
@@ -92,7 +92,7 @@ debugDb.clearMetrics()
 interface QueryMetrics {
   sql: string
   parameters?: unknown[]
-  duration: number      // In milliseconds
+  duration: number // In milliseconds
   timestamp: Date
   success: boolean
   error?: string
@@ -167,10 +167,10 @@ console.log(formatSQL(sql))
 
 The debug wrapper adds minimal overhead:
 
-| Operation | Overhead |
-|-----------|----------|
-| Per query | ~0.1-0.2ms |
-| Memory | Circular buffer (configurable) |
+| Operation | Overhead                       |
+| --------- | ------------------------------ |
+| Per query | ~0.1-0.2ms                     |
+| Memory    | Circular buffer (configurable) |
 
 The circular buffer (default 1000 entries) prevents memory leaks in long-running applications.
 
@@ -179,9 +179,8 @@ The circular buffer (default 1000 entries) prevents memory leaks in long-running
 ### 1. Use in Development
 
 ```typescript
-const debugDb = process.env.NODE_ENV === 'development'
-  ? withDebug(db, { logQuery: true, logParams: true })
-  : db
+const debugDb =
+  process.env.NODE_ENV === 'development' ? withDebug(db, { logQuery: true, logParams: true }) : db
 ```
 
 ### 2. Monitor Slow Queries
@@ -200,6 +199,6 @@ const debugDb = withDebug(db, {
 
 ```typescript
 const debugDb = withDebug(db, {
-  maxMetrics: 100  // Keep only last 100 queries
+  maxMetrics: 100 // Keep only last 100 queries
 })
 ```

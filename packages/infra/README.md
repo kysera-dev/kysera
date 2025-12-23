@@ -29,58 +29,58 @@ bun add @kysera/infra kysely
 ## Quick Start
 
 ```typescript
-import { Kysely, PostgresDialect } from 'kysely';
-import pg from 'pg';
+import { Kysely, PostgresDialect } from 'kysely'
+import pg from 'pg'
 import {
   checkDatabaseHealth,
   HealthMonitor,
   withRetry,
   CircuitBreaker,
   registerShutdownHandlers,
-  createMetricsPool,
-} from '@kysera/infra';
+  createMetricsPool
+} from '@kysera/infra'
 
 // Create database connection
 const pgPool = new pg.Pool({
   host: 'localhost',
   database: 'mydb',
-  max: 10,
-});
+  max: 10
+})
 
 const db = new Kysely({
-  dialect: new PostgresDialect({ pool: pgPool }),
-});
+  dialect: new PostgresDialect({ pool: pgPool })
+})
 
 // Create metrics-enabled pool
-const metricsPool = createMetricsPool(pgPool);
+const metricsPool = createMetricsPool(pgPool)
 
 // 1. Health monitoring
 const monitor = new HealthMonitor(db, {
   pool: metricsPool,
-  intervalMs: 30000,
-});
+  intervalMs: 30000
+})
 
-monitor.start((result) => {
+monitor.start(result => {
   if (result.status !== 'healthy') {
-    console.warn('Database health issue:', result);
+    console.warn('Database health issue:', result)
   }
-});
+})
 
 // 2. Resilience patterns
-const breaker = new CircuitBreaker(5, 60000);
+const breaker = new CircuitBreaker(5, 60000)
 
 const users = await breaker.execute(() =>
   withRetry(() => db.selectFrom('users').selectAll().execute())
-);
+)
 
 // 3. Graceful shutdown
 registerShutdownHandlers(db, {
   timeout: 10000,
   onShutdown: async () => {
-    monitor.stop();
-    console.log('Cleanup complete');
-  },
-});
+    monitor.stop()
+    console.log('Cleanup complete')
+  }
+})
 ```
 
 ## Modules
@@ -95,7 +95,7 @@ The package is organized into four main modules, each available as a subpath exp
 You can also import everything from the main entry point:
 
 ```typescript
-import { checkDatabaseHealth, withRetry, CircuitBreaker } from '@kysera/infra';
+import { checkDatabaseHealth, withRetry, CircuitBreaker } from '@kysera/infra'
 ```
 
 ## Health Monitoring
@@ -105,13 +105,13 @@ import { checkDatabaseHealth, withRetry, CircuitBreaker } from '@kysera/infra';
 Check database connectivity and measure response latency:
 
 ```typescript
-import { checkDatabaseHealth } from '@kysera/infra/health';
+import { checkDatabaseHealth } from '@kysera/infra/health'
 
-const result = await checkDatabaseHealth(db);
+const result = await checkDatabaseHealth(db)
 
-console.log(result.status); // 'healthy' | 'degraded' | 'unhealthy'
-console.log(result.metrics?.checkLatency); // Response time in ms
-console.log(result.checks); // Individual check results
+console.log(result.status) // 'healthy' | 'degraded' | 'unhealthy'
+console.log(result.metrics?.checkLatency) // Response time in ms
+console.log(result.checks) // Individual check results
 ```
 
 **Health Status Levels:**
@@ -125,13 +125,13 @@ console.log(result.checks); // Individual check results
 Include connection pool metrics in health checks:
 
 ```typescript
-import { checkDatabaseHealth } from '@kysera/infra/health';
-import { createMetricsPool } from '@kysera/infra/pool';
+import { checkDatabaseHealth } from '@kysera/infra/health'
+import { createMetricsPool } from '@kysera/infra/pool'
 
-const metricsPool = createMetricsPool(pgPool);
-const result = await checkDatabaseHealth(db, metricsPool);
+const metricsPool = createMetricsPool(pgPool)
+const result = await checkDatabaseHealth(db, metricsPool)
 
-console.log(result.metrics?.poolMetrics);
+console.log(result.metrics?.poolMetrics)
 // {
 //   totalConnections: 10,
 //   activeConnections: 2,
@@ -145,13 +145,13 @@ console.log(result.metrics?.poolMetrics);
 Use `performHealthCheck` for extended diagnostics:
 
 ```typescript
-import { performHealthCheck } from '@kysera/infra/health';
+import { performHealthCheck } from '@kysera/infra/health'
 
 const result = await performHealthCheck(db, {
   verbose: true,
   pool: metricsPool,
-  logger: customLogger,
-});
+  logger: customLogger
+})
 ```
 
 ### Continuous Health Monitoring
@@ -159,33 +159,33 @@ const result = await performHealthCheck(db, {
 Monitor database health at regular intervals:
 
 ```typescript
-import { HealthMonitor } from '@kysera/infra/health';
+import { HealthMonitor } from '@kysera/infra/health'
 
 const monitor = new HealthMonitor(db, {
   pool: metricsPool,
   intervalMs: 30000, // Check every 30 seconds
-  logger: customLogger,
-});
+  logger: customLogger
+})
 
 // Start monitoring with callback
-monitor.start((result) => {
+monitor.start(result => {
   if (result.status !== 'healthy') {
-    console.warn('Health degraded:', result);
+    console.warn('Health degraded:', result)
     // Send alert, log to monitoring system, etc.
   }
-});
+})
 
 // Check if running
-console.log(monitor.isRunning()); // true
+console.log(monitor.isRunning()) // true
 
 // Get last check result
-const lastCheck = monitor.getLastCheck();
+const lastCheck = monitor.getLastCheck()
 
 // Perform immediate check
-const immediateCheck = await monitor.checkNow();
+const immediateCheck = await monitor.checkNow()
 
 // Stop monitoring
-monitor.stop();
+monitor.stop()
 ```
 
 ### Query Metrics
@@ -193,23 +193,23 @@ monitor.stop();
 Get real query performance metrics from executed queries:
 
 ```typescript
-import { withDebug } from '@kysera/debug';
-import { getMetrics } from '@kysera/infra/health';
+import { withDebug } from '@kysera/debug'
+import { getMetrics } from '@kysera/infra/health'
 
 // Enable metrics tracking
-const debugDb = withDebug(db, { maxMetrics: 1000 });
+const debugDb = withDebug(db, { maxMetrics: 1000 })
 
 // Perform some queries
-await debugDb.selectFrom('users').selectAll().execute();
-await debugDb.selectFrom('orders').selectAll().execute();
+await debugDb.selectFrom('users').selectAll().execute()
+await debugDb.selectFrom('orders').selectAll().execute()
 
 // Get metrics from actual execution
 const metrics = getMetrics(debugDb, {
   slowQueryThreshold: 100,
-  pool: metricsPool,
-});
+  pool: metricsPool
+})
 
-console.log(metrics.queries);
+console.log(metrics.queries)
 // {
 //   total: 150,
 //   avgDuration: 45.32,
@@ -220,7 +220,7 @@ console.log(metrics.queries);
 //   slowCount: 12
 // }
 
-console.log(metrics.recommendations);
+console.log(metrics.recommendations)
 // [
 //   "High number of slow queries detected (12/150). Consider query optimization or indexing."
 // ]
@@ -235,29 +235,24 @@ console.log(metrics.recommendations);
 Automatically retry operations that fail with transient errors:
 
 ```typescript
-import { withRetry } from '@kysera/infra/resilience';
+import { withRetry } from '@kysera/infra/resilience'
 
 // Basic retry (defaults: 3 attempts, 1s delay, exponential backoff)
-const users = await withRetry(() =>
-  db.selectFrom('users').selectAll().execute()
-);
+const users = await withRetry(() => db.selectFrom('users').selectAll().execute())
 
 // Custom retry configuration
-const result = await withRetry(
-  () => db.insertInto('orders').values(orderData).execute(),
-  {
-    maxAttempts: 5,
-    delayMs: 500,
-    backoff: true, // Exponential backoff
-    onRetry: (attempt, error) => {
-      console.log(`Retry attempt ${attempt}:`, error);
-    },
-    shouldRetry: (error) => {
-      // Custom retry logic
-      return isTransientError(error) || isCustomRetryableError(error);
-    },
+const result = await withRetry(() => db.insertInto('orders').values(orderData).execute(), {
+  maxAttempts: 5,
+  delayMs: 500,
+  backoff: true, // Exponential backoff
+  onRetry: (attempt, error) => {
+    console.log(`Retry attempt ${attempt}:`, error)
+  },
+  shouldRetry: error => {
+    // Custom retry logic
+    return isTransientError(error) || isCustomRetryableError(error)
   }
-);
+})
 ```
 
 **Transient Error Codes:**
@@ -274,18 +269,18 @@ The `isTransientError` function recognizes these error codes:
 Create retry-enabled functions:
 
 ```typescript
-import { createRetryWrapper } from '@kysera/infra/resilience';
+import { createRetryWrapper } from '@kysera/infra/resilience'
 
 const fetchUsers = async (limit: number) =>
-  db.selectFrom('users').limit(limit).selectAll().execute();
+  db.selectFrom('users').limit(limit).selectAll().execute()
 
 const fetchUsersWithRetry = createRetryWrapper(fetchUsers, {
   maxAttempts: 3,
-  delayMs: 1000,
-});
+  delayMs: 1000
+})
 
 // Use the wrapped function
-const users = await fetchUsersWithRetry(100);
+const users = await fetchUsersWithRetry(100)
 ```
 
 ### Circuit Breaker
@@ -293,30 +288,28 @@ const users = await fetchUsersWithRetry(100);
 Prevent cascading failures by failing fast when a service is unavailable:
 
 ```typescript
-import { CircuitBreaker } from '@kysera/infra/resilience';
+import { CircuitBreaker } from '@kysera/infra/resilience'
 
 const breaker = new CircuitBreaker({
   threshold: 5, // Open after 5 failures
   resetTimeMs: 60000, // Try again after 1 minute
   onStateChange: (newState, oldState) => {
-    console.log(`Circuit: ${oldState} -> ${newState}`);
-  },
-});
+    console.log(`Circuit: ${oldState} -> ${newState}`)
+  }
+})
 
 // Execute with circuit breaker protection
 try {
-  const result = await breaker.execute(() =>
-    db.selectFrom('users').execute()
-  );
+  const result = await breaker.execute(() => db.selectFrom('users').execute())
 } catch (error) {
   if (error.message.includes('Circuit breaker is open')) {
     // Service unavailable, handle gracefully
-    console.log('Service temporarily unavailable');
+    console.log('Service temporarily unavailable')
   }
 }
 
 // Check circuit state
-console.log(breaker.getState());
+console.log(breaker.getState())
 // {
 //   state: 'open',
 //   failures: 5,
@@ -324,10 +317,10 @@ console.log(breaker.getState());
 // }
 
 // Manual control
-breaker.reset(); // Reset to closed
-breaker.forceOpen(); // Force open for maintenance
-console.log(breaker.isOpen()); // true
-console.log(breaker.isClosed()); // false
+breaker.reset() // Reset to closed
+breaker.forceOpen() // Force open for maintenance
+console.log(breaker.isOpen()) // true
+console.log(breaker.isClosed()) // false
 ```
 
 **Circuit States:**
@@ -341,16 +334,16 @@ console.log(breaker.isClosed()); // false
 Use both patterns together for maximum resilience:
 
 ```typescript
-import { withRetry, CircuitBreaker } from '@kysera/infra/resilience';
+import { withRetry, CircuitBreaker } from '@kysera/infra/resilience'
 
-const breaker = new CircuitBreaker(5, 60000);
+const breaker = new CircuitBreaker(5, 60000)
 
 const result = await breaker.execute(() =>
   withRetry(() => db.selectFrom('users').execute(), {
     maxAttempts: 3,
-    delayMs: 1000,
+    delayMs: 1000
   })
-);
+)
 ```
 
 ## Connection Pool Metrics
@@ -360,19 +353,19 @@ Extract metrics from different database connection pools:
 ### PostgreSQL Pool
 
 ```typescript
-import pg from 'pg';
-import { createMetricsPool } from '@kysera/infra/pool';
+import pg from 'pg'
+import { createMetricsPool } from '@kysera/infra/pool'
 
 const pgPool = new pg.Pool({
   host: 'localhost',
   database: 'mydb',
-  max: 10,
-});
+  max: 10
+})
 
-const metricsPool = createMetricsPool(pgPool);
+const metricsPool = createMetricsPool(pgPool)
 
-const metrics = metricsPool.getMetrics();
-console.log(metrics);
+const metrics = metricsPool.getMetrics()
+console.log(metrics)
 // {
 //   total: 10,
 //   idle: 8,
@@ -384,29 +377,29 @@ console.log(metrics);
 ### MySQL Pool
 
 ```typescript
-import mysql from 'mysql2/promise';
-import { createMetricsPool } from '@kysera/infra/pool';
+import mysql from 'mysql2/promise'
+import { createMetricsPool } from '@kysera/infra/pool'
 
 const mysqlPool = mysql.createPool({
   host: 'localhost',
   database: 'mydb',
-  connectionLimit: 10,
-});
+  connectionLimit: 10
+})
 
-const metricsPool = createMetricsPool(mysqlPool);
-const metrics = metricsPool.getMetrics();
+const metricsPool = createMetricsPool(mysqlPool)
+const metrics = metricsPool.getMetrics()
 ```
 
 ### SQLite (Single Connection)
 
 ```typescript
-import Database from 'better-sqlite3';
-import { createMetricsPool } from '@kysera/infra/pool';
+import Database from 'better-sqlite3'
+import { createMetricsPool } from '@kysera/infra/pool'
 
-const sqliteDb = new Database(':memory:');
-const metricsPool = createMetricsPool(sqliteDb as unknown as DatabasePool);
+const sqliteDb = new Database(':memory:')
+const metricsPool = createMetricsPool(sqliteDb as unknown as DatabasePool)
 
-const metrics = metricsPool.getMetrics();
+const metrics = metricsPool.getMetrics()
 // {
 //   total: 1,
 //   idle: 0,
@@ -420,10 +413,10 @@ const metrics = metricsPool.getMetrics();
 Check if a pool has metrics capabilities:
 
 ```typescript
-import { isMetricsPool } from '@kysera/infra/pool';
+import { isMetricsPool } from '@kysera/infra/pool'
 
 if (isMetricsPool(pool)) {
-  const metrics = pool.getMetrics();
+  const metrics = pool.getMetrics()
 }
 ```
 
@@ -434,18 +427,18 @@ if (isMetricsPool(pool)) {
 Register signal handlers for clean shutdown:
 
 ```typescript
-import { registerShutdownHandlers } from '@kysera/infra/shutdown';
+import { registerShutdownHandlers } from '@kysera/infra/shutdown'
 
 registerShutdownHandlers(db, {
   signals: ['SIGTERM', 'SIGINT'], // Default
   timeout: 30000,
   onShutdown: async () => {
-    console.log('Cleaning up...');
-    await flushCache();
-    monitor.stop();
+    console.log('Cleaning up...')
+    await flushCache()
+    monitor.stop()
   },
-  logger: customLogger,
-});
+  logger: customLogger
+})
 
 // Now when you press Ctrl+C or send SIGTERM:
 // 1. onShutdown callback runs
@@ -458,19 +451,19 @@ registerShutdownHandlers(db, {
 Trigger shutdown programmatically:
 
 ```typescript
-import { gracefulShutdown } from '@kysera/infra/shutdown';
+import { gracefulShutdown } from '@kysera/infra/shutdown'
 
 // Basic shutdown
-await gracefulShutdown(db);
+await gracefulShutdown(db)
 
 // With custom handler and timeout
 await gracefulShutdown(db, {
   timeout: 10000,
   onShutdown: async () => {
-    console.log('Flushing pending writes...');
-    await flushWrites();
-  },
-});
+    console.log('Flushing pending writes...')
+    await flushWrites()
+  }
+})
 ```
 
 ### Simple Shutdown
@@ -478,9 +471,9 @@ await gracefulShutdown(db, {
 Direct database termination:
 
 ```typescript
-import { shutdownDatabase } from '@kysera/infra/shutdown';
+import { shutdownDatabase } from '@kysera/infra/shutdown'
 
-await shutdownDatabase(db);
+await shutdownDatabase(db)
 ```
 
 ### Shutdown Controller
@@ -488,28 +481,28 @@ await shutdownDatabase(db);
 Advanced shutdown management with more control:
 
 ```typescript
-import { createShutdownController } from '@kysera/infra/shutdown';
+import { createShutdownController } from '@kysera/infra/shutdown'
 
 const shutdown = createShutdownController(db, {
   timeout: 10000,
   onShutdown: async () => {
-    console.log('Cleanup starting...');
-  },
-});
+    console.log('Cleanup starting...')
+  }
+})
 
 // Option 1: Register signal handlers
-shutdown.registerSignals();
+shutdown.registerSignals()
 
 // Option 2: Manual shutdown
 async function handleCustomEvent() {
   if (!shutdown.isShuttingDown()) {
-    await shutdown.execute();
+    await shutdown.execute()
   }
 }
 
 // Check shutdown status
 if (shutdown.isShuttingDown()) {
-  console.log('Shutdown in progress...');
+  console.log('Shutdown in progress...')
 }
 ```
 
@@ -537,53 +530,53 @@ if (shutdown.isShuttingDown()) {
 #### Types
 
 ```typescript
-type HealthStatus = 'healthy' | 'degraded' | 'unhealthy';
+type HealthStatus = 'healthy' | 'degraded' | 'unhealthy'
 
 interface HealthCheckResult {
-  status: HealthStatus;
-  checks: HealthCheck[];
-  errors?: string[];
-  metrics?: HealthMetrics;
-  timestamp: Date;
+  status: HealthStatus
+  checks: HealthCheck[]
+  errors?: string[]
+  metrics?: HealthMetrics
+  timestamp: Date
 }
 
 interface HealthCheckOptions {
-  pool?: MetricsPool;
-  verbose?: boolean;
-  logger?: KyseraLogger;
+  pool?: MetricsPool
+  verbose?: boolean
+  logger?: KyseraLogger
 }
 
 interface HealthMonitorOptions {
-  pool?: MetricsPool;
-  intervalMs?: number; // Default: 30000
-  logger?: KyseraLogger;
+  pool?: MetricsPool
+  intervalMs?: number // Default: 30000
+  logger?: KyseraLogger
 }
 
 interface GetMetricsOptions {
-  period?: string; // Default: '1h'
-  pool?: MetricsPool;
-  slowQueryThreshold?: number; // Default: 100
+  period?: string // Default: '1h'
+  pool?: MetricsPool
+  slowQueryThreshold?: number // Default: 100
 }
 
 interface MetricsResult {
-  period: string;
-  timestamp: string;
+  period: string
+  timestamp: string
   connections?: {
-    total: number;
-    active: number;
-    idle: number;
-    max: number;
-  };
+    total: number
+    active: number
+    idle: number
+    max: number
+  }
   queries?: {
-    total: number;
-    avgDuration: number;
-    minDuration: number;
-    maxDuration: number;
-    p95Duration: number;
-    p99Duration: number;
-    slowCount: number;
-  };
-  recommendations?: string[];
+    total: number
+    avgDuration: number
+    minDuration: number
+    maxDuration: number
+    p95Duration: number
+    p99Duration: number
+    slowCount: number
+  }
+  recommendations?: string[]
 }
 ```
 
@@ -610,25 +603,25 @@ interface MetricsResult {
 
 ```typescript
 interface RetryOptions {
-  maxAttempts?: number; // Default: 3
-  delayMs?: number; // Default: 1000
-  backoff?: boolean; // Default: true
-  shouldRetry?: (error: unknown) => boolean;
-  onRetry?: (attempt: number, error: unknown) => void;
+  maxAttempts?: number // Default: 3
+  delayMs?: number // Default: 1000
+  backoff?: boolean // Default: true
+  shouldRetry?: (error: unknown) => boolean
+  onRetry?: (attempt: number, error: unknown) => void
 }
 
-type CircuitState = 'closed' | 'open' | 'half-open';
+type CircuitState = 'closed' | 'open' | 'half-open'
 
 interface CircuitBreakerOptions {
-  threshold?: number; // Default: 5
-  resetTimeMs?: number; // Default: 60000
-  onStateChange?: (newState: CircuitState, previousState: CircuitState) => void;
+  threshold?: number // Default: 5
+  resetTimeMs?: number // Default: 60000
+  onStateChange?: (newState: CircuitState, previousState: CircuitState) => void
 }
 
 interface CircuitBreakerState {
-  state: CircuitState;
-  failures: number;
-  lastFailureTime: number | undefined;
+  state: CircuitState
+  failures: number
+  lastFailureTime: number | undefined
 }
 ```
 
@@ -643,19 +636,19 @@ interface CircuitBreakerState {
 
 ```typescript
 interface PoolMetrics {
-  total: number;
-  idle: number;
-  active: number;
-  waiting: number;
+  total: number
+  idle: number
+  active: number
+  waiting: number
 }
 
 interface DatabasePool {
-  end(): Promise<void> | void;
-  query?(sql: string, values?: unknown[]): Promise<unknown>;
+  end(): Promise<void> | void
+  query?(sql: string, values?: unknown[]): Promise<unknown>
 }
 
 interface MetricsPool extends DatabasePool {
-  getMetrics(): PoolMetrics;
+  getMetrics(): PoolMetrics
 }
 ```
 
@@ -672,109 +665,109 @@ interface MetricsPool extends DatabasePool {
 
 ```typescript
 interface ShutdownOptions {
-  timeout?: number; // Default: 30000
-  onShutdown?: () => void | Promise<void>;
-  logger?: KyseraLogger;
+  timeout?: number // Default: 30000
+  onShutdown?: () => void | Promise<void>
+  logger?: KyseraLogger
 }
 
 interface RegisterShutdownOptions extends ShutdownOptions {
-  signals?: NodeJS.Signals[]; // Default: ['SIGTERM', 'SIGINT']
+  signals?: NodeJS.Signals[] // Default: ['SIGTERM', 'SIGINT']
 }
 ```
 
 ## Complete Example
 
 ```typescript
-import { Kysely, PostgresDialect } from 'kysely';
-import pg from 'pg';
+import { Kysely, PostgresDialect } from 'kysely'
+import pg from 'pg'
 import {
   HealthMonitor,
   CircuitBreaker,
   withRetry,
   createMetricsPool,
   registerShutdownHandlers,
-  getMetrics,
-} from '@kysera/infra';
-import { withDebug } from '@kysera/debug';
+  getMetrics
+} from '@kysera/infra'
+import { withDebug } from '@kysera/debug'
 
 // 1. Setup database connection
 const pgPool = new pg.Pool({
   host: process.env.DB_HOST,
   database: process.env.DB_NAME,
-  max: 20,
-});
+  max: 20
+})
 
 const db = new Kysely({
-  dialect: new PostgresDialect({ pool: pgPool }),
-});
+  dialect: new PostgresDialect({ pool: pgPool })
+})
 
 // 2. Enable metrics tracking
-const metricsPool = createMetricsPool(pgPool);
-const debugDb = withDebug(db, { maxMetrics: 1000 });
+const metricsPool = createMetricsPool(pgPool)
+const debugDb = withDebug(db, { maxMetrics: 1000 })
 
 // 3. Setup health monitoring
 const monitor = new HealthMonitor(debugDb, {
   pool: metricsPool,
-  intervalMs: 30000,
-});
+  intervalMs: 30000
+})
 
-monitor.start((result) => {
+monitor.start(result => {
   if (result.status !== 'healthy') {
-    console.error('Health check failed:', result);
+    console.error('Health check failed:', result)
   }
-});
+})
 
 // 4. Setup resilience patterns
 const breaker = new CircuitBreaker({
   threshold: 5,
   resetTimeMs: 60000,
   onStateChange: (newState, prevState) => {
-    console.log(`Circuit breaker: ${prevState} -> ${newState}`);
-  },
-});
+    console.log(`Circuit breaker: ${prevState} -> ${newState}`)
+  }
+})
 
 // 5. Create resilient database operations
 async function getUsers(limit: number) {
   return await breaker.execute(() =>
     withRetry(() => debugDb.selectFrom('users').limit(limit).execute(), {
       maxAttempts: 3,
-      delayMs: 1000,
+      delayMs: 1000
     })
-  );
+  )
 }
 
 // 6. Setup graceful shutdown
 registerShutdownHandlers(debugDb, {
   timeout: 15000,
   onShutdown: async () => {
-    console.log('Shutting down gracefully...');
-    monitor.stop();
+    console.log('Shutting down gracefully...')
+    monitor.stop()
 
     // Log final metrics
     const finalMetrics = getMetrics(debugDb, {
       pool: metricsPool,
-      slowQueryThreshold: 100,
-    });
-    console.log('Final query metrics:', finalMetrics);
-  },
-});
+      slowQueryThreshold: 100
+    })
+    console.log('Final query metrics:', finalMetrics)
+  }
+})
 
 // 7. Use in your application
 try {
-  const users = await getUsers(100);
-  console.log(`Fetched ${users.length} users`);
+  const users = await getUsers(100)
+  console.log(`Fetched ${users.length} users`)
 
   // Get current metrics
   const metrics = getMetrics(debugDb, {
     pool: metricsPool,
-    slowQueryThreshold: 100,
-  });
+    slowQueryThreshold: 100
+  })
 
   if (metrics.recommendations && metrics.recommendations.length > 0) {
-    console.warn('Performance recommendations:', metrics.recommendations);
+    console.warn('Performance recommendations:', metrics.recommendations)
   }
 } catch (error) {
-  console.error('Operation failed:', error);
+  console.error('Operation failed:', error)
 }
 ```
 

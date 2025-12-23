@@ -57,29 +57,29 @@ Kysera is a lightweight, modular data access toolkit that builds upon [Kysely](h
 
 ### Core Packages
 
-| Package | Description | Size |
-|---------|-------------|------|
-| [@kysera/core](/docs/api/core) | Error handling, pagination, types, logger | ~8KB |
+| Package                                    | Description                                 | Size  |
+| ------------------------------------------ | ------------------------------------------- | ----- |
+| [@kysera/core](/docs/api/core)             | Error handling, pagination, types, logger   | ~8KB  |
 | [@kysera/repository](/docs/api/repository) | Repository pattern with validation adapters | ~12KB |
-| [@kysera/dal](/docs/api/dal) | Functional Data Access Layer | ~7KB |
+| [@kysera/dal](/docs/api/dal)               | Functional Data Access Layer                | ~7KB  |
 
 ### Infrastructure Packages (Opt-in)
 
-| Package | Description | Size |
-|---------|-------------|------|
-| [@kysera/infra](/docs/api/infra) | Health checks, retry, circuit breaker, shutdown | ~12KB |
-| [@kysera/debug](/docs/api/debug) | Query logging, profiling, SQL formatting | ~5KB |
-| [@kysera/testing](/docs/api/testing) | Test utilities (transaction rollback, factories) | ~6KB |
-| [@kysera/migrations](/docs/api/migrations) | Migration system with dry-run support | ~11KB |
+| Package                                    | Description                                      | Size  |
+| ------------------------------------------ | ------------------------------------------------ | ----- |
+| [@kysera/infra](/docs/api/infra)           | Health checks, retry, circuit breaker, shutdown  | ~12KB |
+| [@kysera/debug](/docs/api/debug)           | Query logging, profiling, SQL formatting         | ~5KB  |
+| [@kysera/testing](/docs/api/testing)       | Test utilities (transaction rollback, factories) | ~6KB  |
+| [@kysera/migrations](/docs/api/migrations) | Migration system with dry-run support            | ~11KB |
 
 ### Plugins
 
-| Package | Description | Size |
-|---------|-------------|------|
-| [@kysera/soft-delete](/docs/plugins/soft-delete) | Soft delete plugin | ~4KB |
-| [@kysera/audit](/docs/plugins/audit) | Audit logging plugin | ~11KB |
-| [@kysera/timestamps](/docs/plugins/timestamps) | Automatic timestamps plugin | ~4KB |
-| [@kysera/rls](/docs/plugins/rls) | Row-level security plugin | ~44KB |
+| Package                                          | Description                 | Size  |
+| ------------------------------------------------ | --------------------------- | ----- |
+| [@kysera/soft-delete](/docs/plugins/soft-delete) | Soft delete plugin          | ~4KB  |
+| [@kysera/audit](/docs/plugins/audit)             | Audit logging plugin        | ~11KB |
+| [@kysera/timestamps](/docs/plugins/timestamps)   | Automatic timestamps plugin | ~4KB  |
+| [@kysera/rls](/docs/plugins/rls)                 | Row-level security plugin   | ~44KB |
 
 ## Architecture
 
@@ -120,7 +120,7 @@ const db = new Kysely<Database>({
 const factory = createRepositoryFactory(db)
 const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
     create: z.object({ email: z.string().email(), name: z.string() }),
     update: z.object({ email: z.string().email(), name: z.string() }).partial()

@@ -11,25 +11,25 @@
 /**
  * Supported identifier types
  */
-export type IdentifierType = 'table' | 'database' | 'column' | 'index' | 'schema';
+export type IdentifierType = 'table' | 'database' | 'column' | 'index' | 'schema'
 
 /**
  * Supported SQL dialects
  */
-export type SqlDialect = 'postgres' | 'mysql' | 'sqlite';
+export type SqlDialect = 'postgres' | 'mysql' | 'sqlite'
 
 /**
  * SQL Sanitization Error
  */
 export class SqlSanitizationError extends Error {
-  public readonly identifierType: IdentifierType;
-  public readonly invalidValue: string;
+  public readonly identifierType: IdentifierType
+  public readonly invalidValue: string
 
   constructor(message: string, identifierType: IdentifierType, invalidValue: string) {
-    super(message);
-    this.name = 'SqlSanitizationError';
-    this.identifierType = identifierType;
-    this.invalidValue = invalidValue;
+    super(message)
+    this.name = 'SqlSanitizationError'
+    this.identifierType = identifierType
+    this.invalidValue = invalidValue
   }
 }
 
@@ -38,11 +38,11 @@ export class SqlSanitizationError extends Error {
  */
 interface ValidationConfig {
   /** Maximum length for the identifier */
-  maxLength: number;
+  maxLength: number
   /** Minimum length for the identifier */
-  minLength: number;
+  minLength: number
   /** Reserved words that cannot be used */
-  reservedWords: Set<string>;
+  reservedWords: Set<string>
 }
 
 /**
@@ -52,29 +52,39 @@ const VALIDATION_CONFIGS: Record<IdentifierType, ValidationConfig> = {
   table: {
     maxLength: 128,
     minLength: 1,
-    reservedWords: new Set(['table', 'select', 'insert', 'update', 'delete', 'drop', 'create', 'alter', 'truncate']),
+    reservedWords: new Set([
+      'table',
+      'select',
+      'insert',
+      'update',
+      'delete',
+      'drop',
+      'create',
+      'alter',
+      'truncate'
+    ])
   },
   database: {
     maxLength: 64,
     minLength: 1,
-    reservedWords: new Set(['database', 'schema', 'master', 'tempdb', 'model', 'msdb']),
+    reservedWords: new Set(['database', 'schema', 'master', 'tempdb', 'model', 'msdb'])
   },
   column: {
     maxLength: 128,
     minLength: 1,
-    reservedWords: new Set(['column', 'key', 'index', 'primary', 'foreign', 'unique', 'constraint']),
+    reservedWords: new Set(['column', 'key', 'index', 'primary', 'foreign', 'unique', 'constraint'])
   },
   index: {
     maxLength: 128,
     minLength: 1,
-    reservedWords: new Set(['index', 'primary', 'unique', 'fulltext', 'spatial']),
+    reservedWords: new Set(['index', 'primary', 'unique', 'fulltext', 'spatial'])
   },
   schema: {
     maxLength: 64,
     minLength: 1,
-    reservedWords: new Set(['schema', 'public', 'information_schema', 'pg_catalog']),
-  },
-};
+    reservedWords: new Set(['schema', 'public', 'information_schema', 'pg_catalog'])
+  }
+}
 
 /**
  * Strict regex pattern for valid SQL identifiers
@@ -82,33 +92,33 @@ const VALIDATION_CONFIGS: Record<IdentifierType, ValidationConfig> = {
  * - Can contain letters, digits, and underscores
  * - No special characters or SQL injection patterns
  */
-const VALID_IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+const VALID_IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/
 
 /**
  * Pattern to detect common SQL injection attempts
  */
 const INJECTION_PATTERNS = [
-  /--/,                    // SQL comment
-  /;/,                     // Statement terminator
-  /'/,                     // Single quote
-  /"/,                     // Double quote
-  /`/,                     // Backtick
-  /\\/,                    // Backslash
-  /\x00/,                  // Null byte
-  /\/\*/,                  // Block comment start
-  /\*\//,                  // Block comment end
-  /\bor\b/i,              // OR keyword
-  /\band\b/i,             // AND keyword
-  /\bunion\b/i,           // UNION keyword
-  /\bselect\b/i,          // SELECT keyword
-  /\bdrop\b/i,            // DROP keyword
-  /\bdelete\b/i,          // DELETE keyword
-  /\binsert\b/i,          // INSERT keyword
-  /\bupdate\b/i,          // UPDATE keyword
-  /\bexec\b/i,            // EXEC keyword
-  /\bexecute\b/i,         // EXECUTE keyword
-  /\bxp_/i,               // SQL Server extended procedures
-];
+  /--/, // SQL comment
+  /;/, // Statement terminator
+  /'/, // Single quote
+  /"/, // Double quote
+  /`/, // Backtick
+  /\\/, // Backslash
+  /\x00/, // Null byte
+  /\/\*/, // Block comment start
+  /\*\//, // Block comment end
+  /\bor\b/i, // OR keyword
+  /\band\b/i, // AND keyword
+  /\bunion\b/i, // UNION keyword
+  /\bselect\b/i, // SELECT keyword
+  /\bdrop\b/i, // DROP keyword
+  /\bdelete\b/i, // DELETE keyword
+  /\binsert\b/i, // INSERT keyword
+  /\bupdate\b/i, // UPDATE keyword
+  /\bexec\b/i, // EXEC keyword
+  /\bexecute\b/i, // EXECUTE keyword
+  /\bxp_/i // SQL Server extended procedures
+]
 
 /**
  * Check if a string is a valid SQL identifier
@@ -128,27 +138,27 @@ const INJECTION_PATTERNS = [
  */
 export function isValidIdentifier(name: string): boolean {
   if (!name || typeof name !== 'string') {
-    return false;
+    return false
   }
 
   // Check length (reasonable bounds)
   if (name.length === 0 || name.length > 128) {
-    return false;
+    return false
   }
 
   // Check against valid pattern
   if (!VALID_IDENTIFIER_PATTERN.test(name)) {
-    return false;
+    return false
   }
 
   // Check for injection patterns (should be caught by regex, but double-check)
   for (const pattern of INJECTION_PATTERNS) {
     if (pattern.test(name)) {
-      return false;
+      return false
     }
   }
 
-  return true;
+  return true
 }
 
 /**
@@ -171,7 +181,7 @@ export function isValidIdentifier(name: string): boolean {
  * ```
  */
 export function validateIdentifier(name: string, type: IdentifierType): string {
-  const config = VALIDATION_CONFIGS[type];
+  const config = VALIDATION_CONFIGS[type]
 
   // Check if name is provided
   if (!name || typeof name !== 'string') {
@@ -179,11 +189,11 @@ export function validateIdentifier(name: string, type: IdentifierType): string {
       `Invalid ${type} name: name must be a non-empty string`,
       type,
       String(name)
-    );
+    )
   }
 
   // Trim whitespace
-  const trimmedName = name.trim();
+  const trimmedName = name.trim()
 
   // Check length constraints
   if (trimmedName.length < config.minLength) {
@@ -191,7 +201,7 @@ export function validateIdentifier(name: string, type: IdentifierType): string {
       `Invalid ${type} name: name must be at least ${config.minLength} character(s)`,
       type,
       trimmedName
-    );
+    )
   }
 
   if (trimmedName.length > config.maxLength) {
@@ -199,7 +209,7 @@ export function validateIdentifier(name: string, type: IdentifierType): string {
       `Invalid ${type} name: name exceeds maximum length of ${config.maxLength} characters`,
       type,
       trimmedName
-    );
+    )
   }
 
   // Check against valid identifier pattern
@@ -208,7 +218,7 @@ export function validateIdentifier(name: string, type: IdentifierType): string {
       `Invalid ${type} name "${trimmedName}": must start with a letter or underscore and contain only letters, digits, and underscores`,
       type,
       trimmedName
-    );
+    )
   }
 
   // Check for SQL injection patterns
@@ -218,11 +228,11 @@ export function validateIdentifier(name: string, type: IdentifierType): string {
         `Invalid ${type} name "${trimmedName}": contains potentially dangerous characters or patterns`,
         type,
         trimmedName
-      );
+      )
     }
   }
 
-  return trimmedName;
+  return trimmedName
 }
 
 /**
@@ -245,18 +255,18 @@ export function validateIdentifier(name: string, type: IdentifierType): string {
  */
 export function escapeIdentifier(name: string, dialect: SqlDialect): string {
   // First validate the identifier (defaults to 'table' type for general use)
-  const validName = validateIdentifier(name, 'table');
+  const validName = validateIdentifier(name, 'table')
 
   // Apply dialect-specific quoting
   switch (dialect) {
     case 'mysql':
       // MySQL uses backticks for identifier quoting
-      return `\`${validName}\``;
+      return `\`${validName}\``
     case 'postgres':
     case 'sqlite':
     default:
       // PostgreSQL and SQLite use double quotes
-      return `"${validName}"`;
+      return `"${validName}"`
   }
 }
 
@@ -268,16 +278,20 @@ export function escapeIdentifier(name: string, dialect: SqlDialect): string {
  * @param dialect - The SQL dialect
  * @returns The escaped identifier
  */
-export function escapeTypedIdentifier(name: string, type: IdentifierType, dialect: SqlDialect): string {
-  const validName = validateIdentifier(name, type);
+export function escapeTypedIdentifier(
+  name: string,
+  type: IdentifierType,
+  dialect: SqlDialect
+): string {
+  const validName = validateIdentifier(name, type)
 
   switch (dialect) {
     case 'mysql':
-      return `\`${validName}\``;
+      return `\`${validName}\``
     case 'postgres':
     case 'sqlite':
     default:
-      return `"${validName}"`;
+      return `"${validName}"`
   }
 }
 
@@ -300,14 +314,14 @@ export function escapeQualifiedIdentifier(
   name: string,
   dialect: SqlDialect
 ): string {
-  const escapedName = escapeTypedIdentifier(name, 'table', dialect);
+  const escapedName = escapeTypedIdentifier(name, 'table', dialect)
 
   if (schema) {
-    const escapedSchema = escapeTypedIdentifier(schema, 'schema', dialect);
-    return `${escapedSchema}.${escapedName}`;
+    const escapedSchema = escapeTypedIdentifier(schema, 'schema', dialect)
+    return `${escapedSchema}.${escapedName}`
   }
 
-  return escapedName;
+  return escapedName
 }
 
 /**
@@ -319,7 +333,7 @@ export function escapeQualifiedIdentifier(
  * @throws SqlSanitizationError if any identifier is invalid
  */
 export function validateIdentifiers(names: string[], type: IdentifierType): string[] {
-  return names.map((name) => validateIdentifier(name, type));
+  return names.map(name => validateIdentifier(name, type))
 }
 
 /**
@@ -337,8 +351,8 @@ export function validateIdentifiers(names: string[], type: IdentifierType): stri
  * ```
  */
 export function interpolateTableName(sql: string, tableName: string, dialect: SqlDialect): string {
-  const escapedTable = escapeTypedIdentifier(tableName, 'table', dialect);
-  return sql.replace(/\$\{table\}/g, escapedTable);
+  const escapedTable = escapeTypedIdentifier(tableName, 'table', dialect)
+  return sql.replace(/\$\{table\}/g, escapedTable)
 }
 
 /**
@@ -349,18 +363,22 @@ export function interpolateTableName(sql: string, tableName: string, dialect: Sq
  * @param cascade - Whether to include CASCADE (postgres/mysql)
  * @returns Safe TRUNCATE statement
  */
-export function safeTruncate(tableName: string, dialect: SqlDialect, cascade: boolean = false): string {
-  const escapedTable = escapeTypedIdentifier(tableName, 'table', dialect);
+export function safeTruncate(
+  tableName: string,
+  dialect: SqlDialect,
+  cascade: boolean = false
+): string {
+  const escapedTable = escapeTypedIdentifier(tableName, 'table', dialect)
 
   switch (dialect) {
     case 'postgres':
-      return cascade ? `TRUNCATE TABLE ${escapedTable} CASCADE` : `TRUNCATE TABLE ${escapedTable}`;
+      return cascade ? `TRUNCATE TABLE ${escapedTable} CASCADE` : `TRUNCATE TABLE ${escapedTable}`
     case 'mysql':
       // MySQL doesn't support CASCADE with TRUNCATE
-      return `TRUNCATE TABLE ${escapedTable}`;
+      return `TRUNCATE TABLE ${escapedTable}`
     case 'sqlite':
       // SQLite doesn't have TRUNCATE, use DELETE
-      return `DELETE FROM ${escapedTable}`;
+      return `DELETE FROM ${escapedTable}`
   }
 }
 
@@ -372,11 +390,15 @@ export function safeTruncate(tableName: string, dialect: SqlDialect, cascade: bo
  * @param ifExists - Whether to include IF EXISTS
  * @returns Safe DROP DATABASE statement
  */
-export function safeDropDatabase(dbName: string, dialect: SqlDialect, ifExists: boolean = true): string {
-  const escapedDb = escapeTypedIdentifier(dbName, 'database', dialect);
-  const ifExistsClause = ifExists ? 'IF EXISTS ' : '';
+export function safeDropDatabase(
+  dbName: string,
+  dialect: SqlDialect,
+  ifExists: boolean = true
+): string {
+  const escapedDb = escapeTypedIdentifier(dbName, 'database', dialect)
+  const ifExistsClause = ifExists ? 'IF EXISTS ' : ''
 
-  return `DROP DATABASE ${ifExistsClause}${escapedDb}`;
+  return `DROP DATABASE ${ifExistsClause}${escapedDb}`
 }
 
 /**
@@ -386,8 +408,8 @@ export function safeDropDatabase(dbName: string, dialect: SqlDialect, ifExists: 
  * @returns Safe PRAGMA statement
  */
 export function safePragmaTableInfo(tableName: string): string {
-  const validName = validateIdentifier(tableName, 'table');
-  return `PRAGMA table_info('${validName}')`;
+  const validName = validateIdentifier(tableName, 'table')
+  return `PRAGMA table_info('${validName}')`
 }
 
 /**
@@ -397,8 +419,8 @@ export function safePragmaTableInfo(tableName: string): string {
  * @returns Safe PRAGMA statement
  */
 export function safePragmaIndexInfo(indexName: string): string {
-  const validName = validateIdentifier(indexName, 'index');
-  return `PRAGMA index_info('${validName}')`;
+  const validName = validateIdentifier(indexName, 'index')
+  return `PRAGMA index_info('${validName}')`
 }
 
 /**
@@ -408,8 +430,8 @@ export function safePragmaIndexInfo(indexName: string): string {
  * @returns Safe PRAGMA statement
  */
 export function safePragmaForeignKeyList(tableName: string): string {
-  const validName = validateIdentifier(tableName, 'table');
-  return `PRAGMA foreign_key_list('${validName}')`;
+  const validName = validateIdentifier(tableName, 'table')
+  return `PRAGMA foreign_key_list('${validName}')`
 }
 
 /**
@@ -426,9 +448,9 @@ export function safeVacuumInto(backupPath: string): string {
       'Invalid backup path: contains potentially dangerous characters',
       'database',
       backupPath
-    );
+    )
   }
-  return `VACUUM INTO '${backupPath}'`;
+  return `VACUUM INTO '${backupPath}'`
 }
 
 /**
@@ -440,20 +462,20 @@ export function safeVacuumInto(backupPath: string): string {
  */
 export function safeAnalyze(tableName: string | undefined, dialect: SqlDialect): string {
   if (!tableName) {
-    return 'ANALYZE';
+    return 'ANALYZE'
   }
 
-  const escapedTable = escapeTypedIdentifier(tableName, 'table', dialect);
+  const escapedTable = escapeTypedIdentifier(tableName, 'table', dialect)
 
   switch (dialect) {
     case 'sqlite':
       // SQLite ANALYZE uses quotes differently
-      const validName = validateIdentifier(tableName, 'table');
-      return `ANALYZE '${validName}'`;
+      const validName = validateIdentifier(tableName, 'table')
+      return `ANALYZE '${validName}'`
     case 'mysql':
-      return `ANALYZE TABLE ${escapedTable}`;
+      return `ANALYZE TABLE ${escapedTable}`
     case 'postgres':
-      return `ANALYZE ${escapedTable}`;
+      return `ANALYZE ${escapedTable}`
   }
 }
 
@@ -464,8 +486,8 @@ export function safeAnalyze(tableName: string | undefined, dialect: SqlDialect):
  * @returns Safe OPTIMIZE statement
  */
 export function safeOptimizeTable(tableName: string): string {
-  const escapedTable = escapeTypedIdentifier(tableName, 'table', 'mysql');
-  return `OPTIMIZE TABLE ${escapedTable}`;
+  const escapedTable = escapeTypedIdentifier(tableName, 'table', 'mysql')
+  return `OPTIMIZE TABLE ${escapedTable}`
 }
 
 /**
@@ -475,8 +497,8 @@ export function safeOptimizeTable(tableName: string): string {
  * @returns Safe CHECK statement
  */
 export function safeCheckTable(tableName: string): string {
-  const escapedTable = escapeTypedIdentifier(tableName, 'table', 'mysql');
-  return `CHECK TABLE ${escapedTable}`;
+  const escapedTable = escapeTypedIdentifier(tableName, 'table', 'mysql')
+  return `CHECK TABLE ${escapedTable}`
 }
 
 /**
@@ -486,8 +508,8 @@ export function safeCheckTable(tableName: string): string {
  * @returns Safe REPAIR statement
  */
 export function safeRepairTable(tableName: string): string {
-  const escapedTable = escapeTypedIdentifier(tableName, 'table', 'mysql');
-  return `REPAIR TABLE ${escapedTable}`;
+  const escapedTable = escapeTypedIdentifier(tableName, 'table', 'mysql')
+  return `REPAIR TABLE ${escapedTable}`
 }
 
 /**
@@ -497,8 +519,8 @@ export function safeRepairTable(tableName: string): string {
  * @returns Safe VACUUM ANALYZE statement
  */
 export function safeVacuumAnalyze(tableName: string): string {
-  const escapedTable = escapeTypedIdentifier(tableName, 'table', 'postgres');
-  return `VACUUM ANALYZE ${escapedTable}`;
+  const escapedTable = escapeTypedIdentifier(tableName, 'table', 'postgres')
+  return `VACUUM ANALYZE ${escapedTable}`
 }
 
 /**
@@ -509,8 +531,8 @@ export function safeVacuumAnalyze(tableName: string): string {
  */
 export function safeCreateExtension(extensionName: string): string {
   // Extensions have similar naming rules to identifiers
-  const validName = validateIdentifier(extensionName, 'table');
-  return `CREATE EXTENSION IF NOT EXISTS "${validName}"`;
+  const validName = validateIdentifier(extensionName, 'table')
+  return `CREATE EXTENSION IF NOT EXISTS "${validName}"`
 }
 
 /**
@@ -521,7 +543,7 @@ export function safeCreateExtension(extensionName: string): string {
  */
 export function safeTerminateBackendQuery(dbName: string): { sql: string; params: string[] } {
   // Validate the database name
-  validateIdentifier(dbName, 'database');
+  validateIdentifier(dbName, 'database')
 
   // Return parameterized query to prevent injection
   return {
@@ -530,13 +552,13 @@ export function safeTerminateBackendQuery(dbName: string): { sql: string; params
       FROM pg_stat_activity
       WHERE datname = $1 AND pid <> pg_backend_pid()
     `,
-    params: [dbName],
-  };
+    params: [dbName]
+  }
 }
 
 /**
  * Type guard to check if an error is a SqlSanitizationError
  */
 export function isSqlSanitizationError(error: unknown): error is SqlSanitizationError {
-  return error instanceof SqlSanitizationError;
+  return error instanceof SqlSanitizationError
 }

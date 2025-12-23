@@ -4,8 +4,8 @@
  * @module @kysera/testing
  */
 
-import type { Kysely, Transaction } from 'kysely';
-import { sql } from 'kysely';
+import type { Kysely, Transaction } from 'kysely'
+import { sql } from 'kysely'
 
 /**
  * Internal error class used to trigger transaction rollback.
@@ -13,8 +13,8 @@ import { sql } from 'kysely';
  */
 class RollbackError extends Error {
   constructor() {
-    super('ROLLBACK');
-    this.name = 'RollbackError';
+    super('ROLLBACK')
+    this.name = 'RollbackError'
   }
 }
 
@@ -51,13 +51,13 @@ export async function testInTransaction<DB, T>(
   fn: (trx: Transaction<DB>) => Promise<T>
 ): Promise<void> {
   try {
-    await db.transaction().execute(async (trx) => {
-      await fn(trx);
-      throw new RollbackError();
-    });
+    await db.transaction().execute(async trx => {
+      await fn(trx)
+      throw new RollbackError()
+    })
   } catch (error) {
     if (!(error instanceof RollbackError)) {
-      throw error;
+      throw error
     }
   }
 }
@@ -93,25 +93,33 @@ export async function testWithSavepoints<DB, T>(
   fn: (trx: Transaction<DB>) => Promise<T>
 ): Promise<void> {
   try {
-    await db.transaction().execute(async (trx) => {
-      await sql`SAVEPOINT test_sp`.execute(trx);
+    await db.transaction().execute(async trx => {
+      await sql`SAVEPOINT test_sp`.execute(trx)
 
       try {
-        await fn(trx);
+        await fn(trx)
       } finally {
         try {
-          await sql`ROLLBACK TO SAVEPOINT test_sp`.execute(trx);
-        } catch {
+          await sql`ROLLBACK TO SAVEPOINT test_sp`.execute(trx)
+        } catch (error: unknown) {
           // Savepoint might not exist if transaction already failed
-          // This is expected when the transaction has already rolled back
+          // Only ignore expected "savepoint not found" or transaction-related errors
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          const isExpectedError =
+            errorMessage.toLowerCase().includes('savepoint') ||
+            errorMessage.toLowerCase().includes('transaction') ||
+            errorMessage.toLowerCase().includes('aborted')
+          if (!isExpectedError) {
+            console.warn('Unexpected savepoint rollback error:', error)
+          }
         }
       }
 
-      throw new RollbackError();
-    });
+      throw new RollbackError()
+    })
   } catch (error) {
     if (!(error instanceof RollbackError)) {
-      throw error;
+      throw error
     }
   }
 }
@@ -123,7 +131,19 @@ export type IsolationLevel =
   | 'read uncommitted'
   | 'read committed'
   | 'repeatable read'
-  | 'serializable';
+  | 'serializable'
+
+/**
+ * Mapping of isolation levels to their SQL representation.
+ * Using a whitelist prevents SQL injection through isolation level parameter.
+ * @internal
+ */
+const ISOLATION_LEVEL_SQL: Record<IsolationLevel, string> = {
+  'read uncommitted': 'READ UNCOMMITTED',
+  'read committed': 'READ COMMITTED',
+  'repeatable read': 'REPEATABLE READ',
+  serializable: 'SERIALIZABLE'
+}
 
 /**
  * Test with specific transaction isolation level.
@@ -151,23 +171,26 @@ export async function testWithIsolation<DB, T>(
   isolationLevel: IsolationLevel,
   fn: (trx: Transaction<DB>) => Promise<T>
 ): Promise<void> {
+  // Use whitelist lookup to prevent SQL injection
+  const sqlLevel = ISOLATION_LEVEL_SQL[isolationLevel]
+  if (!sqlLevel) {
+    throw new Error(
+      `Invalid isolation level: ${isolationLevel}. Valid levels are: ${Object.keys(ISOLATION_LEVEL_SQL).join(', ')}`
+    )
+  }
+
   try {
-    await db.transaction().execute(async (trx) => {
-      // Access raw() method which is not in Kysely type definitions
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call -- Kysely raw() not in types
-      await (trx as any)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Kysely raw() method access
-        .raw(`SET TRANSACTION ISOLATION LEVEL ${isolationLevel.toUpperCase()}`)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Kysely execute() method access
-        .execute();
+    await db.transaction().execute(async trx => {
+      // Use sql.raw with whitelisted value (safe - not user input)
+      await sql.raw(`SET TRANSACTION ISOLATION LEVEL ${sqlLevel}`).execute(trx)
 
-      await fn(trx);
+      await fn(trx)
 
-      throw new RollbackError();
-    });
+      throw new RollbackError()
+    })
   } catch (error) {
     if (!(error instanceof RollbackError)) {
-      throw error;
+      throw error
     }
   }
 }

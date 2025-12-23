@@ -19,10 +19,10 @@ npm install @kysera/core
 
 ```typescript
 interface KyseraLogger {
-  debug(message: string, ...args: unknown[]): void;
-  info(message: string, ...args: unknown[]): void;
-  warn(message: string, ...args: unknown[]): void;
-  error(message: string, ...args: unknown[]): void;
+  debug(message: string, ...args: unknown[]): void
+  info(message: string, ...args: unknown[]): void
+  warn(message: string, ...args: unknown[]): void
+  error(message: string, ...args: unknown[]): void
 }
 ```
 
@@ -59,6 +59,7 @@ silentLogger.info('Neither will this')
 ```
 
 No-op logger for silent operation. Useful for:
+
 - Unit tests where logging output is noise
 - Production environments where you want to disable verbose logging
 - Performance-critical code paths
@@ -78,6 +79,7 @@ userLogger.error('User not found', { id: 123 })
 ```
 
 **Parameters:**
+
 - `prefix` - String prefix to add to all messages
 - `baseLogger` - Base logger to wrap (defaults to `consoleLogger`)
 
@@ -122,7 +124,7 @@ const kyseraLogger: KyseraLogger = {
   debug: (msg, ...args) => pinoLogger.debug({ args }, msg),
   info: (msg, ...args) => pinoLogger.info({ args }, msg),
   warn: (msg, ...args) => pinoLogger.warn({ args }, msg),
-  error: (msg, ...args) => pinoLogger.error({ args }, msg),
+  error: (msg, ...args) => pinoLogger.error({ args }, msg)
 }
 ```
 
@@ -141,7 +143,7 @@ const kyseraLogger: KyseraLogger = {
   debug: (msg, ...args) => winstonLogger.debug(msg, ...args),
   info: (msg, ...args) => winstonLogger.info(msg, ...args),
   warn: (msg, ...args) => winstonLogger.warn(msg, ...args),
-  error: (msg, ...args) => winstonLogger.error(msg, ...args),
+  error: (msg, ...args) => winstonLogger.error(msg, ...args)
 }
 ```
 
@@ -175,9 +177,7 @@ const service = new MyService({
 ```typescript
 import { consoleLogger, silentLogger } from '@kysera/core'
 
-const logger = process.env.NODE_ENV === 'test'
-  ? silentLogger
-  : consoleLogger
+const logger = process.env.NODE_ENV === 'test' ? silentLogger : consoleLogger
 ```
 
 ## Related

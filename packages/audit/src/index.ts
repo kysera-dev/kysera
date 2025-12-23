@@ -1,9 +1,9 @@
-import type { Kysely } from 'kysely';
-import { sql } from 'kysely';
-import type { Plugin } from '@kysera/repository';
-import { NotFoundError, BadRequestError, type KyseraLogger, consoleLogger } from '@kysera/core';
-import { z } from 'zod';
-import { VERSION } from './version.js';
+import type { Kysely } from 'kysely'
+import { sql } from 'kysely'
+import type { Plugin } from '@kysera/executor'
+import { NotFoundError, BadRequestError, type KyseraLogger, silentLogger } from '@kysera/core'
+import { z } from 'zod'
+import { VERSION } from './version.js'
 
 // ============================================================================
 // Types
@@ -14,61 +14,65 @@ import { VERSION } from './version.js';
  * This allows runtime table name selection while maintaining some type safety
  */
 interface DynamicQueryBuilder {
-  selectFrom: (table: string) => DynamicSelectQueryBuilder;
-  insertInto: (table: string) => DynamicInsertQueryBuilder;
-  schema: DynamicSchemaBuilder;
+  selectFrom: (table: string) => DynamicSelectQueryBuilder
+  insertInto: (table: string) => DynamicInsertQueryBuilder
+  schema: DynamicSchemaBuilder
 }
 
 /**
  * Interface for Kysely select query builder with dynamic operations
  */
 interface DynamicSelectQueryBuilder {
-  selectAll: () => DynamicSelectQueryBuilder;
-  select: (column: string) => DynamicSelectQueryBuilder;
-  where: (column: string, operator: string, value: unknown) => DynamicSelectQueryBuilder;
-  orderBy: (column: string, direction: 'asc' | 'desc') => DynamicSelectQueryBuilder;
-  limit: (count: number) => DynamicSelectQueryBuilder;
-  offset: (count: number) => DynamicSelectQueryBuilder;
-  execute: () => Promise<unknown[]>;
-  executeTakeFirst: () => Promise<unknown | undefined>;
+  selectAll: () => DynamicSelectQueryBuilder
+  select: (column: string) => DynamicSelectQueryBuilder
+  where: (column: string, operator: string, value: unknown) => DynamicSelectQueryBuilder
+  orderBy: (column: string, direction: 'asc' | 'desc') => DynamicSelectQueryBuilder
+  limit: (count: number) => DynamicSelectQueryBuilder
+  offset: (count: number) => DynamicSelectQueryBuilder
+  execute: () => Promise<unknown[]>
+  executeTakeFirst: () => Promise<unknown | undefined>
 }
 
 /**
  * Interface for Kysely insert query builder with dynamic operations
  */
 interface DynamicInsertQueryBuilder {
-  values: (values: Record<string, unknown>) => DynamicInsertQueryBuilder;
-  execute: () => Promise<unknown>;
+  values: (values: Record<string, unknown>) => DynamicInsertQueryBuilder
+  execute: () => Promise<unknown>
 }
 
 /**
  * Interface for Kysely schema builder with dynamic operations
  */
 interface DynamicSchemaBuilder {
-  createTable: (tableName: string) => DynamicCreateTableBuilder;
+  createTable: (tableName: string) => DynamicCreateTableBuilder
 }
 
 /**
  * Interface for Kysely create table builder with dynamic operations
  */
 interface DynamicCreateTableBuilder {
-  addColumn: (name: string, type: string, callback?: (col: DynamicColumnBuilder) => DynamicColumnBuilder) => DynamicCreateTableBuilder;
-  execute: () => Promise<void>;
+  addColumn: (
+    name: string,
+    type: string,
+    callback?: (col: DynamicColumnBuilder) => DynamicColumnBuilder
+  ) => DynamicCreateTableBuilder
+  execute: () => Promise<void>
 }
 
 /**
  * Interface for Kysely column builder with dynamic operations
  */
 interface DynamicColumnBuilder {
-  primaryKey: () => DynamicColumnBuilder;
-  autoIncrement: () => DynamicColumnBuilder;
-  notNull: () => DynamicColumnBuilder;
+  primaryKey: () => DynamicColumnBuilder
+  autoIncrement: () => DynamicColumnBuilder
+  notNull: () => DynamicColumnBuilder
 }
 
 /**
  * Audit timestamp can be a Date or a string
  */
-export type AuditTimestamp = Date | string;
+export type AuditTimestamp = Date | string
 
 /**
  * Audit plugin configuration options
@@ -78,66 +82,66 @@ export interface AuditOptions {
    * Table name for storing audit logs
    * @default 'audit_logs'
    */
-  auditTable?: string;
+  auditTable?: string
 
   /**
    * Primary key column name
    * Supports both numeric IDs and string IDs (e.g., UUIDs)
    * @default 'id'
    */
-  primaryKeyColumn?: string;
+  primaryKeyColumn?: string
 
   /**
    * Whether to capture old values in updates
    * @default true
    */
-  captureOldValues?: boolean;
+  captureOldValues?: boolean
 
   /**
    * Whether to capture new values in inserts/updates
    * @default true
    */
-  captureNewValues?: boolean;
+  captureNewValues?: boolean
 
   /**
    * Skip auditing for system operations (migrations, seeds)
    * @default false
    */
-  skipSystemOperations?: boolean;
+  skipSystemOperations?: boolean
 
   /**
    * Whitelist of tables to audit (if specified, only these tables will be audited)
    */
-  tables?: string[];
+  tables?: string[]
 
   /**
    * Blacklist of tables to exclude from auditing
    */
-  excludeTables?: string[];
+  excludeTables?: string[]
 
   /**
    * Function to get the current user ID
    * @returns User ID or null
    */
-  getUserId?: () => string | null;
+  getUserId?: () => string | null
 
   /**
    * Function to get the current timestamp
    * @default () => new Date()
    */
-  getTimestamp?: () => AuditTimestamp;
+  getTimestamp?: () => AuditTimestamp
 
   /**
    * Function to get additional metadata for audit entries
    * @returns Metadata object or null
    */
-  metadata?: () => Record<string, unknown>;
+  metadata?: () => Record<string, unknown>
 
   /**
    * Logger for audit operations
-   * @default consoleLogger
+   * @default silentLogger
    */
-  logger?: KyseraLogger;
+  logger?: KyseraLogger
 }
 
 /**
@@ -154,37 +158,37 @@ export const AuditOptionsSchema = z.object({
   excludeTables: z.array(z.string()).optional(),
   getUserId: z.function().optional(),
   getTimestamp: z.function().optional(),
-  metadata: z.function().optional(),
-});
+  metadata: z.function().optional()
+})
 
 /**
  * Audit log entry structure (raw from database)
  */
 export interface AuditLogEntry {
-  id: number;
-  table_name: string;
-  entity_id: string;
-  operation: string;
-  old_values: string | null;
-  new_values: string | null;
-  changed_by: string | null;
-  changed_at: string;
-  metadata: string | null;
+  id: number
+  table_name: string
+  entity_id: string
+  operation: string
+  old_values: string | null
+  new_values: string | null
+  changed_by: string | null
+  changed_at: string
+  metadata: string | null
 }
 
 /**
  * Parsed audit log entry with JSON values parsed
  */
 export interface ParsedAuditLogEntry {
-  id: number;
-  table_name: string;
-  entity_id: string;
-  operation: string;
-  old_values: Record<string, unknown> | null;
-  new_values: Record<string, unknown> | null;
-  changed_by: string | null;
-  changed_at: Date | string;
-  metadata: Record<string, unknown> | null;
+  id: number
+  table_name: string
+  entity_id: string
+  operation: string
+  old_values: Record<string, unknown> | null
+  new_values: Record<string, unknown> | null
+  changed_by: string | null
+  changed_at: Date | string
+  metadata: Record<string, unknown> | null
 }
 
 /**
@@ -192,9 +196,9 @@ export interface ParsedAuditLogEntry {
  */
 export interface AuditPaginationOptions {
   /** Maximum number of records to return */
-  limit?: number;
+  limit?: number
   /** Number of records to skip (for pagination) */
-  offset?: number;
+  offset?: number
 }
 
 /**
@@ -202,13 +206,13 @@ export interface AuditPaginationOptions {
  */
 export interface AuditFilters extends AuditPaginationOptions {
   /** Filter by operation type ('INSERT', 'UPDATE', 'DELETE') */
-  operation?: string;
+  operation?: string
   /** Filter by user ID (changed_by field) */
-  userId?: string;
+  userId?: string
   /** Filter by start date (inclusive) */
-  startDate?: Date | string;
+  startDate?: Date | string
   /** Filter by end date (inclusive) */
-  endDate?: Date | string;
+  endDate?: Date | string
 }
 
 /**
@@ -233,7 +237,10 @@ export interface AuditRepositoryExtensions<T = unknown> {
    * @param options - Optional pagination options (limit, offset)
    * @returns Array of parsed audit log entries, most recent first
    */
-  getAuditHistory(entityId: number | string, options?: AuditPaginationOptions): Promise<ParsedAuditLogEntry[]>;
+  getAuditHistory(
+    entityId: number | string,
+    options?: AuditPaginationOptions
+  ): Promise<ParsedAuditLogEntry[]>
 
   /**
    * Alias for getAuditHistory (backwards compatibility)
@@ -241,21 +248,24 @@ export interface AuditRepositoryExtensions<T = unknown> {
    * @param options - Optional pagination options (limit, offset)
    * @returns Array of parsed audit log entries, most recent first
    */
-  getAuditLogs(entityId: number | string, options?: AuditPaginationOptions): Promise<ParsedAuditLogEntry[]>;
+  getAuditLogs(
+    entityId: number | string,
+    options?: AuditPaginationOptions
+  ): Promise<ParsedAuditLogEntry[]>
 
   /**
    * Get a specific audit log entry by its ID
    * @param auditId - The audit log ID
    * @returns Raw audit log entry or null if not found
    */
-  getAuditLog(auditId: number): Promise<AuditLogEntry | null>;
+  getAuditLog(auditId: number): Promise<AuditLogEntry | null>
 
   /**
    * Get audit logs for entire table with optional filters and pagination
    * @param filters - Optional filters to apply (includes limit, offset for pagination)
    * @returns Array of parsed audit log entries, most recent first
    */
-  getTableAuditLogs(filters?: AuditFilters): Promise<ParsedAuditLogEntry[]>;
+  getTableAuditLogs(filters?: AuditFilters): Promise<ParsedAuditLogEntry[]>
 
   /**
    * Get all changes made by a specific user for this table
@@ -263,7 +273,7 @@ export interface AuditRepositoryExtensions<T = unknown> {
    * @param options - Optional pagination options (limit, offset)
    * @returns Array of parsed audit log entries, most recent first
    */
-  getUserChanges(userId: string, options?: AuditPaginationOptions): Promise<ParsedAuditLogEntry[]>;
+  getUserChanges(userId: string, options?: AuditPaginationOptions): Promise<ParsedAuditLogEntry[]>
 
   /**
    * Restore entity from audit log.
@@ -276,7 +286,7 @@ export interface AuditRepositoryExtensions<T = unknown> {
    * @returns Restored entity
    * @throws Error if audit log not found, operation not restorable, or old_values not captured
    */
-  restoreFromAudit(auditId: number): Promise<T>;
+  restoreFromAudit(auditId: number): Promise<T>
 }
 
 /**
@@ -284,21 +294,22 @@ export interface AuditRepositoryExtensions<T = unknown> {
  * Uses generic T to represent the entity type
  */
 interface BaseRepositoryLike<T = unknown> {
-  tableName?: string;
-  executor?: Kysely<unknown>;
-  create?: (data: Partial<T>) => Promise<T>;
-  update?: (id: number | string, data: Partial<T>) => Promise<T>;
-  delete?: (id: number | string) => Promise<boolean>;
-  bulkCreate?: (data: Partial<T>[]) => Promise<T[]>;
-  bulkUpdate?: (updates: { id: number | string; data: Partial<T> }[]) => Promise<T[]>;
-  bulkDelete?: (ids: (number | string)[]) => Promise<number>;
+  tableName?: string
+  executor?: Kysely<unknown>
+  create?: (data: Partial<T>) => Promise<T>
+  update?: (id: number | string, data: Partial<T>) => Promise<T>
+  delete?: (id: number | string) => Promise<boolean>
+  bulkCreate?: (data: Partial<T>[]) => Promise<T[]>
+  bulkUpdate?: (updates: { id: number | string; data: Partial<T> }[]) => Promise<T[]>
+  bulkDelete?: (ids: (number | string)[]) => Promise<number>
 }
 
 /**
  * Extended repository with audit methods
  * Internal type that combines repository methods with audit extensions
  */
-interface ExtendedRepositoryInternal<T = unknown> extends BaseRepositoryLike<T>, AuditRepositoryExtensions<T> {}
+interface ExtendedRepositoryInternal<T = unknown>
+  extends BaseRepositoryLike<T>, AuditRepositoryExtensions<T> {}
 
 // ============================================================================
 // Helper Functions
@@ -307,27 +318,24 @@ interface ExtendedRepositoryInternal<T = unknown> extends BaseRepositoryLike<T>,
 /**
  * Check if audit table exists
  */
-async function checkAuditTableExists<DB>(executor: Kysely<DB>, auditTable: string): Promise<boolean> {
+async function checkAuditTableExists<DB>(
+  executor: Kysely<DB>,
+  auditTable: string
+): Promise<boolean> {
   try {
     // Try to query the table structure
     // Cast to DynamicQueryBuilder for runtime table access
-    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
-    await dynamicExecutor
-      .selectFrom(auditTable)
-      .select('id')
-      .limit(0)
-      .execute();
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder
+    await dynamicExecutor.selectFrom(auditTable).select('id').limit(0).execute()
     // If we get here, table exists
-    return true;
+    return true
   } catch (error) {
     // Table doesn't exist or query failed - expected behavior for table existence check
-    if (typeof consoleLogger.debug === 'function') {
-      consoleLogger.debug('Audit table check failed', {
-        auditTable,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-    return false;
+    silentLogger.debug('Audit table check failed', {
+      auditTable,
+      error: error instanceof Error ? error.message : String(error)
+    })
+    return false
   }
 }
 
@@ -336,7 +344,7 @@ async function checkAuditTableExists<DB>(executor: Kysely<DB>, auditTable: strin
  */
 async function createAuditTable<DB>(executor: Kysely<DB>, auditTable: string): Promise<void> {
   // Cast to DynamicSchemaBuilder for dynamic table creation with runtime column types
-  const dynamicSchema = executor.schema as unknown as DynamicSchemaBuilder;
+  const dynamicSchema = executor.schema as unknown as DynamicSchemaBuilder
   await dynamicSchema
     .createTable(auditTable)
     .addColumn('id', 'integer', (col: DynamicColumnBuilder) => col.primaryKey().autoIncrement())
@@ -348,15 +356,15 @@ async function createAuditTable<DB>(executor: Kysely<DB>, auditTable: string): P
     .addColumn('changed_by', 'text')
     .addColumn('changed_at', 'text', (col: DynamicColumnBuilder) => col.notNull())
     .addColumn('metadata', 'text')
-    .execute();
+    .execute()
 }
 
 /**
  * Get audit timestamp from options
  */
 function getAuditTimestamp(options: AuditOptions): string {
-  const timestamp = options.getTimestamp ? options.getTimestamp() : new Date();
-  return typeof timestamp === 'string' ? timestamp : timestamp.toISOString();
+  const timestamp = options.getTimestamp ? options.getTimestamp() : new Date()
+  return typeof timestamp === 'string' ? timestamp : timestamp.toISOString()
 }
 
 /**
@@ -369,14 +377,14 @@ function getAuditTimestamp(options: AuditOptions): string {
 function safeParseJSON<T>(
   value: string | null | undefined,
   defaultValue: T | null = null,
-  logger: KyseraLogger = consoleLogger
+  logger: KyseraLogger = silentLogger
 ): T | null {
-  if (!value) return defaultValue;
+  if (!value) return defaultValue
   try {
-    return JSON.parse(value) as T;
+    return JSON.parse(value) as T
   } catch (error) {
-    logger.warn('Failed to parse JSON in audit log:', value.substring(0, 100), error);
-    return defaultValue;
+    logger.warn('Failed to parse JSON in audit log:', value.substring(0, 100), error)
+    return defaultValue
   }
 }
 
@@ -384,22 +392,20 @@ function safeParseJSON<T>(
  * Serialize values for audit log
  */
 function serializeAuditValues(values: unknown): string | null {
-  if (values === null || values === undefined) return null;
+  if (values === null || values === undefined) return null
 
   try {
-    return JSON.stringify(values);
+    return JSON.stringify(values)
   } catch (error) {
     // Safe conversion for non-JSON values (e.g., circular references)
-    if (typeof consoleLogger.debug === 'function') {
-      consoleLogger.debug('Failed to stringify audit values', {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
+    silentLogger.debug('Failed to stringify audit values', {
+      error: error instanceof Error ? error.message : String(error)
+    })
     if (typeof values === 'object') {
       // For objects that can't be stringified, use toString()
-      return '[Object]';
+      return '[Object]'
     }
-    return String(values);
+    return String(values)
   }
 }
 
@@ -419,10 +425,10 @@ async function createAuditLogEntry<DB>(
   // Use SQL CURRENT_TIMESTAMP for database-native timestamp handling
   // This avoids timezone issues between client and server
   // If user provides custom getTimestamp, respect it but they need to ensure proper format
-  const timestamp = options.getTimestamp ? getAuditTimestamp(options) : sql`CURRENT_TIMESTAMP`;
+  const timestamp = options.getTimestamp ? getAuditTimestamp(options) : sql`CURRENT_TIMESTAMP`
 
   // Cast to DynamicQueryBuilder for runtime table access
-  const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
+  const dynamicExecutor = executor as unknown as DynamicQueryBuilder
   await dynamicExecutor
     .insertInto(auditTable)
     .values({
@@ -433,18 +439,18 @@ async function createAuditLogEntry<DB>(
       new_values: serializeAuditValues(newValues),
       changed_by: options.getUserId ? options.getUserId() : null,
       changed_at: timestamp,
-      metadata: options.metadata ? JSON.stringify(options.metadata()) : null,
+      metadata: options.metadata ? JSON.stringify(options.metadata()) : null
     })
-    .execute();
+    .execute()
 }
 
 /**
  * Helper function to check if an object looks like a repository
  */
 function isRepositoryLike(obj: unknown): obj is BaseRepositoryLike {
-  if (!obj || typeof obj !== 'object') return false;
-  const repo = obj as Record<string, unknown>;
-  return 'tableName' in repo && 'executor' in repo;
+  if (!obj || typeof obj !== 'object') return false
+  const repo = obj as Record<string, unknown>
+  return 'tableName' in repo && 'executor' in repo
 }
 
 /**
@@ -458,23 +464,21 @@ async function fetchEntityById(
 ): Promise<unknown> {
   try {
     // Cast to DynamicQueryBuilder for runtime table access
-    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder
     const entity = await dynamicExecutor
       .selectFrom(tableName)
       .selectAll()
       .where(primaryKeyColumn, '=', id)
-      .executeTakeFirst();
-    return entity ?? null;
+      .executeTakeFirst()
+    return entity ?? null
   } catch (error) {
     // Entity not found or query failed - expected when capturing old values for audit
-    if (typeof consoleLogger.debug === 'function') {
-      consoleLogger.debug('Failed to fetch entity for audit', {
-        tableName,
-        id,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-    return null;
+    silentLogger.debug('Failed to fetch entity for audit', {
+      tableName,
+      id,
+      error: error instanceof Error ? error.message : String(error)
+    })
+    return null
   }
 }
 
@@ -501,43 +505,41 @@ async function fetchEntitiesByIds(
   ids: (number | string)[],
   primaryKeyColumn: string
 ): Promise<Map<number | string, unknown>> {
-  const entityMap = new Map<number | string, unknown>();
+  const entityMap = new Map<number | string, unknown>()
 
   if (ids.length === 0) {
-    return entityMap;
+    return entityMap
   }
 
   try {
     // Fetch all entities in a single query
     // Cast to DynamicQueryBuilder for runtime table access
-    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder
     const entities = await dynamicExecutor
       .selectFrom(tableName)
       .selectAll()
       .where(primaryKeyColumn, 'in', ids)
-      .execute();
+      .execute()
 
     // Build map for O(1) lookups
     if (Array.isArray(entities)) {
       for (const entity of entities) {
-        const id = (entity as Record<string, unknown>)[primaryKeyColumn];
+        const id = (entity as Record<string, unknown>)[primaryKeyColumn]
         if (id !== undefined) {
-          entityMap.set(id as number | string, entity);
+          entityMap.set(id as number | string, entity)
         }
       }
     }
 
-    return entityMap;
+    return entityMap
   } catch (error) {
     // Bulk fetch failed - return empty map, audit will continue with null old values
-    if (typeof consoleLogger.warn === 'function') {
-      consoleLogger.warn('Failed to bulk fetch entities for audit', {
-        tableName,
-        count: ids.length,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-    return entityMap;
+    silentLogger.warn('Failed to bulk fetch entities for audit', {
+      tableName,
+      count: ids.length,
+      error: error instanceof Error ? error.message : String(error)
+    })
+    return entityMap
   }
 }
 
@@ -545,12 +547,12 @@ async function fetchEntitiesByIds(
  * Extract primary key value from an entity
  */
 function extractPrimaryKey(entity: unknown, primaryKeyColumn: string): string | number {
-  const record = entity as Record<string, unknown>;
-  const pkValue = record[primaryKeyColumn];
+  const record = entity as Record<string, unknown>
+  const pkValue = record[primaryKeyColumn]
   if (pkValue === undefined || pkValue === null) {
-    throw new BadRequestError(`Primary key '${primaryKeyColumn}' not found in entity`);
+    throw new BadRequestError(`Primary key '${primaryKeyColumn}' not found in entity`)
   }
-  return pkValue as string | number;
+  return pkValue as string | number
 }
 
 // ============================================================================
@@ -570,15 +572,15 @@ function wrapCreateMethod<T = unknown>(
   skipSystemOperations: boolean,
   options: AuditOptions
 ): void {
-  if (!baseRepo.create) return;
+  if (!baseRepo.create) return
 
-  const originalCreate = baseRepo.create.bind(baseRepo);
+  const originalCreate = baseRepo.create.bind(baseRepo)
 
   baseRepo.create = async function (input: Partial<T>): Promise<T> {
-    const result = await originalCreate(input);
+    const result = await originalCreate(input)
 
     if (!skipSystemOperations) {
-      const pkValue = extractPrimaryKey(result, primaryKeyColumn);
+      const pkValue = extractPrimaryKey(result, primaryKeyColumn)
       await createAuditLogEntry(
         executor,
         auditTable,
@@ -588,11 +590,11 @@ function wrapCreateMethod<T = unknown>(
         null,
         captureNewValues ? result : null,
         options
-      );
+      )
     }
 
-    return result;
-  };
+    return result
+  }
 }
 
 /**
@@ -609,17 +611,17 @@ function wrapUpdateMethod<T = unknown>(
   skipSystemOperations: boolean,
   options: AuditOptions
 ): void {
-  if (!baseRepo.update) return;
+  if (!baseRepo.update) return
 
-  const originalUpdate = baseRepo.update.bind(baseRepo);
+  const originalUpdate = baseRepo.update.bind(baseRepo)
   baseRepo.update = async function (id: number | string, input: Partial<T>): Promise<T> {
     // Fetch old values if needed
-    let oldValues: unknown = null;
+    let oldValues: unknown = null
     if (captureOldValues) {
-      oldValues = await fetchEntityById(executor, tableName, id, primaryKeyColumn);
+      oldValues = await fetchEntityById(executor, tableName, id, primaryKeyColumn)
     }
 
-    const result = await originalUpdate(id, input);
+    const result = await originalUpdate(id, input)
 
     if (!skipSystemOperations) {
       await createAuditLogEntry(
@@ -631,11 +633,11 @@ function wrapUpdateMethod<T = unknown>(
         oldValues,
         captureNewValues ? result : null,
         options
-      );
+      )
     }
 
-    return result;
-  };
+    return result
+  }
 }
 
 /**
@@ -651,24 +653,33 @@ function wrapDeleteMethod<T = unknown>(
   skipSystemOperations: boolean,
   options: AuditOptions
 ): void {
-  if (!baseRepo.delete) return;
+  if (!baseRepo.delete) return
 
-  const originalDelete = baseRepo.delete.bind(baseRepo);
+  const originalDelete = baseRepo.delete.bind(baseRepo)
   baseRepo.delete = async function (id: number | string): Promise<boolean> {
     // Fetch old values before deletion
-    let oldValues: unknown = null;
+    let oldValues: unknown = null
     if (captureOldValues) {
-      oldValues = await fetchEntityById(executor, tableName, id, primaryKeyColumn);
+      oldValues = await fetchEntityById(executor, tableName, id, primaryKeyColumn)
     }
 
-    const result = await originalDelete(id);
+    const result = await originalDelete(id)
 
     if (!skipSystemOperations && result) {
-      await createAuditLogEntry(executor, auditTable, tableName, id, 'DELETE', oldValues, null, options);
+      await createAuditLogEntry(
+        executor,
+        auditTable,
+        tableName,
+        id,
+        'DELETE',
+        oldValues,
+        null,
+        options
+      )
     }
 
-    return result;
-  };
+    return result
+  }
 }
 
 /**
@@ -684,15 +695,15 @@ function wrapBulkCreateMethod<T = unknown>(
   skipSystemOperations: boolean,
   options: AuditOptions
 ): void {
-  if (!baseRepo.bulkCreate) return;
+  if (!baseRepo.bulkCreate) return
 
-  const originalBulkCreate = baseRepo.bulkCreate.bind(baseRepo);
+  const originalBulkCreate = baseRepo.bulkCreate.bind(baseRepo)
   baseRepo.bulkCreate = async function (inputs: Partial<T>[]): Promise<T[]> {
-    const results = await originalBulkCreate(inputs);
+    const results = await originalBulkCreate(inputs)
 
     if (!skipSystemOperations && Array.isArray(results)) {
       for (const result of results) {
-        const pkValue = extractPrimaryKey(result, primaryKeyColumn);
+        const pkValue = extractPrimaryKey(result, primaryKeyColumn)
         await createAuditLogEntry(
           executor,
           auditTable,
@@ -702,12 +713,12 @@ function wrapBulkCreateMethod<T = unknown>(
           null,
           captureNewValues ? result : null,
           options
-        );
+        )
       }
     }
 
-    return results;
-  };
+    return results
+  }
 }
 
 /**
@@ -724,27 +735,29 @@ function wrapBulkUpdateMethod<T = unknown>(
   skipSystemOperations: boolean,
   options: AuditOptions
 ): void {
-  if (!baseRepo.bulkUpdate) return;
+  if (!baseRepo.bulkUpdate) return
 
-  const originalBulkUpdate = baseRepo.bulkUpdate.bind(baseRepo);
-  baseRepo.bulkUpdate = async function (updates: { id: number | string; data: Partial<T> }[]): Promise<T[]> {
+  const originalBulkUpdate = baseRepo.bulkUpdate.bind(baseRepo)
+  baseRepo.bulkUpdate = async function (
+    updates: { id: number | string; data: Partial<T> }[]
+  ): Promise<T[]> {
     // Fetch old values before update if needed
     // Use bulk fetch to avoid N+1 queries (performance optimization)
-    const oldValuesMap = new Map<number | string, unknown>();
+    const oldValuesMap = new Map<number | string, unknown>()
     if (captureOldValues) {
-      const ids = updates.map((u) => u.id);
-      const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids, primaryKeyColumn);
+      const ids = updates.map(u => u.id)
+      const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids, primaryKeyColumn)
       // Copy to our map
       for (const [id, entity] of fetchedOldValues) {
-        oldValuesMap.set(id, entity);
+        oldValuesMap.set(id, entity)
       }
     }
 
-    const results = await originalBulkUpdate(updates);
+    const results = await originalBulkUpdate(updates)
 
     if (!skipSystemOperations && Array.isArray(results)) {
       for (const result of results) {
-        const pkValue = extractPrimaryKey(result, primaryKeyColumn);
+        const pkValue = extractPrimaryKey(result, primaryKeyColumn)
 
         await createAuditLogEntry(
           executor,
@@ -755,12 +768,12 @@ function wrapBulkUpdateMethod<T = unknown>(
           oldValuesMap.get(pkValue) ?? null,
           captureNewValues ? result : null,
           options
-        );
+        )
       }
     }
 
-    return results;
-  };
+    return results
+  }
 }
 
 /**
@@ -776,22 +789,22 @@ function wrapBulkDeleteMethod<T = unknown>(
   skipSystemOperations: boolean,
   options: AuditOptions
 ): void {
-  if (!baseRepo.bulkDelete) return;
+  if (!baseRepo.bulkDelete) return
 
-  const originalBulkDelete = baseRepo.bulkDelete.bind(baseRepo);
+  const originalBulkDelete = baseRepo.bulkDelete.bind(baseRepo)
   baseRepo.bulkDelete = async function (ids: (number | string)[]): Promise<number> {
     // Fetch old values before deletion if needed
     // Use bulk fetch to avoid N+1 queries (performance optimization)
-    const oldValuesMap = new Map<number | string, unknown>();
+    const oldValuesMap = new Map<number | string, unknown>()
     if (captureOldValues) {
-      const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids, primaryKeyColumn);
+      const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids, primaryKeyColumn)
       // Copy to our map
       for (const [id, entity] of fetchedOldValues) {
-        oldValuesMap.set(id, entity);
+        oldValuesMap.set(id, entity)
       }
     }
 
-    const result = await originalBulkDelete(ids);
+    const result = await originalBulkDelete(ids)
 
     if (!skipSystemOperations) {
       for (const id of ids) {
@@ -804,12 +817,12 @@ function wrapBulkDeleteMethod<T = unknown>(
           oldValuesMap.get(id) ?? null,
           null,
           options
-        );
+        )
       }
     }
 
-    return result;
-  };
+    return result
+  }
 }
 
 /**
@@ -817,18 +830,18 @@ function wrapBulkDeleteMethod<T = unknown>(
  */
 function parseAuditLogEntries(logs: unknown[], logger: KyseraLogger): ParsedAuditLogEntry[] {
   if (!Array.isArray(logs)) {
-    return [];
+    return []
   }
 
   return logs.map((log: unknown) => {
-    const auditLog = log as AuditLogEntry;
+    const auditLog = log as AuditLogEntry
     return {
       ...auditLog,
       old_values: safeParseJSON<Record<string, unknown>>(auditLog.old_values, null, logger),
       new_values: safeParseJSON<Record<string, unknown>>(auditLog.new_values, null, logger),
-      metadata: safeParseJSON<Record<string, unknown>>(auditLog.metadata, null, logger),
-    };
-  }) as ParsedAuditLogEntry[];
+      metadata: safeParseJSON<Record<string, unknown>>(auditLog.metadata, null, logger)
+    }
+  }) as ParsedAuditLogEntry[]
 }
 
 /**
@@ -842,9 +855,9 @@ function addRestoreMethod<T = unknown>(
 ): void {
   // Restore entity from audit log
   extendedRepo.restoreFromAudit = async function (auditId: number): Promise<T> {
-    const log = await extendedRepo.getAuditLog(auditId);
+    const log = await extendedRepo.getAuditLog(auditId)
     if (!log) {
-      throw new NotFoundError('AuditLog', { id: auditId });
+      throw new NotFoundError('AuditLog', { id: auditId })
     }
 
     // For DELETE operations, restore using old_values (the entity before deletion)
@@ -853,19 +866,19 @@ function addRestoreMethod<T = unknown>(
         throw new BadRequestError(
           `Cannot restore from DELETE audit log ${String(auditId)}: old_values not captured. ` +
             `Ensure captureOldValues is enabled when creating the audit plugin.`
-        );
+        )
       }
 
-      const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values, null, logger);
+      const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values, null, logger)
       if (!parsedValues) {
-        throw new BadRequestError(`Failed to parse old_values from audit log ${String(auditId)}`);
+        throw new BadRequestError(`Failed to parse old_values from audit log ${String(auditId)}`)
       }
 
       if (!baseRepo.create) {
-        throw new BadRequestError('Repository does not support create operation');
+        throw new BadRequestError('Repository does not support create operation')
       }
 
-      return await baseRepo.create(parsedValues as Partial<T>);
+      return await baseRepo.create(parsedValues as Partial<T>)
     }
 
     // For UPDATE operations, restore using old_values (revert the update)
@@ -874,32 +887,34 @@ function addRestoreMethod<T = unknown>(
         throw new BadRequestError(
           `Cannot revert UPDATE from audit log ${String(auditId)}: old_values not captured. ` +
             `Ensure captureOldValues is enabled when creating the audit plugin.`
-        );
+        )
       }
 
-      const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values, null, logger);
+      const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values, null, logger)
       if (!parsedValues) {
-        throw new BadRequestError(`Failed to parse old_values from audit log ${String(auditId)}`);
+        throw new BadRequestError(`Failed to parse old_values from audit log ${String(auditId)}`)
       }
 
-      const entityId = parsedValues[primaryKeyColumn];
+      const entityId = parsedValues[primaryKeyColumn]
       if (entityId === undefined || entityId === null) {
-        throw new BadRequestError(`Primary key '${primaryKeyColumn}' not found in audit log old_values`);
+        throw new BadRequestError(
+          `Primary key '${primaryKeyColumn}' not found in audit log old_values`
+        )
       }
 
       if (!baseRepo.update) {
-        throw new BadRequestError('Repository does not support update operation');
+        throw new BadRequestError('Repository does not support update operation')
       }
 
-      return await baseRepo.update(entityId as number | string, parsedValues as Partial<T>);
+      return await baseRepo.update(entityId as number | string, parsedValues as Partial<T>)
     }
 
     // INSERT operations cannot be restored (the entity already exists)
     throw new BadRequestError(
       `Cannot restore from ${log.operation} operation. ` +
         `Only DELETE (re-creates entity) and UPDATE (reverts to old values) operations can be restored.`
-    );
-  };
+    )
+  }
 }
 
 /**
@@ -920,79 +935,96 @@ function addAuditQueryMethods<T = unknown>(
     options?: AuditPaginationOptions
   ): Promise<ParsedAuditLogEntry[]> {
     // Cast to DynamicQueryBuilder for runtime table access
-    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder
     let query = dynamicExecutor
       .selectFrom(auditTable)
       .selectAll()
       .where('table_name', '=', tableName)
       .where('entity_id', '=', String(entityId))
-      .orderBy('changed_at', 'desc');
+      .orderBy('changed_at', 'desc')
 
     // Apply pagination if provided
     if (options?.limit !== undefined) {
-      query = query.limit(options.limit);
+      query = query.limit(options.limit)
     }
     if (options?.offset !== undefined) {
-      query = query.offset(options.offset);
+      query = query.offset(options.offset)
     }
 
-    const logs = await query.execute();
-    return parseAuditLogEntries(logs, logger);
-  };
+    const logs = await query.execute()
+    return parseAuditLogEntries(logs, logger)
+  }
 
   // Alias for backwards compatibility
   extendedRepo.getAuditLogs = async function (
     entityId: number | string,
     options?: AuditPaginationOptions
   ): Promise<ParsedAuditLogEntry[]> {
-    return await extendedRepo.getAuditHistory(entityId, options);
-  };
+    return await extendedRepo.getAuditHistory(entityId, options)
+  }
 
   // Get a specific audit log entry
   extendedRepo.getAuditLog = async function (auditId: number): Promise<AuditLogEntry | null> {
     // Cast to DynamicQueryBuilder for runtime table access
-    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
-    const log = await dynamicExecutor.selectFrom(auditTable).selectAll().where('id', '=', auditId).executeTakeFirst();
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder
+    const log = await dynamicExecutor
+      .selectFrom(auditTable)
+      .selectAll()
+      .where('id', '=', auditId)
+      .executeTakeFirst()
 
-    return (log as AuditLogEntry | undefined) ?? null;
-  };
+    return (log as AuditLogEntry | undefined) ?? null
+  }
 
   // Get audit logs for entire table with optional filters and pagination
-  extendedRepo.getTableAuditLogs = async function (filters?: AuditFilters): Promise<ParsedAuditLogEntry[]> {
+  extendedRepo.getTableAuditLogs = async function (
+    filters?: AuditFilters
+  ): Promise<ParsedAuditLogEntry[]> {
     // Cast to DynamicQueryBuilder for runtime table access
-    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
-    let query = dynamicExecutor.selectFrom(auditTable).selectAll().where('table_name', '=', tableName);
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder
+    let query = dynamicExecutor
+      .selectFrom(auditTable)
+      .selectAll()
+      .where('table_name', '=', tableName)
 
     // Apply filters
     if (filters?.operation) {
-      query = query.where('operation', '=', filters.operation);
+      query = query.where('operation', '=', filters.operation)
     }
     if (filters?.userId) {
-      query = query.where('changed_by', '=', filters.userId);
+      query = query.where('changed_by', '=', filters.userId)
     }
     if (filters?.startDate) {
-      const startDate = typeof filters.startDate === 'string' ? new Date(filters.startDate) : filters.startDate;
-      const formattedStart = startDate.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
-      query = query.where('changed_at', '>=', formattedStart);
+      const startDate =
+        typeof filters.startDate === 'string' ? new Date(filters.startDate) : filters.startDate
+      const formattedStart = startDate
+        .toISOString()
+        .replace('T', ' ')
+        .replace(/\.\d{3}Z$/, '')
+      query = query.where('changed_at', '>=', formattedStart)
     }
     if (filters?.endDate) {
-      const endDate = typeof filters.endDate === 'string' ? new Date(filters.endDate) : filters.endDate;
-      const formattedEnd = endDate.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
-      query = query.where('changed_at', '<=', formattedEnd);
+      const endDate =
+        typeof filters.endDate === 'string' ? new Date(filters.endDate) : filters.endDate
+      const formattedEnd = endDate
+        .toISOString()
+        .replace('T', ' ')
+        .replace(/\.\d{3}Z$/, '')
+      query = query.where('changed_at', '<=', formattedEnd)
     }
 
-    query = query.orderBy('changed_at', 'desc');
+    query = query.orderBy('changed_at', 'desc')
 
     if (filters?.limit !== undefined) {
-      query = query.limit(filters.limit);
+      query = query.limit(filters.limit)
     }
     if (filters?.offset !== undefined) {
-      query = query.offset(filters.offset);
+      query = query.offset(filters.offset)
     }
 
-    const logs = await query.execute();
-    return parseAuditLogEntries(logs, logger);
-  };
+    const logs = await query.execute()
+    return parseAuditLogEntries(logs, logger)
+  }
 
   // Get all changes made by a specific user for this table
   extendedRepo.getUserChanges = async function (
@@ -1000,28 +1032,28 @@ function addAuditQueryMethods<T = unknown>(
     options?: AuditPaginationOptions
   ): Promise<ParsedAuditLogEntry[]> {
     // Cast to DynamicQueryBuilder for runtime table access
-    const dynamicExecutor = executor as unknown as DynamicQueryBuilder;
+    const dynamicExecutor = executor as unknown as DynamicQueryBuilder
     let query = dynamicExecutor
       .selectFrom(auditTable)
       .selectAll()
       .where('table_name', '=', tableName)
       .where('changed_by', '=', userId)
-      .orderBy('changed_at', 'desc');
+      .orderBy('changed_at', 'desc')
 
     // Apply pagination if provided
     if (options?.limit !== undefined) {
-      query = query.limit(options.limit);
+      query = query.limit(options.limit)
     }
     if (options?.offset !== undefined) {
-      query = query.offset(options.offset);
+      query = query.offset(options.offset)
     }
 
-    const logs = await query.execute();
-    return parseAuditLogEntries(logs, logger);
-  };
+    const logs = await query.execute()
+    return parseAuditLogEntries(logs, logger)
+  }
 
   // Add restore functionality
-  addRestoreMethod(extendedRepo, baseRepo, primaryKeyColumn, logger);
+  addRestoreMethod(extendedRepo, baseRepo, primaryKeyColumn, logger)
 }
 
 // ============================================================================
@@ -1158,49 +1190,49 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
     captureOldValues = true,
     captureNewValues = true,
     skipSystemOperations = false,
-    logger = consoleLogger,
-  } = options;
+    logger = silentLogger
+  } = options
 
   return {
     name: '@kysera/audit',
     version: VERSION,
 
     async onInit<DB>(executor: Kysely<DB>): Promise<void> {
-      const exists = await checkAuditTableExists(executor, auditTable);
+      const exists = await checkAuditTableExists(executor, auditTable)
       if (!exists) {
-        await createAuditTable(executor, auditTable);
+        await createAuditTable(executor, auditTable)
       }
     },
 
     extendRepository<T extends object>(repo: T): T {
       // Type check to ensure repo has the expected properties
       if (!isRepositoryLike(repo)) {
-        return repo;
+        return repo
       }
 
-      const baseRepo = repo as BaseRepositoryLike;
-      const tableName = baseRepo.tableName ?? '';
-      const executor = baseRepo.executor as Kysely<unknown> | undefined;
+      const baseRepo = repo as BaseRepositoryLike
+      const tableName = baseRepo.tableName ?? ''
+      const executor = baseRepo.executor as Kysely<unknown> | undefined
 
       if (!executor) {
-        return repo;
+        return repo
       }
 
       // Check if this table should be audited
-      const { tables, excludeTables } = options;
+      const { tables, excludeTables } = options
 
       // If whitelist exists, only audit tables in the whitelist
       if (tables && tables.length > 0 && !tables.includes(tableName)) {
-        return repo;
+        return repo
       }
 
       // If blacklist exists, skip tables in the blacklist
       if (excludeTables?.includes(tableName)) {
-        return repo;
+        return repo
       }
 
       // Cast to mutable repository for wrapping methods
-      const mutableRepo = baseRepo as BaseRepositoryLike;
+      const mutableRepo = baseRepo as BaseRepositoryLike
 
       wrapCreateMethod(
         mutableRepo,
@@ -1211,7 +1243,7 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         captureNewValues,
         skipSystemOperations,
         options
-      );
+      )
       wrapUpdateMethod(
         mutableRepo,
         executor,
@@ -1222,7 +1254,7 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         captureNewValues,
         skipSystemOperations,
         options
-      );
+      )
       wrapDeleteMethod(
         mutableRepo,
         executor,
@@ -1232,7 +1264,7 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         captureOldValues,
         skipSystemOperations,
         options
-      );
+      )
       wrapBulkCreateMethod(
         mutableRepo,
         executor,
@@ -1242,7 +1274,7 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         captureNewValues,
         skipSystemOperations,
         options
-      );
+      )
       wrapBulkUpdateMethod(
         mutableRepo,
         executor,
@@ -1253,7 +1285,7 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         captureNewValues,
         skipSystemOperations,
         options
-      );
+      )
       wrapBulkDeleteMethod(
         mutableRepo,
         executor,
@@ -1263,15 +1295,23 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         captureOldValues,
         skipSystemOperations,
         options
-      );
+      )
 
       // Add audit query methods
-      const extendedRepo = mutableRepo as ExtendedRepositoryInternal;
-      addAuditQueryMethods(extendedRepo, mutableRepo, executor, auditTable, tableName, primaryKeyColumn, logger);
+      const extendedRepo = mutableRepo as ExtendedRepositoryInternal
+      addAuditQueryMethods(
+        extendedRepo,
+        mutableRepo,
+        executor,
+        auditTable,
+        tableName,
+        primaryKeyColumn,
+        logger
+      )
 
-      return repo;
-    },
-  };
+      return repo
+    }
+  }
 }
 
 // ============================================================================
@@ -1293,8 +1333,8 @@ export function auditPluginPostgreSQL(options: AuditOptions = {}): Plugin {
   // In future, we can add PostgreSQL-specific optimizations
   return auditPlugin({
     ...options,
-    getTimestamp: options.getTimestamp ?? (() => new Date().toISOString()),
-  });
+    getTimestamp: options.getTimestamp ?? (() => new Date().toISOString())
+  })
 }
 
 /**
@@ -1311,20 +1351,20 @@ export function auditPluginMySQL(options: AuditOptions = {}): Plugin {
   // MySQL-specific timestamp formatting
   // MySQL DATETIME doesn't accept ISO 8601 format, needs 'YYYY-MM-DD HH:MM:SS'
   const mysqlTimestamp = (): string => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-  };
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    const hours = String(now.getHours()).padStart(2, '0')
+    const minutes = String(now.getMinutes()).padStart(2, '0')
+    const seconds = String(now.getSeconds()).padStart(2, '0')
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+  }
 
   return auditPlugin({
     ...options,
-    getTimestamp: options.getTimestamp ?? mysqlTimestamp,
-  });
+    getTimestamp: options.getTimestamp ?? mysqlTimestamp
+  })
 }
 
 /**
@@ -1342,6 +1382,6 @@ export function auditPluginSQLite(options: AuditOptions = {}): Plugin {
   // In future, we can add SQLite-specific optimizations
   return auditPlugin({
     ...options,
-    getTimestamp: options.getTimestamp ?? (() => new Date().toISOString()),
-  });
+    getTimestamp: options.getTimestamp ?? (() => new Date().toISOString())
+  })
 }

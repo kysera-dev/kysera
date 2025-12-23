@@ -41,6 +41,7 @@ Core packages have zero runtime dependencies:
 ```
 
 This ensures:
+
 - Minimal security surface
 - No bloat from transitive dependencies
 - Full control over code execution
@@ -63,6 +64,7 @@ Kysera is ESM-only for modern environments:
 ```
 
 Benefits:
+
 - Faster module loading
 - Better tree-shaking
 - Deno and Bun compatible
@@ -164,7 +166,7 @@ export function createUserRepository(executor: Executor<Database>) {
 export function createRepositories(executor: Executor<Database>) {
   return {
     users: createUserRepository(executor),
-    posts: createPostRepository(executor),
+    posts: createPostRepository(executor)
   } as const
 }
 ```
@@ -202,15 +204,15 @@ extendRepository(repo) {
 
 ## Performance Characteristics
 
-| Package | Size | Overhead |
-|---------|------|----------|
-| @kysera/core | ~8KB | Minimal |
-| @kysera/repository | ~12KB | Less than 0.3ms per query |
-| @kysera/dal | ~7KB | Less than 0.2ms per query |
-| @kysera/infra | ~12KB | Less than 0.2ms per query |
-| @kysera/debug | ~5KB | Less than 0.1ms per query |
-| @kysera/testing | ~6KB | Dev-only |
-| Plugins | 4-12KB each | Less than 0.1ms per query |
+| Package            | Size        | Overhead                  |
+| ------------------ | ----------- | ------------------------- |
+| @kysera/core       | ~8KB        | Minimal                   |
+| @kysera/repository | ~12KB       | Less than 0.3ms per query |
+| @kysera/dal        | ~7KB        | Less than 0.2ms per query |
+| @kysera/infra      | ~12KB       | Less than 0.2ms per query |
+| @kysera/debug      | ~5KB        | Less than 0.1ms per query |
+| @kysera/testing    | ~6KB        | Dev-only                  |
+| Plugins            | 4-12KB each | Less than 0.1ms per query |
 
 ### Benchmarks
 

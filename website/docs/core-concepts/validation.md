@@ -26,16 +26,16 @@ const CreateUserSchema = z.object({
 const factory = createRepositoryFactory(db)
 const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
-    create: zodAdapter(CreateUserSchema),        // Always validated
+    create: zodAdapter(CreateUserSchema), // Always validated
     update: zodAdapter(CreateUserSchema.partial()) // Always validated
   }
 })
 
 // Input is validated before database operation
 await userRepo.create({
-  email: 'invalid-email',  // Throws validation error
+  email: 'invalid-email', // Throws validation error
   name: 'John'
 })
 ```
@@ -57,9 +57,9 @@ const UserSchema = z.object({
 
 const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
-    entity: zodAdapter(UserSchema),  // Optional - validates DB results
+    entity: zodAdapter(UserSchema), // Optional - validates DB results
     create: zodAdapter(CreateUserSchema)
   }
   // Output validation controlled via KYSERA_VALIDATION_MODE or NODE_ENV
@@ -90,7 +90,7 @@ KYSERA_VALIDATION_MODE=development
 import { getValidationMode, shouldValidate } from '@kysera/repository'
 
 // Get current mode
-const mode = getValidationMode()  // 'always' | 'never' | 'development' | 'production'
+const mode = getValidationMode() // 'always' | 'never' | 'development' | 'production'
 
 // Check if validation should run
 if (shouldValidate({ mode: 'development' })) {
@@ -136,7 +136,7 @@ const UpdateUserSchema = CreateUserSchema.partial()
 // Or with specific requirements
 const UpdateUserSchema = z.object({
   email: z.string().email().optional(),
-  name: z.string().min(1).max(100).optional(),
+  name: z.string().min(1).max(100).optional()
   // role cannot be updated
 })
 ```
@@ -154,10 +154,10 @@ const userValidator = createValidator(zodAdapter(UserSchema), {
 })
 
 // Different validation methods
-const user = userValidator.validate(data)             // Throws on error
-const user = userValidator.validateSafe(data)         // Returns null on error
-const isValid = userValidator.isValid(data)           // Returns boolean
-const user = userValidator.validateConditional(data)  // Validates based on mode
+const user = userValidator.validate(data) // Throws on error
+const user = userValidator.validateSafe(data) // Returns null on error
+const isValid = userValidator.isValid(data) // Returns boolean
+const user = userValidator.validateConditional(data) // Validates based on mode
 ```
 
 ### Safe Parsing
@@ -194,10 +194,10 @@ app.post('/users', async (req, res) => {
 // Bad: Relying only on repository validation
 app.post('/users', async (req, res) => {
   try {
-    const user = await userRepo.create(req.body)  // Unvalidated!
+    const user = await userRepo.create(req.body) // Unvalidated!
     res.json(user)
   } catch (error) {
-    res.status(500).json({ error: error.message })  // Leaks internal errors
+    res.status(500).json({ error: error.message }) // Leaks internal errors
   }
 })
 ```
@@ -207,36 +207,43 @@ app.post('/users', async (req, res) => {
 ### Cross-Field Validation
 
 ```typescript
-const CreateOrderSchema = z.object({
-  items: z.array(z.object({
-    productId: z.number(),
-    quantity: z.number().min(1)
-  })).min(1),
-  shippingAddress: z.object({
-    street: z.string(),
-    city: z.string(),
-    country: z.string()
-  }),
-  paymentMethod: z.enum(['card', 'bank_transfer'])
-}).refine(
-  (data) => data.items.reduce((sum, item) => sum + item.quantity, 0) <= 100,
-  { message: 'Maximum 100 items per order' }
-)
+const CreateOrderSchema = z
+  .object({
+    items: z
+      .array(
+        z.object({
+          productId: z.number(),
+          quantity: z.number().min(1)
+        })
+      )
+      .min(1),
+    shippingAddress: z.object({
+      street: z.string(),
+      city: z.string(),
+      country: z.string()
+    }),
+    paymentMethod: z.enum(['card', 'bank_transfer'])
+  })
+  .refine(data => data.items.reduce((sum, item) => sum + item.quantity, 0) <= 100, {
+    message: 'Maximum 100 items per order'
+  })
 ```
 
 ### Async Validation
 
 ```typescript
-const CreateUserSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(1)
-}).refine(
-  async (data) => {
-    const existing = await userRepo.findByEmail(data.email)
-    return !existing
-  },
-  { message: 'Email already exists' }
-)
+const CreateUserSchema = z
+  .object({
+    email: z.string().email(),
+    name: z.string().min(1)
+  })
+  .refine(
+    async data => {
+      const existing = await userRepo.findByEmail(data.email)
+      return !existing
+    },
+    { message: 'Email already exists' }
+  )
 ```
 
 ### Conditional Validation
@@ -267,7 +274,7 @@ try {
   await userRepo.create(invalidData)
 } catch (error) {
   if (error instanceof ValidationError) {
-    console.log(error.errors)  // Zod error details
+    console.log(error.errors) // Zod error details
     // Return 400 Bad Request with error details
   }
 }

@@ -24,9 +24,7 @@ npm install @kysera/soft-delete
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
-const orm = await createORM(db, [
-  softDeletePlugin({ deletedAtColumn: 'deleted_at' })
-])
+const orm = await createORM(db, [softDeletePlugin({ deletedAtColumn: 'deleted_at' })])
 
 const userRepo = orm.createRepository(createUserRepository)
 
@@ -54,20 +52,16 @@ import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
 // Create executor with soft-delete plugin
-const executor = await createExecutor(db, [
-  softDeletePlugin({ deletedAtColumn: 'deleted_at' })
-])
+const executor = await createExecutor(db, [softDeletePlugin({ deletedAtColumn: 'deleted_at' })])
 
 // DAL queries automatically filter soft-deleted records
-const getActiveUsers = createQuery((ctx) =>
-  ctx.db.selectFrom('users').selectAll().execute()
-)
+const getActiveUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
 
 const ctx = createContext(executor)
 const activeUsers = await getActiveUsers(ctx) // Excludes soft-deleted
 
 // Per-query override with metadata
-const getAllUsers = createQuery((ctx) => {
+const getAllUsers = createQuery(ctx => {
   const qb = ctx.db.selectFrom('users').selectAll()
   // @ts-expect-error - metadata is not typed yet
   qb.__queryContext = { ...qb.__queryContext, metadata: { includeDeleted: true } }
@@ -151,12 +145,12 @@ interface SoftDeleteMethods<T> {
 }
 ```
 
-| Method | Description | Returns | Throws |
-|--------|-------------|---------|--------|
-| `softDelete(id)` | Sets deleted_at to CURRENT_TIMESTAMP | Soft-deleted record | `NotFoundError` if record doesn't exist |
-| `restore(id)` | Sets deleted_at to NULL | Restored record | `NotFoundError` if record doesn't exist |
-| `hardDelete(id)` | Permanently deletes record (real DELETE) | void | N/A |
-| `findWithDeleted(id)` | Finds by ID including soft-deleted | Record or null | N/A |
+| Method                | Description                              | Returns             | Throws                                  |
+| --------------------- | ---------------------------------------- | ------------------- | --------------------------------------- |
+| `softDelete(id)`      | Sets deleted_at to CURRENT_TIMESTAMP     | Soft-deleted record | `NotFoundError` if record doesn't exist |
+| `restore(id)`         | Sets deleted_at to NULL                  | Restored record     | `NotFoundError` if record doesn't exist |
+| `hardDelete(id)`      | Permanently deletes record (real DELETE) | void                | N/A                                     |
+| `findWithDeleted(id)` | Finds by ID including soft-deleted       | Record or null      | N/A                                     |
 
 ### Batch Operations
 
@@ -168,11 +162,11 @@ interface SoftDeleteMethods<T> {
 }
 ```
 
-| Method | Description | Returns | Throws |
-|--------|-------------|---------|--------|
-| `softDeleteMany(ids)` | Soft deletes multiple records | Array of soft-deleted records | `NotFoundError` if any record doesn't exist |
-| `restoreMany(ids)` | Restores multiple records | Array of restored records | N/A |
-| `hardDeleteMany(ids)` | Permanently deletes multiple records | void | N/A |
+| Method                | Description                          | Returns                       | Throws                                      |
+| --------------------- | ------------------------------------ | ----------------------------- | ------------------------------------------- |
+| `softDeleteMany(ids)` | Soft deletes multiple records        | Array of soft-deleted records | `NotFoundError` if any record doesn't exist |
+| `restoreMany(ids)`    | Restores multiple records            | Array of restored records     | N/A                                         |
+| `hardDeleteMany(ids)` | Permanently deletes multiple records | void                          | N/A                                         |
 
 ### Query Methods
 
@@ -183,12 +177,12 @@ interface SoftDeleteMethods<T> {
 }
 ```
 
-| Method | Description | Returns |
-|--------|-------------|---------|
-| `findAll()` | Returns only active records (automatic filtering) | Array of non-deleted records |
-| `findById(id)` | Returns only if not deleted (automatic filtering) | Record or null |
-| `findAllWithDeleted()` | Returns all records including soft-deleted | Array of all records |
-| `findDeleted()` | Returns only soft-deleted records | Array of deleted records |
+| Method                 | Description                                       | Returns                      |
+| ---------------------- | ------------------------------------------------- | ---------------------------- |
+| `findAll()`            | Returns only active records (automatic filtering) | Array of non-deleted records |
+| `findById(id)`         | Returns only if not deleted (automatic filtering) | Record or null               |
+| `findAllWithDeleted()` | Returns all records including soft-deleted        | Array of all records         |
+| `findDeleted()`        | Returns only soft-deleted records                 | Array of deleted records     |
 
 ## Automatic Query Filtering
 
@@ -200,9 +194,7 @@ const users = await userRepo.findAll()
 // SQL: SELECT * FROM users WHERE deleted_at IS NULL
 
 // DAL pattern - automatic filtering
-const getUsers = createQuery((ctx) =>
-  ctx.db.selectFrom('users').selectAll().execute()
-)
+const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
 const users = await getUsers(ctx)
 // SQL: SELECT * FROM users WHERE deleted_at IS NULL
 ```
@@ -221,12 +213,12 @@ The plugin uses query interception from `@kysera/executor`:
 
 ### Filtering Behavior
 
-| Query Type | Filtered? | Notes |
-|------------|-----------|-------|
-| SELECT | ✅ Yes | Automatic `WHERE deleted_at IS NULL` |
-| INSERT | ❌ No | Inserts are not affected |
-| UPDATE | ❌ No | Updates are not affected |
-| DELETE | ❌ No | Use `softDelete()` method instead |
+| Query Type | Filtered? | Notes                                |
+| ---------- | --------- | ------------------------------------ |
+| SELECT     | ✅ Yes    | Automatic `WHERE deleted_at IS NULL` |
+| INSERT     | ❌ No     | Inserts are not affected             |
+| UPDATE     | ❌ No     | Updates are not affected             |
+| DELETE     | ❌ No     | Use `softDelete()` method instead    |
 
 **Important**: DELETE operations are NOT automatically converted to soft deletes. This is by design for simplicity and explicitness. Use the `softDelete()` method to perform soft deletes.
 
@@ -247,15 +239,15 @@ await userRepo.restore(userId)
 await userRepo.hardDelete(userId)
 
 // Batch operations (efficient single queries)
-await userRepo.softDeleteMany([1, 2, 3, 4, 5])  // Single UPDATE
-await userRepo.restoreMany([1, 2, 3])           // Single UPDATE
-await userRepo.hardDeleteMany([1, 2, 3])        // Single DELETE
+await userRepo.softDeleteMany([1, 2, 3, 4, 5]) // Single UPDATE
+await userRepo.restoreMany([1, 2, 3]) // Single UPDATE
+await userRepo.hardDeleteMany([1, 2, 3]) // Single DELETE
 
 // Query methods
-const active = await userRepo.findAll()           // Excludes deleted
-const all = await userRepo.findAllWithDeleted()   // Includes deleted
-const deleted = await userRepo.findDeleted()      // Only deleted
-const user = await userRepo.findWithDeleted(id)   // Find by ID including deleted
+const active = await userRepo.findAll() // Excludes deleted
+const all = await userRepo.findAllWithDeleted() // Includes deleted
+const deleted = await userRepo.findDeleted() // Only deleted
+const user = await userRepo.findWithDeleted(id) // Find by ID including deleted
 ```
 
 ### DAL Pattern Examples
@@ -269,40 +261,30 @@ import { getRawDb } from '@kysera/executor'
 const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Automatic filtering
-const getActiveUsers = createQuery((ctx) =>
-  ctx.db.selectFrom('users').selectAll().execute()
-)
-const users = await getActiveUsers(executor)  // Filtered automatically
+const getActiveUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const users = await getActiveUsers(executor) // Filtered automatically
 
 // Include deleted with getRawDb
-const getAllUsers = createQuery((ctx) => {
+const getAllUsers = createQuery(ctx => {
   const rawDb = getRawDb(ctx.db)
   return rawDb.selectFrom('users').selectAll().execute()
 })
-const allUsers = await getAllUsers(executor)  // No filtering
+const allUsers = await getAllUsers(executor) // No filtering
 
 // Manual soft delete in DAL
 const softDeleteUser = createQuery((ctx, userId: number) =>
-  ctx.db
-    .updateTable('users')
-    .set({ deleted_at: new Date() })
-    .where('id', '=', userId)
-    .execute()
+  ctx.db.updateTable('users').set({ deleted_at: new Date() }).where('id', '=', userId).execute()
 )
 
 // Restore in DAL
 const restoreUser = createQuery((ctx, userId: number) =>
-  ctx.db
-    .updateTable('users')
-    .set({ deleted_at: null })
-    .where('id', '=', userId)
-    .execute()
+  ctx.db.updateTable('users').set({ deleted_at: null }).where('id', '=', userId).execute()
 )
 ```
 
 ### Combined Pattern (CQRS-lite)
 
-```typescript
+````typescript
 import { createORM } from '@kysera/repository'
 import { createQuery } from '@kysera/dal'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -355,7 +337,7 @@ CREATE INDEX idx_users_deleted_at ON users(deleted_at);
 -- SQLite
 ALTER TABLE users ADD COLUMN deleted_at TEXT DEFAULT NULL;
 CREATE INDEX idx_users_deleted_at ON users(deleted_at);
-```
+````
 
 ## Transaction Support
 
@@ -369,7 +351,7 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 
 const orm = await createORM(db, [softDeletePlugin()])
 
-await orm.transaction(async (ctx) => {
+await orm.transaction(async ctx => {
   const userRepo = orm.createRepository(createUserRepository)
   const postRepo = orm.createRepository(createPostRepository)
 
@@ -390,7 +372,7 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 
 const executor = await createExecutor(db, [softDeletePlugin()])
 
-await withTransaction(executor, async (txCtx) => {
+await withTransaction(executor, async txCtx => {
   // All queries in transaction have soft-delete filter applied
   const user = await getUser(txCtx, userId)
   const posts = await getUserPosts(txCtx, userId)
@@ -411,7 +393,7 @@ await withTransaction(executor, async (txCtx) => {
 For related entities, manually implement cascade soft delete:
 
 ```typescript
-await orm.transaction(async (ctx) => {
+await orm.transaction(async ctx => {
   const userRepo = orm.createRepository(createUserRepository)
   const postRepo = orm.createRepository(createPostRepository)
 
@@ -439,7 +421,7 @@ You can override the soft-delete filter on a per-query basis using metadata.
 ```typescript
 import { createQuery } from '@kysera/dal'
 
-const getAllUsersIncludingDeleted = createQuery((ctx) => {
+const getAllUsersIncludingDeleted = createQuery(ctx => {
   const qb = ctx.db.selectFrom('users').selectAll()
 
   // Override soft-delete filter for this query
@@ -461,7 +443,7 @@ For better type safety, use `getRawDb()` to bypass all plugin interceptors:
 import { getRawDb } from '@kysera/executor'
 import { createQuery } from '@kysera/dal'
 
-const getAllUsers = createQuery((ctx) => {
+const getAllUsers = createQuery(ctx => {
   // Get raw Kysely instance without plugin interception
   const rawDb = getRawDb(ctx.db)
   return rawDb.selectFrom('users').selectAll().execute()
@@ -478,7 +460,7 @@ Always use nullable `deleted_at` columns:
 interface UsersTable {
   id: Generated<number>
   email: string
-  deleted_at: Date | null  // Must be nullable
+  deleted_at: Date | null // Must be nullable
 }
 ```
 
@@ -531,7 +513,7 @@ await cleanupOldDeleted(ctx, 90)
 Implement cascade soft delete for related entities:
 
 ```typescript
-await orm.transaction(async (ctx) => {
+await orm.transaction(async ctx => {
   const userRepo = orm.createRepository(createUserRepository)
   const postRepo = orm.createRepository(createPostRepository)
   const commentRepo = orm.createRepository(createCommentRepository)
@@ -590,12 +572,12 @@ interface Plugin {
 
 **IMPORTANT**: This plugin uses the **Method Override** pattern, not full query interception:
 
-| Operation | Behavior |
-|-----------|----------|
-| ✅ SELECT queries | Automatically filtered (`WHERE deleted_at IS NULL`) |
-| ❌ DELETE operations | NOT converted to soft deletes |
-| ✅ Repository methods | Extended with `softDelete()`, `restore()`, etc. |
-| ✅ Hard delete | Use `hardDelete()` method for real DELETE |
+| Operation             | Behavior                                            |
+| --------------------- | --------------------------------------------------- |
+| ✅ SELECT queries     | Automatically filtered (`WHERE deleted_at IS NULL`) |
+| ❌ DELETE operations  | NOT converted to soft deletes                       |
+| ✅ Repository methods | Extended with `softDelete()`, `restore()`, etc.     |
+| ✅ Hard delete        | Use `hardDelete()` method for real DELETE           |
 
 **This design is intentional for simplicity and explicitness.** Users must explicitly call `softDelete()` instead of `delete()` to perform soft deletes.
 

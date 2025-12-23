@@ -1,4 +1,4 @@
-import { prism } from '@xec-sh/kit';
+import { prism } from '@xec-sh/kit'
 import {
   ErrorCodes,
   DatabaseErrorCodes,
@@ -8,8 +8,8 @@ import {
   NetworkErrorCodes,
   MigrationErrorCodes,
   PluginErrorCodes,
-  type ErrorCode as UnifiedErrorCode,
-} from '@kysera/core';
+  type ErrorCode as UnifiedErrorCode
+} from '@kysera/core'
 
 /**
  * CLI Error Codes mapping to unified @kysera/core ErrorCodes
@@ -49,10 +49,10 @@ export const CLIErrorCodes = {
 
   // Plugin codes (mapped from @kysera/core)
   PLUGIN_ERROR: PluginErrorCodes.PLUGIN_VALIDATION_FAILED,
-  PLUGIN_NOT_FOUND: PluginErrorCodes.PLUGIN_NOT_FOUND,
-} as const;
+  PLUGIN_NOT_FOUND: PluginErrorCodes.PLUGIN_NOT_FOUND
+} as const
 
-export type CLIErrorCode = (typeof CLIErrorCodes)[keyof typeof CLIErrorCodes] | string;
+export type CLIErrorCode = (typeof CLIErrorCodes)[keyof typeof CLIErrorCodes] | string
 
 export class CLIError extends Error {
   constructor(
@@ -61,9 +61,9 @@ export class CLIError extends Error {
     public readonly details?: any,
     public readonly suggestions: string[] = []
   ) {
-    super(message);
-    this.name = 'CLIError';
-    Error.captureStackTrace(this, this.constructor);
+    super(message)
+    this.name = 'CLIError'
+    Error.captureStackTrace(this, this.constructor)
   }
 
   toJSON(): Record<string, unknown> {
@@ -72,32 +72,35 @@ export class CLIError extends Error {
       message: this.message,
       code: this.code,
       details: this.details,
-      suggestions: this.suggestions,
-    };
+      suggestions: this.suggestions
+    }
   }
 }
 
 export class ConfigurationError extends CLIError {
   constructor(message: string, suggestions: string[] = []) {
-    super(message, CLIErrorCodes.CONFIG_ERROR, undefined, suggestions);
-    this.name = 'ConfigurationError';
+    super(message, CLIErrorCodes.CONFIG_ERROR, undefined, suggestions)
+    this.name = 'ConfigurationError'
   }
 }
 
 export class CLIDatabaseError extends CLIError {
   constructor(message: string, suggestions: string[] = []) {
-    super(message, CLIErrorCodes.DATABASE_ERROR, undefined, suggestions);
-    this.name = 'CLIDatabaseError';
+    super(message, CLIErrorCodes.DATABASE_ERROR, undefined, suggestions)
+    this.name = 'CLIDatabaseError'
   }
 }
 
 // Alias for backward compatibility
-export const DatabaseError = CLIDatabaseError;
+export const DatabaseError = CLIDatabaseError
 
 export class ValidationError extends CLIError {
-  constructor(message: string, public readonly errors: string[] = []) {
-    super(message, CLIErrorCodes.VALIDATION_ERROR, { errors });
-    this.name = 'ValidationError';
+  constructor(
+    message: string,
+    public readonly errors: string[] = []
+  ) {
+    super(message, CLIErrorCodes.VALIDATION_ERROR, { errors })
+    this.name = 'ValidationError'
   }
 }
 
@@ -108,22 +111,25 @@ export class FileSystemError extends CLIError {
     suggestions: string[] = [],
     public readonly path?: string
   ) {
-    super(message, code, path ? { path } : undefined, suggestions);
-    this.name = 'FileSystemError';
+    super(message, code, path ? { path } : undefined, suggestions)
+    this.name = 'FileSystemError'
   }
 }
 
 export class NetworkError extends CLIError {
-  constructor(message: string, public readonly url?: string) {
-    super(message, CLIErrorCodes.NETWORK_ERROR, url ? { url } : undefined);
-    this.name = 'NetworkError';
+  constructor(
+    message: string,
+    public readonly url?: string
+  ) {
+    super(message, CLIErrorCodes.NETWORK_ERROR, url ? { url } : undefined)
+    this.name = 'NetworkError'
   }
 }
 
 export interface ErrorCodeInfo {
-  code: string;
-  message: string;
-  suggestions?: string[];
+  code: string
+  message: string
+  suggestions?: string[]
 }
 
 /**
@@ -139,8 +145,8 @@ export const ERROR_CODES: Record<string, ErrorCodeInfo> = {
       'Check your database connection string',
       'Verify the database server is running',
       'Check network connectivity',
-      'Verify credentials are correct',
-    ],
+      'Verify credentials are correct'
+    ]
   },
   E002: {
     code: ErrorCodes.MIGRATION_UP_FAILED,
@@ -149,8 +155,8 @@ export const ERROR_CODES: Record<string, ErrorCodeInfo> = {
       'Review the migration file for errors',
       'Check if migration was already executed',
       'Run "kysera migrate status" to verify state',
-      'Use "kysera migrate down" to rollback if needed',
-    ],
+      'Use "kysera migrate down" to rollback if needed'
+    ]
   },
   E003: {
     code: ErrorCodes.CONFIG_VALIDATION_FAILED,
@@ -158,8 +164,8 @@ export const ERROR_CODES: Record<string, ErrorCodeInfo> = {
     suggestions: [
       'Check your kysera.config.ts file',
       'Run "kysera config validate" to check configuration',
-      'Ensure all required fields are provided',
-    ],
+      'Ensure all required fields are provided'
+    ]
   },
   E004: {
     code: ErrorCodes.PLUGIN_VALIDATION_FAILED,
@@ -167,8 +173,8 @@ export const ERROR_CODES: Record<string, ErrorCodeInfo> = {
     suggestions: [
       'Check plugin configuration',
       'Verify plugin is properly installed',
-      'Check plugin compatibility with current version',
-    ],
+      'Check plugin compatibility with current version'
+    ]
   },
   E005: {
     code: ErrorCodes.FS_WRITE_FAILED,
@@ -176,145 +182,149 @@ export const ERROR_CODES: Record<string, ErrorCodeInfo> = {
     suggestions: [
       'Verify template files exist',
       'Check write permissions for output directory',
-      'Ensure database connection for introspection',
-    ],
-  },
-};
+      'Ensure database connection for introspection'
+    ]
+  }
+}
 
 /**
  * Get unified error code from legacy code
  */
 export function getUnifiedErrorCode(legacyCode: string): string {
-  const errorInfo = ERROR_CODES[legacyCode];
-  return errorInfo?.code || legacyCode;
+  const errorInfo = ERROR_CODES[legacyCode]
+  return errorInfo?.code || legacyCode
 }
 
 export function handleError(error: unknown): void {
   if (error instanceof CLIError) {
-    handleCLIError(error);
+    handleCLIError(error)
   } else if (error instanceof Error) {
-    handleGenericError(error);
+    handleGenericError(error)
   } else {
-    handleUnknownError(error);
+    handleUnknownError(error)
   }
-  process.exit(1);
+  process.exit(1)
 }
 
 function handleCLIError(error: CLIError): void {
-  const output: string[] = [];
-  output.push('');
-  output.push(prism.red(`✗ ${error.message}`));
+  const output: string[] = []
+  output.push('')
+  output.push(prism.red(`✗ ${error.message}`))
 
   if (error.code) {
-    output.push('');
-    output.push(prism.gray(`Error code: ${error.code}`));
+    output.push('')
+    output.push(prism.gray(`Error code: ${error.code}`))
   }
 
   if (error instanceof ValidationError && error.errors.length > 0) {
-    output.push('');
-    output.push('Validation errors:');
+    output.push('')
+    output.push('Validation errors:')
     for (const err of error.errors) {
-      output.push(`  • ${err}`);
+      output.push(`  • ${err}`)
     }
   }
 
   if (error.suggestions && error.suggestions.length > 0) {
-    output.push('');
-    output.push('Suggestions:');
+    output.push('')
+    output.push('Suggestions:')
     for (const suggestion of error.suggestions) {
-      output.push(prism.yellow(`  → ${suggestion}`));
+      output.push(prism.yellow(`  → ${suggestion}`))
     }
   }
 
   // Check for verbose mode using environment variable
-  const isVerbose = process.env.VERBOSE === 'true';
+  const isVerbose = process.env.VERBOSE === 'true'
   if (isVerbose && error.details) {
-    output.push('');
-    output.push('Details:');
-    output.push(JSON.stringify(error.details, null, 2));
+    output.push('')
+    output.push('Details:')
+    output.push(JSON.stringify(error.details, null, 2))
   }
 
   if (isVerbose && error.stack) {
-    output.push('');
-    output.push(prism.gray('Stack trace:'));
-    output.push(prism.gray(error.stack));
+    output.push('')
+    output.push(prism.gray('Stack trace:'))
+    output.push(prism.gray(error.stack))
   }
 
-  output.push('');
+  output.push('')
 
   // Add help message for specific error codes
   if (error.code === 'CONFIG_NOT_FOUND') {
-    output.push(prism.gray(`Need help? Run 'kysera help' or visit https://kysera.dev/docs`));
+    output.push(prism.gray(`Need help? Run 'kysera help' or visit https://kysera.dev/docs`))
   } else {
-    output.push(prism.gray(`Need help? Run 'kysera help' or visit https://kysera.dev/docs`));
+    output.push(prism.gray(`Need help? Run 'kysera help' or visit https://kysera.dev/docs`))
   }
 
-  const errorMessage = output.join('\n');
-  console.error(errorMessage);
+  const errorMessage = output.join('\n')
+  console.error(errorMessage)
 }
 
 function handleGenericError(error: Error): void {
-  const output: string[] = [];
-  output.push('');
-  output.push(prism.red(`✗ ${error.message}`));
+  const output: string[] = []
+  output.push('')
+  output.push(prism.red(`✗ ${error.message}`))
 
   // Try to provide helpful suggestions based on error message
-  const suggestions = getSuggestionsFromError(error);
+  const suggestions = getSuggestionsFromError(error)
   if (suggestions.length > 0) {
-    output.push('');
-    output.push('Suggestions:');
+    output.push('')
+    output.push('Suggestions:')
     for (const suggestion of suggestions) {
-      output.push(prism.yellow(`  → ${suggestion}`));
+      output.push(prism.yellow(`  → ${suggestion}`))
     }
   }
 
-  const isVerbose = process.env.VERBOSE === 'true';
+  const isVerbose = process.env.VERBOSE === 'true'
   if (isVerbose && error.stack) {
-    output.push('');
-    output.push(prism.gray('Stack trace:'));
-    output.push(prism.gray(error.stack));
+    output.push('')
+    output.push(prism.gray('Stack trace:'))
+    output.push(prism.gray(error.stack))
   }
 
-  output.push('');
-  output.push(prism.gray(`This might be a bug. Please report it at https://github.com/kysera/kysera/issues`));
+  output.push('')
+  output.push(
+    prism.gray(`This might be a bug. Please report it at https://github.com/kysera/kysera/issues`)
+  )
 
-  console.error(output.join('\n'));
+  console.error(output.join('\n'))
 }
 
 function handleUnknownError(error: unknown): void {
-  const output: string[] = [];
-  output.push('');
-  output.push(prism.red('✗ An unexpected error occurred'));
-  output.push('');
-  output.push(String(error));
-  output.push('');
-  output.push(prism.gray(`This is likely a bug. Please report it at https://github.com/kysera/kysera/issues`));
+  const output: string[] = []
+  output.push('')
+  output.push(prism.red('✗ An unexpected error occurred'))
+  output.push('')
+  output.push(String(error))
+  output.push('')
+  output.push(
+    prism.gray(`This is likely a bug. Please report it at https://github.com/kysera/kysera/issues`)
+  )
 
-  console.error(output.join('\n'));
+  console.error(output.join('\n'))
 }
 
 function getSuggestionsFromError(error: Error): string[] {
-  const suggestions: string[] = [];
-  const message = error.message.toLowerCase();
+  const suggestions: string[] = []
+  const message = error.message.toLowerCase()
 
   if (message.includes('enoent') || message.includes('no such file')) {
-    suggestions.push('Check if the file or directory exists');
-    suggestions.push('Verify the path is correct');
+    suggestions.push('Check if the file or directory exists')
+    suggestions.push('Verify the path is correct')
   } else if (message.includes('eacces') || message.includes('permission')) {
-    suggestions.push('Check file/directory permissions');
-    suggestions.push('Try running with appropriate permissions');
+    suggestions.push('Check file/directory permissions')
+    suggestions.push('Try running with appropriate permissions')
   } else if (message.includes('econnrefused')) {
-    suggestions.push('Check if the service is running');
-    suggestions.push('Verify the connection details');
+    suggestions.push('Check if the service is running')
+    suggestions.push('Verify the connection details')
   } else if (message.includes('timeout')) {
-    suggestions.push('Check network connectivity');
-    suggestions.push('Increase timeout settings if needed');
+    suggestions.push('Check network connectivity')
+    suggestions.push('Increase timeout settings if needed')
   } else if (message.includes('module not found')) {
-    suggestions.push('Run "npm install" to install dependencies');
-    suggestions.push('Check if the module is listed in package.json');
+    suggestions.push('Run "npm install" to install dependencies')
+    suggestions.push('Check if the module is listed in package.json')
   }
 
-  return suggestions;
+  return suggestions
 }
 
 /**
@@ -322,7 +332,7 @@ function getSuggestionsFromError(error: Error): string[] {
  */
 export function assert(condition: any, message: string): asserts condition {
   if (!condition) {
-    throw new CLIError(message, 'ASSERTION_ERROR');
+    throw new CLIError(message, 'ASSERTION_ERROR')
   }
 }
 
@@ -330,34 +340,34 @@ export function assert(condition: any, message: string): asserts condition {
  * Format error for display
  */
 export function formatError(error: unknown): string {
-  const lines: string[] = [];
+  const lines: string[] = []
 
   if (error instanceof CLIError) {
-    lines.push(error.message);
-    lines.push(error.code);
+    lines.push(error.message)
+    lines.push(error.code)
 
     if (error.details) {
       if (typeof error.details === 'object') {
         for (const [key, value] of Object.entries(error.details)) {
-          lines.push(String(value));
+          lines.push(String(value))
         }
       } else {
-        lines.push(String(error.details));
+        lines.push(String(error.details))
       }
     }
 
     if (error.suggestions && error.suggestions.length > 0) {
-      lines.push(...error.suggestions);
+      lines.push(...error.suggestions)
     }
   } else if (error instanceof Error) {
-    lines.push(error.message);
+    lines.push(error.message)
   } else if (error === null || error === undefined) {
-    lines.push('Unknown error');
+    lines.push('Unknown error')
   } else {
-    lines.push(String(error));
+    lines.push(String(error))
   }
 
-  return lines.join('\n');
+  return lines.join('\n')
 }
 
 /**
@@ -367,6 +377,6 @@ export function formatError(error: unknown): string {
  * @returns true if the error message contains any of the patterns
  */
 export function isExpectedError(error: unknown, patterns: string[]): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return patterns.some((pattern) => message.toLowerCase().includes(pattern.toLowerCase()));
+  const message = error instanceof Error ? error.message : String(error)
+  return patterns.some(pattern => message.toLowerCase().includes(pattern.toLowerCase()))
 }

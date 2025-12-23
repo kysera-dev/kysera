@@ -9,7 +9,7 @@ const basePool = new Pool({
   connectionString: process.env['DATABASE_URL'] || 'postgresql://localhost/multitenant_example',
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 2000
 })
 
 // Create pool with metrics (for health checks)
@@ -18,9 +18,7 @@ export const pool = createMetricsPool(basePool)
 // Create Kysely instance
 const baseDb = new Kysely<Database>({
   dialect: new PostgresDialect({ pool: basePool }),
-  log: process.env['NODE_ENV'] === 'development'
-    ? ['query', 'error']
-    : ['error']
+  log: process.env['NODE_ENV'] === 'development' ? ['query', 'error'] : ['error']
 })
 
 // Add debug wrapper - always wrap for consistent typing

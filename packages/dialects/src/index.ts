@@ -28,19 +28,26 @@
  */
 
 // Types
-export type { DatabaseDialect, ConnectionConfig, DialectAdapter, DatabaseErrorLike } from './types.js';
+export type {
+  DatabaseDialect,
+  ConnectionConfig,
+  DialectAdapter,
+  DatabaseErrorLike
+} from './types.js'
 
 // Factory and adapters
-export { getAdapter, createDialectAdapter, registerAdapter } from './factory.js';
-export { PostgresAdapter, postgresAdapter } from './adapters/postgres.js';
-export { MySQLAdapter, mysqlAdapter } from './adapters/mysql.js';
-export { SQLiteAdapter, sqliteAdapter } from './adapters/sqlite.js';
+export { getAdapter, createDialectAdapter, registerAdapter } from './factory.js'
+export { PostgresAdapter, postgresAdapter } from './adapters/postgres.js'
+export { MySQLAdapter, mysqlAdapter } from './adapters/mysql.js'
+export { SQLiteAdapter, sqliteAdapter } from './adapters/sqlite.js'
 
 // Connection utilities
-export { parseConnectionUrl, buildConnectionUrl, getDefaultPort } from './connection.js';
+export { parseConnectionUrl, buildConnectionUrl, getDefaultPort } from './connection.js'
 
 // Helper functions (standalone, backward compatible)
 export {
+  validateIdentifier,
+  assertValidIdentifier,
   tableExists,
   getTableColumns,
   getTables,
@@ -51,5 +58,5 @@ export {
   isForeignKeyError,
   isNotNullError,
   getDatabaseSize,
-  truncateAllTables,
-} from './helpers.js';
+  truncateAllTables
+} from './helpers.js'

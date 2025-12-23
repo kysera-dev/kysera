@@ -61,6 +61,7 @@ Kysera CLI provides shell completion scripts for Bash, Zsh, and Fish shells to e
 ### Bash
 
 **System-wide installation:**
+
 ```bash
 sudo cp scripts/completions/kysera.bash /etc/bash_completion.d/kysera
 # or on macOS with Homebrew:
@@ -68,12 +69,14 @@ sudo cp scripts/completions/kysera.bash /usr/local/etc/bash_completion.d/kysera
 ```
 
 **User installation:**
+
 ```bash
 # Add to your ~/.bashrc or ~/.bash_profile:
 source /path/to/kysera-cli/scripts/completions/kysera.bash
 ```
 
 Then reload your shell:
+
 ```bash
 source ~/.bashrc
 ```
@@ -81,11 +84,13 @@ source ~/.bashrc
 ### Zsh
 
 **System-wide installation:**
+
 ```bash
 sudo cp scripts/completions/kysera.zsh /usr/local/share/zsh/site-functions/_kysera
 ```
 
 **User installation:**
+
 ```bash
 # Create completions directory if it doesn't exist
 mkdir -p ~/.zsh/completions
@@ -99,6 +104,7 @@ autoload -U compinit && compinit
 ```
 
 Then reload your shell:
+
 ```bash
 source ~/.zshrc
 ```
@@ -106,6 +112,7 @@ source ~/.zshrc
 ### Fish
 
 **Installation:**
+
 ```bash
 # User installation (recommended)
 cp scripts/completions/kysera.fish ~/.config/fish/completions/
@@ -145,21 +152,21 @@ kysera --config <TAB>
 
 ## 📚 Command Overview
 
-| Command | Description | Aliases |
-|---------|-------------|---------|
-| `init` | Initialize a new Kysera project | |
-| `migrate` | Database migration management | |
-| `generate` | Code generation utilities | `g` |
-| `db` | Database management tools | |
-| `health` | Health monitoring and metrics | |
-| `audit` | Audit logging and history | |
-| `query` | Query analysis and utilities | |
-| `test` | Test environment management | |
-| `plugin` | Plugin management | |
-| `debug` | Debug and diagnostic tools | |
-| `repository` | Repository pattern utilities | |
-| `hello` | Test command to verify CLI setup | |
-| `stats` | Show CLI performance statistics | |
+| Command      | Description                      | Aliases |
+| ------------ | -------------------------------- | ------- |
+| `init`       | Initialize a new Kysera project  |         |
+| `migrate`    | Database migration management    |         |
+| `generate`   | Code generation utilities        | `g`     |
+| `db`         | Database management tools        |         |
+| `health`     | Health monitoring and metrics    |         |
+| `audit`      | Audit logging and history        |         |
+| `query`      | Query analysis and utilities     |         |
+| `test`       | Test environment management      |         |
+| `plugin`     | Plugin management                |         |
+| `debug`      | Debug and diagnostic tools       |         |
+| `repository` | Repository pattern utilities     |         |
+| `hello`      | Test command to verify CLI setup |         |
+| `stats`      | Show CLI performance statistics  |         |
 
 ### Command Aliases
 
@@ -256,16 +263,16 @@ For simpler projects, you can use `kysera.config.json`:
 
 All commands support these global options:
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--verbose` | Enable detailed output with debug information | `false` |
-| `-q, --quiet` | Suppress non-essential output | `false` |
-| `--dry-run` | Preview changes without executing | `false` |
-| `--config <path>` | Path to custom configuration file | Auto-detect |
-| `--json` | Output results as JSON | `false` |
-| `--no-color` | Disable colored output | `false` |
-| `--env <environment>` | Set environment (development/production/test) | `development` |
-| `--stats` | Show performance statistics after command execution | `false` |
+| Option                | Description                                         | Default       |
+| --------------------- | --------------------------------------------------- | ------------- |
+| `--verbose`           | Enable detailed output with debug information       | `false`       |
+| `-q, --quiet`         | Suppress non-essential output                       | `false`       |
+| `--dry-run`           | Preview changes without executing                   | `false`       |
+| `--config <path>`     | Path to custom configuration file                   | Auto-detect   |
+| `--json`              | Output results as JSON                              | `false`       |
+| `--no-color`          | Disable colored output                              | `false`       |
+| `--env <environment>` | Set environment (development/production/test)       | `development` |
+| `--stats`             | Show performance statistics after command execution | `false`       |
 
 ### Examples
 
@@ -346,6 +353,7 @@ Startup time: 124ms
 ```
 
 The stats command helps you:
+
 - Identify frequently used commands (which are preloaded for faster startup)
 - Monitor cache efficiency
 - Track command load times
@@ -380,6 +388,7 @@ TEST_POSTGRES=true TEST_MYSQL=true pnpm test
 ## 🚀 Advanced Features
 
 ### Progress Indicators
+
 ```bash
 kysera migrate up
 ✓ Running migration: 001_create_users.ts
@@ -387,6 +396,7 @@ kysera migrate up
 ```
 
 ### Dry Run Mode
+
 ```bash
 kysera migrate up --dry-run
 [DRY RUN] Would execute:
@@ -395,6 +405,7 @@ kysera migrate up --dry-run
 ```
 
 ### Performance Monitoring
+
 ```bash
 kysera stats
 Command Load Times:

@@ -9,5 +9,5 @@ export {
   type DatabasePool,
   type MetricsPool,
   createMetricsPool,
-  isMetricsPool,
-} from './metrics.js';
+  isMetricsPool
+} from './metrics.js'

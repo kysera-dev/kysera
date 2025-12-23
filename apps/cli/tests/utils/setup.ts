@@ -1,7 +1,7 @@
-import { beforeAll, afterAll, vi } from 'vitest';
+import { beforeAll, afterAll, vi } from 'vitest'
 
 // Set test environment
-process.env['NODE_ENV'] = 'test';
+process.env['NODE_ENV'] = 'test'
 
 // Global mock for @xec-sh/kit to prevent "No export" errors
 vi.mock('@xec-sh/kit', () => ({
@@ -13,7 +13,7 @@ vi.mock('@xec-sh/kit', () => ({
     step: vi.fn(),
     warn: vi.fn(),
     warning: vi.fn(),
-    error: vi.fn(),
+    error: vi.fn()
   },
   // prism color utilities
   prism: {
@@ -41,7 +41,7 @@ vi.mock('@xec-sh/kit', () => ({
     bgBlue: (s: string) => s,
     bgMagenta: (s: string) => s,
     bgCyan: (s: string) => s,
-    bgWhite: (s: string) => s,
+    bgWhite: (s: string) => s
   },
   // strip ANSI codes
   strip: (s: string) => s.replace(/\[.*?\]/g, ''),
@@ -64,7 +64,7 @@ vi.mock('@xec-sh/kit', () => ({
     fail: vi.fn(),
     warn: vi.fn(),
     text: '',
-    isCancelled: false,
+    isCancelled: false
   })),
   table: vi.fn(() => ''),
   interactiveTable: vi.fn(),
@@ -80,26 +80,26 @@ vi.mock('@xec-sh/kit', () => ({
   getRows: vi.fn(),
   getColumns: vi.fn(),
   settings: {},
-  updateSettings: vi.fn(),
-}));
+  updateSettings: vi.fn()
+}))
 
 // Global test setup
 beforeAll(() => {
   // Suppress console output during tests unless VERBOSE is set
   if (!process.env['VERBOSE']) {
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-    vi.spyOn(console, 'info').mockImplementation(() => {});
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
     // Keep error output for debugging
     // vi.spyOn(console, 'error').mockImplementation(() => {});
   }
-});
+})
 
 afterAll(() => {
-  vi.restoreAllMocks();
-});
+  vi.restoreAllMocks()
+})
 
 // Global error handling for unhandled rejections
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason)
+})

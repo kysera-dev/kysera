@@ -42,9 +42,9 @@ Thrown when a UNIQUE constraint is violated:
 
 ```typescript
 class UniqueConstraintError extends DatabaseError {
-  constraint: string    // e.g., 'users_email_unique'
-  table: string         // e.g., 'users'
-  columns: string[]     // e.g., ['email']
+  constraint: string // e.g., 'users_email_unique'
+  table: string // e.g., 'users'
+  columns: string[] // e.g., ['email']
 }
 ```
 
@@ -54,8 +54,8 @@ Thrown when a FOREIGN KEY constraint is violated:
 
 ```typescript
 class ForeignKeyError extends DatabaseError {
-  constraint: string      // e.g., 'posts_user_id_fkey'
-  table: string           // e.g., 'posts'
+  constraint: string // e.g., 'posts_user_id_fkey'
+  table: string // e.g., 'posts'
   referencedTable: string // e.g., 'users'
 }
 ```
@@ -72,6 +72,7 @@ class NotFoundError extends DatabaseError {
 ```
 
 **Constructor:**
+
 ```typescript
 new NotFoundError(entity: string, filters?: Record<string, unknown>)
 ```
@@ -178,10 +179,7 @@ Kysera provides a unified error code system:
 ```typescript
 async function createUser(data: CreateUserInput): Promise<User> {
   try {
-    return await db.insertInto('users')
-      .values(data)
-      .returningAll()
-      .executeTakeFirstOrThrow()
+    return await db.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
   } catch (error) {
     const dbError = parseDatabaseError(error, dialect)
 
@@ -237,7 +235,7 @@ try {
 } catch (error) {
   logger.error('Failed to update user', {
     userId,
-    data: { ...data, password: '[REDACTED]' },  // Don't log sensitive data
+    data: { ...data, password: '[REDACTED]' }, // Don't log sensitive data
     error: error instanceof Error ? error.message : String(error),
     stack: error instanceof Error ? error.stack : undefined,
     code: error instanceof DatabaseError ? error.code : undefined
@@ -309,9 +307,6 @@ try {
 try {
   await processOrder(orderId)
 } catch (error) {
-  throw new ApplicationError(
-    `Failed to process order ${orderId}`,
-    { cause: error }
-  )
+  throw new ApplicationError(`Failed to process order ${orderId}`, { cause: error })
 }
 ```

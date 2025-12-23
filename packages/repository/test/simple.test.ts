@@ -1,40 +1,40 @@
-import { describe, it, expect } from 'vitest';
-import { z } from 'zod';
-import { createTestDatabase } from './setup/database.js';
-import { createRepositoryFactory, zodAdapter } from '../src/index.js';
+import { describe, it, expect } from 'vitest'
+import { z } from 'zod'
+import { createTestDatabase } from './setup/database.js'
+import { createRepositoryFactory, zodAdapter } from '../src/index.js'
 
 const CreateUserSchema = z.object({
   email: z.string().email(),
-  name: z.string(),
-});
+  name: z.string()
+})
 
 describe('Simple Test', () => {
   it('should create database', async () => {
-    const { db, cleanup } = createTestDatabase();
-    expect(db).toBeDefined();
-    await cleanup();
-  });
+    const { db, cleanup } = createTestDatabase()
+    expect(db).toBeDefined()
+    await cleanup()
+  })
 
   it('should create factory', async () => {
-    const { db, cleanup } = createTestDatabase();
-    const factory = createRepositoryFactory(db);
-    expect(factory).toBeDefined();
-    await cleanup();
-  });
+    const { db, cleanup } = createTestDatabase()
+    const factory = createRepositoryFactory(db)
+    expect(factory).toBeDefined()
+    await cleanup()
+  })
 
   it('should create repository', async () => {
-    const { db, cleanup } = createTestDatabase();
-    const factory = createRepositoryFactory(db);
+    const { db, cleanup } = createTestDatabase()
+    const factory = createRepositoryFactory(db)
 
     const userRepo = factory.create({
       tableName: 'users',
-      mapRow: (row) => row,
+      mapRow: row => row,
       schemas: {
-        create: zodAdapter(CreateUserSchema),
-      },
-    });
+        create: zodAdapter(CreateUserSchema)
+      }
+    })
 
-    expect(userRepo).toBeDefined();
-    await cleanup();
-  });
-});
+    expect(userRepo).toBeDefined()
+    await cleanup()
+  })
+})

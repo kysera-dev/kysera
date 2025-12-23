@@ -1,5 +1,5 @@
-import { defineConfig } from 'vitest/config';
-import { resolve } from 'node:path';
+import { defineConfig } from 'vitest/config'
+import { resolve } from 'node:path'
 
 export default defineConfig({
   test: {
@@ -18,14 +18,14 @@ export default defineConfig({
         'tests/',
         'src/**/*.test.ts',
         'src/**/*.spec.ts',
-        'src/templates/**',
+        'src/templates/**'
       ],
       thresholds: {
         branches: 80,
         functions: 80,
         lines: 80,
-        statements: 80,
-      },
+        statements: 80
+      }
     },
     testTimeout: 30000,
     hookTimeout: 30000,
@@ -39,14 +39,14 @@ export default defineConfig({
     pool: 'forks',
     poolOptions: {
       forks: {
-        singleFork: true,
-      },
-    },
+        singleFork: true
+      }
+    }
   },
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
-      '@tests': resolve(__dirname, './tests'),
-    },
-  },
-});
+      '@tests': resolve(__dirname, './tests')
+    }
+  }
+})

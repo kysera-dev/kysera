@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import { Command } from 'commander';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
+import { Command } from 'commander'
 
 // Mock dependencies
 vi.mock('node:fs', () => ({
@@ -7,16 +7,16 @@ vi.mock('node:fs', () => ({
   mkdirSync: vi.fn(),
   writeFileSync: vi.fn(),
   readFileSync: vi.fn(),
-  readdirSync: vi.fn(),
-}));
+  readdirSync: vi.fn()
+}))
 
-vi.mock('node:path', async (importOriginal) => {
-  const actual = await importOriginal();
+vi.mock('node:path', async importOriginal => {
+  const actual = await importOriginal()
   return {
     ...(actual as object),
-    resolve: vi.fn((...args: string[]) => args[args.length - 1]),
-  };
-});
+    resolve: vi.fn((...args: string[]) => args[args.length - 1])
+  }
+})
 
 vi.mock('@xec-sh/kit', () => ({
   log: {
@@ -27,7 +27,7 @@ vi.mock('@xec-sh/kit', () => ({
     warn: vi.fn(),
     message: vi.fn(),
     warning: vi.fn(),
-    error: vi.fn(),
+    error: vi.fn()
   },
   prism: {
     cyan: (s: string) => s,
@@ -36,7 +36,7 @@ vi.mock('@xec-sh/kit', () => ({
     gray: (s: string) => s,
     blue: (s: string) => s,
     red: (s: string) => s,
-    bold: (s: string) => s,
+    bold: (s: string) => s
   },
   strip: (s: string) => s,
   spinner: vi.fn(() => ({
@@ -46,11 +46,11 @@ vi.mock('@xec-sh/kit', () => ({
     warn: vi.fn(),
     message: vi.fn(),
     stop: vi.fn(),
-    text: '',
+    text: ''
   })),
   table: vi.fn((data: any[]) => JSON.stringify(data)),
-  confirm: vi.fn(() => Promise.resolve(true)),
-}));
+  confirm: vi.fn(() => Promise.resolve(true))
+}))
 
 vi.mock('../../../src/utils/logger.js', () => ({
   logger: {
@@ -58,68 +58,70 @@ vi.mock('../../../src/utils/logger.js', () => ({
     warn: vi.fn(),
     message: vi.fn(),
     error: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
+    debug: vi.fn()
+  }
+}))
 
 vi.mock('../../../src/config/loader.js', () => ({
-  loadConfig: vi.fn(),
-}));
+  loadConfig: vi.fn()
+}))
 
 vi.mock('../../../src/utils/database.js', () => ({
-  getDatabaseConnection: vi.fn(),
-}));
+  getDatabaseConnection: vi.fn()
+}))
 
 vi.mock('../../../src/commands/generate/introspector.js', () => {
-  const mockClass = vi.fn().mockImplementation(function(this: any) {
-    this.getTables = vi.fn().mockResolvedValue(['users', 'posts']);
+  const mockClass = vi.fn().mockImplementation(function (this: any) {
+    this.getTables = vi.fn().mockResolvedValue(['users', 'posts'])
     this.getTableInfo = vi.fn().mockResolvedValue({
       name: 'users',
       columns: [
         { name: 'id', dataType: 'integer', isNullable: false, isPrimaryKey: true },
-        { name: 'email', dataType: 'varchar', isNullable: false, isPrimaryKey: false },
+        { name: 'email', dataType: 'varchar', isNullable: false, isPrimaryKey: false }
       ],
       indexes: [],
       primaryKey: ['id'],
-      foreignKeys: [],
-    });
+      foreignKeys: []
+    })
     this.introspect = vi.fn().mockResolvedValue({
-      tables: [{
-        name: 'users',
-        columns: [
-          { name: 'id', dataType: 'integer', isNullable: false, isPrimaryKey: true },
-          { name: 'email', dataType: 'varchar', isNullable: false, isPrimaryKey: false },
-        ],
-        indexes: [],
-        primaryKey: ['id'],
-        foreignKeys: [],
-      }],
-    });
-    this.getAllRows = vi.fn().mockResolvedValue([{ id: 1, email: 'test@example.com' }]);
-    return this;
-  });
+      tables: [
+        {
+          name: 'users',
+          columns: [
+            { name: 'id', dataType: 'integer', isNullable: false, isPrimaryKey: true },
+            { name: 'email', dataType: 'varchar', isNullable: false, isPrimaryKey: false }
+          ],
+          indexes: [],
+          primaryKey: ['id'],
+          foreignKeys: []
+        }
+      ]
+    })
+    this.getAllRows = vi.fn().mockResolvedValue([{ id: 1, email: 'test@example.com' }])
+    return this
+  })
 
   // Add static method
   mockClass.mapDataTypeToTypeScript = vi.fn((dataType: string, isNullable: boolean) => {
-    return isNullable ? 'string | null' : 'string';
-  });
+    return isNullable ? 'string | null' : 'string'
+  })
 
   return {
-    DatabaseIntrospector: mockClass,
-  };
-});
+    DatabaseIntrospector: mockClass
+  }
+})
 
-import { existsSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { loadConfig } from '../../../src/config/loader.js';
-import { getDatabaseConnection } from '../../../src/utils/database.js';
-import { DatabaseIntrospector } from '../../../src/commands/generate/introspector.js';
-import { dbCommand } from '../../../src/commands/db/index.js';
-import { tablesCommand } from '../../../src/commands/db/tables.js';
-import { introspectCommand } from '../../../src/commands/db/introspect.js';
-import { seedCommand } from '../../../src/commands/db/seed.js';
-import { dumpCommand } from '../../../src/commands/db/dump.js';
-import { restoreCommand } from '../../../src/commands/db/restore.js';
+import { existsSync, writeFileSync, readFileSync, readdirSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { loadConfig } from '../../../src/config/loader.js'
+import { getDatabaseConnection } from '../../../src/utils/database.js'
+import { DatabaseIntrospector } from '../../../src/commands/generate/introspector.js'
+import { dbCommand } from '../../../src/commands/db/index.js'
+import { tablesCommand } from '../../../src/commands/db/tables.js'
+import { introspectCommand } from '../../../src/commands/db/introspect.js'
+import { seedCommand } from '../../../src/commands/db/seed.js'
+import { dumpCommand } from '../../../src/commands/db/dump.js'
+import { restoreCommand } from '../../../src/commands/db/restore.js'
 
 // Mock table info
 const mockTableInfo = {
@@ -127,14 +129,12 @@ const mockTableInfo = {
   columns: [
     { name: 'id', dataType: 'integer', isNullable: false, isPrimaryKey: true },
     { name: 'email', dataType: 'varchar', isNullable: false, isPrimaryKey: false },
-    { name: 'name', dataType: 'varchar', isNullable: true, isPrimaryKey: false },
+    { name: 'name', dataType: 'varchar', isNullable: true, isPrimaryKey: false }
   ],
-  indexes: [
-    { name: 'users_pkey', columns: ['id'], isUnique: true, isPrimary: true },
-  ],
+  indexes: [{ name: 'users_pkey', columns: ['id'], isUnique: true, isPrimary: true }],
   primaryKey: ['id'],
-  foreignKeys: [],
-};
+  foreignKeys: []
+}
 
 // Mock transaction object
 const mockTrx = {
@@ -143,33 +143,33 @@ const mockTrx = {
   commit: vi.fn().mockResolvedValue(undefined),
   rollback: vi.fn().mockResolvedValue(undefined),
   deleteFrom: vi.fn(() => ({
-    execute: vi.fn().mockResolvedValue(undefined),
+    execute: vi.fn().mockResolvedValue(undefined)
   })),
   insertInto: vi.fn(() => ({
     values: vi.fn().mockReturnThis(),
-    execute: vi.fn().mockResolvedValue(undefined),
+    execute: vi.fn().mockResolvedValue(undefined)
   })),
   schema: {
     dropTable: vi.fn(() => ({
       ifExists: vi.fn().mockReturnThis(),
-      execute: vi.fn().mockResolvedValue(undefined),
+      execute: vi.fn().mockResolvedValue(undefined)
     })),
     createTable: vi.fn(() => ({
       addColumn: vi.fn().mockReturnThis(),
       addForeignKeyConstraint: vi.fn().mockReturnThis(),
-      execute: vi.fn().mockResolvedValue(undefined),
+      execute: vi.fn().mockResolvedValue(undefined)
     })),
     createIndex: vi.fn(() => ({
       on: vi.fn().mockReturnThis(),
       columns: vi.fn().mockReturnThis(),
       unique: vi.fn().mockReturnThis(),
-      execute: vi.fn().mockResolvedValue(undefined),
-    })),
+      execute: vi.fn().mockResolvedValue(undefined)
+    }))
   },
   fn: {
-    now: vi.fn(() => 'NOW()'),
-  },
-};
+    now: vi.fn(() => 'NOW()')
+  }
+}
 
 // Mock database connection
 const mockDb = {
@@ -179,595 +179,592 @@ const mockDb = {
     selectAll: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     execute: vi.fn().mockResolvedValue([{ id: 1, email: 'test@test.com', name: 'Test' }]),
-    executeTakeFirst: vi.fn().mockResolvedValue({ count: 10 }),
+    executeTakeFirst: vi.fn().mockResolvedValue({ count: 10 })
   })),
   selectNoFrom: vi.fn(() => ({
-    executeTakeFirst: vi.fn().mockResolvedValue({ table_size: 1000, index_size: 500 }),
+    executeTakeFirst: vi.fn().mockResolvedValue({ table_size: 1000, index_size: 500 })
   })),
   fn: {
-    countAll: vi.fn(() => ({ as: vi.fn() })),
+    countAll: vi.fn(() => ({ as: vi.fn() }))
   },
   deleteFrom: vi.fn(() => ({
-    execute: vi.fn().mockResolvedValue(undefined),
+    execute: vi.fn().mockResolvedValue(undefined)
   })),
   insertInto: vi.fn(() => ({
     values: vi.fn().mockReturnThis(),
-    execute: vi.fn().mockResolvedValue(undefined),
+    execute: vi.fn().mockResolvedValue(undefined)
   })),
   transaction: vi.fn(() => ({
     execute: vi.fn(async (callback: (trx: any) => Promise<void>) => {
-      await callback(mockTrx);
-    }),
+      await callback(mockTrx)
+    })
   })),
   raw: vi.fn(),
   schema: {
     createTable: vi.fn().mockReturnThis(),
-    dropTable: vi.fn().mockReturnThis(),
-  },
-};
+    dropTable: vi.fn().mockReturnThis()
+  }
+}
 
 describe('db command', () => {
-  let command: Command;
+  let command: Command
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    command = dbCommand();
-  });
+    vi.clearAllMocks()
+    command = dbCommand()
+  })
 
   describe('command configuration', () => {
     it('should have the correct command name', () => {
-      expect(command.name()).toBe('db');
-    });
+      expect(command.name()).toBe('db')
+    })
 
     it('should have all subcommands', () => {
-      const subcommands = command.commands.map((c) => c.name());
-      expect(subcommands).toContain('seed');
-      expect(subcommands).toContain('reset');
-      expect(subcommands).toContain('tables');
-      expect(subcommands).toContain('dump');
-      expect(subcommands).toContain('restore');
-      expect(subcommands).toContain('introspect');
-      expect(subcommands).toContain('console');
-    });
-  });
-});
+      const subcommands = command.commands.map(c => c.name())
+      expect(subcommands).toContain('seed')
+      expect(subcommands).toContain('reset')
+      expect(subcommands).toContain('tables')
+      expect(subcommands).toContain('dump')
+      expect(subcommands).toContain('restore')
+      expect(subcommands).toContain('introspect')
+      expect(subcommands).toContain('console')
+    })
+  })
+})
 
 describe('db tables command', () => {
-  let command: Command;
-  let mockIntrospector: any;
-  let consoleSpy: { log: Mock };
+  let command: Command
+  let mockIntrospector: any
+  let consoleSpy: { log: Mock }
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    
-    (loadConfig as Mock).mockResolvedValue({
-      database: { dialect: 'postgres', host: 'localhost', database: 'test' },
-    });
-    (getDatabaseConnection as Mock).mockResolvedValue(mockDb);
-    
+    vi.clearAllMocks()
+
+    ;(loadConfig as Mock).mockResolvedValue({
+      database: { dialect: 'postgres', host: 'localhost', database: 'test' }
+    })
+    ;(getDatabaseConnection as Mock).mockResolvedValue(mockDb)
+
     mockIntrospector = {
       getTables: vi.fn().mockResolvedValue(['users', 'posts']),
       getTableInfo: vi.fn().mockResolvedValue(mockTableInfo),
-      introspect: vi.fn().mockResolvedValue([mockTableInfo]),
-    };
-    (DatabaseIntrospector as Mock).mockImplementation(function(this: any) {
-      Object.assign(this, mockIntrospector);
-      return this;
-    });
-    
-    consoleSpy = { log: vi.fn() };
-    vi.spyOn(console, 'log').mockImplementation(consoleSpy.log);
-    
-    command = tablesCommand();
-  });
+      introspect: vi.fn().mockResolvedValue([mockTableInfo])
+    }
+    ;(DatabaseIntrospector as Mock).mockImplementation(function (this: any) {
+      Object.assign(this, mockIntrospector)
+      return this
+    })
+
+    consoleSpy = { log: vi.fn() }
+    vi.spyOn(console, 'log').mockImplementation(consoleSpy.log)
+
+    command = tablesCommand()
+  })
 
   afterEach(() => {
-    vi.restoreAllMocks();
-  });
+    vi.restoreAllMocks()
+  })
 
   describe('command configuration', () => {
     it('should have the correct command name', () => {
-      expect(command.name()).toBe('tables');
-    });
+      expect(command.name()).toBe('tables')
+    })
 
     it('should have json option', () => {
-      const opt = command.options.find((o) => o.long === '--json');
-      expect(opt).toBeDefined();
-    });
+      const opt = command.options.find(o => o.long === '--json')
+      expect(opt).toBeDefined()
+    })
 
     it('should have verbose option', () => {
-      const opt = command.options.find((o) => o.short === '-v');
-      expect(opt).toBeDefined();
-    });
-  });
+      const opt = command.options.find(o => o.short === '-v')
+      expect(opt).toBeDefined()
+    })
+  })
 
   describe('listing tables', () => {
     it('should list all tables', async () => {
-      await command.parseAsync(['node', 'test']);
+      await command.parseAsync(['node', 'test'])
 
-      expect(mockIntrospector.getTables).toHaveBeenCalled();
-    });
+      expect(mockIntrospector.getTables).toHaveBeenCalled()
+    })
 
     it('should display table information', async () => {
-      await command.parseAsync(['node', 'test']);
+      await command.parseAsync(['node', 'test'])
 
-      const logOutput = consoleSpy.log.mock.calls.map((c) => c.join(' ')).join('\n');
-      expect(logOutput).toBeTruthy();
-    });
+      const logOutput = consoleSpy.log.mock.calls.map(c => c.join(' ')).join('\n')
+      expect(logOutput).toBeTruthy()
+    })
 
     it('should output JSON when --json flag is set', async () => {
-      await command.parseAsync(['node', 'test', '--json']);
+      await command.parseAsync(['node', 'test', '--json'])
 
-      const logOutput = consoleSpy.log.mock.calls.map((c) => c.join(' ')).join('\n');
+      const logOutput = consoleSpy.log.mock.calls.map(c => c.join(' ')).join('\n')
       // Should contain valid JSON
-      expect(() => JSON.parse(logOutput)).not.toThrow();
-    });
+      expect(() => JSON.parse(logOutput)).not.toThrow()
+    })
 
     it('should show detailed info with --verbose', async () => {
-      await command.parseAsync(['node', 'test', '--verbose']);
+      await command.parseAsync(['node', 'test', '--verbose'])
 
-      expect(mockIntrospector.getTableInfo).toHaveBeenCalled();
-    });
+      expect(mockIntrospector.getTableInfo).toHaveBeenCalled()
+    })
 
     it('should handle empty database', async () => {
-      mockIntrospector.getTables.mockResolvedValue([]);
+      mockIntrospector.getTables.mockResolvedValue([])
 
-      await command.parseAsync(['node', 'test']);
+      await command.parseAsync(['node', 'test'])
 
       // Should not throw, just warn
-      expect(mockIntrospector.getTables).toHaveBeenCalled();
-    });
-  });
+      expect(mockIntrospector.getTables).toHaveBeenCalled()
+    })
+  })
 
   describe('error handling', () => {
     it('should throw error if config not found', async () => {
-      (loadConfig as Mock).mockResolvedValue(null);
+      ;(loadConfig as Mock).mockResolvedValue(null)
 
-      await expect(command.parseAsync(['node', 'test']))
-        .rejects.toThrow();
-    });
+      await expect(command.parseAsync(['node', 'test'])).rejects.toThrow()
+    })
 
     it('should throw error if database connection fails', async () => {
-      (getDatabaseConnection as Mock).mockResolvedValue(null);
+      ;(getDatabaseConnection as Mock).mockResolvedValue(null)
 
-      await expect(command.parseAsync(['node', 'test']))
-        .rejects.toThrow();
-    });
+      await expect(command.parseAsync(['node', 'test'])).rejects.toThrow()
+    })
 
     it('should close database connection', async () => {
-      await command.parseAsync(['node', 'test']);
+      await command.parseAsync(['node', 'test'])
 
-      expect(mockDb.destroy).toHaveBeenCalled();
-    });
-  });
-});
+      expect(mockDb.destroy).toHaveBeenCalled()
+    })
+  })
+})
 
 describe('db introspect command', () => {
-  let command: Command;
-  let mockIntrospector: any;
-  let consoleSpy: { log: Mock };
+  let command: Command
+  let mockIntrospector: any
+  let consoleSpy: { log: Mock }
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    
-    (loadConfig as Mock).mockResolvedValue({
-      database: { dialect: 'postgres', host: 'localhost', database: 'test' },
-    });
-    (getDatabaseConnection as Mock).mockResolvedValue(mockDb);
-    
+    vi.clearAllMocks()
+
+    ;(loadConfig as Mock).mockResolvedValue({
+      database: { dialect: 'postgres', host: 'localhost', database: 'test' }
+    })
+    ;(getDatabaseConnection as Mock).mockResolvedValue(mockDb)
+
     mockIntrospector = {
       getTables: vi.fn().mockResolvedValue(['users', 'posts']),
       getTableInfo: vi.fn().mockResolvedValue(mockTableInfo),
-      introspect: vi.fn().mockResolvedValue([mockTableInfo]),
-    };
-    (DatabaseIntrospector as Mock).mockImplementation(function(this: any) {
-      Object.assign(this, mockIntrospector);
-      return this;
-    });
-    
-    consoleSpy = { log: vi.fn() };
-    vi.spyOn(console, 'log').mockImplementation(consoleSpy.log);
-    
-    command = introspectCommand();
-  });
+      introspect: vi.fn().mockResolvedValue([mockTableInfo])
+    }
+    ;(DatabaseIntrospector as Mock).mockImplementation(function (this: any) {
+      Object.assign(this, mockIntrospector)
+      return this
+    })
+
+    consoleSpy = { log: vi.fn() }
+    vi.spyOn(console, 'log').mockImplementation(consoleSpy.log)
+
+    command = introspectCommand()
+  })
 
   describe('command configuration', () => {
     it('should have the correct command name', () => {
-      expect(command.name()).toBe('introspect');
-    });
+      expect(command.name()).toBe('introspect')
+    })
 
     it('should accept optional table argument', () => {
-      const args = command.registeredArguments;
-      expect(args.length).toBe(1);
-      expect(args[0].required).toBe(false);
-    });
+      const args = command.registeredArguments
+      expect(args.length).toBe(1)
+      expect(args[0].required).toBe(false)
+    })
 
     it('should have json option', () => {
-      const opt = command.options.find((o) => o.long === '--json');
-      expect(opt).toBeDefined();
-    });
+      const opt = command.options.find(o => o.long === '--json')
+      expect(opt).toBeDefined()
+    })
 
     it('should have detailed option', () => {
-      const opt = command.options.find((o) => o.long === '--detailed');
-      expect(opt).toBeDefined();
-    });
-  });
+      const opt = command.options.find(o => o.long === '--detailed')
+      expect(opt).toBeDefined()
+    })
+  })
 
   describe('introspection', () => {
     it('should introspect specific table when provided', async () => {
-      await command.parseAsync(['node', 'test', 'users']);
+      await command.parseAsync(['node', 'test', 'users'])
 
-      expect(mockIntrospector.getTableInfo).toHaveBeenCalledWith('users');
-    });
+      expect(mockIntrospector.getTableInfo).toHaveBeenCalledWith('users')
+    })
 
     it('should introspect all tables when no table specified', async () => {
-      await command.parseAsync(['node', 'test']);
+      await command.parseAsync(['node', 'test'])
 
-      expect(mockIntrospector.getTables).toHaveBeenCalled();
-    });
+      expect(mockIntrospector.getTables).toHaveBeenCalled()
+    })
 
     it('should output JSON when --json flag is set', async () => {
-      await command.parseAsync(['node', 'test', '--json']);
+      await command.parseAsync(['node', 'test', '--json'])
 
-      const logOutput = consoleSpy.log.mock.calls.map((c) => c.join(' ')).join('\n');
-      expect(() => JSON.parse(logOutput)).not.toThrow();
-    });
+      const logOutput = consoleSpy.log.mock.calls.map(c => c.join(' ')).join('\n')
+      expect(() => JSON.parse(logOutput)).not.toThrow()
+    })
 
     it('should show detailed info with --detailed', async () => {
-      await command.parseAsync(['node', 'test', '--detailed']);
+      await command.parseAsync(['node', 'test', '--detailed'])
 
-      expect(mockIntrospector.getTableInfo).toHaveBeenCalled();
-    });
+      expect(mockIntrospector.getTableInfo).toHaveBeenCalled()
+    })
 
     it('should show TypeScript types in detailed mode', async () => {
-      await command.parseAsync(['node', 'test', 'users', '--detailed']);
+      await command.parseAsync(['node', 'test', 'users', '--detailed'])
 
-      const logOutput = consoleSpy.log.mock.calls.map((c) => c.join(' ')).join('\n');
-      expect(logOutput).toContain('TypeScript');
-    });
-  });
-});
+      const logOutput = consoleSpy.log.mock.calls.map(c => c.join(' ')).join('\n')
+      expect(logOutput).toContain('TypeScript')
+    })
+  })
+})
 
 describe('db seed command', () => {
-  let command: Command;
-  let consoleSpy: { log: Mock };
+  let command: Command
+  let consoleSpy: { log: Mock }
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    
-    (loadConfig as Mock).mockResolvedValue({
-      database: { dialect: 'postgres', host: 'localhost', database: 'test' },
-    });
-    (getDatabaseConnection as Mock).mockResolvedValue(mockDb);
-    (existsSync as Mock).mockReturnValue(true);
-    (readdirSync as Mock).mockReturnValue(['001_users.ts', '002_posts.ts']);
-    
-    consoleSpy = { log: vi.fn() };
-    vi.spyOn(console, 'log').mockImplementation(consoleSpy.log);
-    
-    command = seedCommand();
-  });
+    vi.clearAllMocks()
+
+    ;(loadConfig as Mock).mockResolvedValue({
+      database: { dialect: 'postgres', host: 'localhost', database: 'test' }
+    })
+    ;(getDatabaseConnection as Mock).mockResolvedValue(mockDb)
+    ;(existsSync as Mock).mockReturnValue(true)
+    ;(readdirSync as Mock).mockReturnValue(['001_users.ts', '002_posts.ts'])
+
+    consoleSpy = { log: vi.fn() }
+    vi.spyOn(console, 'log').mockImplementation(consoleSpy.log)
+
+    command = seedCommand()
+  })
 
   describe('command configuration', () => {
     it('should have the correct command name', () => {
-      expect(command.name()).toBe('seed');
-    });
+      expect(command.name()).toBe('seed')
+    })
 
     it('should have file option', () => {
-      const opt = command.options.find((o) => o.short === '-f');
-      expect(opt).toBeDefined();
-    });
+      const opt = command.options.find(o => o.short === '-f')
+      expect(opt).toBeDefined()
+    })
 
     it('should have directory option with default', () => {
-      const opt = command.options.find((o) => o.short === '-d');
-      expect(opt).toBeDefined();
-      expect(opt?.defaultValue).toBe('./seeds');
-    });
+      const opt = command.options.find(o => o.short === '-d')
+      expect(opt).toBeDefined()
+      expect(opt?.defaultValue).toBe('./seeds')
+    })
 
     it('should have fresh option', () => {
-      const opt = command.options.find((o) => o.long === '--fresh');
-      expect(opt).toBeDefined();
-    });
+      const opt = command.options.find(o => o.long === '--fresh')
+      expect(opt).toBeDefined()
+    })
 
     it('should have verbose option', () => {
-      const opt = command.options.find((o) => o.short === '-v');
-      expect(opt).toBeDefined();
-    });
-  });
+      const opt = command.options.find(o => o.short === '-v')
+      expect(opt).toBeDefined()
+    })
+  })
 
   describe('seeding', () => {
     it('should throw error if seeds directory not found', async () => {
-      (existsSync as Mock).mockReturnValue(false);
+      ;(existsSync as Mock).mockReturnValue(false)
 
-      await expect(command.parseAsync(['node', 'test']))
-        .rejects.toThrow();
-    });
+      await expect(command.parseAsync(['node', 'test'])).rejects.toThrow()
+    })
 
     it('should throw error if specific seed file not found', async () => {
-      (existsSync as Mock).mockImplementation((path: string) => {
-        return !path.includes('nonexistent');
-      });
+      ;(existsSync as Mock).mockImplementation((path: string) => {
+        return !path.includes('nonexistent')
+      })
 
-      await expect(command.parseAsync(['node', 'test', '-f', 'nonexistent.ts']))
-        .rejects.toThrow();
-    });
+      await expect(command.parseAsync(['node', 'test', '-f', 'nonexistent.ts'])).rejects.toThrow()
+    })
 
     it('should handle no seed files in directory', async () => {
-      (readdirSync as Mock).mockReturnValue([]);
+      ;(readdirSync as Mock).mockReturnValue([])
 
       // Should not throw, just warn
-      await expect(command.parseAsync(['node', 'test']))
-        .resolves.not.toThrow();
-    });
-  });
+      await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow()
+    })
+  })
 
   describe('error handling', () => {
     it('should throw error if config not found', async () => {
-      (loadConfig as Mock).mockResolvedValue(null);
+      ;(loadConfig as Mock).mockResolvedValue(null)
 
-      await expect(command.parseAsync(['node', 'test']))
-        .rejects.toThrow();
-    });
+      await expect(command.parseAsync(['node', 'test'])).rejects.toThrow()
+    })
 
     it('should close database connection', async () => {
-      (readdirSync as Mock).mockReturnValue([]);
-      
-      await command.parseAsync(['node', 'test']);
+      ;(readdirSync as Mock).mockReturnValue([])
 
-      expect(mockDb.destroy).toHaveBeenCalled();
-    });
-  });
-});
+      await command.parseAsync(['node', 'test'])
+
+      expect(mockDb.destroy).toHaveBeenCalled()
+    })
+  })
+})
 
 describe('db dump command', () => {
-  let command: Command;
-  let mockIntrospector: any;
+  let command: Command
+  let mockIntrospector: any
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    
-    (loadConfig as Mock).mockResolvedValue({
-      database: { dialect: 'postgres', host: 'localhost', database: 'test' },
-    });
-    (getDatabaseConnection as Mock).mockResolvedValue(mockDb);
-    
+    vi.clearAllMocks()
+
+    ;(loadConfig as Mock).mockResolvedValue({
+      database: { dialect: 'postgres', host: 'localhost', database: 'test' }
+    })
+    ;(getDatabaseConnection as Mock).mockResolvedValue(mockDb)
+
     mockIntrospector = {
       getTables: vi.fn().mockResolvedValue(['users']),
       getTableInfo: vi.fn().mockResolvedValue(mockTableInfo),
-      introspect: vi.fn().mockResolvedValue([mockTableInfo]),
-    };
-    (DatabaseIntrospector as Mock).mockImplementation(function(this: any) {
-      Object.assign(this, mockIntrospector);
-      return this;
-    });
-    
-    command = dumpCommand();
-  });
+      introspect: vi.fn().mockResolvedValue([mockTableInfo])
+    }
+    ;(DatabaseIntrospector as Mock).mockImplementation(function (this: any) {
+      Object.assign(this, mockIntrospector)
+      return this
+    })
+
+    command = dumpCommand()
+  })
 
   describe('command configuration', () => {
     it('should have the correct command name', () => {
-      expect(command.name()).toBe('dump');
-    });
+      expect(command.name()).toBe('dump')
+    })
 
     it('should have output option', () => {
-      const opt = command.options.find((o) => o.short === '-o');
-      expect(opt).toBeDefined();
-    });
+      const opt = command.options.find(o => o.short === '-o')
+      expect(opt).toBeDefined()
+    })
 
     it('should have tables option', () => {
-      const opt = command.options.find((o) => o.short === '-t');
-      expect(opt).toBeDefined();
-    });
+      const opt = command.options.find(o => o.short === '-t')
+      expect(opt).toBeDefined()
+    })
 
     it('should have data-only option', () => {
-      const opt = command.options.find((o) => o.long === '--data-only');
-      expect(opt).toBeDefined();
-    });
+      const opt = command.options.find(o => o.long === '--data-only')
+      expect(opt).toBeDefined()
+    })
 
     it('should have schema-only option', () => {
-      const opt = command.options.find((o) => o.long === '--schema-only');
-      expect(opt).toBeDefined();
-    });
+      const opt = command.options.find(o => o.long === '--schema-only')
+      expect(opt).toBeDefined()
+    })
 
     it('should have format option with default', () => {
-      const opt = command.options.find((o) => o.short === '-f');
-      expect(opt).toBeDefined();
-      expect(opt?.defaultValue).toBe('sql');
-    });
-  });
+      const opt = command.options.find(o => o.short === '-f')
+      expect(opt).toBeDefined()
+      expect(opt?.defaultValue).toBe('sql')
+    })
+  })
 
   describe('dumping', () => {
     it('should create dump file', async () => {
-      await command.parseAsync(['node', 'test']);
+      await command.parseAsync(['node', 'test'])
 
-      expect(writeFileSync).toHaveBeenCalled();
-    });
+      expect(writeFileSync).toHaveBeenCalled()
+    })
 
     it('should use specified output file', async () => {
-      await command.parseAsync(['node', 'test', '-o', 'backup.sql']);
+      await command.parseAsync(['node', 'test', '-o', 'backup.sql'])
 
       expect(writeFileSync).toHaveBeenCalledWith(
         expect.stringContaining('backup.sql'),
         expect.any(String),
         'utf-8'
-      );
-    });
+      )
+    })
 
     it('should dump specific tables when specified', async () => {
-      await command.parseAsync(['node', 'test', '-t', 'users']);
+      await command.parseAsync(['node', 'test', '-t', 'users'])
 
-      expect(mockIntrospector.getTableInfo).toHaveBeenCalled();
-    });
+      expect(mockIntrospector.getTableInfo).toHaveBeenCalled()
+    })
 
     it('should throw error for invalid table', async () => {
-      mockIntrospector.getTables.mockResolvedValue(['users']);
+      mockIntrospector.getTables.mockResolvedValue(['users'])
 
-      await expect(command.parseAsync(['node', 'test', '-t', 'nonexistent']))
-        .rejects.toThrow();
-    });
+      await expect(command.parseAsync(['node', 'test', '-t', 'nonexistent'])).rejects.toThrow()
+    })
 
     it('should throw error if both data-only and schema-only', async () => {
-      await expect(command.parseAsync(['node', 'test', '--data-only', '--schema-only']))
-        .rejects.toThrow();
-    });
+      await expect(
+        command.parseAsync(['node', 'test', '--data-only', '--schema-only'])
+      ).rejects.toThrow()
+    })
 
     it('should generate JSON dump when format is json', async () => {
-      await command.parseAsync(['node', 'test', '-f', 'json']);
+      await command.parseAsync(['node', 'test', '-f', 'json'])
 
-      const writeCall = (writeFileSync as Mock).mock.calls[0];
-      expect(writeCall[0]).toContain('.json');
-    });
+      const writeCall = (writeFileSync as Mock).mock.calls[0]
+      expect(writeCall[0]).toContain('.json')
+    })
 
     it('should generate SQL dump when format is sql', async () => {
-      await command.parseAsync(['node', 'test', '-f', 'sql']);
+      await command.parseAsync(['node', 'test', '-f', 'sql'])
 
-      const writeCall = (writeFileSync as Mock).mock.calls[0];
-      expect(writeCall[0]).toContain('.sql');
-      expect(writeCall[1]).toContain('--');
-    });
+      const writeCall = (writeFileSync as Mock).mock.calls[0]
+      expect(writeCall[0]).toContain('.sql')
+      expect(writeCall[1]).toContain('--')
+    })
 
     it('should include schema in dump by default', async () => {
-      await command.parseAsync(['node', 'test']);
+      await command.parseAsync(['node', 'test'])
 
-      const writeCall = (writeFileSync as Mock).mock.calls[0];
-      expect(writeCall[1]).toContain('CREATE TABLE');
-    });
+      const writeCall = (writeFileSync as Mock).mock.calls[0]
+      expect(writeCall[1]).toContain('CREATE TABLE')
+    })
 
     it('should skip schema with --data-only', async () => {
-      await command.parseAsync(['node', 'test', '--data-only']);
+      await command.parseAsync(['node', 'test', '--data-only'])
 
-      const writeCall = (writeFileSync as Mock).mock.calls[0];
-      expect(writeCall[1]).not.toContain('CREATE TABLE');
-    });
-  });
+      const writeCall = (writeFileSync as Mock).mock.calls[0]
+      expect(writeCall[1]).not.toContain('CREATE TABLE')
+    })
+  })
 
   describe('error handling', () => {
     it('should close database connection', async () => {
-      await command.parseAsync(['node', 'test']);
+      await command.parseAsync(['node', 'test'])
 
-      expect(mockDb.destroy).toHaveBeenCalled();
-    });
-  });
-});
+      expect(mockDb.destroy).toHaveBeenCalled()
+    })
+  })
+})
 
 describe('db restore command', () => {
-  let command: Command;
+  let command: Command
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.clearAllMocks()
 
     // Reset transaction mock
     mockDb.transaction = vi.fn(() => ({
       execute: vi.fn(async (callback: (trx: any) => Promise<void>) => {
-        await callback(mockTrx);
-      }),
-    }));
-    mockTrx.executeQuery = vi.fn().mockResolvedValue(undefined);
-    mockTrx.commit = vi.fn().mockResolvedValue(undefined);
-    mockTrx.rollback = vi.fn().mockResolvedValue(undefined);
+        await callback(mockTrx)
+      })
+    }))
+    mockTrx.executeQuery = vi.fn().mockResolvedValue(undefined)
+    mockTrx.commit = vi.fn().mockResolvedValue(undefined)
+    mockTrx.rollback = vi.fn().mockResolvedValue(undefined)
 
-    (loadConfig as Mock).mockResolvedValue({
-      database: { dialect: 'postgres', host: 'localhost', database: 'test' },
-    });
-    (getDatabaseConnection as Mock).mockResolvedValue(mockDb);
-    (existsSync as Mock).mockReturnValue(true);
-    (readFileSync as Mock).mockReturnValue('CREATE TABLE users (id INT);\nINSERT INTO users VALUES (1);');
-    (resolve as Mock).mockImplementation((p: string) => p);
+    ;(loadConfig as Mock).mockResolvedValue({
+      database: { dialect: 'postgres', host: 'localhost', database: 'test' }
+    })
+    ;(getDatabaseConnection as Mock).mockResolvedValue(mockDb)
+    ;(existsSync as Mock).mockReturnValue(true)
+    ;(readFileSync as Mock).mockReturnValue(
+      'CREATE TABLE users (id INT);\nINSERT INTO users VALUES (1);'
+    )
+    ;(resolve as Mock).mockImplementation((p: string) => p)
 
-    command = restoreCommand();
-  });
+    command = restoreCommand()
+  })
 
   describe('command configuration', () => {
     it('should have the correct command name', () => {
-      expect(command.name()).toBe('restore');
-    });
+      expect(command.name()).toBe('restore')
+    })
 
     it('should require file argument', () => {
-      const args = command.registeredArguments;
-      expect(args.length).toBe(1);
-      expect(args[0].required).toBe(true);
-    });
+      const args = command.registeredArguments
+      expect(args.length).toBe(1)
+      expect(args[0].required).toBe(true)
+    })
 
     it('should have force option', () => {
-      const opt = command.options.find((o) => o.long === '--force');
-      expect(opt).toBeDefined();
-    });
-  });
+      const opt = command.options.find(o => o.long === '--force')
+      expect(opt).toBeDefined()
+    })
+  })
 
   describe('restoring', () => {
     it('should throw error if dump file not found', async () => {
-      (existsSync as Mock).mockReturnValue(false);
+      ;(existsSync as Mock).mockReturnValue(false)
 
-      await expect(command.parseAsync(['node', 'test', 'backup.sql', '--force']))
-        .rejects.toThrow();
-    });
+      await expect(command.parseAsync(['node', 'test', 'backup.sql', '--force'])).rejects.toThrow()
+    })
 
     it('should read and execute SQL dump', async () => {
-      await command.parseAsync(['node', 'test', 'backup.sql', '--force']);
+      await command.parseAsync(['node', 'test', 'backup.sql', '--force'])
 
-      expect(readFileSync).toHaveBeenCalled();
-    });
+      expect(readFileSync).toHaveBeenCalled()
+    })
 
     it('should detect JSON format from file extension', async () => {
-      (readFileSync as Mock).mockReturnValue(JSON.stringify({
-        version: '1.0.0',
-        tables: {
-          users: {
-            schema: {
-              columns: [
-                { name: 'id', dataType: 'integer', isNullable: false, isPrimaryKey: true }
-              ]
-            },
-            data: [{ id: 1 }]
+      ;(readFileSync as Mock).mockReturnValue(
+        JSON.stringify({
+          version: '1.0.0',
+          tables: {
+            users: {
+              schema: {
+                columns: [
+                  { name: 'id', dataType: 'integer', isNullable: false, isPrimaryKey: true }
+                ]
+              },
+              data: [{ id: 1 }]
+            }
           }
-        }
-      }));
+        })
+      )
 
-      await command.parseAsync(['node', 'test', 'backup.json', '--force']);
+      await command.parseAsync(['node', 'test', 'backup.json', '--force'])
 
-      expect(readFileSync).toHaveBeenCalled();
-    });
+      expect(readFileSync).toHaveBeenCalled()
+    })
 
     it('should detect JSON format from content', async () => {
-      (readFileSync as Mock).mockReturnValue(JSON.stringify({
-        version: '1.0.0',
-        tables: {
-          users: {
-            schema: {
-              columns: [
-                { name: 'id', dataType: 'integer', isNullable: false, isPrimaryKey: true }
-              ]
-            },
-            data: [{ id: 1 }]
+      ;(readFileSync as Mock).mockReturnValue(
+        JSON.stringify({
+          version: '1.0.0',
+          tables: {
+            users: {
+              schema: {
+                columns: [
+                  { name: 'id', dataType: 'integer', isNullable: false, isPrimaryKey: true }
+                ]
+              },
+              data: [{ id: 1 }]
+            }
           }
-        }
-      }));
+        })
+      )
 
-      await command.parseAsync(['node', 'test', 'backup.dump', '--force']);
+      await command.parseAsync(['node', 'test', 'backup.dump', '--force'])
 
-      expect(readFileSync).toHaveBeenCalled();
-    });
-  });
+      expect(readFileSync).toHaveBeenCalled()
+    })
+  })
 
   describe('error handling', () => {
     it('should throw error if config not found', async () => {
-      (loadConfig as Mock).mockResolvedValue(null);
+      ;(loadConfig as Mock).mockResolvedValue(null)
 
-      await expect(command.parseAsync(['node', 'test', 'backup.sql', '--force']))
-        .rejects.toThrow();
-    });
+      await expect(command.parseAsync(['node', 'test', 'backup.sql', '--force'])).rejects.toThrow()
+    })
 
     it('should close database connection on success', async () => {
-      await command.parseAsync(['node', 'test', 'backup.sql', '--force']);
+      await command.parseAsync(['node', 'test', 'backup.sql', '--force'])
 
-      expect(mockDb.destroy).toHaveBeenCalled();
-    });
+      expect(mockDb.destroy).toHaveBeenCalled()
+    })
 
     it('should throw error for invalid JSON dump', async () => {
-      (readFileSync as Mock).mockReturnValue('{ invalid json }');
+      ;(readFileSync as Mock).mockReturnValue('{ invalid json }')
 
-      await expect(command.parseAsync(['node', 'test', 'backup.json', '--force']))
-        .rejects.toThrow();
-    });
-  });
-});
+      await expect(command.parseAsync(['node', 'test', 'backup.json', '--force'])).rejects.toThrow()
+    })
+  })
+})

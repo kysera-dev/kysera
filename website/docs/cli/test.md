@@ -19,6 +19,7 @@ kysera test setup
 ```
 
 **Options:**
+
 ```
 -e, --environment <env>   Environment (test/ci/local, default: test)
 -d, --database <name>     Test database name
@@ -34,11 +35,13 @@ kysera test setup
 ```
 
 **Isolation Strategies:**
+
 - `transaction` - Use transactions (fastest)
 - `schema` - Separate schema per test
 - `database` - Separate database per test
 
 **Examples:**
+
 ```bash
 # Basic setup
 kysera test setup
@@ -62,6 +65,7 @@ kysera test seed
 ```
 
 **Options:**
+
 ```
 --strategy <type>         Data generation (realistic/random/sequential)
 --count <number>          Records per table
@@ -71,6 +75,7 @@ kysera test seed
 ```
 
 **Examples:**
+
 ```bash
 # Seed with realistic data
 kysera test seed --strategy realistic --count 100
@@ -91,6 +96,7 @@ kysera test fixtures
 ```
 
 **Options:**
+
 ```
 --load <files...>         Load specific fixtures
 --generate                Generate fixture templates
@@ -107,6 +113,7 @@ kysera test teardown
 ```
 
 **Options:**
+
 ```
 -e, --environment <env>   Environment (default: test)
 --keep-data               Keep data, only clear migrations

@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Kysely, SqliteDialect } from 'kysely';
-import Database from 'better-sqlite3';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { Kysely, SqliteDialect } from 'kysely'
+import Database from 'better-sqlite3'
 import {
   MigrationRunnerWithPlugins,
   createMigrationRunnerWithPlugins,
@@ -10,9 +10,9 @@ import {
   MigrationError,
   type Migration,
   type MigrationPlugin,
-  type KyseraLogger,
-} from '../src/index.js';
-import { safeDbDestroy, safeSqliteClose } from './helpers/cleanup.js';
+  type KyseraLogger
+} from '../src/index.js'
+import { safeDbDestroy, safeSqliteClose } from './helpers/cleanup.js'
 
 // Helper to create a test logger that captures output
 function createTestLogger(logs: string[]): KyseraLogger {
@@ -20,388 +20,481 @@ function createTestLogger(logs: string[]): KyseraLogger {
     debug: (msg: string) => logs.push(`[debug] ${msg}`),
     info: (msg: string) => logs.push(`[info] ${msg}`),
     warn: (msg: string) => logs.push(`[warn] ${msg}`),
-    error: (msg: string) => logs.push(`[error] ${msg}`),
-  };
+    error: (msg: string) => logs.push(`[error] ${msg}`)
+  }
 }
 
 describe('MigrationRunnerWithPlugins', () => {
-  let db: Kysely<any>;
-  let database: Database.Database;
+  let db: Kysely<any>
+  let database: Database.Database
 
   beforeEach(() => {
-    database = new Database(':memory:');
+    database = new Database(':memory:')
     db = new Kysely({
       dialect: new SqliteDialect({
-        database,
-      }),
-    });
-  });
+        database
+      })
+    })
+  })
 
   afterEach(async () => {
-    await safeDbDestroy(db);
-    safeSqliteClose(database);
-  });
+    await safeDbDestroy(db)
+    safeSqliteClose(database)
+  })
 
   // Helper to create test migrations
   const createTestMigrations = (): Migration[] => [
     createMigration(
       '001_create_users',
-      async (db) => {
+      async db => {
         await db.schema
           .createTable('users')
-          .addColumn('id', 'integer', (col) => col.primaryKey().autoIncrement())
-          .addColumn('email', 'text', (col) => col.notNull().unique())
-          .execute();
+          .addColumn('id', 'integer', col => col.primaryKey().autoIncrement())
+          .addColumn('email', 'text', col => col.notNull().unique())
+          .execute()
       },
-      async (db) => {
-        await db.schema.dropTable('users').execute();
+      async db => {
+        await db.schema.dropTable('users').execute()
       }
     ),
     createMigration(
       '002_create_posts',
-      async (db) => {
+      async db => {
         await db.schema
           .createTable('posts')
-          .addColumn('id', 'integer', (col) => col.primaryKey().autoIncrement())
-          .addColumn('title', 'text', (col) => col.notNull())
-          .execute();
+          .addColumn('id', 'integer', col => col.primaryKey().autoIncrement())
+          .addColumn('title', 'text', col => col.notNull())
+          .execute()
       },
-      async (db) => {
-        await db.schema.dropTable('posts').execute();
+      async db => {
+        await db.schema.dropTable('posts').execute()
       }
-    ),
-  ];
+    )
+  ]
 
   describe('createMigrationRunnerWithPlugins', () => {
     it('should create a runner with plugins', async () => {
-      const migrations = createTestMigrations();
-      const plugin = createLoggingPlugin();
+      const migrations = createTestMigrations()
+      const plugin = createLoggingPlugin()
 
       const runner = await createMigrationRunnerWithPlugins(db, migrations, {
-        plugins: [plugin],
-      });
+        plugins: [plugin]
+      })
 
-      expect(runner).toBeInstanceOf(MigrationRunnerWithPlugins);
-      expect(runner.getPlugins()).toHaveLength(1);
-      expect(runner.getPlugins()[0]?.name).toBe('@kysera/migrations/logging');
-    });
+      expect(runner).toBeInstanceOf(MigrationRunnerWithPlugins)
+      expect(runner.getPlugins()).toHaveLength(1)
+      expect(runner.getPlugins()[0]?.name).toBe('@kysera/migrations/logging')
+    })
 
     it('should call onInit for all plugins', async () => {
-      const migrations = createTestMigrations();
-      const onInitCalls: string[] = [];
+      const migrations = createTestMigrations()
+      const onInitCalls: string[] = []
 
       const plugin1: MigrationPlugin = {
         name: 'test-plugin-1',
         version: '1.0.0',
         onInit: async () => {
-          onInitCalls.push('plugin1');
-        },
-      };
+          onInitCalls.push('plugin1')
+        }
+      }
 
       const plugin2: MigrationPlugin = {
         name: 'test-plugin-2',
         version: '1.0.0',
         onInit: () => {
-          onInitCalls.push('plugin2');
-        },
-      };
+          onInitCalls.push('plugin2')
+        }
+      }
 
       await createMigrationRunnerWithPlugins(db, migrations, {
-        plugins: [plugin1, plugin2],
-      });
+        plugins: [plugin1, plugin2]
+      })
 
-      expect(onInitCalls).toEqual(['plugin1', 'plugin2']);
-    });
+      expect(onInitCalls).toEqual(['plugin1', 'plugin2'])
+    })
 
     it('should work without plugins', async () => {
-      const migrations = createTestMigrations();
+      const migrations = createTestMigrations()
 
-      const runner = await createMigrationRunnerWithPlugins(db, migrations);
+      const runner = await createMigrationRunnerWithPlugins(db, migrations)
 
-      expect(runner).toBeInstanceOf(MigrationRunnerWithPlugins);
-      expect(runner.getPlugins()).toHaveLength(0);
-    });
-  });
+      expect(runner).toBeInstanceOf(MigrationRunnerWithPlugins)
+      expect(runner.getPlugins()).toHaveLength(0)
+    })
+  })
 
   describe('Plugin Hooks', () => {
-    describe('beforeMigration hook', () => {
-      it('should call beforeMigration before each migration', async () => {
-        const migrations = createTestMigrations();
-        const hookCalls: Array<{ name: string; operation: string }> = [];
+    describe('Integration tests - hooks called during up()/down()', () => {
+      it('should call beforeMigration, afterMigration hooks during up()', async () => {
+        const migrations = createTestMigrations()
+        const hookCalls: string[] = []
 
         const plugin: MigrationPlugin = {
           name: 'test-plugin',
           version: '1.0.0',
           beforeMigration: async (migration, operation) => {
-            hookCalls.push({ name: migration.name, operation });
+            hookCalls.push(`before-${migration.name}-${operation}`)
           },
-        };
-
-        const runner = await createMigrationRunnerWithPlugins(db, migrations, {
-          plugins: [plugin],
-        });
-
-        // Access protected method via subclass
-        await (runner as any).runBeforeHooks(migrations[0], 'up');
-        await (runner as any).runBeforeHooks(migrations[1], 'up');
-
-        expect(hookCalls).toEqual([
-          { name: '001_create_users', operation: 'up' },
-          { name: '002_create_posts', operation: 'up' },
-        ]);
-      });
-
-      it('should call beforeMigration for down operations', async () => {
-        const migrations = createTestMigrations();
-        const hookCalls: Array<{ name: string; operation: string }> = [];
-
-        const plugin: MigrationPlugin = {
-          name: 'test-plugin',
-          version: '1.0.0',
-          beforeMigration: (migration, operation) => {
-            hookCalls.push({ name: migration.name, operation });
-          },
-        };
-
-        const runner = await createMigrationRunnerWithPlugins(db, migrations, {
-          plugins: [plugin],
-        });
-
-        await (runner as any).runBeforeHooks(migrations[0], 'down');
-
-        expect(hookCalls).toEqual([{ name: '001_create_users', operation: 'down' }]);
-      });
-    });
-
-    describe('afterMigration hook', () => {
-      it('should call afterMigration with duration after each migration', async () => {
-        const migrations = createTestMigrations();
-        const hookCalls: Array<{ name: string; operation: string; duration: number }> = [];
-
-        const plugin: MigrationPlugin = {
-          name: 'test-plugin',
-          version: '1.0.0',
           afterMigration: async (migration, operation, duration) => {
-            hookCalls.push({ name: migration.name, operation, duration });
-          },
-        };
+            hookCalls.push(`after-${migration.name}-${operation}-${duration >= 0 ? 'ok' : 'bad'}`)
+          }
+        }
 
         const runner = await createMigrationRunnerWithPlugins(db, migrations, {
-          plugins: [plugin],
-        });
+          plugins: [plugin]
+        })
 
-        await (runner as any).runAfterHooks(migrations[0], 'up', 100);
-        await (runner as any).runAfterHooks(migrations[1], 'up', 200);
+        await runner.up()
 
-        expect(hookCalls).toHaveLength(2);
-        expect(hookCalls[0]).toEqual({ name: '001_create_users', operation: 'up', duration: 100 });
-        expect(hookCalls[1]).toEqual({ name: '002_create_posts', operation: 'up', duration: 200 });
-      });
-    });
+        // Verify hooks were called in correct order for both migrations
+        expect(hookCalls).toContain('before-001_create_users-up')
+        expect(hookCalls).toContain('after-001_create_users-up-ok')
+        expect(hookCalls).toContain('before-002_create_posts-up')
+        expect(hookCalls).toContain('after-002_create_posts-up-ok')
+        expect(hookCalls.length).toBe(4)
+      })
 
-    describe('onMigrationError hook', () => {
-      it('should call onMigrationError when migration fails', async () => {
-        const migrations = createTestMigrations();
-        const errorCalls: Array<{ name: string; operation: string; error: string }> = [];
+      it('should call beforeMigration, afterMigration hooks during down()', async () => {
+        const migrations = createTestMigrations()
+        const hookCalls: string[] = []
+
+        // First run up to have migrations to rollback
+        const runnerUp = await createMigrationRunnerWithPlugins(db, migrations)
+        await runnerUp.up()
+
+        const plugin: MigrationPlugin = {
+          name: 'test-plugin',
+          version: '1.0.0',
+          beforeMigration: async (migration, operation) => {
+            hookCalls.push(`before-${migration.name}-${operation}`)
+          },
+          afterMigration: async (migration, operation) => {
+            hookCalls.push(`after-${migration.name}-${operation}`)
+          }
+        }
+
+        const runnerDown = await createMigrationRunnerWithPlugins(db, migrations, {
+          plugins: [plugin]
+        })
+
+        await runnerDown.down(1)
+
+        // Verify hooks were called for rollback
+        expect(hookCalls).toContain('before-002_create_posts-down')
+        expect(hookCalls).toContain('after-002_create_posts-down')
+        expect(hookCalls.length).toBe(2)
+      })
+
+      it('should call onMigrationError hook on failure', async () => {
+        const failingMigration = createMigration('001_fail', async () => {
+          throw new Error('Intentional failure')
+        })
+        const errorHookCalls: string[] = []
 
         const plugin: MigrationPlugin = {
           name: 'test-plugin',
           version: '1.0.0',
           onMigrationError: async (migration, operation, error) => {
-            const message = error instanceof Error ? error.message : String(error);
-            errorCalls.push({ name: migration.name, operation, error: message });
-          },
-        };
+            const msg = error instanceof Error ? error.message : String(error)
+            errorHookCalls.push(`error-${migration.name}-${operation}-${msg}`)
+          }
+        }
+
+        const runner = await createMigrationRunnerWithPlugins(db, [failingMigration], {
+          plugins: [plugin],
+          stopOnError: true
+        })
+
+        await expect(runner.up()).rejects.toThrow(MigrationError)
+
+        // Verify error hook was called
+        expect(errorHookCalls).toContain('error-001_fail-up-Intentional failure')
+      })
+    })
+
+    describe('beforeMigration hook', () => {
+      it('should call beforeMigration before each migration', async () => {
+        const migrations = createTestMigrations()
+        const hookCalls: Array<{ name: string; operation: string }> = []
+
+        const plugin: MigrationPlugin = {
+          name: 'test-plugin',
+          version: '1.0.0',
+          beforeMigration: async (migration, operation) => {
+            hookCalls.push({ name: migration.name, operation })
+          }
+        }
 
         const runner = await createMigrationRunnerWithPlugins(db, migrations, {
-          plugins: [plugin],
-        });
+          plugins: [plugin]
+        })
 
-        const testError = new Error('Test migration error');
-        await (runner as any).runErrorHooks(migrations[0], 'up', testError);
+        // Access protected method via subclass
+        await (runner as any).runBeforeHooks(migrations[0], 'up')
+        await (runner as any).runBeforeHooks(migrations[1], 'up')
 
-        expect(errorCalls).toHaveLength(1);
+        expect(hookCalls).toEqual([
+          { name: '001_create_users', operation: 'up' },
+          { name: '002_create_posts', operation: 'up' }
+        ])
+      })
+
+      it('should call beforeMigration for down operations', async () => {
+        const migrations = createTestMigrations()
+        const hookCalls: Array<{ name: string; operation: string }> = []
+
+        const plugin: MigrationPlugin = {
+          name: 'test-plugin',
+          version: '1.0.0',
+          beforeMigration: (migration, operation) => {
+            hookCalls.push({ name: migration.name, operation })
+          }
+        }
+
+        const runner = await createMigrationRunnerWithPlugins(db, migrations, {
+          plugins: [plugin]
+        })
+
+        await (runner as any).runBeforeHooks(migrations[0], 'down')
+
+        expect(hookCalls).toEqual([{ name: '001_create_users', operation: 'down' }])
+      })
+    })
+
+    describe('afterMigration hook', () => {
+      it('should call afterMigration with duration after each migration', async () => {
+        const migrations = createTestMigrations()
+        const hookCalls: Array<{ name: string; operation: string; duration: number }> = []
+
+        const plugin: MigrationPlugin = {
+          name: 'test-plugin',
+          version: '1.0.0',
+          afterMigration: async (migration, operation, duration) => {
+            hookCalls.push({ name: migration.name, operation, duration })
+          }
+        }
+
+        const runner = await createMigrationRunnerWithPlugins(db, migrations, {
+          plugins: [plugin]
+        })
+
+        await (runner as any).runAfterHooks(migrations[0], 'up', 100)
+        await (runner as any).runAfterHooks(migrations[1], 'up', 200)
+
+        expect(hookCalls).toHaveLength(2)
+        expect(hookCalls[0]).toEqual({ name: '001_create_users', operation: 'up', duration: 100 })
+        expect(hookCalls[1]).toEqual({ name: '002_create_posts', operation: 'up', duration: 200 })
+      })
+    })
+
+    describe('onMigrationError hook', () => {
+      it('should call onMigrationError when migration fails', async () => {
+        const migrations = createTestMigrations()
+        const errorCalls: Array<{ name: string; operation: string; error: string }> = []
+
+        const plugin: MigrationPlugin = {
+          name: 'test-plugin',
+          version: '1.0.0',
+          onMigrationError: async (migration, operation, error) => {
+            const message = error instanceof Error ? error.message : String(error)
+            errorCalls.push({ name: migration.name, operation, error: message })
+          }
+        }
+
+        const runner = await createMigrationRunnerWithPlugins(db, migrations, {
+          plugins: [plugin]
+        })
+
+        const testError = new Error('Test migration error')
+        await (runner as any).runErrorHooks(migrations[0], 'up', testError)
+
+        expect(errorCalls).toHaveLength(1)
         expect(errorCalls[0]).toEqual({
           name: '001_create_users',
           operation: 'up',
-          error: 'Test migration error',
-        });
-      });
-    });
+          error: 'Test migration error'
+        })
+      })
+    })
 
     describe('Multiple plugins', () => {
       it('should call hooks for all plugins in order', async () => {
-        const migrations = createTestMigrations();
-        const callOrder: string[] = [];
+        const migrations = createTestMigrations()
+        const callOrder: string[] = []
 
         const plugin1: MigrationPlugin = {
           name: 'plugin-1',
           version: '1.0.0',
           beforeMigration: () => {
-            callOrder.push('plugin1-before');
+            callOrder.push('plugin1-before')
           },
           afterMigration: () => {
-            callOrder.push('plugin1-after');
-          },
-        };
+            callOrder.push('plugin1-after')
+          }
+        }
 
         const plugin2: MigrationPlugin = {
           name: 'plugin-2',
           version: '1.0.0',
           beforeMigration: () => {
-            callOrder.push('plugin2-before');
+            callOrder.push('plugin2-before')
           },
           afterMigration: () => {
-            callOrder.push('plugin2-after');
-          },
-        };
+            callOrder.push('plugin2-after')
+          }
+        }
 
         const runner = await createMigrationRunnerWithPlugins(db, migrations, {
-          plugins: [plugin1, plugin2],
-        });
+          plugins: [plugin1, plugin2]
+        })
 
-        await (runner as any).runBeforeHooks(migrations[0], 'up');
-        await (runner as any).runAfterHooks(migrations[0], 'up', 100);
+        await (runner as any).runBeforeHooks(migrations[0], 'up')
+        await (runner as any).runAfterHooks(migrations[0], 'up', 100)
 
-        expect(callOrder).toEqual(['plugin1-before', 'plugin2-before', 'plugin1-after', 'plugin2-after']);
-      });
-    });
-  });
+        expect(callOrder).toEqual([
+          'plugin1-before',
+          'plugin2-before',
+          'plugin1-after',
+          'plugin2-after'
+        ])
+      })
+    })
+  })
 
   describe('Built-in Plugins', () => {
     describe('LoggingPlugin', () => {
       it('should log migration lifecycle events', () => {
-        const logs: string[] = [];
-        const logger = createTestLogger(logs);
-        const plugin = createLoggingPlugin(logger);
+        const logs: string[] = []
+        const logger = createTestLogger(logs)
+        const plugin = createLoggingPlugin(logger)
 
-        const migration: Migration = { name: 'test_migration', up: async () => {} };
+        const migration: Migration = { name: 'test_migration', up: async () => {} }
 
-        plugin.beforeMigration?.(migration, 'up');
-        plugin.afterMigration?.(migration, 'up', 150);
+        plugin.beforeMigration?.(migration, 'up')
+        plugin.afterMigration?.(migration, 'up', 150)
 
-        expect(logs).toContain('[info] Starting up for test_migration');
-        expect(logs).toContain('[info] Completed up for test_migration in 150ms');
-      });
+        expect(logs).toContain('[info] Starting up for test_migration')
+        expect(logs).toContain('[info] Completed up for test_migration in 150ms')
+      })
 
       it('should log errors', () => {
-        const logs: string[] = [];
-        const logger = createTestLogger(logs);
-        const plugin = createLoggingPlugin(logger);
+        const logs: string[] = []
+        const logger = createTestLogger(logs)
+        const plugin = createLoggingPlugin(logger)
 
-        const migration: Migration = { name: 'test_migration', up: async () => {} };
-        const error = new Error('Migration failed');
+        const migration: Migration = { name: 'test_migration', up: async () => {} }
+        const error = new Error('Migration failed')
 
-        plugin.onMigrationError?.(migration, 'up', error);
+        plugin.onMigrationError?.(migration, 'up', error)
 
-        expect(logs.some((l) => l.includes('Error during up for test_migration'))).toBe(true);
-        expect(logs.some((l) => l.includes('Migration failed'))).toBe(true);
-      });
+        expect(logs.some(l => l.includes('Error during up for test_migration'))).toBe(true)
+        expect(logs.some(l => l.includes('Migration failed'))).toBe(true)
+      })
 
       it('should handle non-Error objects in onMigrationError', () => {
-        const logs: string[] = [];
-        const logger = createTestLogger(logs);
-        const plugin = createLoggingPlugin(logger);
+        const logs: string[] = []
+        const logger = createTestLogger(logs)
+        const plugin = createLoggingPlugin(logger)
 
-        const migration: Migration = { name: 'test_migration', up: async () => {} };
+        const migration: Migration = { name: 'test_migration', up: async () => {} }
 
-        plugin.onMigrationError?.(migration, 'up', 'string error');
+        plugin.onMigrationError?.(migration, 'up', 'string error')
 
-        expect(logs.some((l) => l.includes('string error'))).toBe(true);
-      });
-    });
+        expect(logs.some(l => l.includes('string error'))).toBe(true)
+      })
+    })
 
     describe('MetricsPlugin', () => {
       it('should collect metrics for successful migrations', () => {
-        const plugin = createMetricsPlugin();
+        const plugin = createMetricsPlugin()
 
-        const migration1: Migration = { name: 'migration_1', up: async () => {} };
-        const migration2: Migration = { name: 'migration_2', up: async () => {} };
+        const migration1: Migration = { name: 'migration_1', up: async () => {} }
+        const migration2: Migration = { name: 'migration_2', up: async () => {} }
 
-        plugin.afterMigration?.(migration1, 'up', 100);
-        plugin.afterMigration?.(migration2, 'up', 200);
-        plugin.afterMigration?.(migration1, 'down', 50);
+        plugin.afterMigration?.(migration1, 'up', 100)
+        plugin.afterMigration?.(migration2, 'up', 200)
+        plugin.afterMigration?.(migration1, 'down', 50)
 
-        const metrics = plugin.getMetrics();
+        const metrics = plugin.getMetrics()
 
-        expect(metrics.migrations).toHaveLength(3);
+        expect(metrics.migrations).toHaveLength(3)
         expect(metrics.migrations).toContainEqual({
           name: 'migration_1',
           operation: 'up',
           duration: 100,
-          success: true,
-        });
+          success: true
+        })
         expect(metrics.migrations).toContainEqual({
           name: 'migration_2',
           operation: 'up',
           duration: 200,
-          success: true,
-        });
+          success: true
+        })
         expect(metrics.migrations).toContainEqual({
           name: 'migration_1',
           operation: 'down',
           duration: 50,
-          success: true,
-        });
-      });
+          success: true
+        })
+      })
 
       it('should track failed migrations', () => {
-        const plugin = createMetricsPlugin();
+        const plugin = createMetricsPlugin()
 
-        const migration: Migration = { name: 'failed_migration', up: async () => {} };
+        const migration: Migration = { name: 'failed_migration', up: async () => {} }
 
-        plugin.onMigrationError?.(migration, 'up', new Error('Failed'));
+        plugin.onMigrationError?.(migration, 'up', new Error('Failed'))
 
-        const metrics = plugin.getMetrics();
+        const metrics = plugin.getMetrics()
 
-        expect(metrics.migrations).toHaveLength(1);
+        expect(metrics.migrations).toHaveLength(1)
         expect(metrics.migrations[0]).toEqual({
           name: 'failed_migration',
           operation: 'up',
           duration: 0,
-          success: false,
-        });
-      });
+          success: false
+        })
+      })
 
       it('should return a copy of metrics array', () => {
-        const plugin = createMetricsPlugin();
+        const plugin = createMetricsPlugin()
 
-        const migration: Migration = { name: 'test', up: async () => {} };
-        plugin.afterMigration?.(migration, 'up', 100);
+        const migration: Migration = { name: 'test', up: async () => {} }
+        plugin.afterMigration?.(migration, 'up', 100)
 
-        const metrics1 = plugin.getMetrics();
-        const metrics2 = plugin.getMetrics();
+        const metrics1 = plugin.getMetrics()
+        const metrics2 = plugin.getMetrics()
 
-        expect(metrics1.migrations).not.toBe(metrics2.migrations);
-        expect(metrics1.migrations).toEqual(metrics2.migrations);
-      });
-    });
-  });
+        expect(metrics1.migrations).not.toBe(metrics2.migrations)
+        expect(metrics1.migrations).toEqual(metrics2.migrations)
+      })
+    })
+  })
 
   describe('Transaction Support', () => {
     it('should execute migration in transaction when useTransactions is true', async () => {
       const migrations: Migration[] = [
         createMigration(
           '001_transactional',
-          async (db) => {
+          async db => {
             await db.schema
               .createTable('test_table')
-              .addColumn('id', 'integer', (col) => col.primaryKey())
-              .execute();
+              .addColumn('id', 'integer', col => col.primaryKey())
+              .execute()
           },
-          async (db) => {
-            await db.schema.dropTable('test_table').execute();
+          async db => {
+            await db.schema.dropTable('test_table').execute()
           }
-        ),
-      ];
+        )
+      ]
 
       const runner = await createMigrationRunnerWithPlugins(db, migrations, {
-        useTransactions: true,
-      });
+        useTransactions: true
+      })
 
-      const result = await runner.up();
+      const result = await runner.up()
 
-      expect(result.executed).toHaveLength(1);
+      expect(result.executed).toHaveLength(1)
 
       // Verify table was created
       const tables = await db
@@ -409,175 +502,175 @@ describe('MigrationRunnerWithPlugins', () => {
         .select('name' as any)
         .where('type' as any, '=', 'table')
         .where('name' as any, '=', 'test_table')
-        .execute();
+        .execute()
 
-      expect(tables).toHaveLength(1);
-    });
+      expect(tables).toHaveLength(1)
+    })
 
     it('should rollback transaction on error when useTransactions is true', async () => {
       // First create a table so we can test partial migration failure
       await db.schema
         .createTable('existing_table')
-        .addColumn('id', 'integer', (col) => col.primaryKey())
-        .execute();
+        .addColumn('id', 'integer', col => col.primaryKey())
+        .execute()
 
       const migrations: Migration[] = [
-        createMigration('001_partial_fail', async (db) => {
+        createMigration('001_partial_fail', async db => {
           // This will fail because the table already exists
           await db.schema
             .createTable('existing_table')
-            .addColumn('id', 'integer', (col) => col.primaryKey())
-            .execute();
-        }),
-      ];
+            .addColumn('id', 'integer', col => col.primaryKey())
+            .execute()
+        })
+      ]
 
       const runner = await createMigrationRunnerWithPlugins(db, migrations, {
-        useTransactions: true,
-      });
+        useTransactions: true
+      })
 
-      await expect(runner.up()).rejects.toThrow();
-    });
-  });
+      await expect(runner.up()).rejects.toThrow()
+    })
+  })
 
   describe('stopOnError option', () => {
     it('should stop on first error when stopOnError is true (default)', async () => {
       const migrations: Migration[] = [
         createMigration('001_success', async () => {}),
         createMigration('002_fail', async () => {
-          throw new Error('Migration failed');
+          throw new Error('Migration failed')
         }),
-        createMigration('003_never_runs', async () => {}),
-      ];
+        createMigration('003_never_runs', async () => {})
+      ]
 
       const runner = await createMigrationRunnerWithPlugins(db, migrations, {
-        stopOnError: true,
-      });
+        stopOnError: true
+      })
 
-      await expect(runner.up()).rejects.toThrow(MigrationError);
+      await expect(runner.up()).rejects.toThrow(MigrationError)
 
-      const executed = await runner.getExecutedMigrations();
-      expect(executed).toHaveLength(1);
-      expect(executed).toContain('001_success');
-    });
+      const executed = await runner.getExecutedMigrations()
+      expect(executed).toHaveLength(1)
+      expect(executed).toContain('001_success')
+    })
 
     it('should continue on error when stopOnError is false', async () => {
-      const executedMigrations: string[] = [];
+      const executedMigrations: string[] = []
 
       const migrations: Migration[] = [
         createMigration('001_success', async () => {
-          executedMigrations.push('001');
+          executedMigrations.push('001')
         }),
         createMigration('002_fail', async () => {
-          executedMigrations.push('002_attempted');
-          throw new Error('Migration failed');
+          executedMigrations.push('002_attempted')
+          throw new Error('Migration failed')
         }),
         createMigration('003_also_runs', async () => {
-          executedMigrations.push('003');
-        }),
-      ];
+          executedMigrations.push('003')
+        })
+      ]
 
       const runner = await createMigrationRunnerWithPlugins(db, migrations, {
-        stopOnError: false,
-      });
+        stopOnError: false
+      })
 
-      const result = await runner.up();
+      const result = await runner.up()
 
-      expect(result.failed).toContain('002_fail');
-      expect(result.executed).toContain('001_success');
-      expect(result.executed).toContain('003_also_runs');
-      expect(executedMigrations).toEqual(['001', '002_attempted', '003']);
-    });
-  });
+      expect(result.failed).toContain('002_fail')
+      expect(result.executed).toContain('001_success')
+      expect(result.executed).toContain('003_also_runs')
+      expect(executedMigrations).toEqual(['001', '002_attempted', '003'])
+    })
+  })
 
   describe('getPlugins', () => {
     it('should return a copy of plugins array', async () => {
-      const plugin = createLoggingPlugin();
+      const plugin = createLoggingPlugin()
       const runner = await createMigrationRunnerWithPlugins(db, [], {
-        plugins: [plugin],
-      });
+        plugins: [plugin]
+      })
 
-      const plugins1 = runner.getPlugins();
-      const plugins2 = runner.getPlugins();
+      const plugins1 = runner.getPlugins()
+      const plugins2 = runner.getPlugins()
 
-      expect(plugins1).not.toBe(plugins2);
-      expect(plugins1).toHaveLength(1);
-      expect(plugins1[0]).toBe(plugins2[0]); // Same plugin instance
-    });
-  });
+      expect(plugins1).not.toBe(plugins2)
+      expect(plugins1).toHaveLength(1)
+      expect(plugins1[0]).toBe(plugins2[0]) // Same plugin instance
+    })
+  })
 
   describe('Edge Cases', () => {
     it('should handle plugin without any hooks', async () => {
       const plugin: MigrationPlugin = {
         name: 'empty-plugin',
-        version: '1.0.0',
-      };
+        version: '1.0.0'
+      }
 
-      const migrations = createTestMigrations();
+      const migrations = createTestMigrations()
       const runner = await createMigrationRunnerWithPlugins(db, migrations, {
-        plugins: [plugin],
-      });
+        plugins: [plugin]
+      })
 
       // Should not throw
-      await (runner as any).runBeforeHooks(migrations[0], 'up');
-      await (runner as any).runAfterHooks(migrations[0], 'up', 100);
-      await (runner as any).runErrorHooks(migrations[0], 'up', new Error('test'));
-    });
+      await (runner as any).runBeforeHooks(migrations[0], 'up')
+      await (runner as any).runAfterHooks(migrations[0], 'up', 100)
+      await (runner as any).runErrorHooks(migrations[0], 'up', new Error('test'))
+    })
 
     it('should handle async and sync hooks mixed', async () => {
-      const callOrder: string[] = [];
+      const callOrder: string[] = []
 
       const asyncPlugin: MigrationPlugin = {
         name: 'async-plugin',
         version: '1.0.0',
         beforeMigration: async () => {
-          await new Promise((resolve) => setTimeout(resolve, 10));
-          callOrder.push('async');
-        },
-      };
+          await new Promise(resolve => setTimeout(resolve, 10))
+          callOrder.push('async')
+        }
+      }
 
       const syncPlugin: MigrationPlugin = {
         name: 'sync-plugin',
         version: '1.0.0',
         beforeMigration: () => {
-          callOrder.push('sync');
-        },
-      };
+          callOrder.push('sync')
+        }
+      }
 
-      const migrations = createTestMigrations();
+      const migrations = createTestMigrations()
       const runner = await createMigrationRunnerWithPlugins(db, migrations, {
-        plugins: [asyncPlugin, syncPlugin],
-      });
+        plugins: [asyncPlugin, syncPlugin]
+      })
 
-      await (runner as any).runBeforeHooks(migrations[0], 'up');
+      await (runner as any).runBeforeHooks(migrations[0], 'up')
 
-      expect(callOrder).toEqual(['async', 'sync']);
-    });
+      expect(callOrder).toEqual(['async', 'sync'])
+    })
 
     it('should handle onInit returning void vs Promise<void>', async () => {
-      const initResults: string[] = [];
+      const initResults: string[] = []
 
       const syncInitPlugin: MigrationPlugin = {
         name: 'sync-init',
         version: '1.0.0',
         onInit: () => {
-          initResults.push('sync');
-        },
-      };
+          initResults.push('sync')
+        }
+      }
 
       const asyncInitPlugin: MigrationPlugin = {
         name: 'async-init',
         version: '1.0.0',
         onInit: async () => {
-          await new Promise((resolve) => setTimeout(resolve, 5));
-          initResults.push('async');
-        },
-      };
+          await new Promise(resolve => setTimeout(resolve, 5))
+          initResults.push('async')
+        }
+      }
 
       await createMigrationRunnerWithPlugins(db, [], {
-        plugins: [syncInitPlugin, asyncInitPlugin],
-      });
+        plugins: [syncInitPlugin, asyncInitPlugin]
+      })
 
-      expect(initResults).toEqual(['sync', 'async']);
-    });
-  });
-});
+      expect(initResults).toEqual(['sync', 'async'])
+    })
+  })
+})

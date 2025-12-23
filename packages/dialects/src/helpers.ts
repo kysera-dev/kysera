@@ -5,9 +5,58 @@
  * for backward compatibility with existing code.
  */
 
-import type { Kysely } from 'kysely';
-import type { DatabaseDialect } from './types.js';
-import { getAdapter } from './factory.js';
+import type { Kysely } from 'kysely'
+import type { DatabaseDialect } from './types.js'
+import { getAdapter } from './factory.js'
+
+/**
+ * Maximum allowed length for SQL identifiers
+ */
+const MAX_IDENTIFIER_LENGTH = 128
+
+/**
+ * Pattern for valid SQL identifiers
+ * Allows alphanumeric, underscore, and dot for schema.table notation
+ */
+const IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_.]*$/
+
+/**
+ * Validate a SQL identifier (table name, column name, etc.)
+ *
+ * @param name - The identifier to validate
+ * @returns true if the identifier is valid, false otherwise
+ *
+ * @example
+ * validateIdentifier('users')           // true
+ * validateIdentifier('public.users')    // true
+ * validateIdentifier('_private_table')  // true
+ * validateIdentifier('123invalid')      // false (starts with number)
+ * validateIdentifier('table-name')      // false (contains hyphen)
+ * validateIdentifier('')                // false (empty)
+ */
+export function validateIdentifier(name: string): boolean {
+  if (!name || name.length > MAX_IDENTIFIER_LENGTH) {
+    return false
+  }
+  return IDENTIFIER_PATTERN.test(name)
+}
+
+/**
+ * Assert that an identifier is valid, throwing an error if not
+ *
+ * @param name - The identifier to validate
+ * @param context - Optional context for the error message (e.g., 'table name', 'column name')
+ * @throws Error if the identifier is invalid
+ *
+ * @example
+ * assertValidIdentifier('users', 'table name');  // passes
+ * assertValidIdentifier('123bad', 'table name'); // throws Error: Invalid table name: 123bad
+ */
+export function assertValidIdentifier(name: string, context = 'identifier'): void {
+  if (!validateIdentifier(name)) {
+    throw new Error(`Invalid ${context}: ${name}`)
+  }
+}
 
 /**
  * Check if table exists in the database
@@ -15,8 +64,12 @@ import { getAdapter } from './factory.js';
  * @example
  * const exists = await tableExists(db, 'users', 'postgres');
  */
-export async function tableExists(db: Kysely<any>, tableName: string, dialect: DatabaseDialect): Promise<boolean> {
-  return getAdapter(dialect).tableExists(db, tableName);
+export async function tableExists(
+  db: Kysely<any>,
+  tableName: string,
+  dialect: DatabaseDialect
+): Promise<boolean> {
+  return await getAdapter(dialect).tableExists(db, tableName)
 }
 
 /**
@@ -31,7 +84,7 @@ export async function getTableColumns(
   tableName: string,
   dialect: DatabaseDialect
 ): Promise<string[]> {
-  return getAdapter(dialect).getTableColumns(db, tableName);
+  return await getAdapter(dialect).getTableColumns(db, tableName)
 }
 
 /**
@@ -42,7 +95,7 @@ export async function getTableColumns(
  * // ['users', 'posts', 'comments']
  */
 export async function getTables(db: Kysely<any>, dialect: DatabaseDialect): Promise<string[]> {
-  return getAdapter(dialect).getTables(db);
+  return await getAdapter(dialect).getTables(db)
 }
 
 /**
@@ -53,7 +106,7 @@ export async function getTables(db: Kysely<any>, dialect: DatabaseDialect): Prom
  * escapeIdentifier('my-table', 'mysql')    // '`my-table`'
  */
 export function escapeIdentifier(identifier: string, dialect: DatabaseDialect): string {
-  return getAdapter(dialect).escapeIdentifier(identifier);
+  return getAdapter(dialect).escapeIdentifier(identifier)
 }
 
 /**
@@ -64,7 +117,7 @@ export function escapeIdentifier(identifier: string, dialect: DatabaseDialect): 
  * getCurrentTimestamp('sqlite')   // "datetime('now')"
  */
 export function getCurrentTimestamp(dialect: DatabaseDialect): string {
-  return getAdapter(dialect).getCurrentTimestamp();
+  return getAdapter(dialect).getCurrentTimestamp()
 }
 
 /**
@@ -75,7 +128,7 @@ export function getCurrentTimestamp(dialect: DatabaseDialect): string {
  * formatDate(new Date(), 'mysql')    // '2024-01-15 10:30:00'
  */
 export function formatDate(date: Date, dialect: DatabaseDialect): string {
-  return getAdapter(dialect).formatDate(date);
+  return getAdapter(dialect).formatDate(date)
 }
 
 /**
@@ -91,7 +144,7 @@ export function formatDate(date: Date, dialect: DatabaseDialect): string {
  * }
  */
 export function isUniqueConstraintError(error: unknown, dialect: DatabaseDialect): boolean {
-  return getAdapter(dialect).isUniqueConstraintError(error);
+  return getAdapter(dialect).isUniqueConstraintError(error)
 }
 
 /**
@@ -103,7 +156,7 @@ export function isUniqueConstraintError(error: unknown, dialect: DatabaseDialect
  * }
  */
 export function isForeignKeyError(error: unknown, dialect: DatabaseDialect): boolean {
-  return getAdapter(dialect).isForeignKeyError(error);
+  return getAdapter(dialect).isForeignKeyError(error)
 }
 
 /**
@@ -115,7 +168,7 @@ export function isForeignKeyError(error: unknown, dialect: DatabaseDialect): boo
  * }
  */
 export function isNotNullError(error: unknown, dialect: DatabaseDialect): boolean {
-  return getAdapter(dialect).isNotNullError(error);
+  return getAdapter(dialect).isNotNullError(error)
 }
 
 /**
@@ -130,7 +183,7 @@ export async function getDatabaseSize(
   dialect: DatabaseDialect,
   databaseName?: string
 ): Promise<number> {
-  return getAdapter(dialect).getDatabaseSize(db, databaseName);
+  return await getAdapter(dialect).getDatabaseSize(db, databaseName)
 }
 
 /**
@@ -145,5 +198,5 @@ export async function truncateAllTables(
   dialect: DatabaseDialect,
   exclude: string[] = []
 ): Promise<void> {
-  return getAdapter(dialect).truncateAllTables(db, exclude);
+  await getAdapter(dialect).truncateAllTables(db, exclude)
 }

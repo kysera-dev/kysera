@@ -1,6 +1,6 @@
 ---
 sidebar_position: 4
-title: "@kysera/migrations"
+title: '@kysera/migrations'
 description: Migration system API reference
 ---
 
@@ -47,7 +47,7 @@ import { sql } from 'kysely'
 const migrations = [
   createMigration(
     '001_create_users',
-    async (db) => {
+    async db => {
       await db.schema
         .createTable('users')
         .addColumn('id', 'serial', col => col.primaryKey())
@@ -58,7 +58,7 @@ const migrations = [
         )
         .execute()
     },
-    async (db) => {
+    async db => {
       await db.schema.dropTable('users').execute()
     }
   )
@@ -272,8 +272,16 @@ interface MigrationPlugin {
   version: string
   onInit?(runner: MigrationRunner): Promise<void> | void
   beforeMigration?(migration: Migration, operation: 'up' | 'down'): Promise<void> | void
-  afterMigration?(migration: Migration, operation: 'up' | 'down', duration: number): Promise<void> | void
-  onMigrationError?(migration: Migration, operation: 'up' | 'down', error: unknown): Promise<void> | void
+  afterMigration?(
+    migration: Migration,
+    operation: 'up' | 'down',
+    duration: number
+  ): Promise<void> | void
+  onMigrationError?(
+    migration: Migration,
+    operation: 'up' | 'down',
+    error: unknown
+  ): Promise<void> | void
 }
 ```
 
@@ -327,8 +335,12 @@ try {
 ```typescript
 createMigration(
   '001_create_users',
-  async (db) => { /* up */ },
-  async (db) => { /* down - always include! */ }
+  async db => {
+    /* up */
+  },
+  async db => {
+    /* down - always include! */
+  }
 )
 ```
 

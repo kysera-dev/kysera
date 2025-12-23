@@ -15,10 +15,10 @@ npm install @kysera/infra
 
 ```typescript
 // Before (deprecated)
-import { checkDatabaseHealth, HealthMonitor } from '@kysera/core';
+import { checkDatabaseHealth, HealthMonitor } from '@kysera/core'
 
 // After
-import { checkDatabaseHealth, HealthMonitor } from '@kysera/infra';
+import { checkDatabaseHealth, HealthMonitor } from '@kysera/infra'
 ```
 
 See the full documentation at **[@kysera/infra](/docs/api/infra)**.
@@ -109,6 +109,7 @@ function createMetricsPool(pool: DatabasePool): MetricsPool
 ```
 
 Automatically detects and supports:
+
 - PostgreSQL (`pg.Pool`)
 - MySQL (`mysql2.Pool`)
 - SQLite (`better-sqlite3.Database`)
@@ -123,8 +124,8 @@ const pool = new Pool({ max: 10 })
 const metricsPool = createMetricsPool(pool)
 
 // Get metrics
-console.log(metricsPool.totalCount)   // 10
-console.log(metricsPool.idleCount)    // 8
+console.log(metricsPool.totalCount) // 10
+console.log(metricsPool.idleCount) // 8
 console.log(metricsPool.waitingCount) // 0
 ```
 
@@ -151,7 +152,7 @@ class HealthMonitor {
   constructor(
     db: Kysely<any>,
     options?: {
-      interval?: number      // Check interval in ms (default: 30000)
+      interval?: number // Check interval in ms (default: 30000)
       pool?: MetricsPool
     }
   )
@@ -172,7 +173,7 @@ const monitor = new HealthMonitor(db, {
   pool: metricsPool
 })
 
-monitor.start((result) => {
+monitor.start(result => {
   if (result.status !== 'healthy') {
     alertOps('Database health degraded', result)
   }
@@ -216,11 +217,11 @@ interface MetricsResult {
 
 ## Status Determination
 
-| Latency | Status |
-|---------|--------|
-| < 100ms | healthy |
-| 100-500ms | degraded |
-| > 500ms | unhealthy |
+| Latency   | Status    |
+| --------- | --------- |
+| < 100ms   | healthy   |
+| 100-500ms | degraded  |
+| > 500ms   | unhealthy |
 
 ## HTTP Endpoint Example
 
@@ -228,9 +229,7 @@ interface MetricsResult {
 app.get('/health', async (req, res) => {
   const health = await checkDatabaseHealth(db, metricsPool)
 
-  const statusCode = health.status === 'healthy' ? 200
-    : health.status === 'degraded' ? 200
-    : 503
+  const statusCode = health.status === 'healthy' ? 200 : health.status === 'degraded' ? 200 : 503
 
   res.status(statusCode).json(health)
 })

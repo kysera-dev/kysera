@@ -12,11 +12,11 @@
  */
 export interface ValidationIssue {
   /** Error code (library-specific) */
-  code: string;
+  code: string
   /** Human-readable error message */
-  message: string;
+  message: string
   /** Path to the invalid field */
-  path: (string | number)[];
+  path: (string | number)[]
 }
 
 /**
@@ -24,11 +24,11 @@ export interface ValidationIssue {
  */
 export interface ValidationError {
   /** Primary error message */
-  message: string;
+  message: string
   /** Path to the first invalid field */
-  path?: (string | number)[] | undefined;
+  path?: (string | number)[] | undefined
   /** All validation issues */
-  issues?: ValidationIssue[] | undefined;
+  issues?: ValidationIssue[] | undefined
 }
 
 /**
@@ -36,7 +36,7 @@ export interface ValidationError {
  */
 export type ValidationResult<T> =
   | { success: true; data: T }
-  | { success: false; error: ValidationError };
+  | { success: false; error: ValidationError }
 
 /**
  * Unified validation schema interface.
@@ -66,19 +66,19 @@ export interface ValidationSchema<T = unknown> {
    * Parse and validate data.
    * @throws ValidationError if validation fails
    */
-  parse(data: unknown): T;
+  parse(data: unknown): T
 
   /**
    * Safe parse without throwing.
    * Returns success/failure result with data or error.
    */
-  safeParse(data: unknown): ValidationResult<T>;
+  safeParse(data: unknown): ValidationResult<T>
 
   /**
    * Check if schema supports partial (for update schemas).
    * Returns a new schema that makes all fields optional.
    */
-  partial?(): ValidationSchema<Partial<T>>;
+  partial?(): ValidationSchema<Partial<T>>
 }
 
 /**
@@ -105,17 +105,17 @@ export interface ValidationSchema<T = unknown> {
  * where partial schemas have all fields as optional.
  */
 interface ZodLikeSchema<T> {
-  parse(data: unknown): T;
+  parse(data: unknown): T
   safeParse(data: unknown): {
-    success: boolean;
-    data?: T;
+    success: boolean
+    data?: T
     error?: {
-      message: string;
-      issues: ReadonlyArray<{ code: string; message: string; path: PropertyKey[] }>;
-    };
-  };
+      message: string
+      issues: readonly { code: string; message: string; path: PropertyKey[] }[]
+    }
+  }
   // Note: Zod's partial() returns schema with optional fields, we accept any schema
-  partial?(): ZodLikeSchema<unknown>;
+  partial?(): ZodLikeSchema<unknown>
 }
 
 /**
@@ -123,63 +123,63 @@ interface ZodLikeSchema<T> {
  * @internal
  */
 function filterSymbolsFromPath(path: readonly PropertyKey[]): (string | number)[] {
-  return path.filter((p): p is string | number => typeof p !== 'symbol');
+  return path.filter((p): p is string | number => typeof p !== 'symbol')
 }
 
 export function zodAdapter<T>(schema: ZodLikeSchema<T>): ValidationSchema<T> {
   const adapter: ValidationSchema<T> = {
     parse(data: unknown): T {
-      return schema.parse(data);
+      return schema.parse(data)
     },
 
     safeParse(data: unknown): ValidationResult<T> {
-      const result = schema.safeParse(data);
+      const result = schema.safeParse(data)
       if (result.success) {
-        return { success: true, data: result.data as T };
+        return { success: true, data: result.data as T }
       }
       return {
         success: false,
         error: {
           message: result.error?.message ?? 'Validation failed',
-          issues: result.error?.issues.map((i) => ({
+          issues: result.error?.issues.map(i => ({
             code: i.code,
             message: i.message,
-            path: filterSymbolsFromPath(i.path),
-          })),
-        },
-      };
-    },
-  };
+            path: filterSymbolsFromPath(i.path)
+          }))
+        }
+      }
+    }
+  }
 
   // Add partial support if schema has it
   if (schema.partial) {
     adapter.partial = (): ValidationSchema<Partial<T>> => {
       // Cast is safe: Zod's partial() produces schema with same shape but optional fields
-      return zodAdapter(schema.partial!()) as unknown as ValidationSchema<Partial<T>>;
-    };
+      return zodAdapter(schema.partial!()) as unknown as ValidationSchema<Partial<T>>
+    }
   }
 
-  return adapter;
+  return adapter
 }
 
 /**
  * Type for Valibot schema (structural typing for optional dependency)
  */
 interface ValibotSchema<T> {
-  _types?: { output: T };
+  _types?: { output: T }
 }
 
 /**
  * Type for Valibot parse result
  */
 interface ValibotResult<T> {
-  success: boolean;
-  output?: T;
+  success: boolean
+  output?: T
   issues?: {
-    type: string;
-    message: string;
-    path?: { key: string | number }[];
-  }[];
+    type: string
+    message: string
+    path?: { key: string | number }[]
+  }[]
 }
 
 /**
@@ -205,61 +205,61 @@ interface ValibotResult<T> {
 export function valibotAdapter<T>(
   schema: ValibotSchema<T>,
   valibot: {
-    parse: (schema: ValibotSchema<T>, data: unknown) => T;
-    safeParse: (schema: ValibotSchema<T>, data: unknown) => ValibotResult<T>;
-    partial?: (schema: ValibotSchema<T>) => ValibotSchema<Partial<T>>;
+    parse: (schema: ValibotSchema<T>, data: unknown) => T
+    safeParse: (schema: ValibotSchema<T>, data: unknown) => ValibotResult<T>
+    partial?: (schema: ValibotSchema<T>) => ValibotSchema<Partial<T>>
   }
 ): ValidationSchema<T> {
   const adapter: ValidationSchema<T> = {
     parse(data: unknown): T {
-      return valibot.parse(schema, data);
+      return valibot.parse(schema, data)
     },
 
     safeParse(data: unknown): ValidationResult<T> {
-      const result = valibot.safeParse(schema, data);
+      const result = valibot.safeParse(schema, data)
       if (result.success) {
-        return { success: true, data: result.output as T };
+        return { success: true, data: result.output as T }
       }
       return {
         success: false,
         error: {
           message: 'Validation failed',
-          issues: result.issues?.map((i) => ({
+          issues: result.issues?.map(i => ({
             code: i.type,
             message: i.message,
-            path: i.path?.map((p) => p.key) ?? [],
-          })),
-        },
-      };
-    },
-  };
+            path: i.path?.map(p => p.key) ?? []
+          }))
+        }
+      }
+    }
+  }
 
   // Add partial support if valibot has it
   if (valibot.partial) {
-    const partialFn = valibot.partial;
+    const partialFn = valibot.partial
     adapter.partial = (): ValidationSchema<Partial<T>> => {
-      const partialSchema = partialFn(schema);
+      const partialSchema = partialFn(schema)
       // Cast is safe: Valibot's partial() produces schema with same shape but optional fields
       return valibotAdapter(
         partialSchema as unknown as ValibotSchema<Partial<T>>,
         valibot as unknown as {
-          parse: (schema: ValibotSchema<Partial<T>>, data: unknown) => Partial<T>;
-          safeParse: (schema: ValibotSchema<Partial<T>>, data: unknown) => ValibotResult<Partial<T>>;
-          partial?: (schema: ValibotSchema<Partial<T>>) => ValibotSchema<Partial<Partial<T>>>;
+          parse: (schema: ValibotSchema<Partial<T>>, data: unknown) => Partial<T>
+          safeParse: (schema: ValibotSchema<Partial<T>>, data: unknown) => ValibotResult<Partial<T>>
+          partial?: (schema: ValibotSchema<Partial<T>>) => ValibotSchema<Partial<Partial<T>>>
         }
-      );
-    };
+      )
+    }
   }
 
-  return adapter;
+  return adapter
 }
 
 /**
  * Type for TypeBox schema (structural typing for optional dependency)
  */
 interface TypeBoxSchema {
-  type?: string;
-  properties?: Record<string, unknown>;
+  type?: string
+  properties?: Record<string, unknown>
 }
 
 /**
@@ -286,45 +286,53 @@ interface TypeBoxSchema {
 export function typeboxAdapter<T>(
   schema: TypeBoxSchema,
   Value: {
-    Check(schema: TypeBoxSchema, data: unknown): boolean;
-    Parse(schema: TypeBoxSchema, data: unknown): T;
-    Errors(schema: TypeBoxSchema, data: unknown): Iterable<{ message: string; path: string }>;
+    Check(schema: TypeBoxSchema, data: unknown): boolean
+    Parse(schema: TypeBoxSchema, data: unknown): T
+    Errors(schema: TypeBoxSchema, data: unknown): Iterable<{ message: string; path: string }>
   }
 ): ValidationSchema<T> {
   return {
     parse(data: unknown): T {
       if (!Value.Check(schema, data)) {
-        const errors = [...Value.Errors(schema, data)];
-        const firstError = errors[0];
-        const error = new Error(firstError?.message ?? 'Validation failed') as Error & { issues?: ValidationIssue[] };
-        error.issues = errors.map((e) => ({
+        const errors = [...Value.Errors(schema, data)]
+        const firstError = errors[0]
+        const error = new Error(firstError?.message ?? 'Validation failed') as Error & {
+          issues?: ValidationIssue[]
+        }
+        error.issues = errors.map(e => ({
           code: 'type_error',
           message: e.message,
-          path: e.path.split('/').filter(Boolean).map((p) => (isNaN(Number(p)) ? p : Number(p))),
-        }));
-        throw error;
+          path: e.path
+            .split('/')
+            .filter(Boolean)
+            .map(p => (isNaN(Number(p)) ? p : Number(p)))
+        }))
+        throw error
       }
-      return Value.Parse(schema, data);
+      return Value.Parse(schema, data)
     },
 
     safeParse(data: unknown): ValidationResult<T> {
       if (Value.Check(schema, data)) {
-        return { success: true, data: Value.Parse(schema, data) };
+        return { success: true, data: Value.Parse(schema, data) }
       }
-      const errors = [...Value.Errors(schema, data)];
+      const errors = [...Value.Errors(schema, data)]
       return {
         success: false,
         error: {
           message: errors[0]?.message ?? 'Validation failed',
-          issues: errors.map((e) => ({
+          issues: errors.map(e => ({
             code: 'type_error',
             message: e.message,
-            path: e.path.split('/').filter(Boolean).map((p) => (isNaN(Number(p)) ? p : Number(p))),
-          })),
-        },
-      };
-    },
-  };
+            path: e.path
+              .split('/')
+              .filter(Boolean)
+              .map(p => (isNaN(Number(p)) ? p : Number(p)))
+          }))
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -348,17 +356,17 @@ export function typeboxAdapter<T>(
 export function nativeAdapter<T>(): ValidationSchema<T> {
   return {
     parse(data: unknown): T {
-      return data as T;
+      return data as T
     },
 
     safeParse(data: unknown): ValidationResult<T> {
-      return { success: true, data: data as T };
+      return { success: true, data: data as T }
     },
 
     partial(): ValidationSchema<Partial<T>> {
-      return nativeAdapter<Partial<T>>();
-    },
-  };
+      return nativeAdapter<Partial<T>>()
+    }
+  }
 }
 
 /**
@@ -381,28 +389,26 @@ export function nativeAdapter<T>(): ValidationSchema<T> {
  *
  * @param validateFn - Function that validates and returns data, or throws on error
  */
-export function customAdapter<T>(
-  validateFn: (data: unknown) => T
-): ValidationSchema<T> {
+export function customAdapter<T>(validateFn: (data: unknown) => T): ValidationSchema<T> {
   return {
     parse(data: unknown): T {
-      return validateFn(data);
+      return validateFn(data)
     },
 
     safeParse(data: unknown): ValidationResult<T> {
       try {
-        return { success: true, data: validateFn(data) };
+        return { success: true, data: validateFn(data) }
       } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
+        const error = err instanceof Error ? err : new Error(String(err))
         return {
           success: false,
           error: {
-            message: error.message,
-          },
-        };
+            message: error.message
+          }
+        }
       }
-    },
-  };
+    }
+  }
 }
 
 /**
@@ -416,7 +422,7 @@ export function isValidationSchema(value: unknown): value is ValidationSchema {
     typeof (value as ValidationSchema).parse === 'function' &&
     'safeParse' in value &&
     typeof (value as ValidationSchema).safeParse === 'function'
-  );
+  )
 }
 
 /**
@@ -442,9 +448,9 @@ export function normalizeSchema<T>(
 ): ValidationSchema<T> {
   // Already a ValidationSchema with proper structure
   if (isValidationSchema(schema)) {
-    return schema;
+    return schema
   }
 
   // Looks like Zod or similar - wrap it
-  return zodAdapter(schema as ZodLikeSchema<T>);
+  return zodAdapter(schema)
 }

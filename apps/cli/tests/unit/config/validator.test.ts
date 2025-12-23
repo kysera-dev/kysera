@@ -1,38 +1,38 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   validateConfiguration,
   formatValidationResult,
   type ValidationResult,
   type ValidationError,
-  type ValidationWarning,
-} from '@/config/validator.js';
-import type { KyseraConfig } from '@/config/schema.js';
+  type ValidationWarning
+} from '@/config/validator.js'
+import type { KyseraConfig } from '@/config/schema.js'
 
 describe('validateConfiguration', () => {
-  const originalEnv = process.env;
+  const originalEnv = process.env
 
   beforeEach(() => {
-    vi.resetAllMocks();
-    process.env = { ...originalEnv };
-  });
+    vi.resetAllMocks()
+    process.env = { ...originalEnv }
+  })
 
   afterEach(() => {
-    process.env = originalEnv;
-  });
+    process.env = originalEnv
+  })
 
   describe('schema validation', () => {
     it('should return valid for a complete valid configuration', () => {
       const config: KyseraConfig = {
         database: {
           dialect: 'postgres',
-          connection: 'postgres://localhost/testdb',
+          connection: 'postgres://localhost/testdb'
         },
         migrations: {
           directory: './migrations',
           pattern: '{timestamp}_{name}.ts',
           tableName: 'migrations',
           lockTable: true,
-          lockTimeout: 10000,
+          lockTimeout: 10000
         },
         plugins: {
           timestamps: {
@@ -41,65 +41,65 @@ describe('validateConfiguration', () => {
             createdAtColumn: 'created_at',
             updatedAtColumn: 'updated_at',
             dateFormat: 'iso',
-            setUpdatedAtOnInsert: false,
-          },
-        },
-      };
+            setUpdatedAtOnInsert: false
+          }
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
-      expect(result.valid).toBe(true);
-      expect(result.errors).toHaveLength(0);
-    });
+      expect(result.valid).toBe(true)
+      expect(result.errors).toHaveLength(0)
+    })
 
     it('should return validation errors for invalid dialect', () => {
       const config = {
         database: {
           dialect: 'invalid_dialect',
-          connection: 'test',
-        },
-      };
+          connection: 'test'
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors.some((e) => e.path.includes('dialect'))).toBe(true);
-    });
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
+      expect(result.errors.some(e => e.path.includes('dialect'))).toBe(true)
+    })
 
     it('should return validation errors for missing required database connection', () => {
       const config = {
         database: {
-          dialect: 'postgres',
+          dialect: 'postgres'
           // Missing connection, database, or host/database
-        },
-      };
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
 
     it('should return validation errors for invalid config', () => {
       const config = {
         database: {
-          dialect: 'invalid',
-        },
-      };
+          dialect: 'invalid'
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
 
     it('should return validation errors for undefined config', () => {
-      const result = validateConfiguration(undefined);
+      const result = validateConfiguration(undefined)
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
 
     it('should return validation errors for invalid pool config', () => {
       const config = {
@@ -108,17 +108,17 @@ describe('validateConfiguration', () => {
           connection: 'postgres://localhost/testdb',
           pool: {
             min: -1, // Invalid: negative
-            max: 0, // Invalid: zero
-          },
-        },
-      };
+            max: 0 // Invalid: zero
+          }
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
-  });
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
+  })
 
   describe('deprecation warnings', () => {
     it('should return validation errors for plugins array format', () => {
@@ -126,127 +126,123 @@ describe('validateConfiguration', () => {
       const config = {
         database: {
           dialect: 'postgres',
-          connection: 'postgres://localhost/testdb',
+          connection: 'postgres://localhost/testdb'
         },
-        plugins: ['audit', 'timestamps'] as any,
-      };
+        plugins: ['audit', 'timestamps'] as any
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
 
     it('should return validation errors for empty plugins array', () => {
       const config = {
         database: {
           dialect: 'postgres',
-          connection: 'postgres://localhost/testdb',
+          connection: 'postgres://localhost/testdb'
         },
-        plugins: [] as any,
-      };
+        plugins: [] as any
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
-  });
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
+  })
 
   describe('best practice warnings', () => {
     it('should warn when migrations directory is not configured', () => {
       const config = {
         database: {
           dialect: 'postgres',
-          connection: 'postgres://localhost/testdb',
+          connection: 'postgres://localhost/testdb'
         },
         migrations: {
           pattern: '{timestamp}_{name}.ts',
           tableName: 'migrations',
           lockTable: true,
-          lockTimeout: 10000,
+          lockTimeout: 10000
           // directory is missing
-        },
-      };
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
         result.warnings.some(
-          (w) => w.path === 'migrations.directory' && w.message.includes('No migrations directory')
+          w => w.path === 'migrations.directory' && w.message.includes('No migrations directory')
         )
-      ).toBe(true);
-    });
+      ).toBe(true)
+    })
 
     it('should warn when timestamps plugin is not enabled', () => {
       const config = {
         database: {
           dialect: 'postgres',
-          connection: 'postgres://localhost/testdb',
+          connection: 'postgres://localhost/testdb'
         },
         plugins: {
           timestamps: {
-            enabled: false,
-          },
-        },
-      };
+            enabled: false
+          }
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
         result.warnings.some(
-          (w) => w.path === 'plugins.timestamps' && w.message.includes('not enabled')
+          w => w.path === 'plugins.timestamps' && w.message.includes('not enabled')
         )
-      ).toBe(true);
-    });
+      ).toBe(true)
+    })
 
     it('should warn about audit plugin in production', () => {
-      process.env.NODE_ENV = 'production';
+      process.env.NODE_ENV = 'production'
 
       const config = {
         database: {
           dialect: 'postgres',
-          connection: 'postgres://localhost/testdb',
+          connection: 'postgres://localhost/testdb'
         },
         plugins: {
           audit: {
-            enabled: false,
-          },
-        },
-      };
+            enabled: false
+          }
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
-        result.warnings.some(
-          (w) => w.path === 'plugins.audit' && w.message.includes('production')
-        )
-      ).toBe(true);
-    });
+        result.warnings.some(w => w.path === 'plugins.audit' && w.message.includes('production'))
+      ).toBe(true)
+    })
 
     it('should not warn about audit plugin in development', () => {
-      process.env.NODE_ENV = 'development';
+      process.env.NODE_ENV = 'development'
 
       const config = {
         database: {
           dialect: 'postgres',
-          connection: 'postgres://localhost/testdb',
+          connection: 'postgres://localhost/testdb'
         },
         plugins: {
           audit: {
-            enabled: false,
-          },
-        },
-      };
+            enabled: false
+          }
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
-        result.warnings.some(
-          (w) => w.path === 'plugins.audit' && w.message.includes('production')
-        )
-      ).toBe(false);
-    });
+        result.warnings.some(w => w.path === 'plugins.audit' && w.message.includes('production'))
+      ).toBe(false)
+    })
 
     it('should warn about very high pool max connections', () => {
       const config = {
@@ -254,19 +250,17 @@ describe('validateConfiguration', () => {
           dialect: 'postgres',
           connection: 'postgres://localhost/testdb',
           pool: {
-            max: 150, // Very high
-          },
-        },
-      };
+            max: 150 // Very high
+          }
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
-        result.warnings.some(
-          (w) => w.path === 'database.pool.max' && w.message.includes('very high')
-        )
-      ).toBe(true);
-    });
+        result.warnings.some(w => w.path === 'database.pool.max' && w.message.includes('very high'))
+      ).toBe(true)
+    })
 
     it('should not warn about reasonable pool max connections', () => {
       const config = {
@@ -274,66 +268,62 @@ describe('validateConfiguration', () => {
           dialect: 'postgres',
           connection: 'postgres://localhost/testdb',
           pool: {
-            max: 20,
-          },
-        },
-      };
+            max: 20
+          }
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
-        result.warnings.some(
-          (w) => w.path === 'database.pool.max' && w.message.includes('very high')
-        )
-      ).toBe(false);
-    });
+        result.warnings.some(w => w.path === 'database.pool.max' && w.message.includes('very high'))
+      ).toBe(false)
+    })
 
     it('should warn about very high slow query threshold', () => {
       const config = {
         database: {
           dialect: 'postgres',
-          connection: 'postgres://localhost/testdb',
+          connection: 'postgres://localhost/testdb'
         },
         health: {
           enabled: true,
           interval: 60000,
           slowQueryThreshold: 5000, // Very high
           collectMetrics: true,
-          metricsRetention: 3600000,
-        },
-      };
+          metricsRetention: 3600000
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
         result.warnings.some(
-          (w) => w.path === 'health.slowQueryThreshold' && w.message.includes('very high')
+          w => w.path === 'health.slowQueryThreshold' && w.message.includes('very high')
         )
-      ).toBe(true);
-    });
+      ).toBe(true)
+    })
 
     it('should include suggestion for migrations directory warning', () => {
       const config = {
         database: {
           dialect: 'postgres',
-          connection: 'postgres://localhost/testdb',
+          connection: 'postgres://localhost/testdb'
         },
         migrations: {
           pattern: '{timestamp}_{name}.ts',
           tableName: 'migrations',
           lockTable: true,
-          lockTimeout: 10000,
-        },
-      };
+          lockTimeout: 10000
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
-      const migrationWarning = result.warnings.find(
-        (w) => w.path === 'migrations.directory'
-      );
-      expect(migrationWarning?.suggestion).toBeDefined();
-    });
-  });
+      const migrationWarning = result.warnings.find(w => w.path === 'migrations.directory')
+      expect(migrationWarning?.suggestion).toBeDefined()
+    })
+  })
 
   describe('security warnings', () => {
     it('should warn about hardcoded database password', () => {
@@ -345,21 +335,19 @@ describe('validateConfiguration', () => {
             port: 5432,
             database: 'testdb',
             user: 'admin',
-            password: 'myPlainTextPassword', // Hardcoded password
-          },
-        },
-      };
+            password: 'myPlainTextPassword' // Hardcoded password
+          }
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
         result.warnings.some(
-          (w) =>
-            w.path === 'database.connection.password' &&
-            w.message.includes('hardcoded')
+          w => w.path === 'database.connection.password' && w.message.includes('hardcoded')
         )
-      ).toBe(true);
-    });
+      ).toBe(true)
+    })
 
     it('should not warn when password uses environment variable placeholder', () => {
       const config = {
@@ -370,21 +358,19 @@ describe('validateConfiguration', () => {
             port: 5432,
             database: 'testdb',
             user: 'admin',
-            password: '${DB_PASSWORD}', // Environment variable
-          },
-        },
-      };
+            password: '${DB_PASSWORD}' // Environment variable
+          }
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
         result.warnings.some(
-          (w) =>
-            w.path === 'database.connection.password' &&
-            w.message.includes('hardcoded')
+          w => w.path === 'database.connection.password' && w.message.includes('hardcoded')
         )
-      ).toBe(false);
-    });
+      ).toBe(false)
+    })
 
     it('should not warn when password is empty', () => {
       const config = {
@@ -395,93 +381,85 @@ describe('validateConfiguration', () => {
             port: 5432,
             database: 'testdb',
             user: 'admin',
-            password: '',
-          },
-        },
-      };
+            password: ''
+          }
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
         result.warnings.some(
-          (w) =>
-            w.path === 'database.connection.password' &&
-            w.message.includes('hardcoded')
+          w => w.path === 'database.connection.password' && w.message.includes('hardcoded')
         )
-      ).toBe(false);
-    });
+      ).toBe(false)
+    })
 
     it('should warn about debug mode in production', () => {
-      process.env.NODE_ENV = 'production';
+      process.env.NODE_ENV = 'production'
 
       const config = {
         database: {
           dialect: 'postgres',
           connection: 'postgres://localhost/testdb',
-          debug: true,
-        },
-      };
+          debug: true
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
-        result.warnings.some(
-          (w) => w.path === 'database.debug' && w.message.includes('production')
-        )
-      ).toBe(true);
-    });
+        result.warnings.some(w => w.path === 'database.debug' && w.message.includes('production'))
+      ).toBe(true)
+    })
 
     it('should not warn about debug mode in development', () => {
-      process.env.NODE_ENV = 'development';
+      process.env.NODE_ENV = 'development'
 
       const config = {
         database: {
           dialect: 'postgres',
           connection: 'postgres://localhost/testdb',
-          debug: true,
-        },
-      };
+          debug: true
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
-        result.warnings.some(
-          (w) => w.path === 'database.debug' && w.message.includes('production')
-        )
-      ).toBe(false);
-    });
+        result.warnings.some(w => w.path === 'database.debug' && w.message.includes('production'))
+      ).toBe(false)
+    })
 
     it('should warn about debug logging level in production', () => {
-      process.env.NODE_ENV = 'production';
+      process.env.NODE_ENV = 'production'
 
       const config = {
         database: {
           dialect: 'postgres',
-          connection: 'postgres://localhost/testdb',
+          connection: 'postgres://localhost/testdb'
         },
         logging: {
           level: 'debug' as const,
           format: 'pretty' as const,
-          destinations: [{ type: 'console' as const }],
-        },
-      };
+          destinations: [{ type: 'console' as const }]
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
-        result.warnings.some(
-          (w) => w.path === 'logging.level' && w.message.includes('production')
-        )
-      ).toBe(true);
-    });
+        result.warnings.some(w => w.path === 'logging.level' && w.message.includes('production'))
+      ).toBe(true)
+    })
 
     it('should warn about query params logging in production', () => {
-      process.env.NODE_ENV = 'production';
+      process.env.NODE_ENV = 'production'
 
       const config = {
         database: {
           dialect: 'postgres',
-          connection: 'postgres://localhost/testdb',
+          connection: 'postgres://localhost/testdb'
         },
         logging: {
           level: 'info' as const,
@@ -490,21 +468,19 @@ describe('validateConfiguration', () => {
           queries: {
             enabled: true,
             slowQueryThreshold: 100,
-            includeParams: true, // Security concern
-          },
-        },
-      };
+            includeParams: true // Security concern
+          }
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
         result.warnings.some(
-          (w) =>
-            w.path === 'logging.queries.includeParams' &&
-            w.message.includes('production')
+          w => w.path === 'logging.queries.includeParams' && w.message.includes('production')
         )
-      ).toBe(true);
-    });
+      ).toBe(true)
+    })
 
     it('should include security suggestion for password warning', () => {
       const config = {
@@ -515,20 +491,18 @@ describe('validateConfiguration', () => {
             port: 5432,
             database: 'testdb',
             user: 'admin',
-            password: 'secret123',
-          },
-        },
-      };
+            password: 'secret123'
+          }
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
-      const passwordWarning = result.warnings.find(
-        (w) => w.path === 'database.connection.password'
-      );
-      expect(passwordWarning?.suggestion).toBeDefined();
-      expect(passwordWarning?.suggestion).toContain('environment variables');
-    });
-  });
+      const passwordWarning = result.warnings.find(w => w.path === 'database.connection.password')
+      expect(passwordWarning?.suggestion).toBeDefined()
+      expect(passwordWarning?.suggestion).toContain('environment variables')
+    })
+  })
 
   describe('warning about missing database connection', () => {
     it('should warn when database connection is not configured', () => {
@@ -538,86 +512,82 @@ describe('validateConfiguration', () => {
           pattern: '{timestamp}_{name}.ts',
           tableName: 'migrations',
           lockTable: true,
-          lockTimeout: 10000,
-        },
-      };
+          lockTimeout: 10000
+        }
+      }
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
       expect(
         result.warnings.some(
-          (w) =>
-            w.path === 'database.connection' &&
-            w.message.includes('No database connection')
+          w => w.path === 'database.connection' && w.message.includes('No database connection')
         )
-      ).toBe(true);
-    });
+      ).toBe(true)
+    })
 
     it('should include suggestion for database connection warning', () => {
-      const config = {};
+      const config = {}
 
-      const result = validateConfiguration(config);
+      const result = validateConfiguration(config)
 
-      const dbWarning = result.warnings.find(
-        (w) => w.path === 'database.connection'
-      );
-      expect(dbWarning?.suggestion).toBeDefined();
-      expect(dbWarning?.suggestion).toContain('DATABASE_URL');
-    });
-  });
+      const dbWarning = result.warnings.find(w => w.path === 'database.connection')
+      expect(dbWarning?.suggestion).toBeDefined()
+      expect(dbWarning?.suggestion).toContain('DATABASE_URL')
+    })
+  })
 
   describe('edge cases', () => {
     it('should return validation errors for null config', () => {
-      const result = validateConfiguration(null);
+      const result = validateConfiguration(null)
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
 
     it('should return validation errors for undefined config', () => {
-      const result = validateConfiguration(undefined);
+      const result = validateConfiguration(undefined)
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
 
     it('should handle empty object config', () => {
-      const result = validateConfiguration({});
+      const result = validateConfiguration({})
 
       // Empty config is valid (all fields are optional)
-      expect(result.valid).toBe(true);
+      expect(result.valid).toBe(true)
       // But should have warnings
-      expect(result.warnings.length).toBeGreaterThan(0);
-    });
+      expect(result.warnings.length).toBeGreaterThan(0)
+    })
 
     it('should return validation errors for non-object config', () => {
-      const result = validateConfiguration('not an object');
+      const result = validateConfiguration('not an object')
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
 
     it('should return validation errors for array config', () => {
-      const result = validateConfiguration([1, 2, 3]);
+      const result = validateConfiguration([1, 2, 3])
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
-  });
-});
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
+  })
+})
 
 describe('formatValidationResult', () => {
   it('should format valid result without warnings', () => {
     const result: ValidationResult = {
       valid: true,
       errors: [],
-      warnings: [],
-    };
+      warnings: []
+    }
 
-    const formatted = formatValidationResult(result);
+    const formatted = formatValidationResult(result)
 
-    expect(formatted).toContain('valid');
-  });
+    expect(formatted).toContain('valid')
+  })
 
   it('should format errors with paths and messages', () => {
     const result: ValidationResult = {
@@ -626,18 +596,18 @@ describe('formatValidationResult', () => {
         {
           path: 'database.dialect',
           message: 'Invalid dialect',
-          code: 'invalid_enum_value',
-        },
+          code: 'invalid_enum_value'
+        }
       ],
-      warnings: [],
-    };
+      warnings: []
+    }
 
-    const formatted = formatValidationResult(result);
+    const formatted = formatValidationResult(result)
 
-    expect(formatted).toContain('Errors');
-    expect(formatted).toContain('database.dialect');
-    expect(formatted).toContain('Invalid dialect');
-  });
+    expect(formatted).toContain('Errors')
+    expect(formatted).toContain('database.dialect')
+    expect(formatted).toContain('Invalid dialect')
+  })
 
   it('should format warnings with suggestions', () => {
     const result: ValidationResult = {
@@ -647,18 +617,18 @@ describe('formatValidationResult', () => {
         {
           path: 'plugins.timestamps',
           message: 'Timestamps plugin is not enabled',
-          suggestion: 'Enable timestamps plugin for automatic created_at/updated_at management',
-        },
-      ],
-    };
+          suggestion: 'Enable timestamps plugin for automatic created_at/updated_at management'
+        }
+      ]
+    }
 
-    const formatted = formatValidationResult(result);
+    const formatted = formatValidationResult(result)
 
-    expect(formatted).toContain('Warnings');
-    expect(formatted).toContain('plugins.timestamps');
-    expect(formatted).toContain('not enabled');
-    expect(formatted).toContain('Enable timestamps plugin');
-  });
+    expect(formatted).toContain('Warnings')
+    expect(formatted).toContain('plugins.timestamps')
+    expect(formatted).toContain('not enabled')
+    expect(formatted).toContain('Enable timestamps plugin')
+  })
 
   it('should format both errors and warnings', () => {
     const result: ValidationResult = {
@@ -667,22 +637,22 @@ describe('formatValidationResult', () => {
         {
           path: 'database.dialect',
           message: 'Invalid dialect',
-          code: 'invalid_enum_value',
-        },
+          code: 'invalid_enum_value'
+        }
       ],
       warnings: [
         {
           path: 'plugins.audit',
-          message: 'Audit plugin not enabled',
-        },
-      ],
-    };
+          message: 'Audit plugin not enabled'
+        }
+      ]
+    }
 
-    const formatted = formatValidationResult(result);
+    const formatted = formatValidationResult(result)
 
-    expect(formatted).toContain('Errors');
-    expect(formatted).toContain('Warnings');
-  });
+    expect(formatted).toContain('Errors')
+    expect(formatted).toContain('Warnings')
+  })
 
   it('should handle warnings without suggestions', () => {
     const result: ValidationResult = {
@@ -691,16 +661,16 @@ describe('formatValidationResult', () => {
       warnings: [
         {
           path: 'some.path',
-          message: 'Warning without suggestion',
-        },
-      ],
-    };
+          message: 'Warning without suggestion'
+        }
+      ]
+    }
 
-    const formatted = formatValidationResult(result);
+    const formatted = formatValidationResult(result)
 
-    expect(formatted).toContain('Warnings');
-    expect(formatted).toContain('Warning without suggestion');
-  });
+    expect(formatted).toContain('Warnings')
+    expect(formatted).toContain('Warning without suggestion')
+  })
 
   it('should format multiple errors', () => {
     const result: ValidationResult = {
@@ -708,17 +678,17 @@ describe('formatValidationResult', () => {
       errors: [
         { path: 'database.dialect', message: 'Invalid dialect', code: 'error1' },
         { path: 'database.pool.min', message: 'Must be positive', code: 'error2' },
-        { path: 'logging.level', message: 'Invalid level', code: 'error3' },
+        { path: 'logging.level', message: 'Invalid level', code: 'error3' }
       ],
-      warnings: [],
-    };
+      warnings: []
+    }
 
-    const formatted = formatValidationResult(result);
+    const formatted = formatValidationResult(result)
 
-    expect(formatted).toContain('database.dialect');
-    expect(formatted).toContain('database.pool.min');
-    expect(formatted).toContain('logging.level');
-  });
+    expect(formatted).toContain('database.dialect')
+    expect(formatted).toContain('database.pool.min')
+    expect(formatted).toContain('logging.level')
+  })
 
   it('should format multiple warnings', () => {
     const result: ValidationResult = {
@@ -727,14 +697,14 @@ describe('formatValidationResult', () => {
       warnings: [
         { path: 'plugins.timestamps', message: 'Not enabled' },
         { path: 'plugins.audit', message: 'Not enabled in production' },
-        { path: 'database.pool.max', message: 'Very high value' },
-      ],
-    };
+        { path: 'database.pool.max', message: 'Very high value' }
+      ]
+    }
 
-    const formatted = formatValidationResult(result);
+    const formatted = formatValidationResult(result)
 
-    expect(formatted).toContain('plugins.timestamps');
-    expect(formatted).toContain('plugins.audit');
-    expect(formatted).toContain('database.pool.max');
-  });
-});
+    expect(formatted).toContain('plugins.timestamps')
+    expect(formatted).toContain('plugins.audit')
+    expect(formatted).toContain('database.pool.max')
+  })
+})

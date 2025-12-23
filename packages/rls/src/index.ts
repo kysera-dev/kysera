@@ -12,20 +12,20 @@
 // ============================================================================
 
 // Schema definition
-export { defineRLSSchema, mergeRLSSchemas } from './policy/schema.js';
+export { defineRLSSchema, mergeRLSSchemas } from './policy/schema.js'
 
 // Policy builders
-export { allow, deny, filter, validate, type PolicyOptions } from './policy/builder.js';
+export { allow, deny, filter, validate, type PolicyOptions } from './policy/builder.js'
 
 // Policy registry (for advanced use cases)
-export { PolicyRegistry } from './policy/registry.js';
+export { PolicyRegistry } from './policy/registry.js'
 
 // ============================================================================
 // Plugin
 // ============================================================================
 
-export { rlsPlugin } from './plugin.js';
-export type { RLSPluginOptions } from './plugin.js';
+export { rlsPlugin } from './plugin.js'
+export type { RLSPluginOptions } from './plugin.js'
 
 // ============================================================================
 // Context Management
@@ -36,8 +36,8 @@ export {
   createRLSContext,
   withRLSContext,
   withRLSContextAsync,
-  type CreateRLSContextOptions,
-} from './context/index.js';
+  type CreateRLSContextOptions
+} from './context/index.js'
 
 // ============================================================================
 // Types
@@ -64,8 +64,8 @@ export type {
   // Evaluation types
   PolicyEvaluationContext,
   CompiledPolicy,
-  CompiledFilterPolicy,
-} from './policy/types.js';
+  CompiledFilterPolicy
+} from './policy/types.js'
 
 // ============================================================================
 // Errors
@@ -79,8 +79,8 @@ export {
   RLSSchemaError,
   RLSContextValidationError,
   RLSErrorCodes,
-  type RLSErrorCode,
-} from './errors.js';
+  type RLSErrorCode
+} from './errors.js'
 
 // ============================================================================
 // Utilities
@@ -92,5 +92,5 @@ export {
   isAsyncFunction,
   safeEvaluate,
   deepMerge,
-  hashString,
-} from './utils/index.js';
+  hashString
+} from './utils/index.js'

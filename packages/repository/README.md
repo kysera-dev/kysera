@@ -13,6 +13,7 @@ Repository pattern implementation with unified plugin support for Kysera.
 The Repository package provides a repository pattern interface for Kysely with full plugin support via [@kysera/executor](../executor). It supports flexible validation adapters (Zod, Valibot, TypeBox, or custom), CQRS-lite patterns, and works seamlessly with plugins like soft-delete and RLS.
 
 **Key Features:**
+
 - Repository pattern with CRUD operations
 - Unified plugin system via [@kysera/executor](../executor)
 - Flexible validation adapters (Zod, Valibot, TypeBox, custom)
@@ -79,28 +80,28 @@ await userRepo.delete(user.id);
 ### With Zod Validation
 
 ```typescript
-import { createRepositoryFactory, zodAdapter } from '@kysera/repository';
-import { z } from 'zod';
+import { createRepositoryFactory, zodAdapter } from '@kysera/repository'
+import { z } from 'zod'
 
 const CreateUserSchema = z.object({
   name: z.string().min(1),
-  email: z.string().email(),
-});
+  email: z.string().email()
+})
 
 const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
     create: zodAdapter(CreateUserSchema),
-    update: zodAdapter(CreateUserSchema.partial()),
-  },
-});
+    update: zodAdapter(CreateUserSchema.partial())
+  }
+})
 
 // Validation happens automatically
 const user = await userRepo.create({
   name: 'Bob',
   email: 'invalid-email' // Throws validation error
-});
+})
 ```
 
 ## Core API
@@ -110,14 +111,11 @@ const user = await userRepo.create({
 Create a plugin container with unified plugin management via [@kysera/executor](../executor).
 
 ```typescript
-import { createORM } from '@kysera/repository';
-import { softDeletePlugin } from '@kysera/soft-delete';
-import { rlsPlugin } from '@kysera/rls';
+import { createORM } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { rlsPlugin } from '@kysera/rls'
 
-const orm = await createORM(db, [
-  softDeletePlugin(),
-  rlsPlugin({ schema: rlsSchema }),
-]);
+const orm = await createORM(db, [softDeletePlugin(), rlsPlugin({ schema: rlsSchema })])
 ```
 
 **Plugin Container Interface:**
@@ -125,22 +123,22 @@ const orm = await createORM(db, [
 ```typescript
 interface PluginOrm<DB> {
   // Plugin-aware executor (Kysely instance with plugin interception)
-  executor: Kysely<DB>;
+  executor: Kysely<DB>
 
   // Create a repository with plugin support
-  createRepository<T>(factory: (executor: Kysely<DB>, applyPlugins: ApplyPluginsFunction) => T): T;
+  createRepository<T>(factory: (executor: Kysely<DB>, applyPlugins: ApplyPluginsFunction) => T): T
 
   // Apply plugin interceptors to query builders
-  applyPlugins<QB>(qb: QB, operation: string, table: string, metadata?: Record<string, unknown>): QB;
+  applyPlugins<QB>(qb: QB, operation: string, table: string, metadata?: Record<string, unknown>): QB
 
   // Registered plugins in resolved dependency order
-  plugins: readonly Plugin[];
+  plugins: readonly Plugin[]
 
   // Create a DAL context with plugins
-  createContext(): DbContext<DB>;
+  createContext(): DbContext<DB>
 
   // Execute a transaction with both Repository and DAL patterns
-  transaction<T>(fn: (ctx: DbContext<DB>) => Promise<T>): Promise<T>;
+  transaction<T>(fn: (ctx: DbContext<DB>) => Promise<T>): Promise<T>
 }
 ```
 
@@ -149,20 +147,20 @@ interface PluginOrm<DB> {
 Create a factory for building type-safe repositories.
 
 ```typescript
-import { createRepositoryFactory } from '@kysera/repository';
+import { createRepositoryFactory } from '@kysera/repository'
 
-const factory = createRepositoryFactory(db);
+const factory = createRepositoryFactory(db)
 
 const userRepo = factory.create({
   tableName: 'users',
-  primaryKey: 'id',           // Optional, default: 'id'
-  primaryKeyType: 'number',   // Optional, default: 'number'
-  mapRow: (row) => row,
+  primaryKey: 'id', // Optional, default: 'id'
+  primaryKeyType: 'number', // Optional, default: 'number'
+  mapRow: row => row,
   schemas: {
     create: nativeAdapter<CreateUserInput>(),
-    update: nativeAdapter<UpdateUserInput>(),
-  },
-});
+    update: nativeAdapter<UpdateUserInput>()
+  }
+})
 ```
 
 ## Plugin Integration
@@ -172,27 +170,27 @@ Plugins work by intercepting queries and extending repository interfaces. The pl
 ### Using Plugins
 
 ```typescript
-import { createORM } from '@kysera/repository';
-import { softDeletePlugin } from '@kysera/soft-delete';
+import { createORM } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
 
-const orm = await createORM(db, [softDeletePlugin()]);
+const orm = await createORM(db, [softDeletePlugin()])
 
 // Create repository with plugin extensions
 const userRepo = orm.createRepository((executor, applyPlugins) => {
-  const factory = createRepositoryFactory(executor);
+  const factory = createRepositoryFactory(executor)
   return factory.create({
     tableName: 'users',
-    mapRow: (row) => row,
+    mapRow: row => row,
     schemas: {
-      create: nativeAdapter<CreateUserInput>(),
-    },
-  });
-});
+      create: nativeAdapter<CreateUserInput>()
+    }
+  })
+})
 
 // Plugin methods are automatically available
-await userRepo.create({ name: 'Alice', email: 'alice@example.com' });
-await userRepo.softDelete(1);  // Added by soft-delete plugin
-await userRepo.restore(1);     // Added by soft-delete plugin
+await userRepo.create({ name: 'Alice', email: 'alice@example.com' })
+await userRepo.softDelete(1) // Added by soft-delete plugin
+await userRepo.restore(1) // Added by soft-delete plugin
 ```
 
 ### Plugin Lifecycle
@@ -206,16 +204,16 @@ await userRepo.restore(1);     // Added by soft-delete plugin
 ### Manual Plugin Application
 
 ```typescript
-const orm = await createORM(db, [softDeletePlugin()]);
+const orm = await createORM(db, [softDeletePlugin()])
 
 // Manually apply plugins to custom queries
-let query = orm.executor.selectFrom('users').selectAll();
+let query = orm.executor.selectFrom('users').selectAll()
 
 query = orm.applyPlugins(query, 'select', 'users', {
   customMetadata: 'value'
-});
+})
 
-const users = await query.execute();
+const users = await query.execute()
 ```
 
 ## CQRS-lite Pattern
@@ -223,53 +221,50 @@ const users = await query.execute();
 Combine Repository writes with DAL reads in the same transaction with shared plugins.
 
 ```typescript
-import { createORM } from '@kysera/repository';
-import { createQuery } from '@kysera/dal';
-import { softDeletePlugin } from '@kysera/soft-delete';
+import { createORM } from '@kysera/repository'
+import { createQuery } from '@kysera/dal'
+import { softDeletePlugin } from '@kysera/soft-delete'
 
-const orm = await createORM(db, [softDeletePlugin()]);
+const orm = await createORM(db, [softDeletePlugin()])
 
 // Define DAL query for complex reads
 const getUserStats = createQuery((ctx, userId: number) =>
   ctx.db
     .selectFrom('users')
     .leftJoin('posts', 'posts.user_id', 'users.id')
-    .select([
-      'users.id',
-      'users.name',
-      (eb) => eb.fn.count('posts.id').as('postCount'),
-    ])
+    .select(['users.id', 'users.name', eb => eb.fn.count('posts.id').as('postCount')])
     .where('users.id', '=', userId)
     .groupBy(['users.id', 'users.name'])
     .executeTakeFirst()
-);
+)
 
 // Use in transaction with Repository
-const result = await orm.transaction(async (ctx) => {
+const result = await orm.transaction(async ctx => {
   // Create repository for writes
-  const userRepo = orm.createRepository((executor) => {
-    const factory = createRepositoryFactory(executor);
+  const userRepo = orm.createRepository(executor => {
+    const factory = createRepositoryFactory(executor)
     return factory.create({
       tableName: 'users',
-      mapRow: (row) => row,
-      schemas: { create: nativeAdapter<CreateUserInput>() },
-    });
-  });
+      mapRow: row => row,
+      schemas: { create: nativeAdapter<CreateUserInput>() }
+    })
+  })
 
   // Write: Create user via Repository
   const user = await userRepo.create({
     name: 'Alice',
-    email: 'alice@example.com',
-  });
+    email: 'alice@example.com'
+  })
 
   // Read: Get stats via DAL (plugins automatically applied)
-  const stats = await getUserStats(ctx, user.id);
+  const stats = await getUserStats(ctx, user.id)
 
-  return { user, stats };
-});
+  return { user, stats }
+})
 ```
 
 **Benefits:**
+
 - Separation of concerns (Repository for writes, DAL for complex reads)
 - Shared transaction context
 - Plugins apply to both patterns
@@ -283,19 +278,19 @@ All repositories implement the `BaseRepository` interface:
 
 ```typescript
 // Create
-const user = await repo.create({ name: 'Alice', email: 'alice@example.com' });
+const user = await repo.create({ name: 'Alice', email: 'alice@example.com' })
 
 // Read
-const found = await repo.findById(1);
-const all = await repo.findAll();
-const filtered = await repo.find({ where: { name: 'Alice' } });
-const one = await repo.findOne({ where: { email: 'alice@example.com' } });
+const found = await repo.findById(1)
+const all = await repo.findAll()
+const filtered = await repo.find({ where: { name: 'Alice' } })
+const one = await repo.findOne({ where: { email: 'alice@example.com' } })
 
 // Update
-const updated = await repo.update(1, { name: 'Alice Smith' });
+const updated = await repo.update(1, { name: 'Alice Smith' })
 
 // Delete
-const deleted = await repo.delete(1); // Returns true if deleted
+const deleted = await repo.delete(1) // Returns true if deleted
 ```
 
 ### Bulk Operations
@@ -304,31 +299,31 @@ const deleted = await repo.delete(1); // Returns true if deleted
 // Bulk create
 const users = await repo.bulkCreate([
   { name: 'Alice', email: 'alice@example.com' },
-  { name: 'Bob', email: 'bob@example.com' },
-]);
+  { name: 'Bob', email: 'bob@example.com' }
+])
 
 // Bulk update
 const updated = await repo.bulkUpdate([
   { id: 1, data: { name: 'Alice Smith' } },
-  { id: 2, data: { name: 'Bob Jones' } },
-]);
+  { id: 2, data: { name: 'Bob Jones' } }
+])
 
 // Bulk delete
-const deletedCount = await repo.bulkDelete([1, 2, 3]);
+const deletedCount = await repo.bulkDelete([1, 2, 3])
 ```
 
 ### Queries
 
 ```typescript
 // Count
-const total = await repo.count();
-const filtered = await repo.count({ where: { active: true } });
+const total = await repo.count()
+const filtered = await repo.count({ where: { active: true } })
 
 // Exists
-const exists = await repo.exists({ where: { email: 'alice@example.com' } });
+const exists = await repo.exists({ where: { email: 'alice@example.com' } })
 
 // Find by IDs
-const users = await repo.findByIds([1, 2, 3]);
+const users = await repo.findByIds([1, 2, 3])
 ```
 
 ### Pagination
@@ -340,13 +335,13 @@ const result = await repo.paginate({
   limit: 10,
   offset: 0,
   orderBy: 'created_at',
-  orderDirection: 'desc',
-});
+  orderDirection: 'desc'
+})
 
-console.log(result.items); // Array of entities
-console.log(result.total); // Total count
-console.log(result.limit); // 10
-console.log(result.offset); // 0
+console.log(result.items) // Array of entities
+console.log(result.total) // Total count
+console.log(result.limit) // 10
+console.log(result.offset) // 0
 ```
 
 **Cursor-based pagination:**
@@ -355,37 +350,34 @@ console.log(result.offset); // 0
 const result = await repo.paginateCursor({
   limit: 10,
   orderBy: 'created_at',
-  orderDirection: 'desc',
-});
+  orderDirection: 'desc'
+})
 
-console.log(result.items); // Array of entities
-console.log(result.nextCursor); // { value: Date, id: number }
-console.log(result.hasMore); // boolean
+console.log(result.items) // Array of entities
+console.log(result.nextCursor) // { value: Date, id: number }
+console.log(result.hasMore) // boolean
 
 // Next page
 const nextPage = await repo.paginateCursor({
   limit: 10,
   cursor: result.nextCursor,
   orderBy: 'created_at',
-  orderDirection: 'desc',
-});
+  orderDirection: 'desc'
+})
 ```
 
 ### Transactions
 
 ```typescript
-await repo.transaction(async (trx) => {
+await repo.transaction(async trx => {
   const user = await trx
     .insertInto('users')
     .values({ name: 'Alice', email: 'alice@example.com' })
     .returningAll()
-    .executeTakeFirstOrThrow();
+    .executeTakeFirstOrThrow()
 
-  await trx
-    .insertInto('profiles')
-    .values({ user_id: user.id, bio: 'Hello!' })
-    .execute();
-});
+  await trx.insertInto('profiles').values({ user_id: user.id, bio: 'Hello!' }).execute()
+})
 ```
 
 ## Validation Adapters
@@ -395,90 +387,90 @@ The repository supports multiple validation libraries through a unified adapter 
 ### Zod Adapter
 
 ```typescript
-import { z } from 'zod';
-import { zodAdapter } from '@kysera/repository';
+import { z } from 'zod'
+import { zodAdapter } from '@kysera/repository'
 
 const UserSchema = z.object({
   name: z.string().min(1),
-  email: z.string().email(),
-});
+  email: z.string().email()
+})
 
 const repo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
     create: zodAdapter(UserSchema),
-    update: zodAdapter(UserSchema.partial()),
-  },
-});
+    update: zodAdapter(UserSchema.partial())
+  }
+})
 ```
 
 ### Valibot Adapter
 
 ```typescript
-import * as v from 'valibot';
-import { valibotAdapter } from '@kysera/repository';
+import * as v from 'valibot'
+import { valibotAdapter } from '@kysera/repository'
 
 const UserSchema = v.object({
   name: v.string([v.minLength(1)]),
-  email: v.string([v.email()]),
-});
+  email: v.string([v.email()])
+})
 
 const repo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
-    create: valibotAdapter(UserSchema, v),
-  },
-});
+    create: valibotAdapter(UserSchema, v)
+  }
+})
 ```
 
 ### TypeBox Adapter
 
 ```typescript
-import { Type } from '@sinclair/typebox';
-import { Value } from '@sinclair/typebox/value';
-import { typeboxAdapter } from '@kysera/repository';
+import { Type } from '@sinclair/typebox'
+import { Value } from '@sinclair/typebox/value'
+import { typeboxAdapter } from '@kysera/repository'
 
 const UserSchema = Type.Object({
   name: Type.String({ minLength: 1 }),
-  email: Type.String({ format: 'email' }),
-});
+  email: Type.String({ format: 'email' })
+})
 
 const repo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
-    create: typeboxAdapter(UserSchema, Value),
-  },
-});
+    create: typeboxAdapter(UserSchema, Value)
+  }
+})
 ```
 
 ### Native Adapter (No Validation)
 
 ```typescript
-import { nativeAdapter } from '@kysera/repository';
+import { nativeAdapter } from '@kysera/repository'
 
 const repo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
-    create: nativeAdapter<CreateUserInput>(),
-  },
-});
+    create: nativeAdapter<CreateUserInput>()
+  }
+})
 ```
 
 ### Custom Adapter
 
 ```typescript
-import { customAdapter } from '@kysera/repository';
+import { customAdapter } from '@kysera/repository'
 
-const isPositiveNumber = customAdapter<number>((data) => {
+const isPositiveNumber = customAdapter<number>(data => {
   if (typeof data !== 'number' || data <= 0) {
-    throw new Error('Must be a positive number');
+    throw new Error('Must be a positive number')
   }
-  return data;
-});
+  return data
+})
 ```
 
 ## Primary Key Configuration
@@ -492,9 +484,9 @@ const repo = factory.create({
   tableName: 'users',
   // primaryKey defaults to 'id'
   // primaryKeyType defaults to 'number'
-  mapRow: (row) => row,
-  schemas: { create: nativeAdapter() },
-});
+  mapRow: row => row,
+  schemas: { create: nativeAdapter() }
+})
 ```
 
 ### Custom Column Name
@@ -504,9 +496,9 @@ const repo = factory.create({
   tableName: 'users',
   primaryKey: 'user_id',
   primaryKeyType: 'number',
-  mapRow: (row) => row,
-  schemas: { create: nativeAdapter() },
-});
+  mapRow: row => row,
+  schemas: { create: nativeAdapter() }
+})
 ```
 
 ### UUID Primary Key
@@ -516,9 +508,9 @@ const repo = factory.create({
   tableName: 'users',
   primaryKey: 'id',
   primaryKeyType: 'uuid',
-  mapRow: (row) => row,
-  schemas: { create: nativeAdapter() },
-});
+  mapRow: row => row,
+  schemas: { create: nativeAdapter() }
+})
 ```
 
 ### Composite Primary Key
@@ -528,13 +520,13 @@ const repo = factory.create({
   tableName: 'user_roles',
   primaryKey: ['user_id', 'role_id'],
   primaryKeyType: 'number',
-  mapRow: (row) => row,
-  schemas: { create: nativeAdapter() },
-});
+  mapRow: row => row,
+  schemas: { create: nativeAdapter() }
+})
 
 // Usage with composite key
-const userRole = await repo.findById({ user_id: 1, role_id: 2 });
-await repo.delete({ user_id: 1, role_id: 2 });
+const userRole = await repo.findById({ user_id: 1, role_id: 2 })
+await repo.delete({ user_id: 1, role_id: 2 })
 ```
 
 ## ContextAwareRepository
@@ -542,42 +534,37 @@ await repo.delete({ user_id: 1, role_id: 2 });
 Abstract base class for repositories that need clean transaction handling via executor switching:
 
 ```typescript
-import { ContextAwareRepository } from '@kysera/repository';
-import type { Executor } from '@kysera/core';
+import { ContextAwareRepository } from '@kysera/repository'
+import type { Executor } from '@kysera/core'
 
 class UserRepository extends ContextAwareRepository<Database, 'users'> {
   async create(data: { email: string; name: string }): Promise<User> {
-    return this.db
-      .insertInto(this.tableName)
-      .values(data)
-      .returningAll()
-      .executeTakeFirstOrThrow();
+    return this.db.insertInto(this.tableName).values(data).returningAll().executeTakeFirstOrThrow()
   }
 
   async findById(id: number): Promise<User | null> {
-    return this.db
-      .selectFrom(this.tableName)
-      .selectAll()
-      .where('id', '=', id)
-      .executeTakeFirst() ?? null;
+    return (
+      this.db.selectFrom(this.tableName).selectAll().where('id', '=', id).executeTakeFirst() ?? null
+    )
   }
 }
 
 // Normal usage
-const userRepo = new UserRepository(db, 'users');
-const user = await userRepo.findById(1);
+const userRepo = new UserRepository(db, 'users')
+const user = await userRepo.findById(1)
 
 // Transaction usage - switch executor cleanly
-await db.transaction().execute(async (trx) => {
-  const txUserRepo = userRepo.withExecutor(trx);
-  const txPostRepo = postRepo.withExecutor(trx);
+await db.transaction().execute(async trx => {
+  const txUserRepo = userRepo.withExecutor(trx)
+  const txPostRepo = postRepo.withExecutor(trx)
 
-  const user = await txUserRepo.create({ email: 'test@example.com', name: 'Test' });
-  await txPostRepo.create({ userId: user.id, title: 'Hello' });
-});
+  const user = await txUserRepo.create({ email: 'test@example.com', name: 'Test' })
+  await txPostRepo.create({ userId: user.id, title: 'Hello' })
+})
 ```
 
 **Benefits:**
+
 - Clean API: No `executor` parameter in every method
 - Type-safe: `withExecutor()` returns same repository type
 - Preserves instance: Custom properties preserved
@@ -587,39 +574,55 @@ await db.transaction().execute(async (trx) => {
 Functions for INSERT ... ON CONFLICT DO UPDATE operations:
 
 ```typescript
-import { upsert, upsertMany } from '@kysera/repository';
+import { upsert, upsertMany } from '@kysera/repository'
 
 // Single record upsert
-const wallet = await upsert(db, 'wallets', {
-  name: 'Main Wallet',
-  balance: 1000
-}, {
-  conflictColumns: ['name'],
-  returning: true
-});
+const wallet = await upsert(
+  db,
+  'wallets',
+  {
+    name: 'Main Wallet',
+    balance: 1000
+  },
+  {
+    conflictColumns: ['name'],
+    returning: true
+  }
+)
 
 // Batch upsert
-const prices = await upsertMany(db, 'price_history', [
-  { pair: 'BTC/USD', timestamp: now, price: 50000 },
-  { pair: 'ETH/USD', timestamp: now, price: 3000 },
-], {
-  conflictColumns: ['pair', 'timestamp'],
-  updateColumns: ['price'],
-  returning: true
-});
+const prices = await upsertMany(
+  db,
+  'price_history',
+  [
+    { pair: 'BTC/USD', timestamp: now, price: 50000 },
+    { pair: 'ETH/USD', timestamp: now, price: 3000 }
+  ],
+  {
+    conflictColumns: ['pair', 'timestamp'],
+    updateColumns: ['price'],
+    returning: true
+  }
+)
 
 // Upsert with specific update columns
-await upsert(db, 'users', {
-  email: 'alice@example.com',
-  name: 'Alice Updated',
-  role: 'admin'
-}, {
-  conflictColumns: ['email'],
-  updateColumns: ['name'],  // Only update name, not role
-});
+await upsert(
+  db,
+  'users',
+  {
+    email: 'alice@example.com',
+    name: 'Alice Updated',
+    role: 'admin'
+  },
+  {
+    conflictColumns: ['email'],
+    updateColumns: ['name'] // Only update name, not role
+  }
+)
 ```
 
 **UpsertOptions:**
+
 - `conflictColumns`: Columns defining the conflict constraint
 - `updateColumns`: Columns to update (default: all except conflictColumns)
 - `returning`: Whether to return upserted record(s)
@@ -631,21 +634,21 @@ await upsert(db, 'users', {
 Create a repository with plugins in one step:
 
 ```typescript
-import { withPlugins } from '@kysera/repository';
-import { softDeletePlugin } from '@kysera/soft-delete';
+import { withPlugins } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
 
 const userRepo = await withPlugins(
   (executor, applyPlugins) => {
-    const factory = createRepositoryFactory(executor);
+    const factory = createRepositoryFactory(executor)
     return factory.create({
       tableName: 'users',
-      mapRow: (row) => row,
-      schemas: { create: nativeAdapter() },
-    });
+      mapRow: row => row,
+      schemas: { create: nativeAdapter() }
+    })
   },
   db,
   [softDeletePlugin()]
-);
+)
 ```
 
 ### createSimpleRepository
@@ -653,17 +656,12 @@ const userRepo = await withPlugins(
 Create a repository without schemas (useful for plugins):
 
 ```typescript
-import { createSimpleRepository } from '@kysera/repository';
+import { createSimpleRepository } from '@kysera/repository'
 
-const userRepo = createSimpleRepository(
-  db,
-  'users',
-  (row) => row,
-  {
-    primaryKey: 'id',
-    primaryKeyType: 'number',
-  }
-);
+const userRepo = createSimpleRepository(db, 'users', row => row, {
+  primaryKey: 'id',
+  primaryKeyType: 'number'
+})
 ```
 
 ### createRepositoriesFactory
@@ -671,24 +669,24 @@ const userRepo = createSimpleRepository(
 Create a bundle of repositories for use in transactions:
 
 ```typescript
-import { createRepositoriesFactory } from '@kysera/repository';
+import { createRepositoriesFactory } from '@kysera/repository'
 
 const createRepositories = createRepositoriesFactory({
-  users: (executor) => createUserRepository(executor),
-  posts: (executor) => createPostRepository(executor),
-  comments: (executor) => createCommentRepository(executor),
-});
+  users: executor => createUserRepository(executor),
+  posts: executor => createPostRepository(executor),
+  comments: executor => createCommentRepository(executor)
+})
 
 // Use with database instance
-const repos = createRepositories(db);
-await repos.users.findById(1);
+const repos = createRepositories(db)
+await repos.users.findById(1)
 
 // Use within transaction
-await db.transaction().execute(async (trx) => {
-  const repos = createRepositories(trx);
-  await repos.users.create({ name: 'Alice' });
-  await repos.posts.create({ userId: 1, title: 'Hello' });
-});
+await db.transaction().execute(async trx => {
+  const repos = createRepositories(trx)
+  await repos.users.create({ name: 'Alice' })
+  await repos.posts.create({ userId: 1, title: 'Hello' })
+})
 ```
 
 ## Architecture
@@ -711,6 +709,7 @@ The repository package architecture in v0.7.0:
 ```
 
 **Key design principles:**
+
 - **Unified Execution Layer** - [@kysera/executor](../executor) provides plugin interception for both Repository and DAL
 - **Type Safety** - Full TypeScript support with strict typing
 - **Plugin Compatibility** - Both `interceptQuery` and `extendRepository` applied to repositories

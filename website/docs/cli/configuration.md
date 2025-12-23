@@ -28,7 +28,7 @@ import { defineConfig } from '@kysera/cli'
 export default defineConfig({
   // Database connection
   database: {
-    dialect: 'postgres',              // postgres | mysql | sqlite
+    dialect: 'postgres', // postgres | mysql | sqlite
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432'),
     database: process.env.DB_NAME || 'myapp',
@@ -52,14 +52,14 @@ export default defineConfig({
   generation: {
     outputDir: './src/generated',
     typescript: true,
-    validation: 'zod'                 // zod | none
+    validation: 'zod' // zod | none
   },
 
   // Testing
   testing: {
     seeds: './seeds',
     fixtures: './fixtures',
-    isolation: 'transaction'          // transaction | schema | database
+    isolation: 'transaction' // transaction | schema | database
   },
 
   // Plugins

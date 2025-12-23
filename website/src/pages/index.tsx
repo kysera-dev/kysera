@@ -1,16 +1,16 @@
-import type {ReactNode} from 'react';
-import clsx from 'clsx';
-import Link from '@docusaurus/Link';
-import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
-import Layout from '@theme/Layout';
-import HomepageFeatures from '@site/src/components/HomepageFeatures';
-import Heading from '@theme/Heading';
-import CodeBlock from '@theme/CodeBlock';
+import type { ReactNode } from 'react'
+import clsx from 'clsx'
+import Link from '@docusaurus/Link'
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext'
+import Layout from '@theme/Layout'
+import HomepageFeatures from '@site/src/components/HomepageFeatures'
+import Heading from '@theme/Heading'
+import CodeBlock from '@theme/CodeBlock'
 
-import styles from './index.module.css';
+import styles from './index.module.css'
 
 function HomepageHeader() {
-  const {siteConfig} = useDocusaurusContext();
+  const { siteConfig } = useDocusaurusContext()
   return (
     <header className={clsx('hero hero--primary', styles.heroBanner)}>
       <div className="container">
@@ -19,25 +19,24 @@ function HomepageHeader() {
         </Heading>
         <p className="hero__subtitle">{siteConfig.tagline}</p>
         <div className={styles.buttons}>
-          <Link
-            className="button button--secondary button--lg"
-            to="/docs/introduction">
+          <Link className="button button--secondary button--lg" to="/docs/introduction">
             Get Started
           </Link>
           <Link
             className="button button--outline button--secondary button--lg"
             to="/docs/api/core"
-            style={{marginLeft: '1rem'}}>
+            style={{ marginLeft: '1rem' }}
+          >
             API Reference
           </Link>
         </div>
       </div>
     </header>
-  );
+  )
 }
 
 function QuickStart() {
-  const installCode = `npm install kysely @kysera/repository @kysera/soft-delete`;
+  const installCode = `npm install kysely @kysera/repository @kysera/soft-delete`
 
   const exampleCode = `import { Kysely, PostgresDialect } from 'kysely'
 import { createORM } from '@kysera/repository'
@@ -56,7 +55,7 @@ const userRepo = orm.createRepository({
 
 // CRUD with automatic soft delete filtering
 const user = await userRepo.create({ email: 'john@example.com', name: 'John' })
-const users = await userRepo.findAll() // excludes soft-deleted records`;
+const users = await userRepo.findAll() // excludes soft-deleted records`
 
   return (
     <section className={styles.quickStart}>
@@ -74,7 +73,7 @@ const users = await userRepo.findAll() // excludes soft-deleted records`;
         </div>
       </div>
     </section>
-  );
+  )
 }
 
 function Stats() {
@@ -101,15 +100,16 @@ function Stats() {
         </div>
       </div>
     </section>
-  );
+  )
 }
 
 export default function Home(): ReactNode {
-  const {siteConfig} = useDocusaurusContext();
+  const { siteConfig } = useDocusaurusContext()
   return (
     <Layout
       title="Type-safe data access toolkit"
-      description="Type-safe data access toolkit for TypeScript built on Kysely. Repository pattern, Functional DAL, and plugin ecosystem.">
+      description="Type-safe data access toolkit for TypeScript built on Kysely. Repository pattern, Functional DAL, and plugin ecosystem."
+    >
       <HomepageHeader />
       <main>
         <HomepageFeatures />
@@ -117,5 +117,5 @@ export default function Home(): ReactNode {
         <QuickStart />
       </main>
     </Layout>
-  );
+  )
 }

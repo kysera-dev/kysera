@@ -1,6 +1,6 @@
 ---
 sidebar_position: 11
-title: "@kysera/rls"
+title: '@kysera/rls'
 description: Row-Level Security plugin API reference
 ---
 
@@ -16,12 +16,12 @@ npm install @kysera/rls
 
 ## Overview
 
-| Metric | Value |
-|--------|-------|
-| **Version** | 0.7.0 |
-| **Bundle Size** | ~10 KB (minified) |
-| **Dependencies** | @kysera/core (workspace), @kysera/executor (workspace) |
-| **Peer Dependencies** | kysely >=0.28.8 |
+| Metric                | Value                                                  |
+| --------------------- | ------------------------------------------------------ |
+| **Version**           | 0.7.0                                                  |
+| **Bundle Size**       | ~10 KB (minified)                                      |
+| **Dependencies**      | @kysera/core (workspace), @kysera/executor (workspace) |
+| **Peer Dependencies** | kysely >=0.28.8                                        |
 
 **New in v0.7**: RLS plugin now uses the unified `@kysera/executor` Plugin interface and works with both Repository and DAL patterns.
 
@@ -38,20 +38,10 @@ export { defineRLSSchema, mergeRLSSchemas } from './policy/schema'
 export { allow, deny, filter, validate } from './policy/builder'
 
 // Context management
-export {
-  rlsContext,
-  createRLSContext,
-  withRLSContext,
-  withRLSContextAsync
-} from './context'
+export { rlsContext, createRLSContext, withRLSContext, withRLSContextAsync } from './context'
 
 // Errors
-export {
-  RLSError,
-  RLSPolicyViolation,
-  RLSPolicyEvaluationError,
-  RLSContextError
-} from './errors'
+export { RLSError, RLSPolicyViolation, RLSPolicyEvaluationError, RLSContextError } from './errors'
 
 // Types
 export type {
@@ -127,9 +117,7 @@ import { rlsPlugin, defineRLSSchema, filter, allow } from '@kysera/rls'
 const plugin = rlsPlugin({
   schema: defineRLSSchema({
     users: {
-      policies: [
-        filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
-      ]
+      policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
     }
   })
 })
@@ -141,7 +129,7 @@ const plugin = rlsPlugin({
   bypassRoles: ['superadmin'],
   requireContext: true,
   auditDecisions: true,
-  onViolation: (violation) => {
+  onViolation: violation => {
     logger.warn('RLS violation', violation)
   }
 })
@@ -154,9 +142,7 @@ const plugin = rlsPlugin({
 Define RLS policies for your tables.
 
 ```typescript
-function defineRLSSchema<DB>(
-  config: Record<string, TableRLSConfig>
-): RLSSchema<DB>
+function defineRLSSchema<DB>(config: Record<string, TableRLSConfig>): RLSSchema<DB>
 ```
 
 ### TableRLSConfig
@@ -191,9 +177,9 @@ const rlsSchema = defineRLSSchema<Database>({
       filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
 
       // Users can update their own profile
-      allow('update', ctx => ctx.auth.userId === ctx.row?.id),
+      allow('update', ctx => ctx.auth.userId === ctx.row?.id)
     ],
-    defaultDeny: true,
+    defaultDeny: true
   },
 
   posts: {
@@ -202,23 +188,21 @@ const rlsSchema = defineRLSSchema<Database>({
       filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
 
       // Authors can modify their posts
-      allow(['update', 'delete'], ctx =>
-        ctx.auth.userId === ctx.row?.author_id ||
-        ctx.auth.roles?.includes('admin')
-      ),
-    ],
+      allow(
+        ['update', 'delete'],
+        ctx => ctx.auth.userId === ctx.row?.author_id || ctx.auth.roles?.includes('admin')
+      )
+    ]
   },
 
   audit_logs: {
-    policies: [
-      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-    ],
-    skipFor: ['admin', 'superuser'],  // Admins see all
-    defaultDeny: true,
+    policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))],
+    skipFor: ['admin', 'superuser'], // Admins see all
+    defaultDeny: true
   },
 
   // No policies = full access
-  public_content: {},
+  public_content: {}
 })
 ```
 
@@ -231,10 +215,17 @@ function mergeRLSSchemas<DB>(...schemas: RLSSchema<DB>[]): RLSSchema<DB>
 ```
 
 **Example:**
+
 ```typescript
-const tenantSchema = defineRLSSchema({ /* tenant policies */ })
-const roleSchema = defineRLSSchema({ /* role-based policies */ })
-const customSchema = defineRLSSchema({ /* custom policies */ })
+const tenantSchema = defineRLSSchema({
+  /* tenant policies */
+})
+const roleSchema = defineRLSSchema({
+  /* role-based policies */
+})
+const customSchema = defineRLSSchema({
+  /* custom policies */
+})
 
 const fullSchema = mergeRLSSchemas(tenantSchema, roleSchema, customSchema)
 ```
@@ -255,14 +246,13 @@ function allow(
 **Operations:** `'read'`, `'create'`, `'update'`, `'delete'`
 
 **Examples:**
+
 ```typescript
 // Authors can update their own posts
 allow('update', ctx => ctx.auth.userId === ctx.row?.author_id)
 
 // Admins can do anything
-allow(['read', 'create', 'update', 'delete'], ctx =>
-  ctx.auth.roles?.includes('admin')
-)
+allow(['read', 'create', 'update', 'delete'], ctx => ctx.auth.roles?.includes('admin'))
 
 // Members can read
 allow('read', ctx => ctx.auth.roles?.includes('member'))
@@ -280,14 +270,13 @@ function deny(
 ```
 
 **Examples:**
+
 ```typescript
 // Never allow deleting system users
 deny('delete', ctx => ctx.row?.is_system === true)
 
 // Guests cannot modify
-deny(['create', 'update', 'delete'], ctx =>
-  ctx.auth.roles?.includes('guest')
-)
+deny(['create', 'update', 'delete'], ctx => ctx.auth.roles?.includes('guest'))
 ```
 
 ### filter
@@ -302,6 +291,7 @@ function filter(
 ```
 
 **Examples:**
+
 ```typescript
 // Tenant isolation - all queries filtered by tenant_id
 filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
@@ -309,7 +299,7 @@ filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
 // Status-based filtering
 filter('read', ctx =>
   ctx.auth.roles?.includes('admin')
-    ? {}  // No filter for admins
+    ? {} // No filter for admins
     : { status: 'active', visibility: 'public' }
 )
 
@@ -331,16 +321,15 @@ function validate(
 ```
 
 **Examples:**
+
 ```typescript
 // Users can only create posts for themselves
-validate('create', ctx =>
-  ctx.data?.author_id === ctx.auth.userId
-)
+validate('create', ctx => ctx.data?.author_id === ctx.auth.userId)
 
 // Users can only update within their tenant
-validate('update', ctx =>
-  ctx.data?.tenant_id === undefined ||
-  ctx.data?.tenant_id === ctx.auth.tenantId
+validate(
+  'update',
+  ctx => ctx.data?.tenant_id === undefined || ctx.data?.tenant_id === ctx.auth.tenantId
 )
 ```
 
@@ -467,7 +456,7 @@ app.use(async (req, res, next) => {
         userId: user.id,
         tenantId: user.tenantId,
         roles: user.roles,
-        permissions: user.permissions,
+        permissions: user.permissions
       },
       request: {
         ipAddress: req.ip,
@@ -490,13 +479,11 @@ Helper functions for wrapping operations.
 
 ```typescript
 function withRLSContext<T>(context: RLSContext, fn: () => T): T
-async function withRLSContextAsync<T>(
-  context: RLSContext,
-  fn: () => Promise<T>
-): Promise<T>
+async function withRLSContextAsync<T>(context: RLSContext, fn: () => Promise<T>): Promise<T>
 ```
 
 **Example:**
+
 ```typescript
 const result = await withRLSContextAsync(
   {
@@ -518,7 +505,7 @@ await rlsContext.runAsync(
     auth: {
       userId: 'system',
       roles: [],
-      isSystem: true  // Bypass all RLS
+      isSystem: true // Bypass all RLS
     },
     timestamp: new Date()
   },
@@ -540,12 +527,7 @@ await repo.withoutRLS(async () => {
 Context available when evaluating policies.
 
 ```typescript
-interface PolicyEvaluationContext<
-  TAuth = unknown,
-  TRow = unknown,
-  TData = unknown,
-  TDB = unknown
-> {
+interface PolicyEvaluationContext<TAuth = unknown, TRow = unknown, TData = unknown, TDB = unknown> {
   /**
    * Authentication context
    */
@@ -606,18 +588,16 @@ const rlsSchema = defineRLSSchema({
       deny('delete', ctx => ctx.row?.is_pinned === true),
 
       // 2. Allow grants access
-      allow(['update', 'delete'], ctx =>
-        ctx.auth.userId === ctx.row?.author_id
-      ),
+      allow(['update', 'delete'], ctx => ctx.auth.userId === ctx.row?.author_id),
 
       // 3. Filter adds WHERE conditions
       filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
 
       // 4. Validate checks input
-      validate('create', ctx => ctx.data?.author_id === ctx.auth.userId),
+      validate('create', ctx => ctx.data?.author_id === ctx.auth.userId)
     ],
-    defaultDeny: true,  // 5. Deny if nothing matches
-  },
+    defaultDeny: true // 5. Deny if nothing matches
+  }
 })
 ```
 
@@ -630,8 +610,8 @@ Applied at plugin initialization, affects all tables:
 ```typescript
 rlsPlugin({
   schema: rlsSchema,
-  skipTables: ['migrations', 'system_config'],  // Skip these tables
-  bypassRoles: ['superadmin'],                  // These roles bypass all
+  skipTables: ['migrations', 'system_config'], // Skip these tables
+  bypassRoles: ['superadmin'] // These roles bypass all
 })
 ```
 
@@ -696,6 +676,7 @@ class RLSContextError extends RLSError {
 Thrown when access is legitimately denied by an RLS policy.
 
 **Properties:**
+
 - `operation` - The operation that was denied (read, create, update, delete)
 - `table` - The table where the violation occurred
 - `reason` - Human-readable reason for the denial
@@ -703,21 +684,23 @@ Thrown when access is legitimately denied by an RLS policy.
 - `code` - Error code: `'RLS_POLICY_VIOLATION'`
 
 **When to use:**
+
 - User doesn't have permission for an operation
 - Policy condition evaluated to `false` (access denied)
 - Should result in HTTP 403 response
 
 **Example:**
+
 ```typescript
 try {
   await postRepo.delete(postId)
 } catch (error) {
   if (error instanceof RLSPolicyViolation) {
     console.error('Access denied:', {
-      operation: error.operation,    // 'delete'
-      table: error.table,             // 'posts'
-      reason: error.reason,           // 'User does not own this post'
-      policyName: error.policyName    // 'ownership_policy'
+      operation: error.operation, // 'delete'
+      table: error.table, // 'posts'
+      reason: error.reason, // 'User does not own this post'
+      policyName: error.policyName // 'ownership_policy'
     })
     res.status(403).json({ error: 'Permission denied' })
   }
@@ -729,6 +712,7 @@ try {
 Thrown when a policy condition throws an error during evaluation. This is distinct from `RLSPolicyViolation` - it indicates a **bug in the policy code itself**, not a legitimate access denial.
 
 **Properties:**
+
 - `operation` - The operation being performed when the error occurred
 - `table` - The table where the error occurred
 - `policyName` - Name of the policy that threw (optional)
@@ -737,22 +721,25 @@ Thrown when a policy condition throws an error during evaluation. This is distin
 - `stack` - Combined stack trace including the original error's stack
 
 **When thrown:**
+
 - Policy condition throws an unexpected error
 - Bug in policy code (e.g., accessing undefined property)
 - Type errors in policy logic
 
 **Why separate from RLSPolicyViolation:**
+
 - Helps distinguish between "access denied" (expected) and "policy bug" (unexpected)
 - Preserves original stack trace for debugging
 - Indicates need to fix policy code, not user permissions
 
 **Example:**
+
 ```typescript
 // Policy with a bug
 allow('read', ctx => {
   // Bug: someField might be undefined
-  return ctx.row.someField.value;
-});
+  return ctx.row.someField.value
+})
 
 // When this policy runs:
 try {
@@ -761,10 +748,10 @@ try {
   if (error instanceof RLSPolicyEvaluationError) {
     // This indicates a bug in the policy, not user permissions
     logger.error('Policy bug detected:', {
-      operation: error.operation,        // 'read'
-      table: error.table,                 // 'posts'
-      policyName: error.policyName,       // 'read_policy'
-      originalError: error.originalError  // TypeError: Cannot read property 'value' of undefined
+      operation: error.operation, // 'read'
+      table: error.table, // 'posts'
+      policyName: error.policyName, // 'read_policy'
+      originalError: error.originalError // TypeError: Cannot read property 'value' of undefined
     })
 
     // Full stack trace including original error
@@ -776,22 +763,24 @@ try {
 ```
 
 **Best practices:**
+
 - Log these errors with full stack traces for debugging
 - Return HTTP 500 (not 403) since this is a server error
 - Fix the policy code to handle edge cases properly
 - Add null checks and proper error handling in policies
 
 **Example of fixing a policy:**
+
 ```typescript
 // Before (buggy):
 allow('read', ctx => {
-  return ctx.row.someField.value;  // Can throw
-});
+  return ctx.row.someField.value // Can throw
+})
 
 // After (safe):
 allow('read', ctx => {
-  return ctx.row?.someField?.value ?? false;  // Safe navigation
-});
+  return ctx.row?.someField?.value ?? false // Safe navigation
+})
 ```
 
 ### RLSContextError
@@ -799,11 +788,13 @@ allow('read', ctx => {
 Thrown when RLS context is missing but required for an operation.
 
 **When thrown:**
+
 - Operation executed outside of `rlsContext.runAsync()`
 - `requireContext: true` is set in plugin options
 - No authentication context available
 
 **Example:**
+
 ```typescript
 try {
   // Missing context
@@ -855,7 +846,7 @@ try {
 ```typescript
 rlsPlugin({
   schema: rlsSchema,
-  onViolation: (violation) => {
+  onViolation: violation => {
     logger.warn('RLS violation', {
       user: violation.userId,
       table: violation.table,
@@ -921,6 +912,7 @@ interceptQuery(qb, context) {
 ```
 
 **Intercepted operations:**
+
 - `selectFrom` → Automatic filtering via `interceptQuery`
 - `insertInto` → Context available, validation in `extendRepository`
 - `updateTable` → Context available, validation in `extendRepository`
@@ -955,14 +947,12 @@ const tenantSchema = defineRLSSchema<Database>({
   users: {
     policies: [
       filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-      validate('create', ctx => ctx.data?.tenant_id === ctx.auth.tenantId),
-    ],
+      validate('create', ctx => ctx.data?.tenant_id === ctx.auth.tenantId)
+    ]
   },
   posts: {
-    policies: [
-      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-    ],
-  },
+    policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+  }
 })
 ```
 
@@ -1052,7 +1042,7 @@ RLS plugin adds these methods to repositories:
 ```typescript
 // Bypass RLS for specific operation (requires existing context)
 await repo.withoutRLS(async () => {
-  return await repo.findAll()  // No RLS filtering
+  return await repo.findAll() // No RLS filtering
 })
 
 // Check if current user can perform operation
@@ -1075,21 +1065,15 @@ import { rlsPlugin, defineRLSSchema, filter, rlsContext } from '@kysera/rls'
 // Define schema
 const rlsSchema = defineRLSSchema<Database>({
   posts: {
-    policies: [
-      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-    ],
-  },
+    policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+  }
 })
 
 // Create executor with RLS plugin
-const executor = await createExecutor(db, [
-  rlsPlugin({ schema: rlsSchema })
-])
+const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })])
 
 // Define DAL queries
-const getAllPosts = createQuery((ctx) =>
-  ctx.db.selectFrom('posts').selectAll().execute()
-)
+const getAllPosts = createQuery(ctx => ctx.db.selectFrom('posts').selectAll().execute())
 
 const getPostById = createQuery((ctx, id: number) =>
   ctx.db.selectFrom('posts').where('id', '=', id).executeTakeFirst()
@@ -1106,7 +1090,7 @@ await rlsContext.runAsync(
     const posts = await getAllPosts(executor)
 
     // Works in transactions too
-    await withTransaction(executor, async (txCtx) => {
+    await withTransaction(executor, async txCtx => {
       const post = await getPostById(txCtx, 1)
       // RLS filtering still active in transaction
     })
@@ -1131,10 +1115,7 @@ const orm = await createORM(db, [rlsPlugin({ schema: rlsSchema })])
 const getDashboardStats = createQuery((ctx, userId: number) =>
   ctx.db
     .selectFrom('posts')
-    .select((eb) => [
-      eb.fn.count('id').as('total'),
-      eb.fn.avg('views').as('avgViews')
-    ])
+    .select(eb => [eb.fn.count('id').as('total'), eb.fn.avg('views').as('avgViews')])
     .where('author_id', '=', userId)
     .executeTakeFirst()
 )
@@ -1145,7 +1126,7 @@ await rlsContext.runAsync(
     timestamp: new Date()
   },
   async () => {
-    await orm.transaction(async (ctx) => {
+    await orm.transaction(async ctx => {
       // Repository for writes (with RLS validation)
       const userRepo = orm.createRepository(createUserRepository)
       const user = await userRepo.create({ name: 'Alice' })
@@ -1249,11 +1230,7 @@ await db.executeQuery(sql`SET app.tenant_id = ${tenantId}`)
 ```typescript
 type Operation = 'read' | 'create' | 'update' | 'delete' | 'all'
 
-type PolicyDefinition =
-  | AllowPolicy
-  | DenyPolicy
-  | FilterPolicy
-  | ValidatePolicy
+type PolicyDefinition = AllowPolicy | DenyPolicy | FilterPolicy | ValidatePolicy
 
 interface AllowPolicy {
   type: 'allow'

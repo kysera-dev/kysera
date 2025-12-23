@@ -4,10 +4,12 @@
  * @module @kysera/dal
  */
 
-import type { Kysely } from 'kysely';
-import type { KyseraExecutor } from '@kysera/executor';
-import type { DbContext, QueryFunction } from './types.js';
-import { createContext } from './context.js';
+import type { Kysely } from 'kysely'
+import type { KyseraExecutor } from '@kysera/executor'
+import type { DbContext, QueryFunction } from './types.js'
+import { isDbContext } from './types.js'
+import { createContext } from './context.js'
+import { TransactionRequiredError } from './errors.js'
 
 /**
  * Create a typed query function.
@@ -67,20 +69,21 @@ import { createContext } from './context.js';
 export function createQuery<DB, TArgs extends readonly unknown[], TResult>(
   queryFn: (ctx: DbContext<DB>, ...args: TArgs) => Promise<TResult>
 ): QueryFunction<DB, TArgs, TResult> {
-  return (dbOrCtx: Kysely<DB> | KyseraExecutor<DB> | DbContext<DB>, ...args: TArgs): Promise<TResult> => {
-    const ctx: DbContext<DB> =
-      'db' in dbOrCtx && 'isTransaction' in dbOrCtx
-        ? dbOrCtx
-        : createContext(dbOrCtx);
+  return (
+    dbOrCtx: Kysely<DB> | KyseraExecutor<DB> | DbContext<DB>,
+    ...args: TArgs
+  ): Promise<TResult> => {
+    // Use Symbol-based detection for reliable context identification
+    const ctx: DbContext<DB> = isDbContext<DB>(dbOrCtx) ? dbOrCtx : createContext(dbOrCtx)
 
-    return queryFn(ctx, ...args);
-  };
+    return queryFn(ctx, ...args)
+  }
 }
 
 /**
  * Create a query function that requires a transaction.
  *
- * Throws an error if called outside a transaction context.
+ * Throws a TransactionRequiredError if called outside a transaction context.
  *
  * @param queryFn - Query implementation function
  * @returns Query function that requires transaction
@@ -110,8 +113,8 @@ export function createQuery<DB, TArgs extends readonly unknown[], TResult>(
  * // This will work
  * await withTransaction(db, (ctx) => transferFunds(ctx, 1, 2, 100));
  *
- * // This will throw an error
- * await transferFunds(db, 1, 2, 100); // Error: Query requires transaction
+ * // This will throw TransactionRequiredError
+ * await transferFunds(db, 1, 2, 100);
  * ```
  */
 export function createTransactionalQuery<DB, TArgs extends readonly unknown[], TResult>(
@@ -119,10 +122,8 @@ export function createTransactionalQuery<DB, TArgs extends readonly unknown[], T
 ): QueryFunction<DB, TArgs, TResult> {
   return createQuery(async (ctx: DbContext<DB>, ...args: TArgs) => {
     if (!ctx.isTransaction) {
-      throw new Error(
-        'Query requires a transaction. Use withTransaction() to execute this query.'
-      );
+      throw new TransactionRequiredError()
     }
-    return await queryFn(ctx, ...args);
-  });
+    return await queryFn(ctx, ...args)
+  })
 }

@@ -71,8 +71,8 @@ export function createVerticalSliceConfig(options = {}) {
     sharedPath = 'src/shared',
     modulesPath = 'src/modules',
     appPath = 'src/app',
-    allowApiToApi = false,
-  } = options;
+    allowApiToApi = false
+  } = options
 
   return {
     plugins: {
@@ -85,39 +85,39 @@ export function createVerticalSliceConfig(options = {}) {
         {
           type: 'shared',
           pattern: `${sharedPath}/**`,
-          capture: ['category'],
+          capture: ['category']
         },
         // Module public API - exported interface
         {
           type: 'module-api',
           pattern: `${modulesPath}/*/api/**`,
-          capture: ['module'],
+          capture: ['module']
         },
         // Module internal implementation - private
         {
           type: 'module-internal',
           pattern: `${modulesPath}/*/internal/**`,
-          capture: ['module'],
+          capture: ['module']
         },
         // Module barrel export
         {
           type: 'module-barrel',
           pattern: `${modulesPath}/*/index.ts`,
-          capture: ['module'],
+          capture: ['module']
         },
         // Application layer
         {
           type: 'app',
-          pattern: `${appPath}/**`,
-        },
+          pattern: `${appPath}/**`
+        }
       ],
       'boundaries/ignore': [
         // Ignore test files
         '**/*.test.ts',
         '**/*.spec.ts',
         '**/test/**',
-        '**/__tests__/**',
-      ],
+        '**/__tests__/**'
+      ]
     },
     rules: {
       'boundaries/element-types': [
@@ -128,7 +128,7 @@ export function createVerticalSliceConfig(options = {}) {
             // shared can import only from shared
             {
               from: 'shared',
-              allow: ['shared'],
+              allow: ['shared']
             },
 
             // module-internal can import from shared and its own module-api
@@ -137,52 +137,50 @@ export function createVerticalSliceConfig(options = {}) {
               allow: [
                 'shared',
                 // Allow importing from same module's api
-                { type: 'module-api', module: '${module}' },
-              ],
+                { type: 'module-api', module: '${module}' }
+              ]
             },
 
             // module-api can import from shared only
             {
               from: 'module-api',
-              allow: allowApiToApi ? ['shared', 'module-api'] : ['shared'],
+              allow: allowApiToApi ? ['shared', 'module-api'] : ['shared']
             },
 
             // module-barrel re-exports from api
             {
               from: 'module-barrel',
-              allow: [
-                { type: 'module-api', module: '${module}' },
-              ],
+              allow: [{ type: 'module-api', module: '${module}' }]
             },
 
             // app can import from shared and module-api (NOT module-internal!)
             {
               from: 'app',
-              allow: ['shared', 'module-api', 'module-barrel'],
-            },
-          ],
-        },
+              allow: ['shared', 'module-api', 'module-barrel']
+            }
+          ]
+        }
       ],
 
       // Prevent importing from internal of other modules
       'boundaries/no-private': [
         'error',
         {
-          allowUncles: false,
-        },
+          allowUncles: false
+        }
       ],
 
       // Prevent unknown imports
-      'boundaries/no-unknown': ['error'],
-    },
-  };
+      'boundaries/no-unknown': ['error']
+    }
+  }
 }
 
 /**
  * Default Vertical Slice configuration.
  * Uses standard paths: src/shared, src/modules, src/app
  */
-export const defaultVerticalSliceConfig = createVerticalSliceConfig();
+export const defaultVerticalSliceConfig = createVerticalSliceConfig()
 
 /**
  * Strict Vertical Slice configuration.
@@ -190,8 +188,8 @@ export const defaultVerticalSliceConfig = createVerticalSliceConfig();
  * Forces all cross-module communication through shared layer.
  */
 export const strictVerticalSliceConfig = createVerticalSliceConfig({
-  allowApiToApi: false,
-});
+  allowApiToApi: false
+})
 
 /**
  * Relaxed Vertical Slice configuration.
@@ -199,5 +197,5 @@ export const strictVerticalSliceConfig = createVerticalSliceConfig({
  * Useful when modules need to compose each other's types.
  */
 export const relaxedVerticalSliceConfig = createVerticalSliceConfig({
-  allowApiToApi: true,
-});
+  allowApiToApi: true
+})

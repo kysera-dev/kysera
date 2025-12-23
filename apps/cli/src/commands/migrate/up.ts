@@ -1,18 +1,18 @@
-import { Command } from 'commander';
-import { prism } from '@xec-sh/kit';
-import { logger } from '../../utils/logger.js';
-import { CLIError } from '../../utils/errors.js';
-import { MigrationRunner } from './runner.js';
-import { withDatabase } from '../../utils/with-database.js';
+import { Command } from 'commander'
+import { prism } from '@xec-sh/kit'
+import { logger } from '../../utils/logger.js'
+import { CLIError } from '../../utils/errors.js'
+import { MigrationRunner } from './runner.js'
+import { withDatabase } from '../../utils/with-database.js'
 
 export interface UpOptions {
-  to?: string;
-  steps?: number;
-  count?: number; // Alias for steps
-  dryRun?: boolean;
-  force?: boolean;
-  verbose?: boolean;
-  config?: string;
+  to?: string
+  steps?: number
+  count?: number // Alias for steps
+  dryRun?: boolean
+  force?: boolean
+  verbose?: boolean
+  config?: string
 }
 
 export function upCommand(): Command {
@@ -27,120 +27,129 @@ export function upCommand(): Command {
     .option('-c, --config <path>', 'Path to configuration file')
     .action(async (options: UpOptions) => {
       try {
-        await runMigrationsUp(options);
+        await runMigrationsUp(options)
       } catch (error) {
-        logger.error('Error in migrate up command:', error);
+        logger.error('Error in migrate up command:', error)
         if (error instanceof Error) {
-          logger.error('Error stack:', error.stack);
+          logger.error('Error stack:', error.stack)
         }
         if (error instanceof CLIError) {
-          throw error;
+          throw error
         }
         throw new CLIError(
           `Failed to run migrations: ${error instanceof Error ? error.message : String(error)}`,
           'MIGRATION_UP_ERROR'
-        );
+        )
       }
-    });
+    })
 
-  return cmd;
+  return cmd
 }
 
 async function runMigrationsUp(options: UpOptions): Promise<void> {
-  logger.debug('Starting runMigrationsUp with options:', options);
+  logger.debug('Starting runMigrationsUp with options:', options)
 
   await withDatabase({ config: options.config, verbose: options.verbose }, async (db, config) => {
-    const migrationsDir = config.migrations?.directory || './migrations';
-    const tableName = config.migrations?.tableName || 'kysera_migrations';
+    const migrationsDir = config.migrations?.directory || './migrations'
+    const tableName = config.migrations?.tableName || 'kysera_migrations'
 
     // Check if migrations directory exists
-    const { existsSync } = await import('node:fs');
+    const { existsSync } = await import('node:fs')
     if (!existsSync(migrationsDir)) {
-      throw new CLIError(`Migrations directory not found: ${migrationsDir}`, 'MIGRATIONS_DIR_NOT_FOUND', undefined, [
-        `Create the migrations directory: mkdir -p ${migrationsDir}`,
-        `Or run: kysera migrate create <name> to create your first migration`,
-      ]);
+      throw new CLIError(
+        `Migrations directory not found: ${migrationsDir}`,
+        'MIGRATIONS_DIR_NOT_FOUND',
+        undefined,
+        [
+          `Create the migrations directory: mkdir -p ${migrationsDir}`,
+          `Or run: kysera migrate create <name> to create your first migration`
+        ]
+      )
     }
 
     // Create migration runner
-    const runner = new MigrationRunner(db, migrationsDir, tableName);
+    const runner = new MigrationRunner(db, migrationsDir, tableName)
 
     // Acquire lock to prevent concurrent migrations
-    let releaseLock: (() => Promise<void>) | null = null;
+    let releaseLock: (() => Promise<void>) | null = null
 
     try {
       if (!options.dryRun) {
         try {
-          releaseLock = await runner.acquireLock();
+          releaseLock = await runner.acquireLock()
         } catch (error: any) {
           if (error.code === 'MIGRATION_LOCKED') {
-            throw new CLIError('Migrations are already running in another process', 'MIGRATION_LOCKED', undefined, [
-              'Wait for the other process to complete',
-              'Or check for stuck locks in the database',
-            ]);
+            throw new CLIError(
+              'Migrations are already running in another process',
+              'MIGRATION_LOCKED',
+              undefined,
+              ['Wait for the other process to complete', 'Or check for stuck locks in the database']
+            )
           }
           // Lock mechanism might not be set up yet, continue without it
-          logger.debug('Could not acquire migration lock, continuing without lock');
+          logger.debug('Could not acquire migration lock, continuing without lock')
         }
       }
 
       // Get migration status before running
-      let statusBefore: any;
+      let statusBefore: any
       try {
-        statusBefore = await runner.getMigrationStatus();
+        statusBefore = await runner.getMigrationStatus()
       } catch (error) {
-        logger.error('Failed to get migration status:', error);
-        throw error;
+        logger.error('Failed to get migration status:', error)
+        throw error
       }
 
       if (!statusBefore || !Array.isArray(statusBefore)) {
-        logger.debug('Migration status is not an array:', statusBefore);
-        statusBefore = [];
+        logger.debug('Migration status is not an array:', statusBefore)
+        statusBefore = []
       }
 
-      const pendingCount = statusBefore.filter((m: any) => m.status === 'pending').length;
+      const pendingCount = statusBefore.filter((m: any) => m.status === 'pending').length
 
       if (pendingCount === 0 && !options.force) {
-        logger.info('No pending migrations to run');
-        return;
+        logger.info('No pending migrations to run')
+        return
       }
 
       // Show what will be run in dry-run mode
       if (options.dryRun) {
-        logger.info(prism.yellow('DRY RUN MODE - No changes will be made'));
-        logger.info('');
+        logger.info(prism.yellow('DRY RUN MODE - No changes will be made'))
+        logger.info('')
       }
 
       // Run migrations
-      const startTime = Date.now();
+      const startTime = Date.now()
       const { executed, duration } = await runner.up({
         to: options.to,
         steps: options.steps || options.count, // Use count as alias for steps
         dryRun: options.dryRun,
         force: options.force,
-        verbose: options.verbose,
-      });
+        verbose: options.verbose
+      })
 
       // Show summary
       if (executed.length > 0) {
-        logger.info('');
+        logger.info('')
         if (options.dryRun) {
           logger.info(
-            prism.yellow(`Would have run ${executed.length} migration${executed.length > 1 ? 's' : ''} (${duration}ms)`)
-          );
+            prism.yellow(
+              `Would have run ${executed.length} migration${executed.length > 1 ? 's' : ''} (${duration}ms)`
+            )
+          )
         } else {
           logger.info(
             prism.green(
               `[OK] ${executed.length} migration${executed.length > 1 ? 's' : ''} completed successfully (${duration}ms)`
             )
-          );
+          )
         }
       }
     } finally {
       // Release lock
       if (releaseLock) {
-        await releaseLock();
+        await releaseLock()
       }
     }
-  });
+  })
 }

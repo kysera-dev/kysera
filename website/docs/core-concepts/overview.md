@@ -10,6 +10,7 @@ Kysera is a **type-safe data access toolkit** built on a layered architecture th
 
 :::info What Kysera Is NOT
 Kysera is **not a traditional ORM**. It has no:
+
 - Entity mapping or Active Record pattern
 - Unit of Work or Identity Map
 - Lazy loading or automatic relationship loading
@@ -90,8 +91,8 @@ import { rlsPlugin } from '@kysera/rls'
 
 // Create plugin-aware executor
 const executor = await createExecutor(db, [
-  rlsPlugin({ schema: rlsSchema }),  // High priority (50)
-  softDeletePlugin()                  // Standard priority (0)
+  rlsPlugin({ schema: rlsSchema }), // High priority (50)
+  softDeletePlugin() // Standard priority (0)
 ])
 
 // Use like normal Kysely - plugins apply automatically
@@ -99,13 +100,14 @@ const users = await executor.selectFrom('users').selectAll().execute()
 // -> SELECT * FROM users WHERE tenant_id = ? AND deleted_at IS NULL
 
 // Works in transactions too
-await executor.transaction().execute(async (trx) => {
+await executor.transaction().execute(async trx => {
   // trx inherits all plugins
   const user = await trx.selectFrom('users').where('id', '=', 1).executeTakeFirst()
 })
 ```
 
 **Key Features:**
+
 - **Query Interception** - Plugins can modify queries before execution
 - **Zero Overhead** - No performance penalty when no interceptor plugins are registered
 - **Type Safe** - Full TypeScript support with Kysely types preserved
@@ -113,6 +115,7 @@ await executor.transaction().execute(async (trx) => {
 - **Plugin Validation** - Detects conflicts, missing dependencies, and circular dependencies
 
 **Why use `@kysera/executor`?**
+
 - Enables plugins to work with **both** Repository and DAL patterns
 - Provides automatic filtering (soft-delete, RLS) without code changes
 - Foundation for unified plugin architecture across Kysera
@@ -149,7 +152,7 @@ const orm = await createORM(db, [softDeletePlugin()])
 const userRepo = orm.createRepository(createUserRepository)
 
 // Query interceptors work automatically
-const users = await userRepo.findAll()  // Soft-deleted records filtered
+const users = await userRepo.findAll() // Soft-deleted records filtered
 
 // Extension methods from plugins
 await userRepo.softDelete(1)
@@ -171,11 +174,11 @@ const getUserById = createQuery((ctx, id: number) =>
 )
 
 // Query interceptors applied automatically!
-const user = await getUserById(executor, 1)  // Soft-deleted records filtered
+const user = await getUserById(executor, 1) // Soft-deleted records filtered
 
 // Plugins work in transactions too
-const result = await withTransaction(executor, async (ctx) => {
-  return getUserById(ctx, 1)  // Still filtered
+const result = await withTransaction(executor, async ctx => {
+  return getUserById(ctx, 1) // Still filtered
 })
 ```
 
@@ -218,6 +221,7 @@ type KyseraExecutor<DB> = Kysely<DB> & {
 ```
 
 This enables:
+
 1. **Plugin interception** - Modify queries before execution
 2. **Transaction propagation** - Plugins automatically work in transactions
 3. **Unified plugin system** - Same plugins work with Repository and DAL patterns
@@ -234,7 +238,7 @@ const users = await executor.selectFrom('users').selectAll().execute()
 // -> SELECT * FROM users WHERE deleted_at IS NULL (plugin applied)
 
 // Plugins propagate to transactions
-await executor.transaction().execute(async (trx) => {
+await executor.transaction().execute(async trx => {
   // trx is KyseraTransaction with plugins
   const user = await trx.selectFrom('users').where('id', '=', 1).executeTakeFirst()
   // Soft-delete filter still applied
@@ -242,6 +246,7 @@ await executor.transaction().execute(async (trx) => {
 ```
 
 **Plugin Types:**
+
 - **Query Interceptors** (`interceptQuery`) - Work with both Repository and DAL
 - **Repository Extensions** (`extendRepository`) - Work only with Repository
 
@@ -281,8 +286,8 @@ Kysera uses a smart validation strategy for optimal performance:
 const userRepo = factory.create({
   tableName: 'users',
   schemas: {
-    create: CreateUserSchema,  // Always validated
-    entity: UserSchema         // Optional - validates DB results
+    create: CreateUserSchema, // Always validated
+    entity: UserSchema // Optional - validates DB results
   }
   // Output validation controlled via KYSERA_VALIDATION_MODE or NODE_ENV
 })

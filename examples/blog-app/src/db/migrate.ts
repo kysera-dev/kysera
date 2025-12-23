@@ -7,9 +7,7 @@ async function setupMigrations() {
     .createTable('migrations')
     .ifNotExists()
     .addColumn('name', 'varchar(255)', col => col.primaryKey())
-    .addColumn('executed_at', 'timestamp', col =>
-      col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`)
-    )
+    .addColumn('executed_at', 'timestamp', col => col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`))
     .execute()
 }
 
@@ -39,10 +37,7 @@ async function runMigrations() {
       console.log(`↑ Running ${migration.name}...`)
       await migration.up(db)
 
-      await db
-        .insertInto('migrations')
-        .values({ name: migration.name })
-        .execute()
+      await db.insertInto('migrations').values({ name: migration.name }).execute()
 
       console.log(`✓ ${migration.name} completed`)
     } catch (error) {

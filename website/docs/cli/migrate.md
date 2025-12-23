@@ -19,6 +19,7 @@ kysera migrate create <name>
 ```
 
 **Options:**
+
 ```
 -d, --dir <path>           Migration directory (default: ./migrations)
 -t, --template <type>      Template type
@@ -28,6 +29,7 @@ kysera migrate create <name>
 ```
 
 **Templates:**
+
 - `default` - Empty up/down functions
 - `create-table` - Create table skeleton
 - `alter-table` - Alter table skeleton
@@ -37,6 +39,7 @@ kysera migrate create <name>
 - `add-foreign-key` - Add foreign key
 
 **Examples:**
+
 ```bash
 # Basic migration
 kysera migrate create add_users_table
@@ -57,6 +60,7 @@ kysera migrate up
 ```
 
 **Options:**
+
 ```
 -t, --to <migration>      Migrate up to specific migration
 -s, --steps <number>      Number of migrations to run
@@ -67,6 +71,7 @@ kysera migrate up
 ```
 
 **Examples:**
+
 ```bash
 # Run all pending
 kysera migrate up
@@ -90,6 +95,7 @@ kysera migrate down
 ```
 
 **Options:**
+
 ```
 -s, --steps <number>      Migrations to rollback (default: 1)
 -t, --to <migration>      Rollback to specific migration
@@ -100,6 +106,7 @@ kysera migrate down
 ```
 
 **Examples:**
+
 ```bash
 # Rollback last migration
 kysera migrate down
@@ -123,12 +130,14 @@ kysera migrate status
 ```
 
 **Options:**
+
 ```
 --json                    Output as JSON
 -v, --verbose             Show detailed table
 ```
 
 **Output:**
+
 ```
 Migration Status
 ================
@@ -161,6 +170,7 @@ kysera migrate reset
 ```
 
 **Options:**
+
 ```
 --force                   Skip confirmation prompt
 --run                     Re-run migrations after reset
@@ -178,6 +188,7 @@ kysera migrate fresh
 ```
 
 **Options:**
+
 ```
 --seed                    Run seeds after migration
 --force                   Skip confirmation prompt
@@ -186,6 +197,7 @@ kysera migrate fresh
 ```
 
 **Examples:**
+
 ```bash
 # Fresh migration (requires confirmation)
 kysera migrate fresh
@@ -209,9 +221,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     .addColumn('id', 'serial', col => col.primaryKey())
     .addColumn('email', 'varchar(255)', col => col.notNull().unique())
     .addColumn('name', 'varchar(100)', col => col.notNull())
-    .addColumn('created_at', 'timestamp', col =>
-      col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`)
-    )
+    .addColumn('created_at', 'timestamp', col => col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`))
     .execute()
 }
 

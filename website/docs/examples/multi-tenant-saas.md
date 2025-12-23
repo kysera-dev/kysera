@@ -9,6 +9,7 @@ description: Multi-tenant architecture patterns
 Enterprise multi-tenant architecture demonstrating manual tenant isolation patterns.
 
 > **Note**: This is a CLI demonstration example showing the foundational pattern of tenant isolation using manual filtering. It implements:
+>
 > - ✅ TenantContext for storing current tenant ID
 > - ✅ Manual tenant filtering in user repository (`.where('tenant_id', '=', getTenantId())`)
 > - ✅ Complete CRUD operations with tenant isolation
@@ -39,7 +40,7 @@ interface Database {
   tenants: {
     id: Generated<number>
     name: string
-    slug: string  // unique identifier (e.g., 'acme-corp')
+    slug: string // unique identifier (e.g., 'acme-corp')
     plan: 'free' | 'pro' | 'enterprise'
     max_users: number
     created_at: Generated<Date>
@@ -84,8 +85,8 @@ interface Database {
     table_name: string
     entity_id: string
     operation: 'INSERT' | 'UPDATE' | 'DELETE'
-    old_values: string | null  // Note: string, not JSONB
-    new_values: string | null  // Note: string, not JSONB
+    old_values: string | null // Note: string, not JSONB
+    new_values: string | null // Note: string, not JSONB
     user_id: number | null
     created_at: Generated<Date>
   }
@@ -93,6 +94,7 @@ interface Database {
 ```
 
 **Implementation Status**:
+
 - ✅ Users repository - Fully implemented with tenant isolation
 - 📋 Projects, tasks, audit_logs - Schema defined but repositories not yet implemented
 
@@ -142,11 +144,7 @@ tenant2Context.setTenantId(2)
 // Recommended pattern for Express applications
 import { Request, Response, NextFunction } from 'express'
 
-export async function tenantMiddleware(
-  req: Request,
-  res: Response,
-  next: NextFunction
-) {
+export async function tenantMiddleware(req: Request, res: Response, next: NextFunction) {
   // Extract tenant from subdomain
   const subdomain = extractSubdomain(req.hostname)
 
@@ -157,7 +155,7 @@ export async function tenantMiddleware(
   // Look up tenant
   const tenant = await db
     .selectFrom('tenants')
-    .where('slug', '=', subdomain)  // Note: uses 'slug', not 'subdomain'
+    .where('slug', '=', subdomain) // Note: uses 'slug', not 'subdomain'
     .selectAll()
     .executeTakeFirst()
 
@@ -188,10 +186,7 @@ function extractSubdomain(hostname: string): string | null {
 The actual implementation (see `src/repositories/user.repository.ts`):
 
 ```typescript
-export function createUserRepository(
-  executor: Executor<Database>,
-  tenantContext: TenantContext
-) {
+export function createUserRepository(executor: Executor<Database>, tenantContext: TenantContext) {
   const validateDbResults = process.env['NODE_ENV'] === 'development'
   const getTenantId = () => tenantContext.getTenantId()
 
@@ -201,7 +196,7 @@ export function createUserRepository(
         .selectFrom('users')
         .selectAll()
         .where('id', '=', id)
-        .where('tenant_id', '=', getTenantId())  // Tenant filter
+        .where('tenant_id', '=', getTenantId()) // Tenant filter
         .executeTakeFirst()
 
       if (!row) return null
@@ -215,7 +210,7 @@ export function createUserRepository(
         .selectFrom('users')
         .selectAll()
         .where('email', '=', email)
-        .where('tenant_id', '=', getTenantId())  // Tenant filter
+        .where('tenant_id', '=', getTenantId()) // Tenant filter
         .executeTakeFirst()
 
       if (!row) return null
@@ -228,7 +223,7 @@ export function createUserRepository(
       const rows = await executor
         .selectFrom('users')
         .selectAll()
-        .where('tenant_id', '=', getTenantId())  // Tenant filter
+        .where('tenant_id', '=', getTenantId()) // Tenant filter
         .orderBy('created_at', 'desc')
         .execute()
 
@@ -243,8 +238,8 @@ export function createUserRepository(
         .insertInto('users')
         .values({
           ...validated,
-          tenant_id: getTenantId(),  // Auto-inject tenant_id
-          role: validated.role || 'member',
+          tenant_id: getTenantId(), // Auto-inject tenant_id
+          role: validated.role || 'member'
         })
         .returningAll()
         .executeTakeFirstOrThrow()
@@ -263,7 +258,7 @@ export function createUserRepository(
           updated_at: new Date()
         })
         .where('id', '=', id)
-        .where('tenant_id', '=', getTenantId())  // Security!
+        .where('tenant_id', '=', getTenantId()) // Security!
         .returningAll()
         .executeTakeFirstOrThrow()
 
@@ -275,7 +270,7 @@ export function createUserRepository(
       await executor
         .deleteFrom('users')
         .where('id', '=', id)
-        .where('tenant_id', '=', getTenantId())  // Security!
+        .where('tenant_id', '=', getTenantId()) // Security!
         .execute()
     }
   }
@@ -283,6 +278,7 @@ export function createUserRepository(
 ```
 
 **Key Points**:
+
 - Takes `TenantContext` instance, not a function
 - All queries include `WHERE tenant_id = getTenantId()`
 - Creates automatically inject `tenant_id`
@@ -371,9 +367,7 @@ const rlsSchema = defineRLSSchema<Database>({
 const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })])
 
 // Define DAL queries (no manual tenant filtering needed)
-const getUsers = createQuery((ctx) =>
-  ctx.db.selectFrom('users').selectAll().execute()
-)
+const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
 
 const createUser = createQuery((ctx, data) =>
   ctx.db.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
@@ -403,6 +397,7 @@ app.get('/users', async (req, res) => {
 ```
 
 **Benefits of using @kysera/rls:**
+
 - Automatic tenant filtering on all queries (no manual WHERE clauses)
 - Centralized policy definitions
 - System context support via `rlsContext.asSystemAsync()`
@@ -448,9 +443,9 @@ await executor
   .updateTable('users')
   .set(data)
   .where('id', '=', id)
-  .where('tenant_id', '=', getTenantId())  // CRITICAL!
+  .where('tenant_id', '=', getTenantId()) // CRITICAL!
   .execute()
 
 // Never trust client tenant ID
-const tenantId = getTenantId()  // From server context, not request
+const tenantId = getTenantId() // From server context, not request
 ```

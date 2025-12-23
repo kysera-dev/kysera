@@ -14,14 +14,14 @@ This module provides native PostgreSQL Row-Level Security (RLS) policy generatio
 ### 1. Define RLS Schema with Native PostgreSQL Support
 
 ```typescript
-import type { RLSSchema } from '@kysera/rls';
+import type { RLSSchema } from '@kysera/rls'
 
 interface Database {
   users: {
-    id: number;
-    email: string;
-    tenant_id: string;
-  };
+    id: number
+    email: string
+    tenant_id: string
+  }
 }
 
 const rlsSchema: RLSSchema<Database> = {
@@ -33,59 +33,59 @@ const rlsSchema: RLSSchema<Database> = {
         name: 'users_read_own',
         condition: () => true, // ORM-side condition
         using: 'id = rls_current_user_id()::integer', // Native PostgreSQL
-        role: 'authenticated',
-      },
-    ],
-  },
-};
+        role: 'authenticated'
+      }
+    ]
+  }
+}
 ```
 
 ### 2. Generate PostgreSQL Statements
 
 ```typescript
-import { PostgresRLSGenerator } from '@kysera/rls/native';
+import { PostgresRLSGenerator } from '@kysera/rls/native'
 
-const generator = new PostgresRLSGenerator();
+const generator = new PostgresRLSGenerator()
 
 // Generate RLS policies
 const statements = generator.generateStatements(rlsSchema, {
   schemaName: 'public',
   policyPrefix: 'app_rls',
-  force: true, // Force RLS on table owners
-});
+  force: true // Force RLS on table owners
+})
 
 // Generate context functions
-const contextFunctions = generator.generateContextFunctions();
+const contextFunctions = generator.generateContextFunctions()
 
 // Generate cleanup statements
 const dropStatements = generator.generateDropStatements(rlsSchema, {
   schemaName: 'public',
-  policyPrefix: 'app_rls',
-});
+  policyPrefix: 'app_rls'
+})
 ```
 
 ### 3. Generate Kysely Migration
 
 ```typescript
-import { RLSMigrationGenerator } from '@kysera/rls/native';
+import { RLSMigrationGenerator } from '@kysera/rls/native'
 
-const migrationGenerator = new RLSMigrationGenerator();
+const migrationGenerator = new RLSMigrationGenerator()
 
 const migrationContent = migrationGenerator.generateMigration(rlsSchema, {
   name: 'setup_rls',
   schemaName: 'public',
   policyPrefix: 'app_rls',
   includeContextFunctions: true,
-  force: true,
-});
+  force: true
+})
 
 // Get suggested filename with timestamp
-const filename = migrationGenerator.generateFilename('setup_rls');
+const filename = migrationGenerator.generateFilename('setup_rls')
 // Example: 20231208_123456_setup_rls.ts
 
 // Write to migrations directory
-import fs from 'fs';
-fs.writeFileSync(`migrations/${filename}`, migrationContent);
+import fs from 'fs'
+fs.writeFileSync(`migrations/${filename}`, migrationContent)
 ```
 
 ### 4. Sync Context to PostgreSQL Session
@@ -141,13 +141,13 @@ Extend your Kysera policy definitions with native PostgreSQL support:
 
 ### Operations
 
-| Kysera | PostgreSQL |
-|--------|------------|
-| `read` | `SELECT` |
-| `create` | `INSERT` |
-| `update` | `UPDATE` |
-| `delete` | `DELETE` |
-| `all` | `ALL` |
+| Kysera   | PostgreSQL |
+| -------- | ---------- |
+| `read`   | `SELECT`   |
+| `create` | `INSERT`   |
+| `update` | `UPDATE`   |
+| `delete` | `DELETE`   |
+| `all`    | `ALL`      |
 
 ## Context Functions
 
@@ -192,20 +192,21 @@ const rlsSchema: RLSSchema<Database> = {
         name: 'posts_read_tenant',
         condition: () => true,
         using: 'tenant_id = rls_current_tenant_id()',
-        role: 'authenticated',
+        role: 'authenticated'
       },
       {
         type: 'allow',
         operation: 'create',
         name: 'posts_create_own',
         condition: () => true,
-        withCheck: 'user_id = rls_current_user_id()::integer AND tenant_id = rls_current_tenant_id()',
-        role: 'authenticated',
-      },
+        withCheck:
+          'user_id = rls_current_user_id()::integer AND tenant_id = rls_current_tenant_id()',
+        role: 'authenticated'
+      }
     ],
-    defaultDeny: true,
-  },
-};
+    defaultDeny: true
+  }
+}
 ```
 
 ### Role-Based Access Control
@@ -219,21 +220,21 @@ const rlsSchema: RLSSchema<Database> = {
         operation: 'all',
         name: 'admin_full_access',
         condition: () => true,
-        using: 'rls_has_role(\'admin\')',
-        role: 'authenticated',
+        using: "rls_has_role('admin')",
+        role: 'authenticated'
       },
       {
         type: 'deny',
         operation: 'all',
         name: 'deny_non_admin',
         condition: () => true,
-        using: 'NOT rls_has_role(\'admin\')',
-        role: 'authenticated',
-      },
+        using: "NOT rls_has_role('admin')",
+        role: 'authenticated'
+      }
     ],
-    defaultDeny: true,
-  },
-};
+    defaultDeny: true
+  }
+}
 ```
 
 ### System Bypass
@@ -267,6 +268,7 @@ CREATE INDEX idx_posts_user ON posts(user_id);
 ## Migration Workflow
 
 1. **Generate Migration**:
+
    ```bash
    npx tsx -e "import { RLSMigrationGenerator } from './src/native'; ..."
    ```
@@ -274,6 +276,7 @@ CREATE INDEX idx_posts_user ON posts(user_id);
 2. **Review Generated SQL**: Check migration file before applying
 
 3. **Run Migration**:
+
    ```bash
    npx kysely migrate:latest
    ```

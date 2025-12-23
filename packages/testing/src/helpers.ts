@@ -4,7 +4,7 @@
  * @module @kysera/testing
  */
 
-import type { Kysely } from 'kysely';
+import type { Kysely } from 'kysely'
 
 /**
  * Options for waitFor function.
@@ -14,19 +14,19 @@ export interface WaitForOptions {
    * Maximum time to wait in milliseconds.
    * @default 5000
    */
-  timeout?: number;
+  timeout?: number
 
   /**
    * Interval between condition checks in milliseconds.
    * @default 100
    */
-  interval?: number;
+  interval?: number
 
   /**
    * Custom error message on timeout.
    * @default 'Condition not met within timeout'
    */
-  timeoutMessage?: string;
+  timeoutMessage?: string
 }
 
 /**
@@ -77,20 +77,20 @@ export async function waitFor(
   const {
     timeout = 5000,
     interval = 100,
-    timeoutMessage = 'Condition not met within timeout',
-  } = options;
+    timeoutMessage = 'Condition not met within timeout'
+  } = options
 
-  const startTime = Date.now();
+  const startTime = Date.now()
 
   while (Date.now() - startTime < timeout) {
-    const result = await condition();
+    const result = await condition()
     if (result) {
-      return;
+      return
     }
-    await new Promise((resolve) => setTimeout(resolve, interval));
+    await new Promise(resolve => setTimeout(resolve, interval))
   }
 
-  throw new Error(timeoutMessage);
+  throw new Error(timeoutMessage)
 }
 
 /**
@@ -112,12 +112,9 @@ export async function waitFor(
  * expect(after.length).toBe(before.length + 1);
  * ```
  */
-export async function snapshotTable<DB>(
-  db: Kysely<DB>,
-  table: string
-): Promise<unknown[]> {
+export async function snapshotTable<DB>(db: Kysely<DB>, table: string): Promise<unknown[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Dynamic table name requires any cast
-  return await db.selectFrom(table as any).selectAll().execute();
+  return await db.selectFrom(table as any).selectAll().execute()
 }
 
 /**
@@ -138,10 +135,7 @@ export async function snapshotTable<DB>(
  * expect(newCount).toBe(initialCount + 1);
  * ```
  */
-export async function countRows<DB>(
-  db: Kysely<DB>,
-  table: string
-): Promise<number> {
+export async function countRows<DB>(db: Kysely<DB>, table: string): Promise<number> {
   // Dynamic query building requires any cast as table name is runtime value
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- Kysely dynamic query building
   const result = await (db as any)
@@ -150,10 +144,10 @@ export async function countRows<DB>(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Expression builder typing
     .select((eb: any) => eb.fn.countAll().as('count'))
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Dynamic query result
-    .executeTakeFirst();
+    .executeTakeFirst()
 
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Result type unknown at compile time
-  return result ? Number(result.count) : 0;
+  return result ? Number(result.count) : 0
 }
 
 /**
@@ -183,25 +177,23 @@ export async function assertRowExists<DB>(
 ): Promise<unknown> {
   // Build query dynamically - requires any cast for runtime table/column names
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- Dynamic query building
-  const anyDb = db as any;
+  const anyDb = db as any
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
-  let query = anyDb.selectFrom(table).selectAll();
+  let query = anyDb.selectFrom(table).selectAll()
 
   for (const [key, value] of Object.entries(where)) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
-    query = query.where(key, '=', value);
+    query = query.where(key, '=', value)
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
-  const row = await query.executeTakeFirst();
+  const row = await query.executeTakeFirst()
 
   if (!row) {
-    throw new Error(
-      `Expected row to exist in ${table} with conditions: ${JSON.stringify(where)}`
-    );
+    throw new Error(`Expected row to exist in ${table} with conditions: ${JSON.stringify(where)}`)
   }
 
-  return row;
+  return row
 }
 
 /**
@@ -228,21 +220,21 @@ export async function assertRowNotExists<DB>(
 ): Promise<void> {
   // Build query dynamically - requires any cast for runtime table/column names
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- Dynamic query building
-  const anyDb = db as any;
+  const anyDb = db as any
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
-  let query = anyDb.selectFrom(table).selectAll();
+  let query = anyDb.selectFrom(table).selectAll()
 
   for (const [key, value] of Object.entries(where)) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
-    query = query.where(key, '=', value);
+    query = query.where(key, '=', value)
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Dynamic query building
-  const row = await query.executeTakeFirst();
+  const row = await query.executeTakeFirst()
 
   if (row) {
     throw new Error(
       `Expected no row to exist in ${table} with conditions: ${JSON.stringify(where)}`
-    );
+    )
   }
 }

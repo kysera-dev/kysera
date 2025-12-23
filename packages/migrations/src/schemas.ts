@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod'
 
 // ============================================================================
 // Migration Runner Options Schema
@@ -11,15 +11,23 @@ import { z } from 'zod';
 export const MigrationRunnerOptionsSchema = z.object({
   /** Enable dry run mode (preview only, no changes) */
   dryRun: z.boolean().default(false),
-  /** Logger function - validated as any since function schemas are complex in Zod v4 */
+  /**
+   * Logger implementing KyseraLogger interface from @kysera/core.
+   * Uses z.any() because:
+   * 1. Logger is an object with methods (debug, info, warn, error)
+   * 2. Zod function schemas don't compose well for interface validation
+   * 3. Runtime type checking of loggers adds unnecessary overhead
+   * 4. TypeScript interface already provides compile-time type safety
+   * @see KyseraLogger from @kysera/core for the expected interface
+   */
   logger: z.any().optional(),
   /** Wrap each migration in a transaction */
   useTransactions: z.boolean().default(false),
   /** Stop on first error */
   stopOnError: z.boolean().default(true),
   /** Show detailed metadata in logs */
-  verbose: z.boolean().default(true),
-});
+  verbose: z.boolean().default(true)
+})
 
 // ============================================================================
 // Migration Definition Schema
@@ -39,8 +47,8 @@ export const MigrationDefinitionSchema = z.object({
   /** Tags for categorization (e.g., ['schema', 'data', 'index']) */
   tags: z.array(z.string()).default([]),
   /** Estimated duration as human-readable string (e.g., '30s', '2m') */
-  estimatedDuration: z.string().optional(),
-});
+  estimatedDuration: z.string().optional()
+})
 
 // ============================================================================
 // Migration Plugin Options Schema
@@ -51,9 +59,12 @@ export const MigrationDefinitionSchema = z.object({
  * Validates options passed to migration plugins
  */
 export const MigrationPluginOptionsSchema = z.object({
-  /** Optional logger for the plugin */
-  logger: z.any().optional(),
-});
+  /**
+   * Optional logger for the plugin.
+   * Uses z.any() - see MigrationRunnerOptionsSchema.logger for rationale.
+   */
+  logger: z.any().optional()
+})
 
 // ============================================================================
 // Migration Plugin Schema
@@ -61,22 +72,28 @@ export const MigrationPluginOptionsSchema = z.object({
 
 /**
  * Schema for MigrationPlugin
- * Validates migration plugin structure
+ * Validates migration plugin structure.
+ *
+ * Note: Lifecycle hooks use z.any() for the following reasons:
+ * 1. Each hook has a unique signature with generic types (Migration<DB>)
+ * 2. Zod cannot express generic type parameters in function schemas
+ * 3. TypeScript interface (MigrationPlugin) provides compile-time safety
+ * 4. Runtime validation of callbacks adds overhead without benefit
  */
 export const MigrationPluginSchema = z.object({
   /** Plugin name */
   name: z.string().min(1, 'Plugin name is required'),
   /** Plugin version */
   version: z.string().min(1, 'Plugin version is required'),
-  /** Called once when the runner is initialized */
+  /** Called once when the runner is initialized - see MigrationPlugin.onInit for signature */
   onInit: z.any().optional(),
-  /** Called before migration execution */
+  /** Called before migration execution - see MigrationPlugin.beforeMigration for signature */
   beforeMigration: z.any().optional(),
-  /** Called after successful migration execution */
+  /** Called after successful migration execution - see MigrationPlugin.afterMigration for signature */
   afterMigration: z.any().optional(),
-  /** Called on migration error */
-  onMigrationError: z.any().optional(),
-});
+  /** Called on migration error - see MigrationPlugin.onMigrationError for signature */
+  onMigrationError: z.any().optional()
+})
 
 // ============================================================================
 // Migration Status Schema
@@ -92,8 +109,8 @@ export const MigrationStatusSchema = z.object({
   /** List of pending migration names */
   pending: z.array(z.string()),
   /** Total migration count */
-  total: z.number().int().nonnegative(),
-});
+  total: z.number().int().nonnegative()
+})
 
 // ============================================================================
 // Migration Result Schema
@@ -113,8 +130,8 @@ export const MigrationResultSchema = z.object({
   /** Total duration in milliseconds */
   duration: z.number().nonnegative(),
   /** Whether the run was in dry-run mode */
-  dryRun: z.boolean(),
-});
+  dryRun: z.boolean()
+})
 
 // ============================================================================
 // Extended Runner Options Schema (with plugins)
@@ -126,48 +143,52 @@ export const MigrationResultSchema = z.object({
  */
 export const MigrationRunnerWithPluginsOptionsSchema = MigrationRunnerOptionsSchema.extend({
   /** Plugins to apply */
-  plugins: z.array(MigrationPluginSchema).optional(),
-});
+  plugins: z.array(MigrationPluginSchema).optional()
+})
 
 // ============================================================================
 // Type Exports
 // ============================================================================
 
 /** Input type for MigrationRunnerOptions - before defaults are applied */
-export type MigrationRunnerOptionsInput = z.input<typeof MigrationRunnerOptionsSchema>;
+export type MigrationRunnerOptionsInput = z.input<typeof MigrationRunnerOptionsSchema>
 
 /** Output type for MigrationRunnerOptions - after defaults are applied */
-export type MigrationRunnerOptionsOutput = z.output<typeof MigrationRunnerOptionsSchema>;
+export type MigrationRunnerOptionsOutput = z.output<typeof MigrationRunnerOptionsSchema>
 
 /** Input type for MigrationDefinition - before defaults are applied */
-export type MigrationDefinitionInput = z.input<typeof MigrationDefinitionSchema>;
+export type MigrationDefinitionInput = z.input<typeof MigrationDefinitionSchema>
 
 /** Output type for MigrationDefinition - after defaults are applied */
-export type MigrationDefinitionOutput = z.output<typeof MigrationDefinitionSchema>;
+export type MigrationDefinitionOutput = z.output<typeof MigrationDefinitionSchema>
 
 /** Input type for MigrationPluginOptions */
-export type MigrationPluginOptionsInput = z.input<typeof MigrationPluginOptionsSchema>;
+export type MigrationPluginOptionsInput = z.input<typeof MigrationPluginOptionsSchema>
 
 /** Output type for MigrationPluginOptions */
-export type MigrationPluginOptionsOutput = z.output<typeof MigrationPluginOptionsSchema>;
+export type MigrationPluginOptionsOutput = z.output<typeof MigrationPluginOptionsSchema>
 
 /** Input type for MigrationPlugin */
-export type MigrationPluginInput = z.input<typeof MigrationPluginSchema>;
+export type MigrationPluginInput = z.input<typeof MigrationPluginSchema>
 
 /** Output type for MigrationPlugin */
-export type MigrationPluginOutput = z.output<typeof MigrationPluginSchema>;
+export type MigrationPluginOutput = z.output<typeof MigrationPluginSchema>
 
 /** Type for MigrationStatus */
-export type MigrationStatusType = z.infer<typeof MigrationStatusSchema>;
+export type MigrationStatusType = z.infer<typeof MigrationStatusSchema>
 
 /** Type for MigrationResult */
-export type MigrationResultType = z.infer<typeof MigrationResultSchema>;
+export type MigrationResultType = z.infer<typeof MigrationResultSchema>
 
 /** Input type for MigrationRunnerWithPluginsOptions */
-export type MigrationRunnerWithPluginsOptionsInput = z.input<typeof MigrationRunnerWithPluginsOptionsSchema>;
+export type MigrationRunnerWithPluginsOptionsInput = z.input<
+  typeof MigrationRunnerWithPluginsOptionsSchema
+>
 
 /** Output type for MigrationRunnerWithPluginsOptions */
-export type MigrationRunnerWithPluginsOptionsOutput = z.output<typeof MigrationRunnerWithPluginsOptionsSchema>;
+export type MigrationRunnerWithPluginsOptionsOutput = z.output<
+  typeof MigrationRunnerWithPluginsOptionsSchema
+>
 
 // ============================================================================
 // Validation Helpers
@@ -176,10 +197,8 @@ export type MigrationRunnerWithPluginsOptionsOutput = z.output<typeof MigrationR
 /**
  * Validate and parse MigrationRunnerOptions with defaults
  */
-export function parseMigrationRunnerOptions(
-  options: unknown
-): MigrationRunnerOptionsOutput {
-  return MigrationRunnerOptionsSchema.parse(options);
+export function parseMigrationRunnerOptions(options: unknown): MigrationRunnerOptionsOutput {
+  return MigrationRunnerOptionsSchema.parse(options)
 }
 
 /**
@@ -187,16 +206,14 @@ export function parseMigrationRunnerOptions(
  * Returns result with success boolean and either data or error
  */
 export function safeParseMigrationRunnerOptions(options: unknown) {
-  return MigrationRunnerOptionsSchema.safeParse(options);
+  return MigrationRunnerOptionsSchema.safeParse(options)
 }
 
 /**
  * Validate and parse MigrationDefinition with defaults
  */
-export function parseMigrationDefinition(
-  definition: unknown
-): MigrationDefinitionOutput {
-  return MigrationDefinitionSchema.parse(definition);
+export function parseMigrationDefinition(definition: unknown): MigrationDefinitionOutput {
+  return MigrationDefinitionSchema.parse(definition)
 }
 
 /**
@@ -204,5 +221,5 @@ export function parseMigrationDefinition(
  * Returns result with success boolean and either data or error
  */
 export function safeParseMigrationDefinition(definition: unknown) {
-  return MigrationDefinitionSchema.safeParse(definition);
+  return MigrationDefinitionSchema.safeParse(definition)
 }

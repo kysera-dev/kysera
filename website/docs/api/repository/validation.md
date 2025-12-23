@@ -83,8 +83,8 @@ Determine if validation should be enabled.
 function shouldValidate(options?: ValidationOptions): boolean
 
 interface ValidationOptions {
-  validateDbResults?: boolean    // Validate database results
-  validateInputs?: boolean       // Always validate inputs
+  validateDbResults?: boolean // Validate database results
+  validateInputs?: boolean // Always validate inputs
   mode?: 'development' | 'production' | 'always' | 'never'
   logger?: KyseraLogger
 }
@@ -110,16 +110,13 @@ if (shouldValidate({ mode: 'always' })) {
 Create a validation wrapper with multiple methods.
 
 ```typescript
-function createValidator<T>(
-  schema: z.ZodType<T>,
-  options?: ValidationOptions
-): Validator<T>
+function createValidator<T>(schema: z.ZodType<T>, options?: ValidationOptions): Validator<T>
 
 interface Validator<T> {
-  validate(data: unknown): T              // Throws on error
-  validateSafe(data: unknown): T | null   // Returns null on error
-  isValid(data: unknown): boolean          // Returns boolean
-  validateConditional(data: unknown): T   // Uses mode setting
+  validate(data: unknown): T // Throws on error
+  validateSafe(data: unknown): T | null // Returns null on error
+  isValid(data: unknown): boolean // Returns boolean
+  validateConditional(data: unknown): T // Uses mode setting
 }
 ```
 
@@ -205,7 +202,7 @@ const userRepo = factory.create({
 })
 
 // Input is ALWAYS validated
-await userRepo.create({ email: 'invalid' })  // Throws!
+await userRepo.create({ email: 'invalid' }) // Throws!
 ```
 
 ### Output Validation (Configurable)
@@ -213,7 +210,7 @@ await userRepo.create({ email: 'invalid' })  // Throws!
 ```typescript
 const userRepo = factory.create({
   schemas: {
-    entity: UserSchema  // For output validation
+    entity: UserSchema // For output validation
   }
   // Controlled via KYSERA_VALIDATION_MODE or NODE_ENV
 })
@@ -221,12 +218,12 @@ const userRepo = factory.create({
 
 ## Validation Modes
 
-| Mode | Input Validation | Output Validation |
-|------|------------------|-------------------|
-| `always` | Yes | Yes |
-| `never` | Yes* | No |
-| `development` | Yes | If NODE_ENV=development |
-| `production` | Yes | No |
+| Mode          | Input Validation | Output Validation       |
+| ------------- | ---------------- | ----------------------- |
+| `always`      | Yes              | Yes                     |
+| `never`       | Yes\*            | No                      |
+| `development` | Yes              | If NODE_ENV=development |
+| `production`  | Yes              | No                      |
 
 \* Input validation cannot be disabled for security
 
@@ -293,8 +290,8 @@ app.post('/users', async (req, res) => {
 
 ```typescript
 // .env.development
-KYSERA_VALIDATION_MODE=always
+KYSERA_VALIDATION_MODE = always
 
 // .env.production
-KYSERA_VALIDATION_MODE=production
+KYSERA_VALIDATION_MODE = production
 ```

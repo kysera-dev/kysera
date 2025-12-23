@@ -12,12 +12,12 @@ export const UserSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(100),
   created_at: z.date(),
-  deleted_at: z.date().nullable(),
+  deleted_at: z.date().nullable()
 })
 
 export const CreateUserSchema = z.object({
   email: z.string().email(),
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(100)
 })
 
 export const UpdateUserSchema = CreateUserSchema.partial()
@@ -75,9 +75,7 @@ export function createUserRepository(executor: Executor<Database>) {
         .execute()
 
       const users = rows.map(mapUserRow)
-      return validateDbResults
-        ? users.map(u => UserSchema.parse(u))
-        : users
+      return validateDbResults ? users.map(u => UserSchema.parse(u)) : users
     },
 
     async create(input: unknown): Promise<User> {
@@ -87,7 +85,7 @@ export function createUserRepository(executor: Executor<Database>) {
         .insertInto('users')
         .values({
           ...validated,
-          deleted_at: null,
+          deleted_at: null
         })
         .returningAll()
         .executeTakeFirstOrThrow()
@@ -120,11 +118,7 @@ export function createUserRepository(executor: Executor<Database>) {
     },
 
     async restore(id: number): Promise<void> {
-      await executor
-        .updateTable('users')
-        .set({ deleted_at: null })
-        .where('id', '=', id)
-        .execute()
+      await executor.updateTable('users').set({ deleted_at: null }).where('id', '=', id).execute()
     }
   }
 }

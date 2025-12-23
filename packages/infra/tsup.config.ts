@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsup';
+import { defineConfig } from 'tsup'
 
 export default defineConfig({
   entry: [
@@ -6,7 +6,7 @@ export default defineConfig({
     'src/health/index.ts',
     'src/resilience/index.ts',
     'src/pool/index.ts',
-    'src/shutdown.ts',
+    'src/shutdown.ts'
   ],
   format: ['esm'],
   dts: true,
@@ -18,5 +18,5 @@ export default defineConfig({
   external: ['kysely', '@kysera/core'],
   target: 'esnext',
   platform: 'neutral',
-  tsconfig: './tsconfig.build.json',
-});
+  tsconfig: './tsconfig.build.json'
+})

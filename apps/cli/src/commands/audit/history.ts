@@ -1,16 +1,16 @@
-import { Command } from 'commander';
-import { prism } from '@xec-sh/kit';
-import { spinner } from '../../utils/spinner.js';
-import { CLIError } from '../../utils/errors.js';
-import { withDatabase } from '../../utils/with-database.js';
-import { logger } from '../../utils/logger.js';
+import { Command } from 'commander'
+import { prism } from '@xec-sh/kit'
+import { spinner } from '../../utils/spinner.js'
+import { CLIError } from '../../utils/errors.js'
+import { withDatabase } from '../../utils/with-database.js'
+import { logger } from '../../utils/logger.js'
 
 export interface HistoryOptions {
-  limit?: string;
-  showValues?: boolean;
-  json?: boolean;
-  reverse?: boolean;
-  config?: string;
+  limit?: string
+  showValues?: boolean
+  json?: boolean
+  reverse?: boolean
+  config?: string
 }
 
 export function historyCommand(): Command {
@@ -25,45 +25,49 @@ export function historyCommand(): Command {
     .option('-c, --config <path>', 'Path to configuration file')
     .action(async (table: string, entityId: string, options: HistoryOptions) => {
       try {
-        await showEntityHistory(table, entityId, options);
+        await showEntityHistory(table, entityId, options)
       } catch (error) {
         if (error instanceof CLIError) {
-          throw error;
+          throw error
         }
         throw new CLIError(
           `Failed to show entity history: ${error instanceof Error ? error.message : String(error)}`,
           'HISTORY_ERROR'
-        );
+        )
       }
-    });
+    })
 
-  return cmd;
+  return cmd
 }
 
-async function showEntityHistory(tableName: string, entityId: string, options: HistoryOptions): Promise<void> {
-  await withDatabase({ config: options.config }, async (db) => {
-    const historySpinner = spinner() as any;
-    historySpinner.start(`Fetching history for ${tableName} #${entityId}...`);
+async function showEntityHistory(
+  tableName: string,
+  entityId: string,
+  options: HistoryOptions
+): Promise<void> {
+  await withDatabase({ config: options.config }, async db => {
+    const historySpinner = spinner() as any
+    historySpinner.start(`Fetching history for ${tableName} #${entityId}...`)
 
     // Check if audit_logs table exists
     const tables = await db
       .selectFrom('information_schema.tables')
       .select('table_name')
       .where('table_name', '=', 'audit_logs')
-      .execute();
+      .execute()
 
     if (tables.length === 0) {
-      historySpinner.fail('Audit logs table not found');
-      console.log('');
-      console.log(prism.yellow('The audit_logs table does not exist.'));
-      console.log(prism.gray('Audit logging is not enabled for this database.'));
-      return;
+      historySpinner.fail('Audit logs table not found')
+      console.log('')
+      console.log(prism.yellow('The audit_logs table does not exist.'))
+      console.log(prism.gray('Audit logging is not enabled for this database.'))
+      return
     }
 
     // Get history for the entity
-    const limit = parseInt(options.limit || '20', 10);
+    const limit = parseInt(options.limit || '20', 10)
     if (isNaN(limit) || limit <= 0) {
-      throw new CLIError('Invalid limit value - must be a positive number');
+      throw new CLIError('Invalid limit value - must be a positive number')
     }
     let query = db
       .selectFrom('audit_logs')
@@ -71,36 +75,44 @@ async function showEntityHistory(tableName: string, entityId: string, options: H
       .where('table_name', '=', tableName)
       .where('entity_id', '=', entityId)
       .orderBy('created_at', options.reverse ? 'asc' : 'desc')
-      .limit(limit);
+      .limit(limit)
 
-    const history = await query.execute();
+    const history = await query.execute()
 
     if (history.length === 0) {
-      historySpinner.warn(`No history found for ${tableName} #${entityId}`);
-      return;
+      historySpinner.warn(`No history found for ${tableName} #${entityId}`)
+      return
     }
 
-    historySpinner.succeed(`Found ${history.length} history record${history.length !== 1 ? 's' : ''}`);
+    historySpinner.succeed(
+      `Found ${history.length} history record${history.length !== 1 ? 's' : ''}`
+    )
 
     // Output results
     if (options.json) {
-      console.log(JSON.stringify(history, null, 2));
+      console.log(JSON.stringify(history, null, 2))
     } else {
       // Timeline view
-      console.log('');
-      console.log(prism.bold(`Entity History: ${tableName} #${entityId}`));
-      console.log('');
+      console.log('')
+      console.log(prism.bold(`Entity History: ${tableName} #${entityId}`))
+      console.log('')
 
       // Get current state if entity still exists
       try {
-        const currentEntity = await db.selectFrom(tableName).selectAll().where('id', '=', entityId).executeTakeFirst();
+        const currentEntity = await db
+          .selectFrom(tableName)
+          .selectAll()
+          .where('id', '=', entityId)
+          .executeTakeFirst()
 
         if (currentEntity) {
-          console.log(prism.green('Current State'));
+          console.log(prism.green('Current State'))
           if (options.showValues) {
-            console.log(prism.gray('  ' + JSON.stringify(currentEntity, null, 2).split('\n').join('\n  ')));
+            console.log(
+              prism.gray('  ' + JSON.stringify(currentEntity, null, 2).split('\n').join('\n  '))
+            )
           }
-          console.log('');
+          console.log('')
         }
       } catch (error) {
         // Entity might not exist anymore
@@ -108,75 +120,77 @@ async function showEntityHistory(tableName: string, entityId: string, options: H
 
       // Show history timeline
       for (let i = 0; i < history.length; i++) {
-        const log = history[i] as any;
-        const isLast = i === history.length - 1;
-        const connector = isLast ? '+-' : '|-';
-        const line = isLast ? '  ' : '| ';
+        const log = history[i] as any
+        const isLast = i === history.length - 1
+        const connector = isLast ? '+-' : '|-'
+        const line = isLast ? '  ' : '| '
 
         // Format timestamp
-        const timestamp = new Date(log.created_at).toLocaleString();
+        const timestamp = new Date(log.created_at).toLocaleString()
 
         // Format action with color
-        let actionColor = prism.white;
+        let actionColor = prism.white
         switch (log.action) {
           case 'INSERT':
-            actionColor = prism.green;
-            break;
+            actionColor = prism.green
+            break
           case 'UPDATE':
-            actionColor = prism.yellow;
-            break;
+            actionColor = prism.yellow
+            break
           case 'DELETE':
-            actionColor = prism.red;
-            break;
+            actionColor = prism.red
+            break
         }
 
         // Main timeline entry
         console.log(
           `${connector} ${prism.gray(timestamp)} | ${actionColor(log.action)} | ${log.user_id || prism.gray('system')}`
-        );
+        )
 
         // Show audit ID if verbose
         if (log.id) {
-          console.log(`${line}   ${prism.gray(`Audit #${log.id}`)}`);
+          console.log(`${line}   ${prism.gray(`Audit #${log.id}`)}`)
         }
 
         // Show changes if requested
         if (options.showValues) {
           if (log.action === 'INSERT') {
-            console.log(`${line}   ${prism.green('Created with:')}`);
+            console.log(`${line}   ${prism.green('Created with:')}`)
             if (log.new_values) {
-              const values = parseJson(log.new_values);
+              const values = parseJson(log.new_values)
               for (const [key, value] of Object.entries(values)) {
-                console.log(`${line}     ${key}: ${formatValue(value)}`);
+                console.log(`${line}     ${key}: ${formatValue(value)}`)
               }
             }
           } else if (log.action === 'UPDATE') {
-            console.log(`${line}   ${prism.yellow('Changed fields:')}`);
-            const oldValues = parseJson(log.old_values) || {};
-            const newValues = parseJson(log.new_values) || {};
+            console.log(`${line}   ${prism.yellow('Changed fields:')}`)
+            const oldValues = parseJson(log.old_values) || {}
+            const newValues = parseJson(log.new_values) || {}
 
             for (const key of new Set([...Object.keys(oldValues), ...Object.keys(newValues)])) {
               if (oldValues[key] !== newValues[key]) {
-                console.log(`${line}     ${key}: ${formatValue(oldValues[key])} -> ${formatValue(newValues[key])}`);
+                console.log(
+                  `${line}     ${key}: ${formatValue(oldValues[key])} -> ${formatValue(newValues[key])}`
+                )
               }
             }
           } else if (log.action === 'DELETE') {
-            console.log(`${line}   ${prism.red('Deleted with:')}`);
+            console.log(`${line}   ${prism.red('Deleted with:')}`)
             if (log.old_values) {
-              const values = parseJson(log.old_values);
+              const values = parseJson(log.old_values)
               for (const [key, value] of Object.entries(values)) {
-                console.log(`${line}     ${key}: ${formatValue(value)}`);
+                console.log(`${line}     ${key}: ${formatValue(value)}`)
               }
             }
           }
 
           // Show metadata if available
           if (log.metadata) {
-            const metadata = parseJson(log.metadata);
+            const metadata = parseJson(log.metadata)
             if (metadata && Object.keys(metadata).length > 0) {
-              console.log(`${line}   ${prism.gray('Metadata:')}`);
+              console.log(`${line}   ${prism.gray('Metadata:')}`)
               for (const [key, value] of Object.entries(metadata)) {
-                console.log(`${line}     ${key}: ${formatValue(value)}`);
+                console.log(`${line}     ${key}: ${formatValue(value)}`)
               }
             }
           }
@@ -184,86 +198,94 @@ async function showEntityHistory(tableName: string, entityId: string, options: H
 
         // Add spacing between entries
         if (!isLast) {
-          console.log('|');
+          console.log('|')
         }
       }
 
       // Show summary
-      console.log('');
-      console.log(prism.gray('-'.repeat(50)));
+      console.log('')
+      console.log(prism.gray('-'.repeat(50)))
 
       // Calculate time span
-      const firstEntry = history[history.length - 1] as any;
-      const lastEntry = history[0] as any;
-      const timeSpan = new Date(lastEntry.created_at).getTime() - new Date(firstEntry.created_at).getTime();
-      const days = Math.floor(timeSpan / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((timeSpan % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const firstEntry = history[history.length - 1] as any
+      const lastEntry = history[0] as any
+      const timeSpan =
+        new Date(lastEntry.created_at).getTime() - new Date(firstEntry.created_at).getTime()
+      const days = Math.floor(timeSpan / (1000 * 60 * 60 * 24))
+      const hours = Math.floor((timeSpan % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
 
-      console.log(prism.gray('Summary:'));
-      console.log(`  Total Changes: ${history.length}`);
-      console.log(`  Time Span: ${days} days, ${hours} hours`);
+      console.log(prism.gray('Summary:'))
+      console.log(`  Total Changes: ${history.length}`)
+      console.log(`  Time Span: ${days} days, ${hours} hours`)
 
       // Count by action type
-      const actionCounts: Record<string, number> = {};
+      const actionCounts: Record<string, number> = {}
       for (const log of history) {
-        const action = (log as any).action;
-        actionCounts[action] = (actionCounts[action] || 0) + 1;
+        const action = (log as any).action
+        actionCounts[action] = (actionCounts[action] || 0) + 1
       }
       console.log(
         `  Actions: ${Object.entries(actionCounts)
           .map(([a, c]) => `${a} (${c})`)
           .join(', ')}`
-      );
+      )
 
       // Count by user
-      const userCounts: Record<string, number> = {};
+      const userCounts: Record<string, number> = {}
       for (const log of history) {
-        const userId = (log as any).user_id || 'system';
-        userCounts[userId] = (userCounts[userId] || 0) + 1;
+        const userId = (log as any).user_id || 'system'
+        userCounts[userId] = (userCounts[userId] || 0) + 1
       }
       const topUsers = Object.entries(userCounts)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 3);
-      console.log(`  Top Users: ${topUsers.map(([u, c]) => `${u} (${c})`).join(', ')}`);
+        .slice(0, 3)
+      console.log(`  Top Users: ${topUsers.map(([u, c]) => `${u} (${c})`).join(', ')}`)
 
       if (history.length >= limit) {
-        console.log('');
-        console.log(prism.gray(`Showing ${history.length} of possibly more entries. Use --limit to show more.`));
+        console.log('')
+        console.log(
+          prism.gray(
+            `Showing ${history.length} of possibly more entries. Use --limit to show more.`
+          )
+        )
       }
     }
-  });
+  })
 }
 
 function parseJson(value: any): any {
   if (typeof value === 'string') {
     try {
-      return JSON.parse(value);
+      return JSON.parse(value)
     } catch (error) {
-      logger.debug('Failed to parse JSON value:', error);
-      return value;
+      logger.debug('Failed to parse JSON value:', error)
+      return value
     }
   }
-  return value || {};
+  return value || {}
 }
 
 function formatValue(value: any): string {
   if (value === null) {
-    return prism.gray('NULL');
+    return prism.gray('NULL')
   } else if (value === undefined) {
-    return prism.gray('undefined');
+    return prism.gray('undefined')
   } else if (typeof value === 'string') {
     // Truncate long strings
     if (value.length > 50) {
-      return `"${value.substring(0, 47)}..."`;
+      return `"${value.substring(0, 47)}..."`
     }
-    return `"${value}"`;
+    return `"${value}"`
   } else if (typeof value === 'boolean') {
-    return value ? prism.green('true') : prism.red('false');
-  } else if (value instanceof Date || (typeof value === 'string' && !isNaN(Date.parse(value)) && value.includes('-'))) {
-    return new Date(value).toLocaleString();
+    return value ? prism.green('true') : prism.red('false')
+  } else if (
+    value instanceof Date ||
+    (typeof value === 'string' && !isNaN(Date.parse(value)) && value.includes('-'))
+  ) {
+    return new Date(value).toLocaleString()
   } else if (typeof value === 'object') {
-    return prism.gray(JSON.stringify(value));
+    return prism.gray(JSON.stringify(value))
   } else {
-    return String(value);
+    return String(value)
   }
 }

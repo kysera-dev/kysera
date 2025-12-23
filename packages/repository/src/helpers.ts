@@ -1,16 +1,14 @@
-import type { Kysely, Transaction } from 'kysely';
+import type { Executor } from '@kysera/core'
 
-/**
- * Executor type that can be either a Kysely instance or a Transaction
- */
-export type Executor<DB> = Kysely<DB> | Transaction<DB>;
+// Re-export Executor for backwards compatibility
+export type { Executor }
 
 /**
  * A map of table names to repository factory functions
  */
 export type RepositoryFactoryMap<DB, Repos> = {
-  [K in keyof Repos]: (executor: Executor<DB>) => Repos[K];
-};
+  [K in keyof Repos]: (executor: Executor<DB>) => Repos[K]
+}
 
 /**
  * Creates a repository bundle factory that can be used with both Kysely and Transaction
@@ -45,17 +43,17 @@ export function createRepositoriesFactory<DB, Repos extends Record<string, any>>
   factories: RepositoryFactoryMap<DB, Repos>
 ): (executor: Executor<DB>) => Repos {
   return (executor: Executor<DB>): Repos => {
-    const repos = {} as Repos;
+    const repos = {} as Repos
 
     for (const [key, factory] of Object.entries(factories)) {
-      repos[key as keyof Repos] = factory(executor);
+      repos[key as keyof Repos] = factory(executor)
     }
 
-    return repos;
-  };
+    return repos
+  }
 }
 
 /**
  * Type helper to extract repository types from a factory map
  */
-export type RepositoriesFromFactory<T extends (...args: any[]) => any> = ReturnType<T>;
+export type RepositoriesFromFactory<T extends (...args: any[]) => any> = ReturnType<T>

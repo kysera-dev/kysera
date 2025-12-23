@@ -21,11 +21,7 @@ export const migrations: Migration[] = [
         .addColumn('deleted_at', 'timestamp')
         .execute()
 
-      await db.schema
-        .createIndex('users_email_idx')
-        .on('users')
-        .column('email')
-        .execute()
+      await db.schema.createIndex('users_email_idx').on('users').column('email').execute()
 
       await db.schema
         .createIndex('users_deleted_at_idx')
@@ -57,17 +53,9 @@ export const migrations: Migration[] = [
         .addColumn('deleted_at', 'timestamp')
         .execute()
 
-      await db.schema
-        .createIndex('posts_user_id_idx')
-        .on('posts')
-        .column('user_id')
-        .execute()
+      await db.schema.createIndex('posts_user_id_idx').on('posts').column('user_id').execute()
 
-      await db.schema
-        .createIndex('posts_published_idx')
-        .on('posts')
-        .column('published')
-        .execute()
+      await db.schema.createIndex('posts_published_idx').on('posts').column('published').execute()
     },
     async down(db) {
       await db.schema.dropTable('posts').execute()
@@ -92,17 +80,9 @@ export const migrations: Migration[] = [
         .addColumn('deleted_at', 'timestamp')
         .execute()
 
-      await db.schema
-        .createIndex('comments_post_id_idx')
-        .on('comments')
-        .column('post_id')
-        .execute()
+      await db.schema.createIndex('comments_post_id_idx').on('comments').column('post_id').execute()
 
-      await db.schema
-        .createIndex('comments_user_id_idx')
-        .on('comments')
-        .column('user_id')
-        .execute()
+      await db.schema.createIndex('comments_user_id_idx').on('comments').column('user_id').execute()
     },
     async down(db) {
       await db.schema.dropTable('comments').execute()

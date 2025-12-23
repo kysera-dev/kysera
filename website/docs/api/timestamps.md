@@ -1,6 +1,6 @@
 ---
 sidebar_position: 9
-title: "@kysera/timestamps"
+title: '@kysera/timestamps'
 description: Automatic timestamps plugin API reference
 ---
 
@@ -16,11 +16,11 @@ npm install @kysera/timestamps
 
 ## Overview
 
-| Metric | Value |
-|--------|-------|
-| **Version** | 0.7.0 |
-| **Bundle Size** | ~4 KB (minified) |
-| **Dependencies** | @kysera/core (workspace) |
+| Metric                | Value                               |
+| --------------------- | ----------------------------------- |
+| **Version**           | 0.7.0                               |
+| **Bundle Size**       | ~4 KB (minified)                    |
+| **Dependencies**      | @kysera/core (workspace)            |
 | **Peer Dependencies** | kysely >=0.28.8, @kysera/repository |
 
 ## Exports
@@ -191,9 +191,11 @@ async findCreatedAfter(date: Date | string): Promise<T[]>
 ```
 
 **Parameters:**
+
 - `date` - Date object or ISO string
 
 **Example:**
+
 ```typescript
 const weekAgo = new Date()
 weekAgo.setDate(weekAgo.getDate() - 7)
@@ -209,6 +211,7 @@ async findCreatedBefore(date: Date | string): Promise<T[]>
 ```
 
 **Example:**
+
 ```typescript
 const oldPosts = await postRepo.findCreatedBefore('2024-01-01')
 ```
@@ -222,11 +225,9 @@ async findCreatedBetween(start: Date | string, end: Date | string): Promise<T[]>
 ```
 
 **Example:**
+
 ```typescript
-const posts = await postRepo.findCreatedBetween(
-  '2024-01-01',
-  '2024-01-31'
-)
+const posts = await postRepo.findCreatedBetween('2024-01-01', '2024-01-31')
 ```
 
 #### findUpdatedAfter
@@ -238,6 +239,7 @@ async findUpdatedAfter(date: Date | string): Promise<T[]>
 ```
 
 **Example:**
+
 ```typescript
 const yesterday = new Date()
 yesterday.setDate(yesterday.getDate() - 1)
@@ -255,9 +257,11 @@ async findRecentlyCreated(limit?: number): Promise<T[]>
 ```
 
 **Parameters:**
+
 - `limit` - Maximum number of records (default: 10)
 
 **Example:**
+
 ```typescript
 // Get 10 most recently created posts
 const latestPosts = await postRepo.findRecentlyCreated()
@@ -275,6 +279,7 @@ async findRecentlyUpdated(limit?: number): Promise<T[]>
 ```
 
 **Example:**
+
 ```typescript
 const recentlyUpdated = await postRepo.findRecentlyUpdated(25)
 ```
@@ -290,6 +295,7 @@ async createMany(inputs: unknown[]): Promise<T[]>
 ```
 
 **Example:**
+
 ```typescript
 const posts = await postRepo.createMany([
   { title: 'Post 1', content: '...' },
@@ -312,6 +318,7 @@ async updateMany(ids: (number | string)[], input: unknown): Promise<void>
 :::
 
 **Example:**
+
 ```typescript
 // Requires primary key column named 'id'
 await postRepo.updateMany([1, 2, 3], { status: 'published' })
@@ -330,6 +337,7 @@ async touchMany(ids: (number | string)[]): Promise<void>
 :::
 
 **Example:**
+
 ```typescript
 // Requires primary key column named 'id'
 await postRepo.touchMany([1, 2, 3, 4, 5])
@@ -351,11 +359,13 @@ async touch(id: number): Promise<void>
 ```
 
 **Parameters:**
+
 - `id` - Primary key of the record (numeric)
 
 **Returns:** Nothing (updates the record in place)
 
 **Example:**
+
 ```typescript
 // Update user's last activity timestamp
 await userRepo.touch(userId)
@@ -374,12 +384,13 @@ async createWithoutTimestamps(input: unknown): Promise<T>
 ```
 
 **Example:**
+
 ```typescript
 // Useful for data imports
 const importedPost = await postRepo.createWithoutTimestamps({
   title: 'Imported Post',
   content: '...',
-  created_at: originalCreatedAt  // Preserve original date
+  created_at: originalCreatedAt // Preserve original date
 })
 ```
 
@@ -392,6 +403,7 @@ async updateWithoutTimestamp(id: number | string, input: unknown): Promise<T>
 ```
 
 **Example:**
+
 ```typescript
 // Update view count without changing updated_at
 await postRepo.updateWithoutTimestamp(postId, {
@@ -408,6 +420,7 @@ getTimestampColumns(): { createdAt: string; updatedAt: string }
 ```
 
 **Example:**
+
 ```typescript
 const columns = postRepo.getTimestampColumns()
 console.log(columns) // { createdAt: 'created_at', updatedAt: 'updated_at' }
@@ -466,14 +479,14 @@ import { z } from 'zod'
 
 // createORM creates a plugin container (repository manager), not a traditional ORM
 const orm = await createORM(db, [
-  timestampsPlugin()  // Zero config!
+  timestampsPlugin() // Zero config!
 ])
 
-const postRepo = orm.createRepository((executor) => {
+const postRepo = orm.createRepository(executor => {
   const factory = createRepositoryFactory(executor)
   return factory.create({
     tableName: 'posts',
-    mapRow: (row) => ({
+    mapRow: row => ({
       id: row.id,
       title: row.title,
       content: row.content,
@@ -532,8 +545,8 @@ interface PostsTable {
   id: Generated<number>
   title: string
   content: string
-  created_at: Generated<Date>  // Generated - has default
-  updated_at: Date | null      // Nullable for new records
+  created_at: Generated<Date> // Generated - has default
+  updated_at: Date | null // Nullable for new records
 }
 ```
 
@@ -541,12 +554,12 @@ interface PostsTable {
 
 The timestamps plugin adds minimal overhead:
 
-| Operation | Overhead |
-|-----------|----------|
-| create | +0.1ms |
-| update | +0.1ms |
-| findRecentlyCreated | +0.2ms |
-| createMany | &lt;1ms regardless of count |
+| Operation           | Overhead                    |
+| ------------------- | --------------------------- |
+| create              | +0.1ms                      |
+| update              | +0.1ms                      |
+| findRecentlyCreated | +0.2ms                      |
+| createMany          | &lt;1ms regardless of count |
 
 ## Known Limitations
 
@@ -554,20 +567,21 @@ The timestamps plugin adds minimal overhead:
 
 The `primaryKeyColumn` option **only affects the `touch()` method**. The following methods use hardcoded `'id'`:
 
-| Method | Respects `primaryKeyColumn`? |
-|--------|------------------------------|
-| `create()` | N/A |
-| `update()` | N/A |
-| `touch(id)` | ✅ Yes |
-| `updateMany(ids)` | ❌ No - uses `'id'` |
-| `touchMany(ids)` | ❌ No - uses `'id'` |
-| `createMany()` | N/A |
+| Method            | Respects `primaryKeyColumn`? |
+| ----------------- | ---------------------------- |
+| `create()`        | N/A                          |
+| `update()`        | N/A                          |
+| `touch(id)`       | ✅ Yes                       |
+| `updateMany(ids)` | ❌ No - uses `'id'`          |
+| `touchMany(ids)`  | ❌ No - uses `'id'`          |
+| `createMany()`    | N/A                          |
 
 **Workaround:**
+
 ```typescript
 // For tables with custom primary keys
 for (const userId of userIds) {
-  await userRepo.touch(userId)  // Respects primaryKeyColumn
+  await userRepo.touch(userId) // Respects primaryKeyColumn
 }
 ```
 
@@ -596,9 +610,9 @@ app.use(async (req, res, next) => {
 
 ```typescript
 const orm = await createORM(db, [
-  timestampsPlugin(),     // Handles timestamps
-  softDeletePlugin(),     // Handles deleted_at separately
-  auditPlugin()           // Full audit trail
+  timestampsPlugin(), // Handles timestamps
+  softDeletePlugin(), // Handles deleted_at separately
+  auditPlugin() // Full audit trail
 ])
 ```
 

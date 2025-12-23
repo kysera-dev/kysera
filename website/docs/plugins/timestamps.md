@@ -21,12 +21,12 @@ import { createORM } from '@kysera/repository'
 import { timestampsPlugin } from '@kysera/timestamps'
 
 const orm = await createORM(db, [
-  timestampsPlugin()  // Zero config!
+  timestampsPlugin() // Zero config!
 ])
 
-const postRepo = orm.createRepository((executor) => {
+const postRepo = orm.createRepository(executor => {
   const factory = createRepositoryFactory(executor)
-  return factory.create({ tableName: 'posts', /* ... */ })
+  return factory.create({ tableName: 'posts' /* ... */ })
 })
 
 // created_at is set automatically
@@ -34,7 +34,7 @@ const post = await postRepo.create({
   title: 'Hello World',
   content: 'My first post'
 })
-console.log(post.created_at)  // 2024-01-15T10:30:00.000Z
+console.log(post.created_at) // 2024-01-15T10:30:00.000Z
 
 // updated_at is set automatically on update
 await postRepo.update(post.id, { title: 'Updated Title' })
@@ -44,14 +44,14 @@ await postRepo.update(post.id, { title: 'Updated Title' })
 
 ```typescript
 interface TimestampsOptions {
-  createdAtColumn?: string         // Default: 'created_at'
-  updatedAtColumn?: string         // Default: 'updated_at'
-  setUpdatedAtOnInsert?: boolean   // Default: false
-  tables?: string[]                // Whitelist tables
-  excludeTables?: string[]         // Blacklist tables
+  createdAtColumn?: string // Default: 'created_at'
+  updatedAtColumn?: string // Default: 'updated_at'
+  setUpdatedAtOnInsert?: boolean // Default: false
+  tables?: string[] // Whitelist tables
+  excludeTables?: string[] // Blacklist tables
   getTimestamp?: () => Date | string | number
-  dateFormat?: 'iso' | 'unix' | 'date'  // Default: 'iso'
-  primaryKeyColumn?: string        // Default: 'id' (only affects touch() method)
+  dateFormat?: 'iso' | 'unix' | 'date' // Default: 'iso'
+  primaryKeyColumn?: string // Default: 'id' (only affects touch() method)
   logger?: KyseraLogger
 }
 ```
@@ -66,6 +66,7 @@ The `primaryKeyColumn` option **only affects the `touch()` method**. The followi
 - `touchMany(ids)` - Uses hardcoded `'id'` for WHERE clause
 
 **Workaround**: If your table uses a different primary key column (e.g., `user_id`, `uuid`), you should:
+
 - Use `touch(id)` for single record updates (respects `primaryKeyColumn`)
 - Avoid `updateMany()` and `touchMany()` for tables with non-standard primary keys
 - Manually construct queries for batch operations on such tables
@@ -76,14 +77,14 @@ This limitation will be addressed in a future version.
 
 ### Methods and Primary Key Column Support
 
-| Method | Respects `primaryKeyColumn`? | Notes |
-|--------|------------------------------|-------|
-| `create()` | N/A | No ID-based filtering |
-| `update()` | N/A | No ID-based filtering |
-| `touch(id)` | ✅ Yes | Uses configured primary key |
-| `updateMany(ids)` | ❌ No | Hardcoded to `'id'` |
-| `touchMany(ids)` | ❌ No | Hardcoded to `'id'` |
-| `createMany()` | N/A | No ID-based filtering |
+| Method            | Respects `primaryKeyColumn`? | Notes                       |
+| ----------------- | ---------------------------- | --------------------------- |
+| `create()`        | N/A                          | No ID-based filtering       |
+| `update()`        | N/A                          | No ID-based filtering       |
+| `touch(id)`       | ✅ Yes                       | Uses configured primary key |
+| `updateMany(ids)` | ❌ No                        | Hardcoded to `'id'`         |
+| `touchMany(ids)`  | ❌ No                        | Hardcoded to `'id'`         |
+| `createMany()`    | N/A                          | No ID-based filtering       |
 
 ### Configuration Examples
 
@@ -112,7 +113,7 @@ timestampsPlugin({
 
 // Custom primary key (only affects touch() method)
 timestampsPlugin({
-  primaryKeyColumn: 'user_id'  // touch() will use user_id, but updateMany/touchMany still use 'id'
+  primaryKeyColumn: 'user_id' // touch() will use user_id, but updateMany/touchMany still use 'id'
 })
 ```
 
@@ -120,36 +121,36 @@ timestampsPlugin({
 
 ### Date Range Queries
 
-| Method | Description |
-|--------|-------------|
-| `findCreatedAfter(date)` | Records created after date |
-| `findCreatedBefore(date)` | Records created before date |
-| `findCreatedBetween(start, end)` | Records created in range |
-| `findUpdatedAfter(date)` | Records updated after date |
+| Method                           | Description                 |
+| -------------------------------- | --------------------------- |
+| `findCreatedAfter(date)`         | Records created after date  |
+| `findCreatedBefore(date)`        | Records created before date |
+| `findCreatedBetween(start, end)` | Records created in range    |
+| `findUpdatedAfter(date)`         | Records updated after date  |
 
 ### Recent Records
 
-| Method | Description |
-|--------|-------------|
+| Method                        | Description                         |
+| ----------------------------- | ----------------------------------- |
 | `findRecentlyCreated(limit?)` | Most recently created (default: 10) |
 | `findRecentlyUpdated(limit?)` | Most recently updated (default: 10) |
 
 ### Batch Operations
 
-| Method | Description |
-|--------|-------------|
-| `createMany(inputs)` | Create with automatic timestamps |
+| Method                   | Description                      |
+| ------------------------ | -------------------------------- |
+| `createMany(inputs)`     | Create with automatic timestamps |
 | `updateMany(ids, input)` | Update with automatic timestamps |
-| `touchMany(ids)` | Update only timestamps |
+| `touchMany(ids)`         | Update only timestamps           |
 
 ### Utilities
 
-| Method | Description |
-|--------|-------------|
-| `touch(id)` | Update only updated_at |
-| `createWithoutTimestamps(input)` | Create bypassing plugin |
+| Method                              | Description             |
+| ----------------------------------- | ----------------------- |
+| `touch(id)`                         | Update only updated_at  |
+| `createWithoutTimestamps(input)`    | Create bypassing plugin |
 | `updateWithoutTimestamp(id, input)` | Update bypassing plugin |
-| `getTimestampColumns()` | Get column names |
+| `getTimestampColumns()`             | Get column names        |
 
 ## Usage Examples
 
@@ -175,10 +176,7 @@ weekAgo.setDate(weekAgo.getDate() - 7)
 const recentPosts = await postRepo.findCreatedAfter(weekAgo)
 
 // Posts in date range
-const posts = await postRepo.findCreatedBetween(
-  '2024-01-01',
-  '2024-01-31'
-)
+const posts = await postRepo.findCreatedBetween('2024-01-01', '2024-01-31')
 
 // Recently modified posts
 const updatedPosts = await postRepo.findUpdatedAfter(yesterday)
@@ -217,7 +215,7 @@ await postRepo.touchMany([1, 2, 3, 4, 5])
 
 // For tables with custom primary keys, use touch() in a loop:
 for (const userId of userIds) {
-  await userRepo.touch(userId)  // Respects primaryKeyColumn configuration
+  await userRepo.touch(userId) // Respects primaryKeyColumn configuration
 }
 ```
 
@@ -228,7 +226,7 @@ for (const userId of userIds) {
 const importedPost = await postRepo.createWithoutTimestamps({
   title: 'Imported Post',
   content: '...',
-  created_at: originalCreatedAt  // Preserve original date
+  created_at: originalCreatedAt // Preserve original date
 })
 
 // Update without changing updated_at
@@ -259,12 +257,12 @@ ALTER TABLE posts ADD COLUMN updated_at TEXT;
 
 The timestamps plugin adds minimal overhead:
 
-| Operation | Overhead |
-|-----------|----------|
-| create | +0.1ms |
-| update | +0.1ms |
-| findRecentlyCreated | +0.2ms |
-| createMany | Less than 1ms regardless of count |
+| Operation           | Overhead                          |
+| ------------------- | --------------------------------- |
+| create              | +0.1ms                            |
+| update              | +0.1ms                            |
+| findRecentlyCreated | +0.2ms                            |
+| createMany          | Less than 1ms regardless of count |
 
 ## Best Practices
 
@@ -291,8 +289,8 @@ app.use(async (req, res, next) => {
 
 ```typescript
 const orm = await createORM(db, [
-  timestampsPlugin(),     // Handles timestamps
-  softDeletePlugin(),     // Handles deleted_at separately
-  auditPlugin()           // Full audit trail
+  timestampsPlugin(), // Handles timestamps
+  softDeletePlugin(), // Handles deleted_at separately
+  auditPlugin() // Full audit trail
 ])
 ```

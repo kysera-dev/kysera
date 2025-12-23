@@ -31,8 +31,8 @@ async softDeleteMany(ids: (number | string)[]): Promise<T[]>
 const userIds = [1, 2, 3, 4, 5]
 const deletedUsers = await userRepo.softDeleteMany(userIds)
 
-console.log(deletedUsers.length)  // 5
-console.log(deletedUsers.every(u => u.deleted_at !== null))  // true
+console.log(deletedUsers.length) // 5
+console.log(deletedUsers.every(u => u.deleted_at !== null)) // true
 
 // All records now filtered from queries
 const activeUsers = await userRepo.findAll()
@@ -91,8 +91,8 @@ await userRepo.softDeleteMany([1, 2, 3])
 // Later, restore them all at once
 const restoredUsers = await userRepo.restoreMany([1, 2, 3])
 
-console.log(restoredUsers.length)  // 3
-console.log(restoredUsers.every(u => u.deleted_at === null))  // true
+console.log(restoredUsers.length) // 3
+console.log(restoredUsers.every(u => u.deleted_at === null)) // true
 
 // All records now back in normal queries
 const activeUsers = await userRepo.findAll()
@@ -117,7 +117,7 @@ await userRepo.softDelete(2)
 
 // Restore all three (works even though 3 wasn't deleted)
 const restored = await userRepo.restoreMany([1, 2, 3])
-console.log(restored.length)  // 3
+console.log(restored.length) // 3
 ```
 
 ### Use Cases
@@ -212,7 +212,7 @@ await userRepo.softDeleteMany(userIds)
 ### Benchmark Results
 
 | Records | Loop (ms) | Batch (ms) | Speedup |
-|---------|-----------|------------|---------|
+| ------- | --------- | ---------- | ------- |
 | 10      | 200       | 15         | 13x     |
 | 50      | 1000      | 18         | 55x     |
 | 100     | 2000      | 20         | 100x    |
@@ -259,7 +259,7 @@ await userRepo.softDeleteMany(uniqueIds)
 ### 4. Use Transactions for Related Operations
 
 ```typescript
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const txUserRepo = userRepo.withTransaction(trx)
   const txPostRepo = postRepo.withTransaction(trx)
 
@@ -307,14 +307,14 @@ await userRepo.softDeleteMany(userIds)
 
 // Verify they're deleted
 const deleted = await userRepo.findDeleted()
-console.log(deleted.length)  // 3
+console.log(deleted.length) // 3
 
 // Restore them later
 await userRepo.restoreMany(userIds)
 
 // Verify they're back
 const active = await userRepo.findAll()
-console.log(active.length)  // Includes all 3
+console.log(active.length) // Includes all 3
 ```
 
 ### Workflow 2: Soft Delete Then Hard Delete
@@ -345,7 +345,7 @@ await userRepo.softDeleteMany([2, 3, 4])
 
 // All work together seamlessly
 const deleted = await userRepo.findDeleted()
-console.log(deleted.length)  // 4 (includes both single and batch)
+console.log(deleted.length) // 4 (includes both single and batch)
 ```
 
 ---
@@ -381,7 +381,7 @@ Batch operations support custom primary key columns:
 
 ```typescript
 const plugin = softDeletePlugin({
-  primaryKeyColumn: 'product_id'  // Custom primary key
+  primaryKeyColumn: 'product_id' // Custom primary key
 })
 
 // Works with custom PK
@@ -414,7 +414,7 @@ try {
 // restoreMany does not throw for missing IDs
 // It just restores what exists
 const restored = await userRepo.restoreMany([1, 2, 99999])
-console.log(restored.length)  // 2 (only restored 1 and 2)
+console.log(restored.length) // 2 (only restored 1 and 2)
 ```
 
 ### hardDeleteMany Errors
@@ -456,9 +456,7 @@ if (toDelete.length > 0) {
 // Restore users but only if their email is verified
 const deletedUsers = await userRepo.findDeleted()
 
-const toRestore = deletedUsers
-  .filter(u => u.email_verified)
-  .map(u => u.id)
+const toRestore = deletedUsers.filter(u => u.email_verified).map(u => u.id)
 
 if (toRestore.length > 0) {
   const restored = await userRepo.restoreMany(toRestore)

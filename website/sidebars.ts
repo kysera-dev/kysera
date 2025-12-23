@@ -1,16 +1,16 @@
-import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
+import type { SidebarsConfig } from '@docusaurus/plugin-content-docs'
 
 const sidebars: SidebarsConfig = {
   docsSidebar: [
     {
       type: 'doc',
       id: 'introduction',
-      label: 'Introduction',
+      label: 'Introduction'
     },
     {
       type: 'doc',
       id: 'getting-started',
-      label: 'Getting Started',
+      label: 'Getting Started'
     },
     {
       type: 'category',
@@ -22,8 +22,8 @@ const sidebars: SidebarsConfig = {
         'core-concepts/repository-pattern',
         'core-concepts/transactions',
         'core-concepts/validation',
-        'core-concepts/error-handling',
-      ],
+        'core-concepts/error-handling'
+      ]
     },
     {
       type: 'category',
@@ -35,8 +35,8 @@ const sidebars: SidebarsConfig = {
         'plugins/audit',
         'plugins/timestamps',
         'plugins/rls',
-        'plugins/authoring-guide',
-      ],
+        'plugins/authoring-guide'
+      ]
     },
     {
       type: 'category',
@@ -47,8 +47,8 @@ const sidebars: SidebarsConfig = {
         'guides/testing',
         'guides/migrations',
         'guides/pagination',
-        'guides/dal-vs-repository',
-      ],
+        'guides/dal-vs-repository'
+      ]
     },
     {
       type: 'category',
@@ -58,15 +58,15 @@ const sidebars: SidebarsConfig = {
         'examples/overview',
         'examples/blog-app',
         'examples/e-commerce',
-        'examples/multi-tenant-saas',
-      ],
-    },
+        'examples/multi-tenant-saas'
+      ]
+    }
   ],
   apiSidebar: [
     {
       type: 'doc',
       id: 'api/overview',
-      label: 'API Overview',
+      label: 'API Overview'
     },
     {
       type: 'category',
@@ -77,17 +77,12 @@ const sidebars: SidebarsConfig = {
           type: 'category',
           label: '@kysera/core',
           collapsed: false,
-          items: [
-            'api/core',
-            'api/core/errors',
-            'api/core/pagination',
-            'api/core/logger',
-          ],
+          items: ['api/core', 'api/core/errors', 'api/core/pagination', 'api/core/logger']
         },
         {
           type: 'doc',
           id: 'api/executor',
-          label: '@kysera/executor',
+          label: '@kysera/executor'
         },
         {
           type: 'category',
@@ -97,15 +92,15 @@ const sidebars: SidebarsConfig = {
             'api/repository',
             'api/repository/factory',
             'api/repository/validation',
-            'api/repository/types',
-          ],
+            'api/repository/types'
+          ]
         },
         {
           type: 'doc',
           id: 'api/dal',
-          label: '@kysera/dal',
-        },
-      ],
+          label: '@kysera/dal'
+        }
+      ]
     },
     {
       type: 'category',
@@ -115,29 +110,29 @@ const sidebars: SidebarsConfig = {
         {
           type: 'doc',
           id: 'api/infra',
-          label: '@kysera/infra',
+          label: '@kysera/infra'
         },
         {
           type: 'doc',
           id: 'api/dialects',
-          label: '@kysera/dialects',
+          label: '@kysera/dialects'
         },
         {
           type: 'doc',
           id: 'api/debug',
-          label: '@kysera/debug',
+          label: '@kysera/debug'
         },
         {
           type: 'doc',
           id: 'api/testing',
-          label: '@kysera/testing',
+          label: '@kysera/testing'
         },
         {
           type: 'doc',
           id: 'api/migrations',
-          label: '@kysera/migrations',
-        },
-      ],
+          label: '@kysera/migrations'
+        }
+      ]
     },
     {
       type: 'category',
@@ -147,31 +142,31 @@ const sidebars: SidebarsConfig = {
         {
           type: 'doc',
           id: 'api/soft-delete',
-          label: '@kysera/soft-delete',
+          label: '@kysera/soft-delete'
         },
         {
           type: 'doc',
           id: 'api/timestamps',
-          label: '@kysera/timestamps',
+          label: '@kysera/timestamps'
         },
         {
           type: 'doc',
           id: 'api/audit',
-          label: '@kysera/audit',
+          label: '@kysera/audit'
         },
         {
           type: 'doc',
           id: 'api/rls',
-          label: '@kysera/rls',
-        },
-      ],
-    },
+          label: '@kysera/rls'
+        }
+      ]
+    }
   ],
   cliSidebar: [
     {
       type: 'doc',
       id: 'cli/overview',
-      label: 'CLI Overview',
+      label: 'CLI Overview'
     },
     {
       type: 'category',
@@ -188,15 +183,15 @@ const sidebars: SidebarsConfig = {
         'cli/query',
         'cli/repository',
         'cli/plugin',
-        'cli/audit',
-      ],
+        'cli/audit'
+      ]
     },
     {
       type: 'doc',
       id: 'cli/configuration',
-      label: 'Configuration',
-    },
-  ],
-};
+      label: 'Configuration'
+    }
+  ]
+}
 
-export default sidebars;
+export default sidebars

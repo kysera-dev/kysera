@@ -44,8 +44,8 @@ export type {
   ExecutorConfig,
   KyseraExecutorMarker,
   PluginValidationDetails,
-  PluginValidationErrorType,
-} from './types.js';
+  PluginValidationErrorType
+} from './types.js'
 
 // Executor
 export {
@@ -59,4 +59,9 @@ export {
   validatePlugins,
   resolvePluginOrder,
   PluginValidationError,
-} from './executor.js';
+  destroyExecutor,
+  INTERCEPTED_METHODS
+} from './executor.js'
+
+// Export InterceptedMethod type for advanced users
+export type { InterceptedMethod } from './executor.js'

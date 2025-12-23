@@ -4,28 +4,28 @@
  * @module @kysera/infra/health
  */
 
-import type { Kysely } from 'kysely';
-import { consoleLogger, type KyseraLogger } from '@kysera/core';
-import type { MetricsPool } from '../pool/metrics.js';
-import type { HealthCheckResult } from './types.js';
-import { checkDatabaseHealth } from './check.js';
+import type { Kysely } from 'kysely'
+import { consoleLogger, type KyseraLogger } from '@kysera/core'
+import type { MetricsPool } from '../pool/metrics.js'
+import type { HealthCheckResult } from './types.js'
+import { checkDatabaseHealth } from './check.js'
 
 /**
  * Options for HealthMonitor.
  */
 export interface HealthMonitorOptions {
   /** Connection pool for metrics */
-  pool?: MetricsPool;
+  pool?: MetricsPool
   /** Interval between health checks in milliseconds (default: 30000) */
-  intervalMs?: number;
+  intervalMs?: number
   /** Logger for health check messages */
-  logger?: KyseraLogger;
+  logger?: KyseraLogger
 }
 
 /**
  * Callback for health check events.
  */
-export type HealthCheckCallback = (result: HealthCheckResult) => void;
+export type HealthCheckCallback = (result: HealthCheckResult) => void
 
 /**
  * Continuous health monitor for database connections.
@@ -51,6 +51,17 @@ export type HealthCheckCallback = (result: HealthCheckResult) => void;
  * monitor.stop();
  * ```
  *
+ * @example With explicit resource management (TypeScript 5.2+)
+ * ```typescript
+ * import { HealthMonitor } from '@kysera/infra/health';
+ *
+ * {
+ *   using monitor = new HealthMonitor(db, { intervalMs: 30000 });
+ *   monitor.start();
+ *   // Monitor automatically stopped when scope exits
+ * }
+ * ```
+ *
  * @example With custom logger
  * ```typescript
  * import { HealthMonitor } from '@kysera/infra/health';
@@ -62,12 +73,12 @@ export type HealthCheckCallback = (result: HealthCheckResult) => void;
  * monitor.start();
  * ```
  */
-export class HealthMonitor<DB = unknown> {
-  private intervalId: ReturnType<typeof setInterval> | undefined;
-  private lastCheck?: HealthCheckResult;
-  private readonly pool: MetricsPool | undefined;
-  private readonly intervalMs: number;
-  private readonly logger: KyseraLogger;
+export class HealthMonitor<DB = unknown> implements Disposable {
+  private intervalId: ReturnType<typeof setInterval> | undefined
+  private lastCheck?: HealthCheckResult
+  private readonly pool: MetricsPool | undefined
+  private readonly intervalMs: number
+  private readonly logger: KyseraLogger
 
   /**
    * Create a new health monitor.
@@ -79,9 +90,9 @@ export class HealthMonitor<DB = unknown> {
     private readonly db: Kysely<DB>,
     options: HealthMonitorOptions = {}
   ) {
-    this.pool = options.pool;
-    this.intervalMs = options.intervalMs ?? 30000;
-    this.logger = options.logger ?? consoleLogger;
+    this.pool = options.pool
+    this.intervalMs = options.intervalMs ?? 30000
+    this.logger = options.logger ?? consoleLogger
   }
 
   /**
@@ -93,26 +104,26 @@ export class HealthMonitor<DB = unknown> {
    */
   start(onCheck?: HealthCheckCallback): void {
     if (this.intervalId) {
-      return; // Already running
+      return // Already running
     }
 
-    this.logger.debug(`Starting health monitor with ${this.intervalMs.toString()}ms interval`);
+    this.logger.debug(`Starting health monitor with ${this.intervalMs.toString()}ms interval`)
 
     const check = async (): Promise<void> => {
-      this.lastCheck = await checkDatabaseHealth(this.db, this.pool);
+      this.lastCheck = await checkDatabaseHealth(this.db, this.pool)
 
       if (this.lastCheck.status !== 'healthy') {
-        this.logger.warn(`Health check status: ${this.lastCheck.status}`);
+        this.logger.warn(`Health check status: ${this.lastCheck.status}`)
       }
 
-      onCheck?.(this.lastCheck);
-    };
+      onCheck?.(this.lastCheck)
+    }
 
     // Initial check
-    void check();
+    void check()
 
     // Schedule periodic checks
-    this.intervalId = setInterval(() => void check(), this.intervalMs);
+    this.intervalId = setInterval(() => void check(), this.intervalMs)
   }
 
   /**
@@ -122,10 +133,38 @@ export class HealthMonitor<DB = unknown> {
    */
   stop(): void {
     if (this.intervalId !== undefined) {
-      this.logger.debug('Stopping health monitor');
-      clearInterval(this.intervalId);
-      this.intervalId = undefined;
+      this.logger.debug('Stopping health monitor')
+      clearInterval(this.intervalId)
+      this.intervalId = undefined
     }
+  }
+
+  /**
+   * Clean up resources when using explicit resource management.
+   *
+   * This method is called automatically when using the `using` keyword
+   * (TypeScript 5.2+ with explicit resource management).
+   *
+   * @example
+   * ```typescript
+   * using monitor = new HealthMonitor(db);
+   * monitor.start();
+   * // monitor.stop() called automatically when scope exits
+   * ```
+   */
+  [Symbol.dispose](): void {
+    this.stop()
+  }
+
+  /**
+   * Destroy the health monitor and release all resources.
+   *
+   * Alias for stop() that provides a more explicit destruction semantic.
+   * Use this method in older environments that don't support explicit
+   * resource management, or when you want to clearly indicate cleanup.
+   */
+  destroy(): void {
+    this.stop()
   }
 
   /**
@@ -134,7 +173,7 @@ export class HealthMonitor<DB = unknown> {
    * @returns Last health check result or undefined if no check has been performed
    */
   getLastCheck(): HealthCheckResult | undefined {
-    return this.lastCheck;
+    return this.lastCheck
   }
 
   /**
@@ -143,7 +182,7 @@ export class HealthMonitor<DB = unknown> {
    * @returns True if monitor is active
    */
   isRunning(): boolean {
-    return this.intervalId !== undefined;
+    return this.intervalId !== undefined
   }
 
   /**
@@ -154,7 +193,7 @@ export class HealthMonitor<DB = unknown> {
    * @returns Health check result
    */
   async checkNow(): Promise<HealthCheckResult> {
-    this.lastCheck = await checkDatabaseHealth(this.db, this.pool);
-    return this.lastCheck;
+    this.lastCheck = await checkDatabaseHealth(this.db, this.pool)
+    return this.lastCheck
   }
 }

@@ -32,49 +32,43 @@ Do you need repository extension plugins (audit.restore(), timestamps)?
 The Repository pattern provides an **object-oriented** data access abstraction over database tables:
 
 ```typescript
-import { createORM } from '@kysera/repository';
-import { softDeletePlugin } from '@kysera/soft-delete';
-import { z } from 'zod';
+import { createORM } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { z } from 'zod'
 
 // Create ORM with plugins
-const orm = await createORM(db, [softDeletePlugin()]);
+const orm = await createORM(db, [softDeletePlugin()])
 
 // Define repository factory function
 const createUserRepository = (executor, applyPlugins) => ({
   tableName: 'users',
   executor,
   async findById(id) {
-    return executor
-      .selectFrom('users')
-      .selectAll()
-      .where('id', '=', id)
-      .executeTakeFirst();
+    return executor.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
   },
   async create(data) {
-    const validated = z.object({
-      email: z.string().email(),
-      name: z.string().min(1),
-    }).parse(data);
+    const validated = z
+      .object({
+        email: z.string().email(),
+        name: z.string().min(1)
+      })
+      .parse(data)
 
-    return executor
-      .insertInto('users')
-      .values(validated)
-      .returningAll()
-      .executeTakeFirstOrThrow();
-  },
+    return executor.insertInto('users').values(validated).returningAll().executeTakeFirstOrThrow()
+  }
   // ... other methods
-});
+})
 
 // Create repository with plugin support
-const userRepo = orm.createRepository(createUserRepository);
+const userRepo = orm.createRepository(createUserRepository)
 
 // Use repository methods (plugins automatically applied)
-const user = await userRepo.findById(1);
-const newUser = await userRepo.create({ email: 'test@example.com', name: 'Test' });
+const user = await userRepo.findById(1)
+const newUser = await userRepo.create({ email: 'test@example.com', name: 'Test' })
 
 // Plugin extension methods also available
-await userRepo.softDelete(1);
-await userRepo.restore(1);
+await userRepo.softDelete(1)
+await userRepo.restore(1)
 ```
 
 ### Functional DAL
@@ -82,53 +76,53 @@ await userRepo.restore(1);
 The Functional DAL provides **composable query functions** with automatic type inference:
 
 ```typescript
-import { createQuery, withTransaction, createContext } from '@kysera/dal';
-import { createExecutor } from '@kysera/executor';
-import { softDeletePlugin } from '@kysera/soft-delete';
+import { createQuery, withTransaction, createContext } from '@kysera/dal'
+import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
 
 // Create executor with plugins
-const executor = await createExecutor(db, [softDeletePlugin()]);
+const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Define queries as functions
 const getUserById = createQuery((ctx, id: number) =>
   ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
-);
+)
 
 const getPostsByUserId = createQuery((ctx, userId: number) =>
   ctx.db.selectFrom('posts').selectAll().where('user_id', '=', userId).execute()
-);
+)
 
 // Create context from executor (plugins automatically included)
-const ctx = createContext(executor);
+const ctx = createContext(executor)
 
 // Use queries (soft-delete filtering applied automatically)
-const user = await getUserById(ctx, 1);
+const user = await getUserById(ctx, 1)
 
 // Compose queries
 const getUserWithPosts = async (ctx, id: number) => {
-  const user = await getUserById(ctx, id);
-  if (!user) return null;
-  const posts = await getPostsByUserId(ctx, user.id);
-  return { ...user, posts };
-};
+  const user = await getUserById(ctx, id)
+  if (!user) return null
+  const posts = await getPostsByUserId(ctx, user.id)
+  return { ...user, posts }
+}
 ```
 
 ## Feature Comparison
 
-| Feature | Repository | Functional DAL |
-|---------|-----------|----------------|
-| **Paradigm** | Object-Oriented | Functional |
-| **Abstraction Level** | High (Repository methods) | Low (Query functions) |
-| **Type Inference** | Explicit generics | Automatic from queries |
-| **Query Interceptor Plugins** | Native | Native (via KyseraExecutor) |
-| **Repository Extension Plugins** | Native | Not supported |
-| **Validation** | Built-in (Zod, Valibot, etc.) | Manual |
-| **Transaction API** | `repo.transaction()` | `withTransaction()` |
-| **Bundle Size** | ~12 KB | ~7 KB |
-| **Learning Curve** | Moderate | Steep |
-| **Boilerplate** | More | Less |
-| **Tree-Shaking** | Medium | Excellent |
-| **Testing** | Mock repositories | Mock functions/context |
+| Feature                          | Repository                    | Functional DAL              |
+| -------------------------------- | ----------------------------- | --------------------------- |
+| **Paradigm**                     | Object-Oriented               | Functional                  |
+| **Abstraction Level**            | High (Repository methods)     | Low (Query functions)       |
+| **Type Inference**               | Explicit generics             | Automatic from queries      |
+| **Query Interceptor Plugins**    | Native                        | Native (via KyseraExecutor) |
+| **Repository Extension Plugins** | Native                        | Not supported               |
+| **Validation**                   | Built-in (Zod, Valibot, etc.) | Manual                      |
+| **Transaction API**              | `repo.transaction()`          | `withTransaction()`         |
+| **Bundle Size**                  | ~12 KB                        | ~7 KB                       |
+| **Learning Curve**               | Moderate                      | Steep                       |
+| **Boilerplate**                  | More                          | Less                        |
+| **Tree-Shaking**                 | Medium                        | Excellent                   |
+| **Testing**                      | Mock repositories             | Mock functions/context      |
 
 ## Architecture Deep Dive
 
@@ -221,41 +215,39 @@ export function createQuery<DB, TArgs, TResult>(
   queryFn: (ctx: DbContext<DB>, ...args: TArgs) => Promise<TResult>
 ): QueryFunction<DB, TArgs, TResult> {
   return (dbOrCtx: Kysely<DB> | KyseraExecutor<DB> | DbContext<DB>, ...args: TArgs) => {
-    const ctx = 'db' in dbOrCtx ? dbOrCtx : createContext(dbOrCtx);
-    return queryFn(ctx, ...args);
-  };
+    const ctx = 'db' in dbOrCtx ? dbOrCtx : createContext(dbOrCtx)
+    return queryFn(ctx, ...args)
+  }
 }
 ```
 
 When you pass a `KyseraExecutor` to a DAL query:
 
 ```typescript
-import { createExecutor } from '@kysera/executor';
-import { softDeletePlugin } from '@kysera/soft-delete';
+import { createExecutor } from '@kysera/executor'
+import { softDeletePlugin } from '@kysera/soft-delete'
 
 // Create executor with plugins
-const executor = await createExecutor(db, [softDeletePlugin()]);
+const executor = await createExecutor(db, [softDeletePlugin()])
 
 // DAL query receives the executor
-const getUsers = createQuery((ctx) =>
-  ctx.db.selectFrom('users').selectAll().execute()
-);
+const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
 
 // ctx.db is KyseraExecutor, which intercepts selectFrom() via Proxy
-await getUsers(executor);
+await getUsers(executor)
 ```
 
 The `KyseraExecutor` is a **Proxy** that intercepts `selectFrom`, `insertInto`, `updateTable`, and `deleteFrom` calls, applying all plugin `interceptQuery` hooks before returning the query builder.
 
 ### The Technical Difference
 
-| Aspect | Repository | DAL with KyseraExecutor | DAL without KyseraExecutor |
-|--------|-----------|------------------------|---------------------------|
-| **Query Building** | Via repository methods | Direct `ctx.db.xxx()` calls | Direct `ctx.db.xxx()` calls |
-| **Interception Point** | KyseraExecutor Proxy | KyseraExecutor Proxy | None |
-| **Query Interceptors** | ✅ Supported | ✅ Supported | ❌ Not available |
-| **Repository Extensions** | ✅ Supported | ❌ Not available | ❌ Not available |
-| **Method Extension** | `extendRepository` wraps CRUD methods | N/A - no methods to wrap | N/A - no methods to wrap |
+| Aspect                    | Repository                            | DAL with KyseraExecutor     | DAL without KyseraExecutor  |
+| ------------------------- | ------------------------------------- | --------------------------- | --------------------------- |
+| **Query Building**        | Via repository methods                | Direct `ctx.db.xxx()` calls | Direct `ctx.db.xxx()` calls |
+| **Interception Point**    | KyseraExecutor Proxy                  | KyseraExecutor Proxy        | None                        |
+| **Query Interceptors**    | ✅ Supported                          | ✅ Supported                | ❌ Not available            |
+| **Repository Extensions** | ✅ Supported                          | ❌ Not available            | ❌ Not available            |
+| **Method Extension**      | `extendRepository` wraps CRUD methods | N/A - no methods to wrap    | N/A - no methods to wrap    |
 
 ## Plugin System
 
@@ -272,70 +264,70 @@ Plugins are defined with the following interface:
 
 ```typescript
 interface Plugin {
-  name: string;
-  version: string;
-  priority?: number;        // Higher = runs first (default: 0)
-  dependencies?: string[];  // Must be loaded before this plugin
+  name: string
+  version: string
+  priority?: number // Higher = runs first (default: 0)
+  dependencies?: string[] // Must be loaded before this plugin
 
   // Intercept and modify query builders BEFORE execution
-  interceptQuery?<QB>(qb: QB, context: QueryBuilderContext): QB;
+  interceptQuery?<QB>(qb: QB, context: QueryBuilderContext): QB
 
   // Extend repository with new methods AFTER creation
-  extendRepository?<T extends object>(repo: T): T;
+  extendRepository?<T extends object>(repo: T): T
 
   // Lifecycle hook
-  onInit?<DB>(executor: Kysely<DB>): Promise<void> | void;
+  onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
 }
 ```
 
 ### Plugin Behavior by Pattern
 
-| Plugin | Repository | DAL with KyseraExecutor | DAL without KyseraExecutor |
-|--------|-----------|------------------------|---------------------------|
-| **@kysera/soft-delete** | Auto-filters `deleted_at IS NULL` + extension methods | Auto-filters `deleted_at IS NULL` | Must filter manually |
-| **@kysera/timestamps** | Auto-sets `created_at`/`updated_at` | N/A (uses `extendRepository`) | Must set manually |
-| **@kysera/audit** | Auto-logs all changes + extension methods | N/A (uses `extendRepository`) | Must log manually |
-| **@kysera/rls** | Auto-filters by tenant, validates access | Auto-filters by tenant | Context available, manual filters |
+| Plugin                  | Repository                                            | DAL with KyseraExecutor           | DAL without KyseraExecutor        |
+| ----------------------- | ----------------------------------------------------- | --------------------------------- | --------------------------------- |
+| **@kysera/soft-delete** | Auto-filters `deleted_at IS NULL` + extension methods | Auto-filters `deleted_at IS NULL` | Must filter manually              |
+| **@kysera/timestamps**  | Auto-sets `created_at`/`updated_at`                   | N/A (uses `extendRepository`)     | Must set manually                 |
+| **@kysera/audit**       | Auto-logs all changes + extension methods             | N/A (uses `extendRepository`)     | Must log manually                 |
+| **@kysera/rls**         | Auto-filters by tenant, validates access              | Auto-filters by tenant            | Context available, manual filters |
 
 **Key Insight:** Plugins that only use `interceptQuery` (like soft-delete filtering and RLS filtering) work with DAL when using `KyseraExecutor`. Plugins that rely on `extendRepository` (like audit's `restore()` method or timestamps' automatic setting) only work with Repository.
 
 ### Example: Soft Delete
 
 **Repository (automatic filtering + extension methods):**
-```typescript
-import { createORM } from '@kysera/repository';
-import { softDeletePlugin } from '@kysera/soft-delete';
 
-const orm = await createORM(db, [softDeletePlugin()]);
-const userRepo = orm.createRepository(createUserRepository);
+```typescript
+import { createORM } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+const orm = await createORM(db, [softDeletePlugin()])
+const userRepo = orm.createRepository(createUserRepository)
 
 // Automatically excludes deleted records via interceptQuery
-const users = await userRepo.findAll();
+const users = await userRepo.findAll()
 
 // Plugin adds these extension methods via extendRepository
-await userRepo.softDelete(1);
-await userRepo.restore(1);
-await userRepo.findAllWithDeleted();
+await userRepo.softDelete(1)
+await userRepo.restore(1)
+await userRepo.findAllWithDeleted()
 ```
 
 **DAL with KyseraExecutor (automatic filtering only):**
+
 ```typescript
-import { createExecutor } from '@kysera/executor';
-import { createContext, createQuery } from '@kysera/dal';
-import { softDeletePlugin } from '@kysera/soft-delete';
+import { createExecutor } from '@kysera/executor'
+import { createContext, createQuery } from '@kysera/dal'
+import { softDeletePlugin } from '@kysera/soft-delete'
 
 // Create executor with soft-delete plugin
-const executor = await createExecutor(db, [softDeletePlugin()]);
+const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Create context from executor
-const ctx = createContext(executor);
+const ctx = createContext(executor)
 
 // Automatically excludes deleted records via interceptQuery
-const getUsers = createQuery((ctx) =>
-  ctx.db.selectFrom('users').selectAll().execute()
-);
+const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
 
-await getUsers(ctx); // Soft-deleted records filtered automatically!
+await getUsers(ctx) // Soft-deleted records filtered automatically!
 
 // Must implement soft delete manually (no extension methods)
 const softDeleteUser = createQuery((ctx, id: number) =>
@@ -344,19 +336,20 @@ const softDeleteUser = createQuery((ctx, id: number) =>
     .set({ deleted_at: new Date().toISOString() })
     .where('id', '=', id)
     .execute()
-);
+)
 ```
 
 **DAL without KyseraExecutor (manual filtering):**
+
 ```typescript
 // Must add filter manually
-const getActiveUsers = createQuery((ctx) =>
+const getActiveUsers = createQuery(ctx =>
   ctx.db
     .selectFrom('users')
     .selectAll()
-    .where('deleted_at', 'is', null)  // Manual!
+    .where('deleted_at', 'is', null) // Manual!
     .execute()
-);
+)
 
 // Must implement soft delete manually
 const softDeleteUser = createQuery((ctx, id: number) =>
@@ -365,7 +358,7 @@ const softDeleteUser = createQuery((ctx, id: number) =>
     .set({ deleted_at: new Date().toISOString() })
     .where('id', '=', id)
     .execute()
-);
+)
 ```
 
 ## RLS (Row-Level Security) Compatibility
@@ -375,30 +368,27 @@ const softDeleteUser = createQuery((ctx, id: number) =>
 RLS works seamlessly with Repository (automatic filtering + validation):
 
 ```typescript
-import { rlsPlugin, defineRLSSchema, filter, allow, rlsContext } from '@kysera/rls';
+import { rlsPlugin, defineRLSSchema, filter, allow, rlsContext } from '@kysera/rls'
 
 const rlsSchema = defineRLSSchema<Database>({
   posts: {
     policies: [
       filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-      allow(['update', 'delete'], ctx => ctx.auth.userId === ctx.row?.author_id),
-    ],
-  },
-});
-
-const orm = await createORM(db, [rlsPlugin({ schema: rlsSchema })]);
-const postRepo = orm.createRepository(createPostRepository);
-
-await rlsContext.runAsync(
-  { auth: { userId: 1, tenantId: 'acme', roles: ['user'] } },
-  async () => {
-    // Automatically filtered by tenant_id
-    const posts = await postRepo.findAll();
-
-    // Automatically validates author_id for updates
-    await postRepo.update(1, { title: 'New Title' });
+      allow(['update', 'delete'], ctx => ctx.auth.userId === ctx.row?.author_id)
+    ]
   }
-);
+})
+
+const orm = await createORM(db, [rlsPlugin({ schema: rlsSchema })])
+const postRepo = orm.createRepository(createPostRepository)
+
+await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: ['user'] } }, async () => {
+  // Automatically filtered by tenant_id
+  const posts = await postRepo.findAll()
+
+  // Automatically validates author_id for updates
+  await postRepo.update(1, { title: 'New Title' })
+})
 ```
 
 ### DAL with RLS (via KyseraExecutor)
@@ -406,31 +396,24 @@ await rlsContext.runAsync(
 RLS filtering works automatically with `KyseraExecutor`:
 
 ```typescript
-import { createExecutor } from '@kysera/executor';
-import { rlsPlugin, defineRLSSchema, filter, rlsContext } from '@kysera/rls';
+import { createExecutor } from '@kysera/executor'
+import { rlsPlugin, defineRLSSchema, filter, rlsContext } from '@kysera/rls'
 
 const rlsSchema = defineRLSSchema<Database>({
   posts: {
-    policies: [
-      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-    ],
-  },
-});
+    policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+  }
+})
 
 // Create executor with RLS plugin
-const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })]);
+const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })])
 
-const getPosts = createQuery((ctx) =>
-  ctx.db.selectFrom('posts').selectAll().execute()
-);
+const getPosts = createQuery(ctx => ctx.db.selectFrom('posts').selectAll().execute())
 
-await rlsContext.runAsync(
-  { auth: { userId: 1, tenantId: 'acme', roles: ['user'] } },
-  async () => {
-    // Automatically filtered by tenant_id via interceptQuery
-    const posts = await getPosts(executor);
-  }
-);
+await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: ['user'] } }, async () => {
+  // Automatically filtered by tenant_id via interceptQuery
+  const posts = await getPosts(executor)
+})
 ```
 
 ### DAL without KyseraExecutor (manual filtering)
@@ -438,41 +421,38 @@ await rlsContext.runAsync(
 Without `KyseraExecutor`, RLS context is available but filtering is manual:
 
 ```typescript
-import { rlsContext } from '@kysera/rls';
+import { rlsContext } from '@kysera/rls'
 
-const getPostsByTenant = createQuery((ctx) => {
-  const rlsCtx = rlsContext.getContextOrNull();
+const getPostsByTenant = createQuery(ctx => {
+  const rlsCtx = rlsContext.getContextOrNull()
 
-  let query = ctx.db.selectFrom('posts').selectAll();
+  let query = ctx.db.selectFrom('posts').selectAll()
 
   // Must apply filter manually
   if (rlsCtx && !rlsCtx.auth.isSystem && rlsCtx.auth.tenantId) {
-    query = query.where('tenant_id', '=', rlsCtx.auth.tenantId);
+    query = query.where('tenant_id', '=', rlsCtx.auth.tenantId)
   }
 
-  return query.execute();
-});
+  return query.execute()
+})
 
 // Context still works
-await rlsContext.runAsync(
-  { auth: { userId: 1, tenantId: 'acme', roles: ['user'] } },
-  async () => {
-    const posts = await getPostsByTenant(db);  // Manually filtered
-  }
-);
+await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: ['user'] } }, async () => {
+  const posts = await getPostsByTenant(db) // Manually filtered
+})
 ```
 
 ### RLS Feature Support
 
-| RLS Feature | Repository | DAL with KyseraExecutor | DAL without KyseraExecutor |
-|-------------|-----------|------------------------|---------------------------|
-| `rlsContext.runAsync()` | ✅ Yes | ✅ Yes | ✅ Yes |
-| `rlsContext.getContextOrNull()` | ✅ Yes | ✅ Yes | ✅ Yes |
-| `rlsContext.asSystemAsync()` | ✅ Yes | ✅ Yes | ✅ Yes |
-| Auto SELECT filtering | ✅ Yes | ✅ Yes | ❌ No |
-| Auto mutation validation | ✅ Yes | ❌ No (extension method) | ❌ No |
-| `repo.withoutRLS()` | ✅ Yes | ❌ No (extension method) | ❌ No |
-| `repo.canAccess()` | ✅ Yes | ❌ No (extension method) | ❌ No |
+| RLS Feature                     | Repository | DAL with KyseraExecutor  | DAL without KyseraExecutor |
+| ------------------------------- | ---------- | ------------------------ | -------------------------- |
+| `rlsContext.runAsync()`         | ✅ Yes     | ✅ Yes                   | ✅ Yes                     |
+| `rlsContext.getContextOrNull()` | ✅ Yes     | ✅ Yes                   | ✅ Yes                     |
+| `rlsContext.asSystemAsync()`    | ✅ Yes     | ✅ Yes                   | ✅ Yes                     |
+| Auto SELECT filtering           | ✅ Yes     | ✅ Yes                   | ❌ No                      |
+| Auto mutation validation        | ✅ Yes     | ❌ No (extension method) | ❌ No                      |
+| `repo.withoutRLS()`             | ✅ Yes     | ❌ No (extension method) | ❌ No                      |
+| `repo.canAccess()`              | ✅ Yes     | ❌ No (extension method) | ❌ No                      |
 
 ## Transaction Handling
 
@@ -499,25 +479,25 @@ await db.transaction().execute(async (trx) => {
 ### DAL Transactions
 
 ```typescript
-import { withTransaction, createContext, createQuery } from '@kysera/dal';
-import { createExecutor } from '@kysera/executor';
+import { withTransaction, createContext, createQuery } from '@kysera/dal'
+import { createExecutor } from '@kysera/executor'
 
 // Using withTransaction with executor (plugins propagated)
-const executor = await createExecutor(db, [softDeletePlugin()]);
+const executor = await createExecutor(db, [softDeletePlugin()])
 
-const result = await withTransaction(executor, async (ctx) => {
-  const user = await createUser(ctx, userData);
-  const post = await createPost(ctx, { userId: user.id, ...postData });
-  return { user, post };
-});
+const result = await withTransaction(executor, async ctx => {
+  const user = await createUser(ctx, userData)
+  const post = await createPost(ctx, { userId: user.id, ...postData })
+  return { user, post }
+})
 
 // Transactional queries (throw if not in transaction)
 const transferFunds = createTransactionalQuery(async (ctx, from, to, amount) => {
-  await debit(ctx, from, amount);
-  await credit(ctx, to, amount);
-});
+  await debit(ctx, from, amount)
+  await credit(ctx, to, amount)
+})
 
-await withTransaction(executor, (ctx) => transferFunds(ctx, 1, 2, 100));
+await withTransaction(executor, ctx => transferFunds(ctx, 1, 2, 100))
 ```
 
 ## Combining Both Patterns (CQRS-lite)
@@ -525,39 +505,36 @@ await withTransaction(executor, (ctx) => transferFunds(ctx, 1, 2, 100));
 You can use both patterns in the same application with the **CQRS-lite** pattern via `orm.transaction()`:
 
 ```typescript
-import { createORM } from '@kysera/repository';
-import { createQuery } from '@kysera/dal';
-import { softDeletePlugin } from '@kysera/soft-delete';
-import { sql } from 'kysely';
+import { createORM } from '@kysera/repository'
+import { createQuery } from '@kysera/dal'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { sql } from 'kysely'
 
 // Create ORM with plugins (internally uses createExecutor)
-const orm = await createORM(db, [softDeletePlugin()]);
+const orm = await createORM(db, [softDeletePlugin()])
 
 // Repository for writes (CRUD operations)
-const userRepo = orm.createRepository(createUserRepository);
+const userRepo = orm.createRepository(createUserRepository)
 
 // DAL for complex reads (analytics, reports)
 const getAnalytics = createQuery((ctx, userId: number) =>
   ctx.db
     .selectFrom('events')
-    .select([
-      sql<number>`count(*)`.as('total'),
-      sql<number>`count(distinct date)`.as('activeDays'),
-    ])
+    .select([sql<number>`count(*)`.as('total'), sql<number>`count(distinct date)`.as('activeDays')])
     .where('user_id', '=', userId)
     .executeTakeFirst()
-);
+)
 
 // Use both in same transaction with shared plugins
-await orm.transaction(async (ctx) => {
+await orm.transaction(async ctx => {
   // Repository for writes (plugins + extension methods)
-  const user = await userRepo.create({ email: 'test@example.com' });
+  const user = await userRepo.create({ email: 'test@example.com' })
 
   // DAL for complex reads (plugins applied via context)
-  const stats = await getAnalytics(ctx, user.id);
+  const stats = await getAnalytics(ctx, user.id)
 
-  return { user, stats };
-});
+  return { user, stats }
+})
 ```
 
 :::tip CQRS-lite Pattern
@@ -607,20 +584,20 @@ The `orm.transaction()` method creates a `DbContext` that works with both Reposi
 
 ```typescript
 // Before (Repository)
-const user = await userRepo.findById(1);
-const users = await userRepo.find({ where: { status: 'active' } });
+const user = await userRepo.findById(1)
+const users = await userRepo.find({ where: { status: 'active' } })
 
 // After (DAL)
 const getUserById = createQuery((ctx, id: number) =>
   ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
-);
+)
 
-const getActiveUsers = createQuery((ctx) =>
+const getActiveUsers = createQuery(ctx =>
   ctx.db.selectFrom('users').selectAll().where('status', '=', 'active').execute()
-);
+)
 
-const user = await getUserById(db, 1);
-const users = await getActiveUsers(db);
+const user = await getUserById(db, 1)
+const users = await getActiveUsers(db)
 ```
 
 ### From DAL to Repository
@@ -629,18 +606,18 @@ const users = await getActiveUsers(db);
 // Before (DAL)
 const createUser = createQuery((ctx, data: CreateUserInput) =>
   ctx.db.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
-);
+)
 
 // After (Repository)
 const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
-    create: CreateUserSchema,
-  },
-});
+    create: CreateUserSchema
+  }
+})
 
-const user = await userRepo.create(data);
+const user = await userRepo.create(data)
 ```
 
 ## Best Practices

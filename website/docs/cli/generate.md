@@ -20,6 +20,7 @@ kysera g model [table]
 ```
 
 **Options:**
+
 ```
 -o, --output <path>       Output directory (default: ./src/models)
 --overwrite               Overwrite existing files
@@ -28,6 +29,7 @@ kysera g model [table]
 ```
 
 **Generated:**
+
 ```typescript
 // src/models/user.ts
 import { Generated } from 'kysely'
@@ -59,6 +61,7 @@ kysera generate repository <table>
 ```
 
 **Options:**
+
 ```
 -o, --output <path>       Output directory (default: ./src/repositories)
 --overwrite               Overwrite existing files
@@ -67,6 +70,7 @@ kysera generate repository <table>
 ```
 
 **Generated:**
+
 ```typescript
 // src/repositories/user.repository.ts
 import { createRepositoryFactory } from '@kysera/repository'
@@ -96,12 +100,14 @@ kysera generate schema <table>
 ```
 
 **Options:**
+
 ```
 -o, --output <path>       Output directory (default: ./src/schemas)
 --overwrite               Overwrite existing files
 ```
 
 **Generated:**
+
 ```typescript
 // src/schemas/user.schema.ts
 import { z } from 'zod'
@@ -134,6 +140,7 @@ kysera generate crud <table>
 ```
 
 **Options:**
+
 ```
 -o, --output-dir <path>   Base output directory (default: ./src)
 --overwrite               Overwrite existing files
@@ -145,6 +152,7 @@ kysera generate crud <table>
 ```
 
 **Generated Files:**
+
 ```
 src/
 ├── models/user.ts
@@ -171,14 +179,14 @@ kysera generate crud User --overwrite
 
 ## Type Mapping
 
-| Database Type | TypeScript Type |
-|---------------|-----------------|
-| serial, int, bigint | number |
-| varchar, text | string |
-| boolean, bool | boolean |
-| timestamp, datetime | Date |
-| json, jsonb | unknown |
-| uuid | string |
+| Database Type       | TypeScript Type |
+| ------------------- | --------------- |
+| serial, int, bigint | number          |
+| varchar, text       | string          |
+| boolean, bool       | boolean         |
+| timestamp, datetime | Date            |
+| json, jsonb         | unknown         |
+| uuid                | string          |
 
 ## Best Practices
 
@@ -192,6 +200,7 @@ kysera generate crud User --overwrite
 ### 2. Customize Generated Code
 
 Generated code is a starting point. Customize:
+
 - Validation rules
 - Row mapping logic
 - Additional methods

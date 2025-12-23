@@ -1,21 +1,21 @@
-import { Command } from 'commander';
-import { prism } from '@xec-sh/kit';
-import { spinner } from '../../utils/spinner.js';
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { logger } from '../../utils/logger.js';
-import { CLIError } from '../../utils/errors.js';
-import { withDatabase } from '../../utils/with-database.js';
-import { DatabaseIntrospector, type TableInfo } from './introspector.js';
-import { toCamelCase, toPascalCase, toKebabCase } from '../../utils/templates.js';
+import { Command } from 'commander'
+import { prism } from '@xec-sh/kit'
+import { spinner } from '../../utils/spinner.js'
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { logger } from '../../utils/logger.js'
+import { CLIError } from '../../utils/errors.js'
+import { withDatabase } from '../../utils/with-database.js'
+import { DatabaseIntrospector, type TableInfo } from './introspector.js'
+import { toCamelCase, toPascalCase, toKebabCase } from '../../utils/templates.js'
 
 export interface ModelOptions {
-  table?: string;
-  output?: string;
-  overwrite?: boolean;
-  config?: string;
-  timestamps?: boolean;
-  softDelete?: boolean;
+  table?: string
+  output?: string
+  overwrite?: boolean
+  config?: string
+  timestamps?: boolean
+  softDelete?: boolean
 }
 
 export function modelCommand(): Command {
@@ -30,143 +30,158 @@ export function modelCommand(): Command {
     .option('--soft-delete', 'Include soft delete fields', false)
     .action(async (table: string | undefined, options: ModelOptions) => {
       try {
-        await generateModel(table, options);
+        await generateModel(table, options)
       } catch (error) {
         if (error instanceof CLIError) {
-          throw error;
+          throw error
         }
         throw new CLIError(
           `Failed to generate model: ${error instanceof Error ? error.message : String(error)}`,
           'GENERATE_MODEL_ERROR'
-        );
+        )
       }
-    });
+    })
 
-  return cmd;
+  return cmd
 }
 
 async function generateModel(tableName: string | undefined, options: ModelOptions): Promise<void> {
   await withDatabase({ config: options.config }, async (db, config) => {
-    const generateSpinner = spinner();
-    generateSpinner.start('Introspecting database...');
+    const generateSpinner = spinner()
+    generateSpinner.start('Introspecting database...')
 
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any);
+    const introspector = new DatabaseIntrospector(db, config.database.dialect as any)
 
-    let tables: TableInfo[] = [];
+    let tables: TableInfo[] = []
 
     if (tableName) {
-      const tableInfo = await introspector.getTableInfo(tableName);
-      tables = [tableInfo];
+      const tableInfo = await introspector.getTableInfo(tableName)
+      tables = [tableInfo]
     } else {
-      tables = await introspector.introspect();
+      tables = await introspector.introspect()
     }
 
-    generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`);
+    generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
 
-    const outputDir = options.output || './src/models';
+    const outputDir = options.output || './src/models'
 
     if (!existsSync(outputDir)) {
-      mkdirSync(outputDir, { recursive: true });
-      logger.debug(`Created output directory: ${outputDir}`);
+      mkdirSync(outputDir, { recursive: true })
+      logger.debug(`Created output directory: ${outputDir}`)
     }
 
-    let generated = 0;
+    let generated = 0
 
     for (const table of tables) {
-      const fileName = `${toKebabCase(table.name)}.ts`;
-      const filePath = join(outputDir, fileName);
+      const fileName = `${toKebabCase(table.name)}.ts`
+      const filePath = join(outputDir, fileName)
 
       if (existsSync(filePath) && !options.overwrite) {
-        logger.warn(`Skipping ${fileName} (file exists, use --overwrite to replace)`);
-        continue;
+        logger.warn(`Skipping ${fileName} (file exists, use --overwrite to replace)`)
+        continue
       }
 
       const modelCode = generateModelCode(table, {
         timestamps: options.timestamps !== false,
-        softDelete: options.softDelete === true,
-      });
+        softDelete: options.softDelete === true
+      })
 
-      writeFileSync(filePath, modelCode, 'utf-8');
-      logger.info(`${prism.green('OK')} Generated ${prism.cyan(fileName)}`);
-      generated++;
+      writeFileSync(filePath, modelCode, 'utf-8')
+      logger.info(`${prism.green('OK')} Generated ${prism.cyan(fileName)}`)
+      generated++
     }
 
     if (generated === 0) {
-      logger.warn('No models were generated');
+      logger.warn('No models were generated')
     } else {
-      logger.info('');
-      logger.info(prism.green(`Generated ${generated} model${generated !== 1 ? 's' : ''} successfully`));
+      logger.info('')
+      logger.info(
+        prism.green(`Generated ${generated} model${generated !== 1 ? 's' : ''} successfully`)
+      )
     }
-  });
+  })
 }
 
-function generateModelCode(table: TableInfo, options: { timestamps: boolean; softDelete: boolean }): string {
-  const interfaceName = toPascalCase(table.name);
-  const tableInterfaceName = `${interfaceName}Table`;
+function generateModelCode(
+  table: TableInfo,
+  options: { timestamps: boolean; softDelete: boolean }
+): string {
+  const interfaceName = toPascalCase(table.name)
+  const tableInterfaceName = `${interfaceName}Table`
 
-  let imports = [`import type { Generated } from 'kysely'`];
+  let imports = [`import type { Generated } from 'kysely'`]
 
-  let mainInterface = `export interface ${interfaceName} {\n`;
+  let mainInterface = `export interface ${interfaceName} {\n`
 
   for (const column of table.columns) {
-    const fieldName = toCamelCase(column.name);
-    const fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(column.dataType, column.isNullable);
-    mainInterface += `  ${fieldName}: ${fieldType}\n`;
+    const fieldName = toCamelCase(column.name)
+    const fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(
+      column.dataType,
+      column.isNullable
+    )
+    mainInterface += `  ${fieldName}: ${fieldType}\n`
   }
 
-  mainInterface += '}\n';
+  mainInterface += '}\n'
 
-  let tableInterface = `export interface ${tableInterfaceName} {\n`;
+  let tableInterface = `export interface ${tableInterfaceName} {\n`
 
   for (const column of table.columns) {
-    const fieldName = column.name;
-    let fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(column.dataType, column.isNullable);
+    const fieldName = column.name
+    let fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(column.dataType, column.isNullable)
 
     if (column.isPrimaryKey && column.defaultValue) {
-      fieldType = `Generated<${fieldType}>`;
-    } else if (column.defaultValue && column.defaultValue.toLowerCase().includes('current_timestamp')) {
-      fieldType = `Generated<${fieldType}>`;
+      fieldType = `Generated<${fieldType}>`
+    } else if (
+      column.defaultValue &&
+      column.defaultValue.toLowerCase().includes('current_timestamp')
+    ) {
+      fieldType = `Generated<${fieldType}>`
     }
 
-    tableInterface += `  ${fieldName}: ${fieldType}\n`;
+    tableInterface += `  ${fieldName}: ${fieldType}\n`
   }
 
-  tableInterface += '}\n';
+  tableInterface += '}\n'
 
-  let newInterface = `export interface New${interfaceName} {\n`;
+  let newInterface = `export interface New${interfaceName} {\n`
 
   for (const column of table.columns) {
-    const fieldName = toCamelCase(column.name);
+    const fieldName = toCamelCase(column.name)
 
-    if (column.isPrimaryKey && column.defaultValue) continue;
-    if (column.defaultValue && column.defaultValue.toLowerCase().includes('current_timestamp')) continue;
+    if (column.isPrimaryKey && column.defaultValue) continue
+    if (column.defaultValue && column.defaultValue.toLowerCase().includes('current_timestamp'))
+      continue
 
-    let fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(column.dataType, column.isNullable);
+    let fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(column.dataType, column.isNullable)
 
     if (column.isNullable || column.defaultValue) {
-      newInterface += `  ${fieldName}?: ${fieldType}\n`;
+      newInterface += `  ${fieldName}?: ${fieldType}\n`
     } else {
-      newInterface += `  ${fieldName}: ${fieldType}\n`;
+      newInterface += `  ${fieldName}: ${fieldType}\n`
     }
   }
 
-  newInterface += '}\n';
+  newInterface += '}\n'
 
-  let updateInterface = `export interface ${interfaceName}Update {\n`;
+  let updateInterface = `export interface ${interfaceName}Update {\n`
 
   for (const column of table.columns) {
-    const fieldName = toCamelCase(column.name);
+    const fieldName = toCamelCase(column.name)
 
-    if (column.isPrimaryKey) continue;
-    if (['created_at', 'updated_at', 'deleted_at'].includes(column.name)) continue;
+    if (column.isPrimaryKey) continue
+    if (['created_at', 'updated_at', 'deleted_at'].includes(column.name)) continue
 
-    const fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(column.dataType, column.isNullable);
-    updateInterface += `  ${fieldName}?: ${fieldType}\n`;
+    const fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(
+      column.dataType,
+      column.isNullable
+    )
+    updateInterface += `  ${fieldName}?: ${fieldType}\n`
   }
 
-  updateInterface += '}\n';
+  updateInterface += '}\n'
 
-  const databaseAddition = `// Add this to your Database interface:\n// ${table.name}: ${tableInterfaceName}`;
+  const databaseAddition = `// Add this to your Database interface:\n// ${table.name}: ${tableInterfaceName}`
 
   return `${imports.join('\n')}
 
@@ -179,5 +194,5 @@ ${newInterface}
 ${updateInterface}
 
 ${databaseAddition}
-`;
+`
 }
