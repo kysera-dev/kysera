@@ -446,11 +446,6 @@ export class CheckConstraintError extends DatabaseError {
   }
 }
 
-/**
- * @deprecated Use `Dialect` from '@kysera/core' instead.
- * This alias is kept for backwards compatibility.
- */
-export type DatabaseDialect = Dialect
 
 // ============================================================================
 // Plugin-Specific Error Classes
@@ -1030,7 +1025,7 @@ function parseMSSQLError(dbError: RawDatabaseError): DatabaseError {
  * }
  *
  * // Generic error handling across all dialects
- * async function createUser(data: UserInput, dialect: DatabaseDialect) {
+ * async function createUser(data: UserInput, dialect: Dialect) {
  *   try {
  *     return await db.insertInto('users').values(data).execute()
  *   } catch (error) {
@@ -1053,7 +1048,7 @@ function parseMSSQLError(dbError: RawDatabaseError): DatabaseError {
  */
 export function parseDatabaseError(
   error: unknown,
-  dialect: DatabaseDialect = 'postgres'
+  dialect: Dialect = 'postgres'
 ): DatabaseError {
   if (!error || typeof error !== 'object' || Array.isArray(error)) {
     return new DatabaseError('Unknown database error', ErrorCodes.DB_UNKNOWN)

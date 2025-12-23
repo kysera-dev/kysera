@@ -150,7 +150,7 @@ The RLS plugin is built on @kysera/executor's Unified Execution Layer, which pro
 ```typescript
 {
   name: '@kysera/rls',
-  version: '0.7.3',
+  version: '0.8.0',
   priority: 50,  // Runs after soft-delete (0), before audit (100)
   dependencies: [],
 }
@@ -192,7 +192,7 @@ const posts = await orm.posts.findAll()
 
 - SELECT operations: Policies are applied immediately as WHERE clauses
 - INSERT/UPDATE/DELETE: Marked for validation (actual enforcement in `extendRepository`)
-- Skip conditions: `skipTables`, `metadata['skipRLS']`, `requireContext`, system user, bypass roles
+- Skip conditions: `excludeTables`, `metadata['skipRLS']`, `requireContext`, system user, bypass roles
 
 #### 2. `extendRepository` - Mutation Enforcement (CREATE/UPDATE/DELETE)
 
@@ -767,12 +767,8 @@ interface RLSPluginOptions<DB = unknown> {
 
   /**
    * Tables to exclude from RLS (always bypass)
-   * Replaces deprecated skipTables
    */
   excludeTables?: string[]
-
-  /** @deprecated Use excludeTables instead */
-  skipTables?: string[]
 
   /** Roles that bypass RLS entirely */
   bypassRoles?: string[]
@@ -822,7 +818,7 @@ import { createLogger } from '@kysera/core'
 
 const plugin = rlsPlugin({
   schema: rlsSchema,
-  skipTables: ['audit_logs', 'migrations'],
+  excludeTables: ['audit_logs', 'migrations'],
   bypassRoles: ['admin', 'system'],
   logger: createLogger({ level: 'info' }),
   requireContext: true,
@@ -1151,7 +1147,7 @@ The RLS plugin follows the standard `@kysera/executor` plugin lifecycle:
 **Bypass Mechanisms:**
 
 - System context bypass is immediate (no policy evaluation)
-- `skipTables` bypass is immediate (no policy evaluation)
+- `excludeTables` bypass is immediate (no policy evaluation)
 - Bypass roles checked before policy evaluation
 
 ### Transaction Support

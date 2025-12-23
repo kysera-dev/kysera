@@ -40,16 +40,9 @@ export interface RLSPluginOptions<DB = unknown> {
 
   /**
    * Tables to exclude from RLS (always bypass policies)
-   * Replaces the deprecated `skipTables` option for consistency with other plugins.
    * @default []
    */
   excludeTables?: string[]
-
-  /**
-   * @deprecated Use `excludeTables` instead for consistency with other Kysera plugins
-   * @default []
-   */
-  skipTables?: string[]
 
   /** Roles that bypass RLS entirely (e.g., ['admin', 'superuser']) */
   bypassRoles?: string[]
@@ -111,7 +104,6 @@ export interface RLSPluginOptions<DB = unknown> {
  */
 export const RLSPluginOptionsSchema = z.object({
   excludeTables: z.array(z.string()).optional(),
-  skipTables: z.array(z.string()).optional(), // deprecated but kept for backward compatibility
   bypassRoles: z.array(z.string()).optional(),
   requireContext: z.boolean().optional(),
   allowUnfilteredQueries: z.boolean().optional(),
@@ -176,8 +168,7 @@ type BaseRepository = BaseRepositoryLike<Record<string, unknown>>
 export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
   const {
     schema,
-    excludeTables: excludeTablesOption,
-    skipTables: skipTablesOption,
+    excludeTables = [],
     bypassRoles = [],
     logger = silentLogger,
     requireContext = true, // SECURITY: Changed to true for secure-by-default (CRIT-2 fix)
@@ -186,17 +177,6 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     onViolation,
     primaryKeyColumn = 'id'
   } = options
-
-  // Backward compatibility: support both excludeTables and skipTables
-  // excludeTables takes precedence if both are provided
-  const excludeTables = excludeTablesOption ?? skipTablesOption ?? []
-
-  // Warn if deprecated skipTables is used
-  if (skipTablesOption !== undefined && excludeTablesOption === undefined) {
-    logger.warn?.(
-      '[RLS] The "skipTables" option is deprecated. Use "excludeTables" instead for consistency with other Kysera plugins.'
-    )
-  }
 
   // Registry and transformers (initialized in onInit)
   let registry: PolicyRegistry<DB>

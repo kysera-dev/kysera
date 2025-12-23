@@ -8,7 +8,7 @@ description: Core utilities package API reference
 
 Minimal core utilities for database operations with Kysely.
 
-**Version:** 0.7.3
+**Version:** 0.8.0
 
 ## Installation
 
@@ -187,9 +187,9 @@ Package version information and utilities.
 ```typescript
 import { VERSION, getPackageVersion, formatVersionString, isDevelopmentVersion } from '@kysera/core'
 
-console.log(VERSION) // '0.7.3'
-console.log(getPackageVersion()) // '0.7.3'
-console.log(formatVersionString('v')) // 'v0.7.3'
+console.log(VERSION) // '0.8.0'
+console.log(getPackageVersion()) // '0.8.0'
+console.log(formatVersionString('v')) // 'v0.8.0'
 console.log(isDevelopmentVersion()) // false (true in development)
 ```
 

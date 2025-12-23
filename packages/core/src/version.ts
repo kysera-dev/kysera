@@ -17,7 +17,7 @@ const RAW_VERSION = typeof __VERSION__ !== 'undefined' ? __VERSION__ : '__VERSIO
  * import { getPackageVersion } from '@kysera/core'
  *
  * const version = getPackageVersion()
- * // Production: '0.7.3'
+ * // Production: '0.8.0'
  * // Development: '0.0.0-dev'
  * ```
  */
@@ -35,9 +35,9 @@ export function getPackageVersion(): string {
  * ```typescript
  * import { formatVersionString } from '@kysera/core'
  *
- * formatVersionString()        // '0.7.3'
- * formatVersionString('v')     // 'v0.7.3'
- * formatVersionString('@kysera/core@') // '@kysera/core@0.7.3'
+ * formatVersionString()        // '0.8.0'
+ * formatVersionString('v')     // 'v0.8.0'
+ * formatVersionString('@kysera/core@') // '@kysera/core@0.8.0'
  * ```
  */
 export function formatVersionString(prefix = ''): string {

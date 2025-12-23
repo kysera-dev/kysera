@@ -133,7 +133,7 @@ describe('KyseraConfigSchema', () => {
           },
           rls: {
             enabled: true,
-            skipTables: ['audit_logs'],
+            excludeTables: ['audit_logs'],
             bypassRoles: ['admin'],
             requireContext: true,
             auditDecisions: false,
@@ -688,7 +688,7 @@ describe('PluginsConfigSchema', () => {
       const config = {
         rls: {
           enabled: true,
-          skipTables: ['audit_logs', 'migrations'],
+          excludeTables: ['audit_logs', 'migrations'],
           bypassRoles: ['admin', 'superuser'],
           requireContext: true,
           auditDecisions: true,
@@ -746,11 +746,11 @@ describe('PluginsConfigSchema', () => {
       }
     })
 
-    it('should accept rls with skipTables', () => {
+    it('should accept rls with excludeTables', () => {
       const config = {
         rls: {
           enabled: true,
-          skipTables: ['system_logs', 'migrations']
+          excludeTables: ['system_logs', 'migrations']
         }
       }
 
@@ -758,7 +758,7 @@ describe('PluginsConfigSchema', () => {
 
       expect(result.success).toBe(true)
       if (result.success) {
-        expect(result.data.rls?.skipTables).toEqual(['system_logs', 'migrations'])
+        expect(result.data.rls?.excludeTables).toEqual(['system_logs', 'migrations'])
       }
     })
 

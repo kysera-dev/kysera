@@ -1,6 +1,7 @@
 import type { SelectQueryBuilder, ExpressionBuilder } from 'kysely'
 import { sql } from 'kysely'
-import { BadRequestError, type DatabaseDialect } from './errors.js'
+import { BadRequestError } from './errors.js'
+import type { Dialect } from './types.js'
 import {
   signCursor,
   verifyCursor,
@@ -223,7 +224,7 @@ export interface PaginationOptions {
    * Database dialect for dialect-specific SQL generation
    * Required for MSSQL which uses different OFFSET/FETCH syntax
    */
-  dialect?: DatabaseDialect | undefined
+  dialect?: Dialect | undefined
 }
 
 export interface PaginatedResult<T> {
@@ -347,7 +348,7 @@ export interface CursorOptions<T> {
    * Database dialect for dialect-specific SQL generation
    * Required for MSSQL which uses different OFFSET/FETCH syntax
    */
-  dialect?: DatabaseDialect | undefined
+  dialect?: Dialect | undefined
   /**
    * Security options for cursor signing and/or encryption
    * Prevents cursor tampering and unauthorized data access

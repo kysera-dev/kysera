@@ -635,7 +635,7 @@ await truncateAllTables(db, 'postgres', ['migrations', 'schema_version'])
 
 ### Factory Functions
 
-#### `getAdapter(dialect: DatabaseDialect): DialectAdapter`
+#### `getAdapter(dialect: Dialect): DialectAdapter`
 
 Get singleton adapter for specified dialect.
 
@@ -649,7 +649,7 @@ Get singleton adapter for specified dialect.
 
 ---
 
-#### `createDialectAdapter(dialect: DatabaseDialect): DialectAdapter`
+#### `createDialectAdapter(dialect: Dialect): DialectAdapter`
 
 Create new adapter instance.
 
@@ -683,7 +683,7 @@ Interface for dialect-specific operations.
 
 **Properties:**
 
-- `dialect: DatabaseDialect` - The dialect this adapter handles
+- `dialect: Dialect` - The dialect this adapter handles
 
 **Methods:**
 
@@ -717,7 +717,7 @@ Parse connection URL into configuration object.
 
 ---
 
-#### `buildConnectionUrl(dialect: DatabaseDialect, config: ConnectionConfig): string`
+#### `buildConnectionUrl(dialect: Dialect, config: ConnectionConfig): string`
 
 Build connection URL from configuration.
 
@@ -730,7 +730,7 @@ Build connection URL from configuration.
 
 ---
 
-#### `getDefaultPort(dialect: DatabaseDialect): number | null`
+#### `getDefaultPort(dialect: Dialect): number | null`
 
 Get default port for dialect.
 
@@ -744,67 +744,67 @@ Get default port for dialect.
 
 ### Helper Functions
 
-#### `tableExists(db: Kysely<any>, tableName: string, dialect: DatabaseDialect): Promise<boolean>`
+#### `tableExists(db: Kysely<any>, tableName: string, dialect: Dialect): Promise<boolean>`
 
 Check if table exists.
 
 ---
 
-#### `getTableColumns(db: Kysely<any>, tableName: string, dialect: DatabaseDialect): Promise<string[]>`
+#### `getTableColumns(db: Kysely<any>, tableName: string, dialect: Dialect): Promise<string[]>`
 
 Get column names for a table.
 
 ---
 
-#### `getTables(db: Kysely<any>, dialect: DatabaseDialect): Promise<string[]>`
+#### `getTables(db: Kysely<any>, dialect: Dialect): Promise<string[]>`
 
 Get all tables in database.
 
 ---
 
-#### `escapeIdentifier(identifier: string, dialect: DatabaseDialect): string`
+#### `escapeIdentifier(identifier: string, dialect: Dialect): string`
 
 Escape identifier for SQL.
 
 ---
 
-#### `getCurrentTimestamp(dialect: DatabaseDialect): string`
+#### `getCurrentTimestamp(dialect: Dialect): string`
 
 Get SQL expression for current timestamp.
 
 ---
 
-#### `formatDate(date: Date, dialect: DatabaseDialect): string`
+#### `formatDate(date: Date, dialect: Dialect): string`
 
 Format date for SQL.
 
 ---
 
-#### `isUniqueConstraintError(error: unknown, dialect: DatabaseDialect): boolean`
+#### `isUniqueConstraintError(error: unknown, dialect: Dialect): boolean`
 
 Check if error is unique constraint violation.
 
 ---
 
-#### `isForeignKeyError(error: unknown, dialect: DatabaseDialect): boolean`
+#### `isForeignKeyError(error: unknown, dialect: Dialect): boolean`
 
 Check if error is foreign key violation.
 
 ---
 
-#### `isNotNullError(error: unknown, dialect: DatabaseDialect): boolean`
+#### `isNotNullError(error: unknown, dialect: Dialect): boolean`
 
 Check if error is not-null violation.
 
 ---
 
-#### `getDatabaseSize(db: Kysely<any>, databaseName: string | undefined, dialect: DatabaseDialect): Promise<number>`
+#### `getDatabaseSize(db: Kysely<any>, databaseName: string | undefined, dialect: Dialect): Promise<number>`
 
 Get database size in bytes.
 
 ---
 
-#### `truncateAllTables(db: Kysely<any>, dialect: DatabaseDialect, exclude?: string[]): Promise<void>`
+#### `truncateAllTables(db: Kysely<any>, dialect: Dialect, exclude?: string[]): Promise<void>`
 
 Truncate all tables in database.
 
@@ -854,9 +854,9 @@ interface DatabaseErrorLike {
 
 ```typescript
 // ✅ Good: Works with any dialect
-import { getAdapter } from '@kysera/dialects'
+import { getAdapter, type Dialect } from '@kysera/dialects'
 
-function checkSchema(db: Kysely<any>, dialect: DatabaseDialect) {
+function checkSchema(db: Kysely<any>, dialect: Dialect) {
   const adapter = getAdapter(dialect)
   return adapter.tableExists(db, 'users')
 }
@@ -884,10 +884,10 @@ const exists = await adapter.tableExists(db, 'users')
 ### 3. Centralize Error Handling
 
 ```typescript
-import { getAdapter } from '@kysera/dialects'
+import { getAdapter, type Dialect } from '@kysera/dialects'
 import { parseDatabaseError } from '@kysera/core'
 
-async function handleDatabaseError(error: unknown, dialect: DatabaseDialect) {
+async function handleDatabaseError(error: unknown, dialect: Dialect) {
   const adapter = getAdapter(dialect)
 
   if (adapter.isUniqueConstraintError(error)) {
@@ -951,11 +951,11 @@ try {
 ### 6. Escape Dynamic Identifiers
 
 ```typescript
-import { escapeIdentifier } from '@kysera/dialects'
+import { escapeIdentifier, type Dialect } from '@kysera/dialects'
 import { sql } from 'kysely'
 
 // ✅ Good: Escape dynamic table/column names
-function selectFromTable(tableName: string, dialect: DatabaseDialect) {
+function selectFromTable(tableName: string, dialect: Dialect) {
   const escaped = escapeIdentifier(tableName, dialect)
   return db.selectFrom(sql.raw(escaped)).selectAll()
 }

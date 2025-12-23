@@ -111,8 +111,8 @@ const RLSPluginSchema = z.object({
   /** Enable/disable RLS plugin */
   enabled: z.boolean().default(false),
 
-  /** Tables to skip RLS for (always bypass policies) */
-  skipTables: z.array(z.string()).optional(),
+  /** Tables to exclude from RLS (always bypass policies) */
+  excludeTables: z.array(z.string()).optional(),
 
   /** Roles that bypass RLS entirely (e.g., ['admin', 'superuser']) */
   bypassRoles: z.array(z.string()).optional(),

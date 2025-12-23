@@ -73,7 +73,7 @@ interface RLSPluginOptions<DB = unknown> {
   /**
    * Tables to exclude from RLS entirely (global bypass)
    */
-  skipTables?: string[]
+  excludeTables?: string[]
 
   /**
    * Roles that bypass RLS for all tables (global bypass)
@@ -122,7 +122,7 @@ const plugin = rlsPlugin({
 // Full setup with bypass rules
 const plugin = rlsPlugin({
   schema: rlsSchema,
-  skipTables: ['migrations', 'system_config'],
+  excludeTables: ['migrations', 'system_config'],
   bypassRoles: ['superadmin'],
   requireContext: true,
   auditDecisions: true,
@@ -607,7 +607,7 @@ Applied at plugin initialization, affects all tables:
 ```typescript
 rlsPlugin({
   schema: rlsSchema,
-  skipTables: ['migrations', 'system_config'], // Skip these tables
+  excludeTables: ['migrations', 'system_config'], // Exclude these tables
   bypassRoles: ['superadmin'] // These roles bypass all
 })
 ```
