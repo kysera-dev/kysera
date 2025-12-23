@@ -42,12 +42,12 @@
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.16",
-    "zod": "^4.1.13"
+    "zod": "^4.2.1"
   },
   "peerDependencies": {
     "@kysera/executor": "workspace:*",
     "kysely": ">=0.28.8",
-    "zod": "^4.1.13"
+    "zod": "^4.2.1"
   },
   "peerDependenciesMeta": {
     "zod": {

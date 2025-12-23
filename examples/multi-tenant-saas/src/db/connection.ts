@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import { Kysely, PostgresDialect } from 'kysely'
 import { Pool } from 'pg'
 import { gracefulShutdown, createMetricsPool } from '@kysera/infra'

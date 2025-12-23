@@ -1,8 +1,8 @@
 import type { Selectable } from 'kysely'
 import { z } from 'zod'
 import type { Executor } from '@kysera/core'
+import { rlsContext } from '@kysera/rls'
 import type { Database, TenantUser } from '../db/schema.js'
-import type { TenantContext } from '../middleware/tenant-context.js'
 
 // Domain types
 export type User = Selectable<TenantUser>
@@ -40,22 +40,29 @@ function mapUserRow(row: Selectable<TenantUser>): User {
 }
 
 /**
- * Create tenant-scoped user repository
+ * Create user repository with automatic RLS filtering
  *
- * All queries are automatically filtered by tenant_id from the context.
- * This ensures complete tenant isolation.
+ * With the RLS plugin enabled, SELECT queries are automatically filtered by tenant_id
+ * from the RLS context. No need to manually add WHERE tenant_id = X to every query.
+ *
+ * The RLS plugin provides:
+ * - Automatic filtering of SELECT queries by tenant_id
+ * - Automatic WHERE clause addition for UPDATE/DELETE by tenant_id
+ *
+ * For INSERT operations:
+ * - tenant_id must be explicitly added from rlsContext.get().auth.tenantId
+ * - This ensures explicit control over tenant assignment
  */
-export function createUserRepository(executor: Executor<Database>, tenantContext: TenantContext) {
+export function createUserRepository(executor: Executor<Database>) {
   const validateDbResults = process.env['NODE_ENV'] === 'development'
-  const getTenantId = () => tenantContext.getTenantId()
 
   return {
     async findById(id: number): Promise<User | null> {
+      // RLS plugin automatically adds: WHERE tenant_id = ctx.auth.tenantId
       const row = await executor
         .selectFrom('users')
         .selectAll()
         .where('id', '=', id)
-        .where('tenant_id', '=', getTenantId()) // Tenant filter
         .executeTakeFirst()
 
       if (!row) return null
@@ -65,11 +72,11 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
     },
 
     async findByEmail(email: string): Promise<User | null> {
+      // RLS plugin automatically adds: WHERE tenant_id = ctx.auth.tenantId
       const row = await executor
         .selectFrom('users')
         .selectAll()
         .where('email', '=', email)
-        .where('tenant_id', '=', getTenantId()) // Tenant filter
         .executeTakeFirst()
 
       if (!row) return null
@@ -79,10 +86,10 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
     },
 
     async findAll(): Promise<User[]> {
+      // RLS plugin automatically adds: WHERE tenant_id = ctx.auth.tenantId
       const rows = await executor
         .selectFrom('users')
         .selectAll()
-        .where('tenant_id', '=', getTenantId()) // Tenant filter
         .orderBy('created_at', 'desc')
         .execute()
 
@@ -93,11 +100,17 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
     async create(input: unknown): Promise<User> {
       const validated = CreateUserSchema.parse(input)
 
+      // Get tenant_id from RLS context (set via rlsContext.runAsync)
+      const ctx = rlsContext.getContextOrNull()
+      if (!ctx?.auth?.tenantId) {
+        throw new Error('RLS context with tenantId is required for create operations')
+      }
+
       const row = await executor
         .insertInto('users')
         .values({
           ...validated,
-          tenant_id: getTenantId(), // Auto-inject tenant_id
+          tenant_id: ctx.auth.tenantId as number,
           role: validated.role || 'member'
         })
         .returningAll()
@@ -110,6 +123,7 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
     async update(id: number, input: unknown): Promise<User> {
       const validated = UpdateUserSchema.parse(input)
 
+      // RLS plugin automatically adds: WHERE tenant_id = ctx.auth.tenantId
       const row = await executor
         .updateTable('users')
         .set({
@@ -117,7 +131,6 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
           updated_at: new Date()
         })
         .where('id', '=', id)
-        .where('tenant_id', '=', getTenantId()) // Tenant filter
         .returningAll()
         .executeTakeFirstOrThrow()
 
@@ -126,11 +139,8 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
     },
 
     async delete(id: number): Promise<void> {
-      await executor
-        .deleteFrom('users')
-        .where('id', '=', id)
-        .where('tenant_id', '=', getTenantId()) // Tenant filter
-        .execute()
+      // RLS plugin automatically adds: WHERE tenant_id = ctx.auth.tenantId
+      await executor.deleteFrom('users').where('id', '=', id).execute()
     }
   }
 }

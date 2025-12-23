@@ -13,17 +13,18 @@ async function main() {
   // Create repositories
   const userRepo = createUserRepository(db)
 
-  // Example: Create a user
+  // Example: Create a user (use unique email for idempotent runs)
   console.log('\n📝 Creating user...')
+  const uniqueEmail = `john-${Date.now()}@example.com`
   const newUser = await userRepo.create({
-    email: 'john@example.com',
+    email: uniqueEmail,
     name: 'John Doe'
   })
   console.log('Created user:', newUser)
 
   // Example: Find user by email
   console.log('\n🔍 Finding user by email...')
-  const foundUser = await userRepo.findByEmail('john@example.com')
+  const foundUser = await userRepo.findByEmail(uniqueEmail)
   console.log('Found user:', foundUser)
 
   // Example: Update user

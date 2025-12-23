@@ -8,18 +8,22 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "migrate": "tsx src/db/migrate.ts"
+    "migrate": "tsx src/db/migrate.ts",
+    "seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
     "@kysera/core": "workspace:*",
+    "@kysera/executor": "workspace:*",
     "@kysera/repository": "workspace:*",
+    "@kysera/rls": "workspace:*",
     "@kysera/audit": "workspace:*",
     "@kysera/timestamps": "workspace:*",
     "@kysera/infra": "workspace:*",
     "@kysera/debug": "workspace:*",
     "kysely": "^0.28.9",
     "pg": "^8.16.3",
-    "zod": "^4.1.13"
+    "zod": "^4.2.1",
+    "dotenv": "^17.2.3"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

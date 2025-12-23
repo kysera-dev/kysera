@@ -78,13 +78,23 @@ export function createCartRepository(executor: Executor<Database>) {
           'products.name as product_name',
           'products.price',
           'cart_items.quantity',
-          sql<number>`products.price * cart_items.quantity`.as('subtotal'),
+          sql<string>`products.price * cart_items.quantity`.as('subtotal'),
           'cart_items.created_at'
         ])
         .where('cart_items.user_id', '=', userId)
         .execute()
 
-      return rows as CartItemWithProduct[]
+      // PostgreSQL returns numeric types as strings, so we parse them
+      return rows.map(row => ({
+        id: row.id,
+        user_id: row.user_id,
+        product_id: row.product_id,
+        product_name: row.product_name,
+        price: typeof row.price === 'string' ? parseFloat(row.price) : row.price,
+        quantity: row.quantity,
+        subtotal: typeof row.subtotal === 'string' ? parseFloat(row.subtotal) : row.subtotal,
+        created_at: row.created_at
+      }))
     },
 
     async addItem(input: unknown): Promise<CartItem> {
@@ -148,11 +158,12 @@ export function createCartRepository(executor: Executor<Database>) {
       const result = await executor
         .selectFrom('cart_items')
         .innerJoin('products', 'products.id', 'cart_items.product_id')
-        .select(sql<number>`SUM(products.price * cart_items.quantity)`.as('total'))
+        .select(sql<string>`SUM(products.price * cart_items.quantity)`.as('total'))
         .where('cart_items.user_id', '=', userId)
         .executeTakeFirst()
 
-      return result?.total ?? 0
+      // PostgreSQL returns numeric types as strings
+      return result?.total ? parseFloat(result.total) : 0
     }
   }
 }

@@ -65,7 +65,7 @@
     "handlebars": "^4.7.8",
     "fs-extra": "^11.3.2",
     "kysely": "^0.28.9",
-    "zod": "^4.1.13",
+    "zod": "^4.2.1",
     "dotenv": "^17.2.3",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^6.2.0",

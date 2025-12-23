@@ -1,0 +1,37 @@
+# Docker Compose for Kysera Examples
+# Provides PostgreSQL database for all example applications
+#
+# Usage:
+#   cd examples
+#   docker compose up -d         # Start database
+#   docker compose down -v       # Stop and remove data
+#
+# Connection:
+#   Host: localhost
+#   Port: 5432
+#   User: kysera
+#   Password: kysera
+#   Database: kysera_examples
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kysera_examples_postgres
+    environment:
+      POSTGRES_USER: kysera
+      POSTGRES_PASSWORD: kysera
+      POSTGRES_DB: kysera_examples
+    ports:
+      - "5433:5432"  # Use 5433 to avoid conflict with test database on 5432
+    volumes:
+      - kysera_examples_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kysera -d kysera_examples"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  kysera_examples_data:
