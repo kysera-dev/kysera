@@ -27,13 +27,13 @@ import type { Plugin } from '@kysera/executor'
 
 interface Plugin {
   // Identity
-  readonly name: string              // Unique plugin name (e.g., '@kysera/soft-delete')
-  readonly version: string           // Semantic version
+  readonly name: string // Unique plugin name (e.g., '@kysera/soft-delete')
+  readonly version: string // Semantic version
 
   // Dependencies and ordering
-  readonly dependencies?: readonly string[]    // Plugins that must load first
-  readonly priority?: number                   // Higher = runs first (default: 0)
-  readonly conflictsWith?: readonly string[]   // Incompatible plugins
+  readonly dependencies?: readonly string[] // Plugins that must load first
+  readonly priority?: number // Higher = runs first (default: 0)
+  readonly conflictsWith?: readonly string[] // Incompatible plugins
 
   // Lifecycle: Initialize plugin (called once)
   onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
@@ -75,16 +75,12 @@ import type { Kysely } from 'kysely'
 import { silentLogger, type KyseraLogger } from '@kysera/core'
 
 export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
-  const {
-    enabled = true,
-    customField = 'default',
-    logger = silentLogger
-  } = options
+  const { enabled = true, customField = 'default', logger = silentLogger } = options
 
   return {
     name: '@myorg/my-plugin',
     version: '1.0.0',
-    priority: 0,  // Default priority
+    priority: 0, // Default priority
 
     async onInit(executor) {
       logger.info('MyPlugin initialized')
@@ -166,7 +162,7 @@ const myPlugin = (): Plugin => ({
     // Validate INSERT operations
     if (context.operation === 'insert') {
       // Add audit fields automatically
-      return qb.$call((qb) => {
+      return qb.$call(qb => {
         // Note: This is a simplified example
         return qb
       })
@@ -178,6 +174,7 @@ const myPlugin = (): Plugin => ({
 ```
 
 **Intercepted methods:**
+
 - `selectFrom` → `operation: 'select'`
 - `insertInto` → `operation: 'insert'`
 - `updateTable` → `operation: 'update'`
@@ -260,7 +257,7 @@ export const SoftDeleteOptionsSchema = z.object({
   deletedAtColumn: z.string().default('deleted_at'),
   includeDeleted: z.boolean().default(false),
   tables: z.array(z.string()).optional(),
-  primaryKeyColumn: z.string().default('id'),
+  primaryKeyColumn: z.string().default('id')
 })
 
 export type SoftDeleteOptions = z.infer<typeof SoftDeleteOptionsSchema>
@@ -319,10 +316,7 @@ describe('MyPlugin Integration', () => {
     const executor = await createExecutor(db, [myPlugin()])
 
     // Query interception works with executor
-    const users = await executor
-      .selectFrom('users')
-      .selectAll()
-      .execute()
+    const users = await executor.selectFrom('users').selectAll().execute()
 
     // Plugin filtering applied automatically
     expect(users.every(u => u.is_active === true)).toBe(true)
@@ -337,7 +331,7 @@ describe('MyPlugin Integration', () => {
 ```typescript
 export const myPlugin = (): Plugin => ({
   name: '@myorg/my-plugin',
-  version: '1.0.0',  // Follow semver
+  version: '1.0.0' // Follow semver
 })
 ```
 
@@ -405,16 +399,18 @@ export const myPlugin = (): Plugin => ({
   // 10: Validation plugins
   // 0: Standard plugins
   // -10: Logging/audit plugins
-  priority: 10,
+  priority: 10
 })
 ```
 
 **Plugin order resolution:**
+
 1. Topological sort by dependencies
 2. Sort by priority (higher first)
 3. Alphabetical by name (for stability)
 
 **Validation:**
+
 - Duplicate names → `PluginValidationError`
 - Missing dependencies → `PluginValidationError`
 - Circular dependencies → `PluginValidationError`
@@ -432,7 +428,7 @@ import { z } from 'zod'
 export const CachePluginOptionsSchema = z.object({
   ttl: z.number().default(60000),
   maxSize: z.number().default(100),
-  enabled: z.boolean().default(true),
+  enabled: z.boolean().default(true)
 })
 
 export type CachePluginOptions = z.infer<typeof CachePluginOptionsSchema>
@@ -445,12 +441,12 @@ export const cachePlugin = (options: CachePluginOptions = {}): Plugin => {
   return {
     name: '@kysera/cache',
     version: '1.0.0',
-    priority: -10,  // Run after other plugins (logging/caching priority)
+    priority: -10, // Run after other plugins (logging/caching priority)
 
     async onInit<DB>(executor: Kysely<DB>): Promise<void> {
       logger.info?.('[Cache] Plugin initialized', {
         ttl: config.ttl,
-        maxSize: config.maxSize,
+        maxSize: config.maxSize
       })
 
       // Start cache cleanup interval
@@ -541,7 +537,7 @@ export const cachePlugin = (options: CachePluginOptions = {}): Plugin => {
           return {
             size: cache.size,
             maxSize: config.maxSize,
-            ttl: config.ttl,
+            ttl: config.ttl
           }
         }
       } as T

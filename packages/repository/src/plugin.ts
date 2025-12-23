@@ -1,7 +1,7 @@
-import type { Kysely } from 'kysely';
-import type { AnyQueryBuilder } from './types.js';
-import { createExecutor, getPlugins, type Plugin } from '@kysera/executor';
-import { createContext as createDalContext, withTransaction, type DbContext } from '@kysera/dal';
+import type { Kysely } from 'kysely'
+import type { AnyQueryBuilder } from './types.js'
+import { createExecutor, getPlugins, type Plugin } from '@kysera/executor'
+import { createContext as createDalContext, withTransaction, type DbContext } from '@kysera/dal'
 
 /**
  * Plugin application function type
@@ -12,7 +12,7 @@ export type ApplyPluginsFunction = <QB extends AnyQueryBuilder>(
   operation: string,
   table: string,
   metadata?: Record<string, unknown>
-) => QB;
+) => QB
 
 /**
  * Plugin container interface for repository pattern
@@ -20,17 +20,19 @@ export type ApplyPluginsFunction = <QB extends AnyQueryBuilder>(
  */
 export interface PluginOrm<DB> {
   /** Plugin-aware executor from @kysera/executor */
-  executor: Kysely<DB>;
+  executor: Kysely<DB>
   /** Create a repository with plugin support */
-  createRepository: <T extends object>(factory: (executor: Kysely<DB>, applyPlugins: ApplyPluginsFunction) => T) => T;
+  createRepository: <T extends object>(
+    factory: (executor: Kysely<DB>, applyPlugins: ApplyPluginsFunction) => T
+  ) => T
   /** Apply plugin interceptors to query builders */
-  applyPlugins: ApplyPluginsFunction;
+  applyPlugins: ApplyPluginsFunction
   /** Registered plugins */
-  plugins: readonly Plugin[];
+  plugins: readonly Plugin[]
   /** Create a DAL context with registered plugins */
-  createContext(): DbContext<DB>;
+  createContext(): DbContext<DB>
   /** Execute a transaction with both Repository and DAL patterns */
-  transaction<T>(fn: (ctx: DbContext<DB>) => Promise<T>): Promise<T>;
+  transaction<T>(fn: (ctx: DbContext<DB>) => Promise<T>): Promise<T>
 }
 
 /**
@@ -41,12 +43,15 @@ export interface PluginOrm<DB> {
  * @param plugins - Array of plugins to register
  * @returns Promise resolving to PluginOrm instance
  */
-export async function createORM<DB>(db: Kysely<DB>, plugins: Plugin[] = []): Promise<PluginOrm<DB>> {
+export async function createORM<DB>(
+  db: Kysely<DB>,
+  plugins: Plugin[] = []
+): Promise<PluginOrm<DB>> {
   // Create executor with plugins (handles validation, resolution, and initialization)
-  const executor = await createExecutor(db, plugins);
+  const executor = await createExecutor(db, plugins)
 
   // Get the resolved plugin order from executor
-  const resolvedPlugins = getPlugins(executor);
+  const resolvedPlugins = getPlugins(executor)
 
   // Helper to apply plugin interceptors to queries
   function applyPlugins<QB extends AnyQueryBuilder>(
@@ -55,7 +60,7 @@ export async function createORM<DB>(db: Kysely<DB>, plugins: Plugin[] = []): Pro
     table: string,
     metadata: Record<string, unknown> = {}
   ): QB {
-    let result = qb;
+    let result = qb
 
     // Use resolved plugin order
     for (const plugin of resolvedPlugins) {
@@ -63,38 +68,38 @@ export async function createORM<DB>(db: Kysely<DB>, plugins: Plugin[] = []): Pro
         result = plugin.interceptQuery(result, {
           operation: operation as 'select' | 'insert' | 'update' | 'delete',
           table,
-          metadata,
-        });
+          metadata
+        })
       }
     }
 
-    return result;
+    return result
   }
 
   // Create enhanced repositories with plugin extensions
   function createRepository<T extends object>(
     factory: (executor: Kysely<DB>, applyPlugins: ApplyPluginsFunction) => T
   ): T {
-    let repo = factory(executor, applyPlugins);
+    let repo = factory(executor, applyPlugins)
 
     // Apply repository extensions in resolved order
     for (const plugin of resolvedPlugins) {
       if (plugin.extendRepository) {
-        repo = plugin.extendRepository(repo);
+        repo = plugin.extendRepository(repo)
       }
     }
 
-    return repo;
+    return repo
   }
 
   // Create DAL context with registered plugins
   function createContext(): DbContext<DB> {
-    return createDalContext(executor);
+    return createDalContext(executor)
   }
 
   // Execute transaction with both Repository and DAL patterns
   async function transaction<T>(fn: (ctx: DbContext<DB>) => Promise<T>): Promise<T> {
-    return withTransaction(executor, fn);
+    return withTransaction(executor, fn)
   }
 
   return {
@@ -103,8 +108,8 @@ export async function createORM<DB>(db: Kysely<DB>, plugins: Plugin[] = []): Pro
     applyPlugins,
     plugins: resolvedPlugins,
     createContext,
-    transaction,
-  };
+    transaction
+  }
 }
 
 /**
@@ -121,6 +126,6 @@ export async function withPlugins<DB, T extends object>(
   executor: Kysely<DB>,
   plugins: Plugin[]
 ): Promise<T> {
-  const orm = await createORM(executor, plugins);
-  return orm.createRepository(factory);
+  const orm = await createORM(executor, plugins)
+  return orm.createRepository(factory)
 }

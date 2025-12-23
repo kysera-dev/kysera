@@ -1,10 +1,10 @@
-import { Command } from 'commander';
+import { Command } from 'commander'
 
 // Import plugin commands
-import { listPluginsCommand } from './list.js';
-import { enablePluginCommand } from './enable.js';
-import { disablePluginCommand } from './disable.js';
-import { configPluginCommand } from './config.js';
+import { listPluginsCommand } from './list.js'
+import { enablePluginCommand } from './enable.js'
+import { disablePluginCommand } from './disable.js'
+import { configPluginCommand } from './config.js'
 
 export function pluginCommand(): Command {
   const cmd = new Command('plugin').description('Plugin management and configuration').addHelpText(
@@ -42,13 +42,13 @@ Popular Plugins:
 For more information on a subcommand, run:
   kysera plugin <subcommand> --help
 `
-  );
+  )
 
   // Add subcommands
-  cmd.addCommand(listPluginsCommand());
-  cmd.addCommand(enablePluginCommand());
-  cmd.addCommand(disablePluginCommand());
-  cmd.addCommand(configPluginCommand());
+  cmd.addCommand(listPluginsCommand())
+  cmd.addCommand(enablePluginCommand())
+  cmd.addCommand(disablePluginCommand())
+  cmd.addCommand(configPluginCommand())
 
-  return cmd;
+  return cmd
 }

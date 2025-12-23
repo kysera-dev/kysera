@@ -1,4 +1,21 @@
-import type { SelectQueryBuilder } from 'kysely';
+import type { SelectQueryBuilder } from 'kysely'
+
+/**
+ * SQLite maximum row limit (max 32-bit signed integer)
+ * Used when OFFSET is specified without LIMIT, as SQLite requires LIMIT with OFFSET
+ */
+const SQLITE_MAX_ROWS = 2147483647
+
+// Module-level type guards for better performance
+function isCountResult(val: unknown): val is { count: string | number } {
+  return typeof val === 'object' && val !== null && 'count' in val
+}
+
+function isGroupedCountRow(
+  val: unknown
+): val is Record<string, unknown> & { count: string | number } {
+  return typeof val === 'object' && val !== null && 'count' in val
+}
 
 /**
  * Options for offset-based pagination without total count
@@ -8,9 +25,9 @@ import type { SelectQueryBuilder } from 'kysely';
  */
 export interface OffsetOptions {
   /** Maximum number of rows to return (default: 20, max: 100) */
-  limit?: number;
+  limit?: number
   /** Number of rows to skip before starting to return rows (default: 0) */
-  offset?: number;
+  offset?: number
 }
 
 /**
@@ -21,9 +38,9 @@ export interface OffsetOptions {
  */
 export interface DateRangeOptions {
   /** Start of date range (inclusive) */
-  from?: Date;
+  from?: Date
   /** End of date range (inclusive) */
-  to?: Date;
+  to?: Date
 }
 
 /**
@@ -33,7 +50,7 @@ export interface DateRangeOptions {
  * Use this when you don't need pagination metadata (total pages, total count).
  *
  * **Performance characteristics:**
- * - No COUNT(*) query → ~50% faster than paginate() on large tables
+ * - No COUNT(*) query -> ~50% faster than paginate() on large tables
  * - Still requires full table scan for high offsets (consider cursor pagination for deep pagination)
  *
  * **Limits:**
@@ -101,29 +118,29 @@ export function applyOffset<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
   options?: OffsetOptions
 ): SelectQueryBuilder<DB, TB, O> {
-  let q = query;
+  let q = query
 
   // Apply limit with bounds checking
   if (options?.limit !== undefined) {
     // Ensure limit is between 1 and 100
-    const boundedLimit = Math.min(100, Math.max(1, options.limit));
-    q = q.limit(boundedLimit);
+    const boundedLimit = Math.min(100, Math.max(1, options.limit))
+    q = q.limit(boundedLimit)
   }
 
   // Apply offset (no upper bound, but must be non-negative)
   if (options?.offset !== undefined) {
-    const boundedOffset = Math.max(0, options.offset);
+    const boundedOffset = Math.max(0, options.offset)
 
     // SQLite requires LIMIT when OFFSET is used
-    // If no limit was specified, use a very high default
+    // If no limit was specified, use SQLite max rows constant
     if (options?.limit === undefined) {
-      q = q.limit(2147483647); // Max 32-bit integer (SQLite max)
+      q = q.limit(SQLITE_MAX_ROWS)
     }
 
-    q = q.offset(boundedOffset);
+    q = q.offset(boundedOffset)
   }
 
-  return q;
+  return q
 }
 
 /**
@@ -133,8 +150,8 @@ export function applyOffset<DB, TB extends keyof DB, O>(
  * This is a convenience helper that handles common date filtering patterns.
  *
  * **Date handling:**
- * - `from` → `column >= from` (inclusive start)
- * - `to` → `column <= to` (inclusive end)
+ * - `from` -> `column >= from` (inclusive start)
+ * - `to` -> `column <= to` (inclusive end)
  * - Both dates are converted to the database's native date format
  *
  * **Edge cases:**
@@ -241,23 +258,23 @@ export function applyDateRange<DB, TB extends keyof DB, O>(
   column: string,
   options?: DateRangeOptions
 ): SelectQueryBuilder<DB, TB, O> {
-  let q = query;
+  let q = query
 
   // Apply start date filter (inclusive)
   if (options?.from) {
     // Convert Date to ISO string for SQLite compatibility
-    const fromValue = options.from instanceof Date ? options.from.toISOString() : options.from;
-    q = q.where(column as any, '>=', fromValue as any);
+    const fromValue = options.from instanceof Date ? options.from.toISOString() : options.from
+    q = q.where(column as never, '>=', fromValue as never)
   }
 
   // Apply end date filter (inclusive)
   if (options?.to) {
     // Convert Date to ISO string for SQLite compatibility
-    const toValue = options.to instanceof Date ? options.to.toISOString() : options.to;
-    q = q.where(column as any, '<=', toValue as any);
+    const toValue = options.to instanceof Date ? options.to.toISOString() : options.to
+    q = q.where(column as never, '<=', toValue as never)
   }
 
-  return q;
+  return q
 }
 
 /**
@@ -313,10 +330,10 @@ export async function executeCount<DB, TB extends keyof DB, O>(
 ): Promise<number> {
   const result = await query
     .clearSelect()
-    .select((eb: any) => eb.fn.countAll().as('count'))
-    .executeTakeFirst();
+    .select(eb => eb.fn.countAll().as('count'))
+    .executeTakeFirst()
 
-  return Number((result as any)?.count ?? 0);
+  return Number(isCountResult(result) ? result.count : 0)
 }
 
 /**
@@ -371,17 +388,19 @@ export async function executeGroupedCount<DB, TB extends keyof DB, O>(
 ): Promise<Record<string, number>> {
   const results = await query
     .clearSelect()
-    .select([groupColumn as any])
-    .select((eb: any) => eb.fn.countAll().as('count'))
-    .groupBy(groupColumn as any)
-    .execute();
+    .select([groupColumn as never])
+    .select(eb => eb.fn.countAll().as('count'))
+    .groupBy(groupColumn as never)
+    .execute()
 
-  return (results as Array<{ [key: string]: unknown; count: string | number }>).reduce(
+  return results.reduce(
     (acc, row) => {
-      const key = String(row[groupColumn]);
-      acc[key] = Number(row.count);
-      return acc;
+      if (isGroupedCountRow(row)) {
+        const key = String(row[groupColumn])
+        acc[key] = Number(row.count)
+      }
+      return acc
     },
     {} as Record<string, number>
-  );
+  )
 }

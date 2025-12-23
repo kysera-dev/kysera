@@ -1,14 +1,14 @@
-import type { RLSSchema } from '../policy/types.js';
-import { PostgresRLSGenerator, type PostgresRLSOptions } from './postgres.js';
+import type { RLSSchema } from '../policy/types.js'
+import { PostgresRLSGenerator, type PostgresRLSOptions } from './postgres.js'
 
 /**
  * Options for migration generation
  */
 export interface MigrationOptions extends PostgresRLSOptions {
   /** Migration name */
-  name?: string;
+  name?: string
   /** Include context functions in migration */
-  includeContextFunctions?: boolean;
+  includeContextFunctions?: boolean
 }
 
 /**
@@ -16,27 +16,20 @@ export interface MigrationOptions extends PostgresRLSOptions {
  * Generates Kysely migration files for RLS policies
  */
 export class RLSMigrationGenerator {
-  private generator = new PostgresRLSGenerator();
+  private generator = new PostgresRLSGenerator()
 
   /**
    * Generate migration file content
    */
-  generateMigration<DB>(
-    schema: RLSSchema<DB>,
-    options: MigrationOptions = {}
-  ): string {
-    const {
-      name = 'rls_policies',
-      includeContextFunctions = true,
-      ...generatorOptions
-    } = options;
+  generateMigration<DB>(schema: RLSSchema<DB>, options: MigrationOptions = {}): string {
+    const { name = 'rls_policies', includeContextFunctions = true, ...generatorOptions } = options
 
-    const upStatements = this.generator.generateStatements(schema, generatorOptions);
-    const downStatements = this.generator.generateDropStatements(schema, generatorOptions);
+    const upStatements = this.generator.generateStatements(schema, generatorOptions)
+    const downStatements = this.generator.generateDropStatements(schema, generatorOptions)
 
     const contextFunctions = includeContextFunctions
       ? this.generator.generateContextFunctions()
-      : '';
+      : ''
 
     return `import { Kysely, sql } from 'kysely';
 
@@ -48,16 +41,22 @@ export class RLSMigrationGenerator {
  */
 
 export async function up(db: Kysely<any>): Promise<void> {
-${includeContextFunctions ? `  // Create RLS context functions
+${
+  includeContextFunctions
+    ? `  // Create RLS context functions
   await sql.raw(\`${this.escapeTemplate(contextFunctions)}\`).execute(db);
 
-` : ''}  // Enable RLS and create policies
+`
+    : ''
+}  // Enable RLS and create policies
 ${upStatements.map(s => `  await sql.raw(\`${this.escapeTemplate(s)}\`).execute(db);`).join('\n')}
 }
 
 export async function down(db: Kysely<any>): Promise<void> {
 ${downStatements.map(s => `  await sql.raw(\`${this.escapeTemplate(s)}\`).execute(db);`).join('\n')}
-${includeContextFunctions ? `
+${
+  includeContextFunctions
+    ? `
   // Drop RLS context functions
   await sql.raw(\`
     DROP FUNCTION IF EXISTS rls_current_user_id();
@@ -67,26 +66,29 @@ ${includeContextFunctions ? `
     DROP FUNCTION IF EXISTS rls_current_permissions();
     DROP FUNCTION IF EXISTS rls_has_permission(text);
     DROP FUNCTION IF EXISTS rls_is_system();
-  \`).execute(db);` : ''}
+  \`).execute(db);`
+    : ''
 }
-`;
+}
+`
   }
 
   /**
    * Escape template literal for embedding in string
    */
   private escapeTemplate(str: string): string {
-    return str.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+    return str.replace(/`/g, '\\`').replace(/\$/g, '\\$')
   }
 
   /**
    * Generate migration filename with timestamp
    */
-  generateFilename(name: string = 'rls_policies'): string {
-    const timestamp = new Date().toISOString()
+  generateFilename(name = 'rls_policies'): string {
+    const timestamp = new Date()
+      .toISOString()
       .replace(/[-:]/g, '')
       .replace('T', '_')
-      .replace(/\..+/, '');
-    return `${timestamp}_${name}.ts`;
+      .replace(/\..+/, '')
+    return `${timestamp}_${name}.ts`
   }
 }

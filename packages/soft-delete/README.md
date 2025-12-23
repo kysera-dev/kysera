@@ -43,8 +43,8 @@ Note: `zod` is optional (used for configuration schema validation in `kysera-cli
 ### With Repository Pattern
 
 ```typescript
-import { createORM } from '@kysera/repository';
-import { softDeletePlugin } from '@kysera/soft-delete';
+import { createORM } from '@kysera/repository'
+import { softDeletePlugin } from '@kysera/soft-delete'
 
 // Create plugin container with soft-delete plugin
 const orm = await createORM(db, [
@@ -53,34 +53,34 @@ const orm = await createORM(db, [
     includeDeleted: false,
     tables: ['users', 'posts'] // Only these tables support soft delete
   })
-]);
+])
 
 // Create repository
-const userRepo = orm.createRepository(createUserRepository);
+const userRepo = orm.createRepository(createUserRepository)
 
 // Soft delete a user (sets deleted_at timestamp)
-await userRepo.softDelete(1);
+await userRepo.softDelete(1)
 
 // Find all users (excludes soft-deleted automatically)
-const users = await userRepo.findAll();
+const users = await userRepo.findAll()
 
 // Find including deleted records
-const allUsers = await userRepo.findAllWithDeleted();
+const allUsers = await userRepo.findAllWithDeleted()
 
 // Restore a soft-deleted user
-await userRepo.restore(1);
+await userRepo.restore(1)
 
 // Permanently delete (real DELETE)
-await userRepo.hardDelete(1);
+await userRepo.hardDelete(1)
 ```
 
 ### With DAL Pattern
 
 ```typescript
-import { createExecutor } from '@kysera/executor';
-import { createContext, createQuery, withTransaction } from '@kysera/dal';
-import { softDeletePlugin } from '@kysera/soft-delete';
-import { sql } from 'kysely';
+import { createExecutor } from '@kysera/executor'
+import { createContext, createQuery, withTransaction } from '@kysera/dal'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { sql } from 'kysely'
 
 // Create executor with soft-delete plugin
 const executor = await createExecutor(db, [
@@ -88,39 +88,33 @@ const executor = await createExecutor(db, [
     deletedAtColumn: 'deleted_at',
     includeDeleted: false
   })
-]);
+])
 
 // Create context
-const ctx = createContext(executor);
+const ctx = createContext(executor)
 
 // Define queries - soft-delete filter applied automatically
-const getUsers = createQuery((ctx) =>
-  ctx.db.selectFrom('users').selectAll().execute()
-);
+const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
 
 const getUserById = createQuery((ctx, id: number) =>
-  ctx.db
-    .selectFrom('users')
-    .selectAll()
-    .where('id', '=', id)
-    .executeTakeFirst()
-);
+  ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
+)
 
 // Execute queries - deleted records automatically filtered
-const users = await getUsers(ctx); // Excludes soft-deleted
-const user = await getUserById(ctx, 1);
+const users = await getUsers(ctx) // Excludes soft-deleted
+const user = await getUserById(ctx, 1)
 
 // Soft delete within transaction
-await withTransaction(executor, async (txCtx) => {
+await withTransaction(executor, async txCtx => {
   await txCtx.db
     .updateTable('users')
     .set({ deleted_at: sql`CURRENT_TIMESTAMP` })
     .where('id', '=', 1)
-    .execute();
+    .execute()
 
   // Subsequent queries in same transaction see the deletion
-  const users = await getUsers(txCtx); // User 1 excluded
-});
+  const users = await getUsers(txCtx) // User 1 excluded
+})
 ```
 
 ## Plugin Architecture
@@ -130,20 +124,17 @@ The soft-delete plugin leverages `@kysera/executor` for unified plugin support a
 ### How It Works
 
 ```typescript
-import { createExecutor, getRawDb } from '@kysera/executor';
-import type { Plugin, QueryBuilderContext } from '@kysera/executor';
+import { createExecutor, getRawDb } from '@kysera/executor'
+import type { Plugin, QueryBuilderContext } from '@kysera/executor'
 
 // Plugin implements the Plugin interface
-const plugin = softDeletePlugin();
+const plugin = softDeletePlugin()
 
 // Executor wraps Kysely with plugin interception
-const executor = await createExecutor(db, [plugin]);
+const executor = await createExecutor(db, [plugin])
 
 // All queries through executor have soft-delete filter applied
-const users = await executor
-  .selectFrom('users')
-  .selectAll()
-  .execute(); // WHERE users.deleted_at IS NULL (added automatically)
+const users = await executor.selectFrom('users').selectAll().execute() // WHERE users.deleted_at IS NULL (added automatically)
 ```
 
 ### Plugin Interface
@@ -152,10 +143,10 @@ The plugin implements the `Plugin` interface from `@kysera/executor`:
 
 ```typescript
 interface Plugin {
-  name: string;
-  version: string;
-  interceptQuery<QB>(qb: QB, context: QueryBuilderContext): QB;
-  extendRepository<T extends object>(repo: T): T;
+  name: string
+  version: string
+  interceptQuery<QB>(qb: QB, context: QueryBuilderContext): QB
+  extendRepository<T extends object>(repo: T): T
 }
 ```
 
@@ -199,17 +190,14 @@ extendRepository<T extends object>(repo: T): T {
 The plugin uses `getRawDb()` from `@kysera/executor` to bypass interceptors when needed:
 
 ```typescript
-import { getRawDb } from '@kysera/executor';
+import { getRawDb } from '@kysera/executor'
 
 // Inside plugin's extendRepository method
-const rawDb = getRawDb(repo.executor);
+const rawDb = getRawDb(repo.executor)
 
 // Use rawDb to bypass soft-delete filter
 // (needed for findWithDeleted, restore, etc.)
-const allRecords = await rawDb
-  .selectFrom('users')
-  .selectAll()
-  .execute(); // No soft-delete filter applied
+const allRecords = await rawDb.selectFrom('users').selectAll().execute() // No soft-delete filter applied
 ```
 
 This is critical for methods like `findWithDeleted()` and `restore()` that need to access soft-deleted records.
@@ -224,35 +212,35 @@ interface SoftDeleteOptions {
    * Column name for soft delete timestamp.
    * @default 'deleted_at'
    */
-  deletedAtColumn?: string;
+  deletedAtColumn?: string
 
   /**
    * Include deleted records by default in queries.
    * When false, soft-deleted records are automatically filtered out.
    * @default false
    */
-  includeDeleted?: boolean;
+  includeDeleted?: boolean
 
   /**
    * List of tables that support soft delete.
    * If not provided, all tables are assumed to support it.
    * @example ['users', 'posts', 'comments']
    */
-  tables?: string[];
+  tables?: string[]
 
   /**
    * Primary key column name used for identifying records.
    * @default 'id'
    * @example 'uuid', 'user_id', 'post_id'
    */
-  primaryKeyColumn?: string;
+  primaryKeyColumn?: string
 
   /**
    * Logger for plugin operations.
    * Uses KyseraLogger interface from @kysera/core.
    * @default silentLogger (no output)
    */
-  logger?: KyseraLogger;
+  logger?: KyseraLogger
 }
 ```
 
@@ -260,35 +248,35 @@ interface SoftDeleteOptions {
 
 ```typescript
 // Default configuration
-softDeletePlugin();
+softDeletePlugin()
 
 // Custom deleted column
 softDeletePlugin({
   deletedAtColumn: 'removed_at'
-});
+})
 
 // Only specific tables
 softDeletePlugin({
   tables: ['users', 'posts'], // Only these tables support soft delete
   deletedAtColumn: 'deleted_at'
-});
+})
 
 // Include deleted by default
 softDeletePlugin({
   includeDeleted: true // Don't filter deleted records
-});
+})
 
 // Custom primary key
 softDeletePlugin({
   primaryKeyColumn: 'uuid' // For tables using 'uuid' instead of 'id'
-});
+})
 
 // With logging
-import { consoleLogger } from '@kysera/core';
+import { consoleLogger } from '@kysera/core'
 
 softDeletePlugin({
   logger: consoleLogger
-});
+})
 ```
 
 ## Repository Methods
@@ -299,15 +287,15 @@ The plugin extends repositories with the following methods:
 
 ```typescript
 interface SoftDeleteMethods<T> {
-  softDelete(id: number | string): Promise<T>;
-  restore(id: number | string): Promise<T>;
-  hardDelete(id: number | string): Promise<void>;
-  findWithDeleted(id: number | string): Promise<T | null>;
-  findAllWithDeleted(): Promise<T[]>;
-  findDeleted(): Promise<T[]>;
-  softDeleteMany(ids: (number | string)[]): Promise<T[]>;
-  restoreMany(ids: (number | string)[]): Promise<T[]>;
-  hardDeleteMany(ids: (number | string)[]): Promise<void>;
+  softDelete(id: number | string): Promise<T>
+  restore(id: number | string): Promise<T>
+  hardDelete(id: number | string): Promise<void>
+  findWithDeleted(id: number | string): Promise<T | null>
+  findAllWithDeleted(): Promise<T[]>
+  findDeleted(): Promise<T[]>
+  softDeleteMany(ids: (number | string)[]): Promise<T[]>
+  restoreMany(ids: (number | string)[]): Promise<T[]>
+  hardDeleteMany(ids: (number | string)[]): Promise<void>
 }
 ```
 
@@ -319,11 +307,11 @@ Marks a record as deleted by setting the `deleted_at` timestamp to `CURRENT_TIME
 
 ```typescript
 // Soft delete user with id 1
-const deletedUser = await userRepo.softDelete(1);
-console.log(deletedUser.deleted_at); // '2025-12-11T10:30:00Z'
+const deletedUser = await userRepo.softDelete(1)
+console.log(deletedUser.deleted_at) // '2025-12-11T10:30:00Z'
 
 // Record still exists in database but won't appear in findAll()
-const users = await userRepo.findAll(); // Excludes deleted user
+const users = await userRepo.findAll() // Excludes deleted user
 ```
 
 **Returns**: `Promise<T>` - The soft-deleted record
@@ -335,11 +323,11 @@ Restores a soft-deleted record by setting `deleted_at` to `null`.
 
 ```typescript
 // Restore soft-deleted user
-const restoredUser = await userRepo.restore(1);
-console.log(restoredUser.deleted_at); // null
+const restoredUser = await userRepo.restore(1)
+console.log(restoredUser.deleted_at) // null
 
 // Record now appears in queries again
-const users = await userRepo.findAll(); // Includes restored user
+const users = await userRepo.findAll() // Includes restored user
 ```
 
 **Returns**: `Promise<T>` - The restored record
@@ -351,10 +339,10 @@ Permanently deletes a record using real SQL DELETE. Cannot be restored.
 
 ```typescript
 // Permanently delete user
-await userRepo.hardDelete(1);
+await userRepo.hardDelete(1)
 
 // Record is gone forever
-const user = await userRepo.findWithDeleted(1); // null
+const user = await userRepo.findWithDeleted(1) // null
 ```
 
 **Returns**: `Promise<void>`
@@ -365,9 +353,9 @@ Finds a record by ID including soft-deleted records.
 
 ```typescript
 // Find user even if soft-deleted
-const user = await userRepo.findWithDeleted(1);
+const user = await userRepo.findWithDeleted(1)
 if (user?.deleted_at) {
-  console.log('User was soft-deleted');
+  console.log('User was soft-deleted')
 }
 ```
 
@@ -379,9 +367,9 @@ Returns all records including soft-deleted ones.
 
 ```typescript
 // Get all users including deleted
-const allUsers = await userRepo.findAllWithDeleted();
-const deletedCount = allUsers.filter(u => u.deleted_at !== null).length;
-console.log(`${deletedCount} deleted users`);
+const allUsers = await userRepo.findAllWithDeleted()
+const deletedCount = allUsers.filter(u => u.deleted_at !== null).length
+console.log(`${deletedCount} deleted users`)
 ```
 
 **Returns**: `Promise<T[]>`
@@ -392,8 +380,8 @@ Returns only soft-deleted records.
 
 ```typescript
 // Get only deleted users
-const deletedUsers = await userRepo.findDeleted();
-console.log(`Found ${deletedUsers.length} deleted users`);
+const deletedUsers = await userRepo.findDeleted()
+console.log(`Found ${deletedUsers.length} deleted users`)
 ```
 
 **Returns**: `Promise<T[]>`
@@ -404,8 +392,8 @@ Soft deletes multiple records in a single operation (bulk operation).
 
 ```typescript
 // Soft delete multiple users at once
-const deletedUsers = await userRepo.softDeleteMany([1, 2, 3]);
-console.log(`Soft deleted ${deletedUsers.length} users`);
+const deletedUsers = await userRepo.softDeleteMany([1, 2, 3])
+console.log(`Soft deleted ${deletedUsers.length} users`)
 ```
 
 **Returns**: `Promise<T[]>` - Array of deleted records
@@ -417,8 +405,8 @@ Restores multiple soft-deleted records in a single operation.
 
 ```typescript
 // Restore multiple users at once
-const restoredUsers = await userRepo.restoreMany([1, 2, 3]);
-console.log(`Restored ${restoredUsers.length} users`);
+const restoredUsers = await userRepo.restoreMany([1, 2, 3])
+console.log(`Restored ${restoredUsers.length} users`)
 ```
 
 **Returns**: `Promise<T[]>` - Array of restored records
@@ -429,7 +417,7 @@ Permanently deletes multiple records in a single operation.
 
 ```typescript
 // Permanently delete multiple users
-await userRepo.hardDeleteMany([1, 2, 3]);
+await userRepo.hardDeleteMany([1, 2, 3])
 ```
 
 **Returns**: `Promise<void>`
@@ -441,28 +429,22 @@ The soft-delete plugin works seamlessly with the DAL pattern through the executo
 ### Automatic Filtering in DAL Queries
 
 ```typescript
-import { createExecutor } from '@kysera/executor';
-import { createContext, createQuery } from '@kysera/dal';
+import { createExecutor } from '@kysera/executor'
+import { createContext, createQuery } from '@kysera/dal'
 
-const executor = await createExecutor(db, [softDeletePlugin()]);
+const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Define queries - filter applied automatically
-const getAllUsers = createQuery((ctx) =>
-  ctx.db.selectFrom('users').selectAll().execute()
-);
+const getAllUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
 
 const getUserById = createQuery((ctx, id: number) =>
-  ctx.db
-    .selectFrom('users')
-    .selectAll()
-    .where('id', '=', id)
-    .executeTakeFirst()
-);
+  ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
+)
 
 // Execute queries
-const ctx = createContext(executor);
-const users = await getAllUsers(ctx); // Excludes deleted
-const user = await getUserById(ctx, 1);
+const ctx = createContext(executor)
+const users = await getAllUsers(ctx) // Excludes deleted
+const user = await getUserById(ctx, 1)
 ```
 
 ### Query Interception
@@ -474,10 +456,7 @@ The plugin's `interceptQuery` method modifies SELECT query builders:
 ctx.db.selectFrom('users').selectAll()
 
 // After plugin interception
-ctx.db
-  .selectFrom('users')
-  .selectAll()
-  .where('users.deleted_at', 'is', null) // Added automatically
+ctx.db.selectFrom('users').selectAll().where('users.deleted_at', 'is', null) // Added automatically
 ```
 
 ### Operations Not Intercepted
@@ -492,44 +471,41 @@ The plugin uses Method Override pattern, not full query interception:
 To perform soft deletes, use the `softDelete()` method explicitly:
 
 ```typescript
-import { sql } from 'kysely';
+import { sql } from 'kysely'
 
 // ❌ This performs a real DELETE (not soft delete)
-await ctx.db.deleteFrom('users').where('id', '=', 1).execute();
+await ctx.db.deleteFrom('users').where('id', '=', 1).execute()
 
 // ✅ Use softDelete method instead (in Repository pattern)
-await userRepo.softDelete(1);
+await userRepo.softDelete(1)
 
 // ✅ Or manual UPDATE in DAL pattern
 await ctx.db
   .updateTable('users')
   .set({ deleted_at: sql`CURRENT_TIMESTAMP` })
   .where('id', '=', 1)
-  .execute();
+  .execute()
 ```
 
 ### DAL Transaction Support
 
 ```typescript
-import { withTransaction } from '@kysera/dal';
-import { sql } from 'kysely';
+import { withTransaction } from '@kysera/dal'
+import { sql } from 'kysely'
 
-await withTransaction(executor, async (txCtx) => {
+await withTransaction(executor, async txCtx => {
   // Soft delete user
   await txCtx.db
     .updateTable('users')
     .set({ deleted_at: sql`CURRENT_TIMESTAMP` })
     .where('id', '=', 1)
-    .execute();
+    .execute()
 
   // Query in same transaction sees deletion
-  const users = await txCtx.db
-    .selectFrom('users')
-    .selectAll()
-    .execute(); // User 1 excluded
+  const users = await txCtx.db.selectFrom('users').selectAll().execute() // User 1 excluded
 
   // If transaction rolls back, soft delete is also rolled back
-});
+})
 ```
 
 ## Transaction Behavior
@@ -539,38 +515,38 @@ The soft-delete plugin respects ACID properties and works correctly with transac
 ### ACID Compliance
 
 ```typescript
-import { withTransaction } from '@kysera/dal';
+import { withTransaction } from '@kysera/dal'
 
 // ✅ CORRECT: Soft delete commits with transaction
-await withTransaction(executor, async (txCtx) => {
-  const repos = createRepositories(txCtx); // Use transaction executor
-  await repos.users.softDelete(1);
-  await repos.posts.softDeleteMany([1, 2, 3]);
+await withTransaction(executor, async txCtx => {
+  const repos = createRepositories(txCtx) // Use transaction executor
+  await repos.users.softDelete(1)
+  await repos.posts.softDeleteMany([1, 2, 3])
   // If transaction commits, both operations commit
   // If transaction rolls back, both operations roll back
-});
+})
 ```
 
 ### Rollback Behavior
 
 ```typescript
 try {
-  await withTransaction(executor, async (txCtx) => {
-    const repos = createRepositories(txCtx);
+  await withTransaction(executor, async txCtx => {
+    const repos = createRepositories(txCtx)
 
     // Soft delete user
-    await repos.users.softDelete(1);
+    await repos.users.softDelete(1)
 
     // Force rollback
-    throw new Error('Force rollback');
-  });
+    throw new Error('Force rollback')
+  })
 } catch (error) {
   // Transaction rolled back
 }
 
 // Verify soft-delete was rolled back
-const user = await userRepo.findById(1);
-console.log(user?.deleted_at); // null (not deleted)
+const user = await userRepo.findById(1)
+console.log(user?.deleted_at) // null (not deleted)
 ```
 
 ### Cascade Soft Delete Pattern
@@ -579,31 +555,31 @@ The plugin does not automatically cascade soft deletes. You must implement casca
 
 ```typescript
 // Manual cascade soft delete
-await db.transaction().execute(async (trx) => {
-  const repos = createRepositories(trx);
-  const userId = 123;
+await db.transaction().execute(async trx => {
+  const repos = createRepositories(trx)
+  const userId = 123
 
   // Step 1: Find related records
-  const userPosts = await repos.posts.findBy({ user_id: userId });
-  const postIds = userPosts.map(p => p.id);
+  const userPosts = await repos.posts.findBy({ user_id: userId })
+  const postIds = userPosts.map(p => p.id)
 
   // Step 2: Soft delete children first
   if (postIds.length > 0) {
     const postComments = await repos.comments.findBy({
       post_id: { in: postIds }
-    });
-    const commentIds = postComments.map(c => c.id);
+    })
+    const commentIds = postComments.map(c => c.id)
 
     if (commentIds.length > 0) {
-      await repos.comments.softDeleteMany(commentIds);
+      await repos.comments.softDeleteMany(commentIds)
     }
 
-    await repos.posts.softDeleteMany(postIds);
+    await repos.posts.softDeleteMany(postIds)
   }
 
   // Step 3: Soft delete parent
-  await repos.users.softDelete(userId);
-});
+  await repos.users.softDelete(userId)
+})
 ```
 
 ### Transaction Isolation
@@ -611,20 +587,20 @@ await db.transaction().execute(async (trx) => {
 Soft-delete operations within a transaction are immediately visible to subsequent queries in the same transaction:
 
 ```typescript
-await withTransaction(executor, async (txCtx) => {
-  const repos = createRepositories(txCtx);
+await withTransaction(executor, async txCtx => {
+  const repos = createRepositories(txCtx)
 
   // Before soft delete
-  const usersBefore = await repos.users.findAll();
-  console.log(usersBefore.length); // 10
+  const usersBefore = await repos.users.findAll()
+  console.log(usersBefore.length) // 10
 
   // Soft delete user
-  await repos.users.softDelete(1);
+  await repos.users.softDelete(1)
 
   // Immediately visible in same transaction
-  const usersAfter = await repos.users.findAll();
-  console.log(usersAfter.length); // 9
-});
+  const usersAfter = await repos.users.findAll()
+  console.log(usersAfter.length) // 9
+})
 ```
 
 ## Database Schema Requirements
@@ -659,7 +635,7 @@ CREATE TABLE posts (
 softDeletePlugin({
   deletedAtColumn: 'removed_at',
   tables: ['posts']
-});
+})
 ```
 
 ### Custom Primary Key
@@ -677,7 +653,7 @@ CREATE TABLE comments (
 softDeletePlugin({
   primaryKeyColumn: 'comment_id',
   tables: ['comments']
-});
+})
 ```
 
 ## Type Safety
@@ -685,23 +661,23 @@ softDeletePlugin({
 The plugin maintains full type safety with TypeScript:
 
 ```typescript
-import type { SoftDeleteRepository } from '@kysera/soft-delete';
+import type { SoftDeleteRepository } from '@kysera/soft-delete'
 
 // Extend repository type with soft delete methods
-type UserRepository = SoftDeleteRepository<User>;
+type UserRepository = SoftDeleteRepository<User>
 
-const userRepo: UserRepository = orm.createRepository((executor) => {
-  const base = createRepositoryFactory(executor);
+const userRepo: UserRepository = orm.createRepository(executor => {
+  const base = createRepositoryFactory(executor)
   return base.create({
     tableName: 'users',
-    mapRow: (row) => row as User
-  });
-});
+    mapRow: row => row as User
+  })
+})
 
 // TypeScript knows about soft delete methods
-const deletedUser: User = await userRepo.softDelete(1);
-const allUsers: User[] = await userRepo.findAllWithDeleted();
-const deletedUsers: User[] = await userRepo.findDeleted();
+const deletedUser: User = await userRepo.softDelete(1)
+const allUsers: User[] = await userRepo.findAllWithDeleted()
+const deletedUsers: User[] = await userRepo.findDeleted()
 ```
 
 ## Error Handling
@@ -709,22 +685,22 @@ const deletedUsers: User[] = await userRepo.findDeleted();
 The plugin uses error types from `@kysera/core`:
 
 ```typescript
-import { NotFoundError } from '@kysera/core';
+import { NotFoundError } from '@kysera/core'
 
 try {
-  await userRepo.softDelete(999); // Non-existent ID
+  await userRepo.softDelete(999) // Non-existent ID
 } catch (error) {
   if (error instanceof NotFoundError) {
-    console.error('User not found:', error.metadata);
+    console.error('User not found:', error.metadata)
     // error.metadata = { id: 999 }
   }
 }
 
 try {
-  await userRepo.softDeleteMany([1, 2, 999]); // One ID doesn't exist
+  await userRepo.softDeleteMany([1, 2, 999]) // One ID doesn't exist
 } catch (error) {
   if (error instanceof NotFoundError) {
-    console.error('Some users not found:', error.metadata);
+    console.error('Some users not found:', error.metadata)
     // error.metadata = { ids: [999] }
   }
 }
@@ -761,11 +737,11 @@ Use bulk methods for better performance when operating on multiple records:
 ```typescript
 // ❌ Inefficient: N queries
 for (const id of userIds) {
-  await userRepo.softDelete(id);
+  await userRepo.softDelete(id)
 }
 
 // ✅ Efficient: Single query
-await userRepo.softDeleteMany(userIds);
+await userRepo.softDeleteMany(userIds)
 ```
 
 ## Architecture Notes
@@ -798,16 +774,13 @@ The plugin uses `getRawDb()` to access the underlying Kysely instance without pl
 - `softDelete()`, `restore()`: Need to fetch records after update
 
 ```typescript
-import { getRawDb } from '@kysera/executor';
+import { getRawDb } from '@kysera/executor'
 
 // Inside plugin
-const rawDb = getRawDb(repo.executor);
+const rawDb = getRawDb(repo.executor)
 
 // Bypass soft-delete filter
-const allRecords = await rawDb
-  .selectFrom('users')
-  .selectAll()
-  .execute();
+const allRecords = await rawDb.selectFrom('users').selectAll().execute()
 ```
 
 ## Testing
@@ -829,6 +802,7 @@ pnpm test dal-integration.test.ts
 ```
 
 Test files:
+
 - `test/dal-integration.test.ts` - DAL pattern with createQuery and withTransaction
 - `test/soft-delete-comprehensive.test.ts` - All 9 methods + configuration options
 - `test/soft-delete-repository.test.ts` - Repository pattern core functionality

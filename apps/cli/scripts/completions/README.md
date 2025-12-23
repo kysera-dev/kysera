@@ -43,6 +43,7 @@ sudo cp kysera.fish /usr/share/fish/vendor_completions.d/
 ## Features
 
 ### Main Commands
+
 - `init` - Initialize a new Kysera project
 - `migrate` - Database migration management
 - `generate` - Code generation utilities
@@ -74,6 +75,7 @@ Each main command has intelligent subcommand completion:
 ### Global Options
 
 All commands support these global options:
+
 - `--help` - Show help information
 - `--version` - Show version number
 - `--verbose` / `-v` - Detailed output
@@ -88,6 +90,7 @@ All commands support these global options:
 The completion scripts include context-aware option completion for each command:
 
 #### init
+
 - `--dialect` (postgres, mysql, sqlite)
 - `--typescript`
 - `--javascript`
@@ -95,6 +98,7 @@ The completion scripts include context-aware option completion for each command:
 - `--skip-git`
 
 #### migrate
+
 - `--name`
 - `--table`
 - `--all`
@@ -102,6 +106,7 @@ The completion scripts include context-aware option completion for each command:
 - `--to`
 
 #### generate
+
 - `--table`
 - `--output` (with directory completion)
 - `--with-validation`
@@ -111,17 +116,20 @@ The completion scripts include context-aware option completion for each command:
 - `--validation` (zod, yup, joi, none)
 
 #### db
+
 - `--force`
 - `--output` (with file completion)
 - `--format` (sql, json, yaml)
 - `--env` (development, test, production)
 
 #### health
+
 - `--interval`
 - `--format` (table, json)
 - `--threshold`
 
 #### audit
+
 - `--from`
 - `--to`
 - `--entity`
@@ -129,12 +137,14 @@ The completion scripts include context-aware option completion for each command:
 - `--format` (table, json)
 
 #### test
+
 - `--env` (development, test, production)
 - `--count`
 - `--strategy` (realistic, minimal, random, faker)
 - `--force`
 
 #### plugin
+
 - `--global`
 - `--save`
 
@@ -161,6 +171,7 @@ kysera generate model User --validation <TAB>
 ### Bash
 
 If completions don't work:
+
 1. Ensure bash-completion is installed: `brew install bash-completion` (macOS)
 2. Check if bash-completion is sourced in your shell config
 3. Reload your shell: `source ~/.bashrc`
@@ -168,6 +179,7 @@ If completions don't work:
 ### Zsh
 
 If completions don't work:
+
 1. Ensure the completion function is in your `$fpath`
 2. Check if `compinit` is being called
 3. Try rebuilding the completion cache: `rm ~/.zcompdump && compinit`
@@ -175,6 +187,7 @@ If completions don't work:
 ### Fish
 
 If completions don't work:
+
 1. Ensure the file is in the correct location: `~/.config/fish/completions/`
 2. Fish loads completions automatically, no reload needed
 3. Check Fish's completion search path: `echo $fish_complete_path`
@@ -182,6 +195,7 @@ If completions don't work:
 ## Contributing
 
 If you find issues or want to add more completions:
+
 1. Test your changes in the appropriate shell
 2. Ensure all commands and options are covered
 3. Submit a PR with clear descriptions of the changes

@@ -1,17 +1,17 @@
-import type { Kysely } from 'kysely';
-import { sql } from 'kysely';
-import type { RLSSchema, TableRLSConfig, PolicyDefinition, Operation } from '../policy/types.js';
+import type { Kysely } from 'kysely'
+import { sql } from 'kysely'
+import type { RLSSchema, TableRLSConfig, PolicyDefinition, Operation } from '../policy/types.js'
 
 /**
  * Options for PostgreSQL RLS generation
  */
 export interface PostgresRLSOptions {
   /** Force RLS on table owners */
-  force?: boolean;
+  force?: boolean
   /** Schema name (default: public) */
-  schemaName?: string;
+  schemaName?: string
   /** Prefix for generated policy names */
-  policyPrefix?: string;
+  policyPrefix?: string
 }
 
 /**
@@ -22,92 +22,78 @@ export class PostgresRLSGenerator {
   /**
    * Generate all PostgreSQL RLS statements from schema
    */
-  generateStatements<DB>(
-    schema: RLSSchema<DB>,
-    options: PostgresRLSOptions = {}
-  ): string[] {
-    const {
-      force = true,
-      schemaName = 'public',
-      policyPrefix = 'rls',
-    } = options;
+  generateStatements<DB>(schema: RLSSchema<DB>, options: PostgresRLSOptions = {}): string[] {
+    const { force = true, schemaName = 'public', policyPrefix = 'rls' } = options
 
-    const statements: string[] = [];
+    const statements: string[] = []
 
     for (const [table, config] of Object.entries(schema)) {
-      if (!config) continue;
+      if (!config) continue
 
-      const qualifiedTable = `${schemaName}.${table}`;
-      const tableConfig = config as TableRLSConfig;
+      const qualifiedTable = `${schemaName}.${table}`
+      const tableConfig = config as TableRLSConfig
 
       // Enable RLS on table
-      statements.push(`ALTER TABLE ${qualifiedTable} ENABLE ROW LEVEL SECURITY;`);
+      statements.push(`ALTER TABLE ${qualifiedTable} ENABLE ROW LEVEL SECURITY;`)
 
       if (force) {
-        statements.push(`ALTER TABLE ${qualifiedTable} FORCE ROW LEVEL SECURITY;`);
+        statements.push(`ALTER TABLE ${qualifiedTable} FORCE ROW LEVEL SECURITY;`)
       }
 
       // Generate policies
-      let policyIndex = 0;
+      let policyIndex = 0
       for (const policy of tableConfig.policies) {
-        const policyName = policy.name ?? `${policyPrefix}_${table}_${policy.type}_${policyIndex++}`;
-        const policySQL = this.generatePolicy(qualifiedTable, policyName, policy);
+        const policyName = policy.name ?? `${policyPrefix}_${table}_${policy.type}_${policyIndex++}`
+        const policySQL = this.generatePolicy(qualifiedTable, policyName, policy)
         if (policySQL) {
-          statements.push(policySQL);
+          statements.push(policySQL)
         }
       }
     }
 
-    return statements;
+    return statements
   }
 
   /**
    * Generate a single policy statement
    */
-  private generatePolicy(
-    table: string,
-    name: string,
-    policy: PolicyDefinition
-  ): string | null {
+  private generatePolicy(table: string, name: string, policy: PolicyDefinition): string | null {
     // Skip filter policies (they're ORM-only)
     if (policy.type === 'filter' || policy.type === 'validate') {
-      return null;
+      return null
     }
 
     // Need USING or WITH CHECK clause for native RLS
     if (!policy.using && !policy.withCheck) {
-      return null;
+      return null
     }
 
-    const parts: string[] = [
-      `CREATE POLICY "${name}"`,
-      `ON ${table}`,
-    ];
+    const parts: string[] = [`CREATE POLICY "${name}"`, `ON ${table}`]
 
     // Policy type
     if (policy.type === 'deny') {
-      parts.push('AS RESTRICTIVE');
+      parts.push('AS RESTRICTIVE')
     } else {
-      parts.push('AS PERMISSIVE');
+      parts.push('AS PERMISSIVE')
     }
 
     // Target role
-    parts.push(`TO ${policy.role ?? 'public'}`);
+    parts.push(`TO ${policy.role ?? 'public'}`)
 
     // Operation
-    parts.push(`FOR ${this.mapOperation(policy.operation)}`);
+    parts.push(`FOR ${this.mapOperation(policy.operation)}`)
 
     // USING clause
     if (policy.using) {
-      parts.push(`USING (${policy.using})`);
+      parts.push(`USING (${policy.using})`)
     }
 
     // WITH CHECK clause
     if (policy.withCheck) {
-      parts.push(`WITH CHECK (${policy.withCheck})`);
+      parts.push(`WITH CHECK (${policy.withCheck})`)
     }
 
-    return parts.join('\n  ') + ';';
+    return parts.join('\n  ') + ';'
   }
 
   /**
@@ -116,16 +102,16 @@ export class PostgresRLSGenerator {
   private mapOperation(operation: Operation | Operation[]): string {
     if (Array.isArray(operation)) {
       if (operation.length === 0) {
-        return 'ALL';
+        return 'ALL'
       }
       if (operation.length === 4 || operation.includes('all')) {
-        return 'ALL';
+        return 'ALL'
       }
       // PostgreSQL doesn't support multiple operations in one policy
       // Return first operation
-      return this.mapSingleOperation(operation[0]!);
+      return this.mapSingleOperation(operation[0]!)
     }
-    return this.mapSingleOperation(operation);
+    return this.mapSingleOperation(operation)
   }
 
   /**
@@ -133,12 +119,18 @@ export class PostgresRLSGenerator {
    */
   private mapSingleOperation(op: Operation): string {
     switch (op) {
-      case 'read': return 'SELECT';
-      case 'create': return 'INSERT';
-      case 'update': return 'UPDATE';
-      case 'delete': return 'DELETE';
-      case 'all': return 'ALL';
-      default: return 'ALL';
+      case 'read':
+        return 'SELECT'
+      case 'create':
+        return 'INSERT'
+      case 'update':
+        return 'UPDATE'
+      case 'delete':
+        return 'DELETE'
+      case 'all':
+        return 'ALL'
+      default:
+        return 'ALL'
     }
   }
 
@@ -185,21 +177,18 @@ CREATE OR REPLACE FUNCTION rls_is_system()
 RETURNS boolean
 LANGUAGE SQL STABLE
 AS $$ SELECT COALESCE(current_setting('app.is_system', true), 'false')::boolean $$;
-`;
+`
   }
 
   /**
    * Generate DROP statements for cleaning up
    */
-  generateDropStatements<DB>(
-    schema: RLSSchema<DB>,
-    options: PostgresRLSOptions = {}
-  ): string[] {
-    const { schemaName = 'public', policyPrefix = 'rls' } = options;
-    const statements: string[] = [];
+  generateDropStatements<DB>(schema: RLSSchema<DB>, options: PostgresRLSOptions = {}): string[] {
+    const { schemaName = 'public', policyPrefix = 'rls' } = options
+    const statements: string[] = []
 
     for (const table of Object.keys(schema)) {
-      const qualifiedTable = `${schemaName}.${table}`;
+      const qualifiedTable = `${schemaName}.${table}`
 
       // Drop all policies with prefix
       statements.push(
@@ -212,13 +201,13 @@ AS $$ SELECT COALESCE(current_setting('app.is_system', true), 'false')::boolean 
       AND policyname LIKE '${policyPrefix}_%'
   );
 END $$;`
-      );
+      )
 
       // Disable RLS
-      statements.push(`ALTER TABLE ${qualifiedTable} DISABLE ROW LEVEL SECURITY;`);
+      statements.push(`ALTER TABLE ${qualifiedTable} DISABLE ROW LEVEL SECURITY;`)
     }
 
-    return statements;
+    return statements
   }
 }
 
@@ -229,14 +218,14 @@ END $$;`
 export async function syncContextToPostgres<DB>(
   db: Kysely<DB>,
   context: {
-    userId: string | number;
-    tenantId?: string | number;
-    roles?: string[];
-    permissions?: string[];
-    isSystem?: boolean;
+    userId: string | number
+    tenantId?: string | number
+    roles?: string[]
+    permissions?: string[]
+    isSystem?: boolean
   }
 ): Promise<void> {
-  const { userId, tenantId, roles, permissions, isSystem } = context;
+  const { userId, tenantId, roles, permissions, isSystem } = context
 
   await sql`
     SELECT
@@ -245,7 +234,7 @@ export async function syncContextToPostgres<DB>(
       set_config('app.roles', ${(roles ?? []).join(',')}, true),
       set_config('app.permissions', ${(permissions ?? []).join(',')}, true),
       set_config('app.is_system', ${isSystem ? 'true' : 'false'}, true)
-  `.execute(db);
+  `.execute(db)
 }
 
 /**
@@ -259,5 +248,5 @@ export async function clearPostgresContext<DB>(db: Kysely<DB>): Promise<void> {
       set_config('app.roles', '', true),
       set_config('app.permissions', '', true),
       set_config('app.is_system', 'false', true)
-  `.execute(db);
+  `.execute(db)
 }

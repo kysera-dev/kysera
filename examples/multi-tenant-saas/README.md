@@ -176,6 +176,7 @@ pnpm start
 ```
 
 This will:
+
 1. Check database health
 2. Create tenant contexts for two tenants
 3. Create users for each tenant
@@ -236,10 +237,7 @@ const allUsers = await userRepo.findAll()
 
 ```typescript
 // Get all tenants (admin operation, not scoped)
-const allTenants = await db
-  .selectFrom('tenants')
-  .selectAll()
-  .execute()
+const allTenants = await db.selectFrom('tenants').selectAll().execute()
 
 for (const tenant of allTenants) {
   // Create a context for each tenant
@@ -339,17 +337,18 @@ CREATE INDEX idx_tasks_tenant_status ON tasks(tenant_id, status);
 ```typescript
 import rateLimit from 'express-rate-limit'
 
-const createTenantRateLimiter = () => rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: (req) => {
-    // Get tenant plan from database
-    const tenant = req.tenant
-    return tenant.plan === 'enterprise' ? 1000 : 100
-  },
-  keyGenerator: (req) => {
-    return `tenant:${req.tenantContext.getTenantId()}`
-  }
-})
+const createTenantRateLimiter = () =>
+  rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: req => {
+      // Get tenant plan from database
+      const tenant = req.tenant
+      return tenant.plan === 'enterprise' ? 1000 : 100
+    },
+    keyGenerator: req => {
+      return `tenant:${req.tenantContext.getTenantId()}`
+    }
+  })
 ```
 
 ## Advanced Patterns
@@ -423,6 +422,7 @@ multi-tenant-saas/
 ## Implementation Status
 
 ✅ **Fully Implemented:**
+
 - Tenant context management (`TenantContext`)
 - User repository with tenant isolation
 - Cross-tenant protection
@@ -430,6 +430,7 @@ multi-tenant-saas/
 - Database health checks
 
 📋 **Schema Defined (Not Yet Implemented):**
+
 - Projects repository
 - Tasks repository
 - Audit logging repository
@@ -446,6 +447,7 @@ To add more repositories, follow the pattern in `user.repository.ts`:
 5. Add Zod schemas for validation
 
 Example:
+
 ```typescript
 export function createProjectRepository(
   executor: Executor<Database>,

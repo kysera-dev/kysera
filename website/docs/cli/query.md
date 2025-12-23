@@ -10,12 +10,12 @@ Database query utilities for timestamp-based queries, soft-deleted records, and 
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
+| Command        | Description                       |
+| -------------- | --------------------------------- |
 | `by-timestamp` | Query records by timestamp ranges |
-| `soft-deleted` | Manage soft-deleted records |
-| `analyze` | Analyze query performance |
-| `explain` | Show query execution plan |
+| `soft-deleted` | Manage soft-deleted records       |
+| `analyze`      | Analyze query performance         |
+| `explain`      | Show query execution plan         |
 
 ## by-timestamp
 
@@ -27,21 +27,22 @@ kysera query by-timestamp [options]
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `-t, --table <name>` | Table name to query (required) |
-| `-c, --column <name>` | Timestamp column name (default: created_at) |
-| `--from <date>` | Start date (ISO format) |
-| `--to <date>` | End date (ISO format) |
-| `--last <duration>` | Last N hours/days/weeks/months (e.g., 24h, 7d, 2w, 1m) |
-| `--order <dir>` | Sort order: asc or desc (default: desc) |
-| `-l, --limit <n>` | Limit results (default: 100) |
-| `--json` | Output as JSON |
-| `--config <path>` | Path to configuration file |
+| Option                | Description                                            |
+| --------------------- | ------------------------------------------------------ |
+| `-t, --table <name>`  | Table name to query (required)                         |
+| `-c, --column <name>` | Timestamp column name (default: created_at)            |
+| `--from <date>`       | Start date (ISO format)                                |
+| `--to <date>`         | End date (ISO format)                                  |
+| `--last <duration>`   | Last N hours/days/weeks/months (e.g., 24h, 7d, 2w, 1m) |
+| `--order <dir>`       | Sort order: asc or desc (default: desc)                |
+| `-l, --limit <n>`     | Limit results (default: 100)                           |
+| `--json`              | Output as JSON                                         |
+| `--config <path>`     | Path to configuration file                             |
 
 ### Duration Format
 
 The `--last` option accepts these formats:
+
 - `Nh` - Last N hours (e.g., `24h`)
 - `Nd` - Last N days (e.g., `7d`)
 - `Nw` - Last N weeks (e.g., `2w`)
@@ -87,16 +88,16 @@ kysera query soft-deleted [options]
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `-t, --table <name>` | Table name to query (required) |
+| Option                | Description                                   |
+| --------------------- | --------------------------------------------- |
+| `-t, --table <name>`  | Table name to query (required)                |
 | `-c, --column <name>` | Soft delete column name (default: deleted_at) |
-| `-r, --restore <id>` | Restore a soft-deleted record by ID |
-| `--purge` | Permanently delete all soft-deleted records |
-| `--force` | Skip confirmation for purge |
-| `-l, --limit <n>` | Limit results (default: 100) |
-| `--json` | Output as JSON |
-| `--config <path>` | Path to configuration file |
+| `-r, --restore <id>`  | Restore a soft-deleted record by ID           |
+| `--purge`             | Permanently delete all soft-deleted records   |
+| `--force`             | Skip confirmation for purge                   |
+| `-l, --limit <n>`     | Limit results (default: 100)                  |
+| `--json`              | Output as JSON                                |
+| `--config <path>`     | Path to configuration file                    |
 
 ### Examples
 
@@ -127,9 +128,9 @@ kysera query analyze <query> [options]
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--json` | Output as JSON |
+| Option            | Description                |
+| ----------------- | -------------------------- |
+| `--json`          | Output as JSON             |
 | `--config <path>` | Path to configuration file |
 
 ### Examples
@@ -145,6 +146,7 @@ kysera query analyze "SELECT u.*, COUNT(o.id) FROM users u LEFT JOIN orders o ON
 ### Output
 
 Analysis includes:
+
 - Query type detection
 - Table references
 - Index usage recommendations
@@ -161,12 +163,12 @@ kysera query explain <query> [options]
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--analyze` | Run EXPLAIN ANALYZE (PostgreSQL) |
+| Option            | Description                                  |
+| ----------------- | -------------------------------------------- |
+| `--analyze`       | Run EXPLAIN ANALYZE (PostgreSQL)             |
 | `--format <type>` | Output format: text, json, yaml (PostgreSQL) |
-| `--json` | Output as JSON |
-| `--config <path>` | Path to configuration file |
+| `--json`          | Output as JSON                               |
+| `--config <path>` | Path to configuration file                   |
 
 ### Examples
 
@@ -184,16 +186,19 @@ kysera query explain "SELECT * FROM products" --format json
 ### Database-Specific Plans
 
 **PostgreSQL:**
+
 ```
 EXPLAIN [ANALYZE] <query>
 ```
 
 **MySQL:**
+
 ```
 EXPLAIN <query>
 ```
 
 **SQLite:**
+
 ```
 EXPLAIN QUERY PLAN <query>
 ```

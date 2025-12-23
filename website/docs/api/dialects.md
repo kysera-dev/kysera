@@ -1,6 +1,6 @@
 ---
 sidebar_position: 5
-title: "@kysera/dialects"
+title: '@kysera/dialects'
 description: Dialect-specific utilities for PostgreSQL, MySQL, and SQLite
 ---
 
@@ -37,39 +37,43 @@ This is a **utility package** providing dialect-specific abstractions. It works 
 ### Using Adapters (Recommended)
 
 ```typescript
-import { getAdapter } from '@kysera/dialects';
-import { Kysely, PostgresDialect } from 'kysely';
-import { Pool } from 'pg';
+import { getAdapter } from '@kysera/dialects'
+import { Kysely, PostgresDialect } from 'kysely'
+import { Pool } from 'pg'
 
 const db = new Kysely({
-  dialect: new PostgresDialect({ pool: new Pool({ /* ... */ }) })
-});
+  dialect: new PostgresDialect({
+    pool: new Pool({
+      /* ... */
+    })
+  })
+})
 
 // Get adapter for your dialect
-const adapter = getAdapter('postgres');
+const adapter = getAdapter('postgres')
 
 // Use adapter methods
-const exists = await adapter.tableExists(db, 'users');
-console.log('Users table exists:', exists);
+const exists = await adapter.tableExists(db, 'users')
+console.log('Users table exists:', exists)
 
 // Get table columns
-const columns = await adapter.getTableColumns(db, 'users');
-console.log('Columns:', columns);
+const columns = await adapter.getTableColumns(db, 'users')
+console.log('Columns:', columns)
 
 // Get all tables
-const tables = await adapter.getTables(db);
-console.log('Tables:', tables);
+const tables = await adapter.getTables(db)
+console.log('Tables:', tables)
 
 // Escape identifiers
-const escaped = adapter.escapeIdentifier('user-data');
-console.log('Escaped:', escaped); // "user-data"
+const escaped = adapter.escapeIdentifier('user-data')
+console.log('Escaped:', escaped) // "user-data"
 
 // Check error types
 try {
-  await db.insertInto('users').values({ email: 'duplicate@example.com' }).execute();
+  await db.insertInto('users').values({ email: 'duplicate@example.com' }).execute()
 } catch (error) {
   if (adapter.isUniqueConstraintError(error)) {
-    console.log('Duplicate email!');
+    console.log('Duplicate email!')
   }
 }
 ```
@@ -84,19 +88,19 @@ import {
   isUniqueConstraintError,
   parseConnectionUrl,
   buildConnectionUrl
-} from '@kysera/dialects';
+} from '@kysera/dialects'
 
 // Check table existence
-const exists = await tableExists(db, 'users', 'postgres');
+const exists = await tableExists(db, 'users', 'postgres')
 
 // Get columns
-const columns = await getTableColumns(db, 'users', 'mysql');
+const columns = await getTableColumns(db, 'users', 'mysql')
 
 // Escape identifier
-const escaped = escapeIdentifier('my-table', 'sqlite');
+const escaped = escapeIdentifier('my-table', 'sqlite')
 
 // Parse connection URL
-const config = parseConnectionUrl('postgresql://user:pass@localhost:5432/mydb?ssl=true');
+const config = parseConnectionUrl('postgresql://user:pass@localhost:5432/mydb?ssl=true')
 // { host: 'localhost', port: 5432, database: 'mydb', user: 'user', password: 'pass', ssl: true }
 
 // Build connection URL
@@ -105,7 +109,7 @@ const url = buildConnectionUrl('postgres', {
   database: 'mydb',
   user: 'admin',
   password: 'secret'
-});
+})
 // 'postgresql://admin:secret@localhost:5432/mydb'
 ```
 
@@ -114,55 +118,55 @@ const url = buildConnectionUrl('postgres', {
 ```typescript
 // Types
 export type {
-  DatabaseDialect,      // 'postgres' | 'mysql' | 'sqlite'
-  ConnectionConfig,     // Connection configuration interface
-  DialectAdapter,       // Adapter interface
-  DatabaseErrorLike     // Error object shape
-} from './types';
+  DatabaseDialect, // 'postgres' | 'mysql' | 'sqlite'
+  ConnectionConfig, // Connection configuration interface
+  DialectAdapter, // Adapter interface
+  DatabaseErrorLike // Error object shape
+} from './types'
 
 // Factory and adapters
 export {
-  getAdapter,           // Get singleton adapter instance
+  getAdapter, // Get singleton adapter instance
   createDialectAdapter, // Create new adapter instance
-  registerAdapter       // Register custom adapter
-} from './factory';
+  registerAdapter // Register custom adapter
+} from './factory'
 
 export {
-  PostgresAdapter,      // PostgreSQL adapter class
-  postgresAdapter       // PostgreSQL singleton
-} from './adapters/postgres';
+  PostgresAdapter, // PostgreSQL adapter class
+  postgresAdapter // PostgreSQL singleton
+} from './adapters/postgres'
 
 export {
-  MySQLAdapter,         // MySQL adapter class
-  mysqlAdapter          // MySQL singleton
-} from './adapters/mysql';
+  MySQLAdapter, // MySQL adapter class
+  mysqlAdapter // MySQL singleton
+} from './adapters/mysql'
 
 export {
-  SQLiteAdapter,        // SQLite adapter class
-  sqliteAdapter         // SQLite singleton
-} from './adapters/sqlite';
+  SQLiteAdapter, // SQLite adapter class
+  sqliteAdapter // SQLite singleton
+} from './adapters/sqlite'
 
 // Connection utilities
 export {
-  parseConnectionUrl,   // Parse database URL
-  buildConnectionUrl,   // Build database URL
-  getDefaultPort        // Get default port for dialect
-} from './connection';
+  parseConnectionUrl, // Parse database URL
+  buildConnectionUrl, // Build database URL
+  getDefaultPort // Get default port for dialect
+} from './connection'
 
 // Helper functions (standalone, backward compatible)
 export {
-  tableExists,          // Check if table exists
-  getTableColumns,      // Get table column names
-  getTables,            // Get all tables
-  escapeIdentifier,     // Escape SQL identifier
-  getCurrentTimestamp,  // Get current timestamp expression
-  formatDate,           // Format date for database
-  isUniqueConstraintError,    // Check unique constraint error
-  isForeignKeyError,          // Check foreign key error
-  isNotNullError,             // Check not-null constraint error
-  getDatabaseSize,            // Get database size in bytes
-  truncateAllTables           // Truncate all tables (testing)
-} from './helpers';
+  tableExists, // Check if table exists
+  getTableColumns, // Get table column names
+  getTables, // Get all tables
+  escapeIdentifier, // Escape SQL identifier
+  getCurrentTimestamp, // Get current timestamp expression
+  formatDate, // Format date for database
+  isUniqueConstraintError, // Check unique constraint error
+  isForeignKeyError, // Check foreign key error
+  isNotNullError, // Check not-null constraint error
+  getDatabaseSize, // Get database size in bytes
+  truncateAllTables // Truncate all tables (testing)
+} from './helpers'
 ```
 
 ## Core Concepts
@@ -173,32 +177,33 @@ The `DialectAdapter` interface provides a unified API for dialect-specific opera
 
 ```typescript
 interface DialectAdapter {
-  readonly dialect: DatabaseDialect;
+  readonly dialect: DatabaseDialect
 
   // Port and formatting
-  getDefaultPort(): number | null;
-  getCurrentTimestamp(): string;
-  escapeIdentifier(identifier: string): string;
-  formatDate(date: Date): string;
+  getDefaultPort(): number | null
+  getCurrentTimestamp(): string
+  escapeIdentifier(identifier: string): string
+  formatDate(date: Date): string
 
   // Error detection
-  isUniqueConstraintError(error: unknown): boolean;
-  isForeignKeyError(error: unknown): boolean;
-  isNotNullError(error: unknown): boolean;
+  isUniqueConstraintError(error: unknown): boolean
+  isForeignKeyError(error: unknown): boolean
+  isNotNullError(error: unknown): boolean
 
   // Introspection
-  tableExists(db: Kysely<any>, tableName: string): Promise<boolean>;
-  getTableColumns(db: Kysely<any>, tableName: string): Promise<string[]>;
-  getTables(db: Kysely<any>): Promise<string[]>;
+  tableExists(db: Kysely<any>, tableName: string): Promise<boolean>
+  getTableColumns(db: Kysely<any>, tableName: string): Promise<string[]>
+  getTables(db: Kysely<any>): Promise<string[]>
 
   // Testing utilities
-  getDatabaseSize(db: Kysely<any>, databaseName?: string): Promise<number>;
-  truncateTable(db: Kysely<any>, tableName: string): Promise<void>;
-  truncateAllTables(db: Kysely<any>, exclude?: string[]): Promise<void>;
+  getDatabaseSize(db: Kysely<any>, databaseName?: string): Promise<number>
+  truncateTable(db: Kysely<any>, tableName: string): Promise<void>
+  truncateAllTables(db: Kysely<any>, exclude?: string[]): Promise<void>
 }
 ```
 
 **Benefits:**
+
 - Single API for all databases
 - Type-safe dialect operations
 - Extensible (register custom adapters)
@@ -216,8 +221,8 @@ Get a singleton adapter instance for the specified dialect.
 function getAdapter(dialect: DatabaseDialect): DialectAdapter
 
 // Example
-const adapter = getAdapter('postgres');
-console.log(adapter.getDefaultPort()); // 5432
+const adapter = getAdapter('postgres')
+console.log(adapter.getDefaultPort()) // 5432
 ```
 
 **Supported dialects:** `postgres`, `mysql`, `sqlite`
@@ -230,7 +235,7 @@ Create a new adapter instance (useful for testing or customization).
 function createDialectAdapter(dialect: DatabaseDialect): DialectAdapter
 
 // Example
-const adapter = createDialectAdapter('mysql');
+const adapter = createDialectAdapter('mysql')
 ```
 
 #### `registerAdapter(adapter)`
@@ -242,11 +247,11 @@ function registerAdapter(adapter: DialectAdapter): void
 
 // Example
 class CustomAdapter implements DialectAdapter {
-  readonly dialect = 'postgres' as const;
+  readonly dialect = 'postgres' as const
   // ... implement all methods
 }
 
-registerAdapter(new CustomAdapter());
+registerAdapter(new CustomAdapter())
 ```
 
 ### Adapter Interface
@@ -333,7 +338,7 @@ Parse database connection URL into configuration object.
 function parseConnectionUrl(url: string): ConnectionConfig
 
 // Examples
-const config1 = parseConnectionUrl('postgresql://user:pass@localhost:5432/mydb?ssl=true');
+const config1 = parseConnectionUrl('postgresql://user:pass@localhost:5432/mydb?ssl=true')
 // {
 //   host: 'localhost',
 //   port: 5432,
@@ -343,7 +348,7 @@ const config1 = parseConnectionUrl('postgresql://user:pass@localhost:5432/mydb?s
 //   ssl: true
 // }
 
-const config2 = parseConnectionUrl('mysql://localhost/testdb');
+const config2 = parseConnectionUrl('mysql://localhost/testdb')
 // {
 //   host: 'localhost',
 //   port: undefined,
@@ -353,7 +358,7 @@ const config2 = parseConnectionUrl('mysql://localhost/testdb');
 //   ssl: false
 // }
 
-const config3 = parseConnectionUrl('sqlite://./data/app.db');
+const config3 = parseConnectionUrl('sqlite://./data/app.db')
 // {
 //   host: '.',
 //   port: undefined,
@@ -369,10 +374,7 @@ const config3 = parseConnectionUrl('sqlite://./data/app.db');
 Build connection URL from configuration object.
 
 ```typescript
-function buildConnectionUrl(
-  dialect: DatabaseDialect,
-  config: ConnectionConfig
-): string
+function buildConnectionUrl(dialect: DatabaseDialect, config: ConnectionConfig): string
 
 // Examples
 const url1 = buildConnectionUrl('postgres', {
@@ -381,23 +383,24 @@ const url1 = buildConnectionUrl('postgres', {
   user: 'admin',
   password: 'secret',
   ssl: true
-});
+})
 // 'postgresql://admin:secret@localhost:5432/mydb?ssl=true'
 
 const url2 = buildConnectionUrl('mysql', {
   host: 'db.example.com',
   port: 3307,
   database: 'production'
-});
+})
 // 'mysql://db.example.com:3307/production'
 
 const url3 = buildConnectionUrl('sqlite', {
   database: './data/app.db'
-});
+})
 // 'sqlite://localhost/./data/app.db'
 ```
 
 **Features:**
+
 - Auto-fills default ports
 - Supports optional authentication
 - Handles SSL configuration
@@ -411,8 +414,8 @@ Get default port for a dialect.
 function getDefaultPort(dialect: DatabaseDialect): number | null
 
 getDefaultPort('postgres') // 5432
-getDefaultPort('mysql')    // 3306
-getDefaultPort('sqlite')   // null
+getDefaultPort('mysql') // 3306
+getDefaultPort('sqlite') // null
 ```
 
 ### Helper Functions
@@ -426,9 +429,9 @@ await getTableColumns(db, 'users', 'mysql')
 await getTables(db, 'sqlite')
 
 // Formatting
-escapeIdentifier('my-table', 'postgres')    // "my-table"
-getCurrentTimestamp('mysql')                // 'CURRENT_TIMESTAMP'
-formatDate(new Date(), 'sqlite')            // '2024-01-15T10:30:00.000Z'
+escapeIdentifier('my-table', 'postgres') // "my-table"
+getCurrentTimestamp('mysql') // 'CURRENT_TIMESTAMP'
+formatDate(new Date(), 'sqlite') // '2024-01-15T10:30:00.000Z'
 
 // Error detection
 isUniqueConstraintError(error, 'postgres')
@@ -460,12 +463,12 @@ Database connection configuration.
 
 ```typescript
 interface ConnectionConfig {
-  host?: string | undefined;
-  port?: number | undefined;
-  database: string;
-  user?: string | undefined;
-  password?: string | undefined;
-  ssl?: boolean | undefined;
+  host?: string | undefined
+  port?: number | undefined
+  database: string
+  user?: string | undefined
+  password?: string | undefined
+  ssl?: boolean | undefined
 }
 ```
 
@@ -479,8 +482,8 @@ Error object shape for database error detection.
 
 ```typescript
 interface DatabaseErrorLike {
-  message?: string;
-  code?: string;
+  message?: string
+  code?: string
 }
 ```
 
@@ -491,26 +494,26 @@ interface DatabaseErrorLike {
 Support multiple databases in a single application:
 
 ```typescript
-import { getAdapter, DatabaseDialect } from '@kysera/dialects';
+import { getAdapter, DatabaseDialect } from '@kysera/dialects'
 
 async function setupDatabase(db: Kysely<any>, dialect: DatabaseDialect) {
-  const adapter = getAdapter(dialect);
+  const adapter = getAdapter(dialect)
 
   // Check if migrations table exists
-  const hasMigrations = await adapter.tableExists(db, 'kysely_migrations');
+  const hasMigrations = await adapter.tableExists(db, 'kysely_migrations')
   if (!hasMigrations) {
-    console.log('Running first-time setup...');
+    console.log('Running first-time setup...')
   }
 
   // Get all existing tables
-  const tables = await adapter.getTables(db);
-  console.log(`Found ${tables.length} tables`);
+  const tables = await adapter.getTables(db)
+  console.log(`Found ${tables.length} tables`)
 }
 
 // Works with any dialect
-await setupDatabase(postgresDb, 'postgres');
-await setupDatabase(mysqlDb, 'mysql');
-await setupDatabase(sqliteDb, 'sqlite');
+await setupDatabase(postgresDb, 'postgres')
+await setupDatabase(mysqlDb, 'mysql')
+await setupDatabase(sqliteDb, 'sqlite')
 ```
 
 ### 2. Graceful Error Handling
@@ -518,30 +521,30 @@ await setupDatabase(sqliteDb, 'sqlite');
 Detect and handle database constraint violations:
 
 ```typescript
-import { getAdapter } from '@kysera/dialects';
+import { getAdapter } from '@kysera/dialects'
 
 async function createUser(db: Kysely<Database>, email: string, dialect: DatabaseDialect) {
-  const adapter = getAdapter(dialect);
+  const adapter = getAdapter(dialect)
 
   try {
     const user = await db
       .insertInto('users')
       .values({ email, name: 'New User' })
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirstOrThrow()
 
-    return { success: true, user };
+    return { success: true, user }
   } catch (error) {
     if (adapter.isUniqueConstraintError(error)) {
-      return { success: false, error: 'Email already exists' };
+      return { success: false, error: 'Email already exists' }
     }
     if (adapter.isForeignKeyError(error)) {
-      return { success: false, error: 'Invalid reference' };
+      return { success: false, error: 'Invalid reference' }
     }
     if (adapter.isNotNullError(error)) {
-      return { success: false, error: 'Required field missing' };
+      return { success: false, error: 'Required field missing' }
     }
-    throw error; // Unknown error
+    throw error // Unknown error
   }
 }
 ```
@@ -551,15 +554,15 @@ async function createUser(db: Kysely<Database>, email: string, dialect: Database
 Generate dialect-specific SQL:
 
 ```typescript
-import { getAdapter } from '@kysera/dialects';
+import { getAdapter } from '@kysera/dialects'
 
 function buildTimestampQuery(dialect: DatabaseDialect) {
-  const adapter = getAdapter(dialect);
+  const adapter = getAdapter(dialect)
 
   return `
     INSERT INTO logs (message, created_at)
     VALUES ('System started', ${adapter.getCurrentTimestamp()})
-  `;
+  `
 }
 
 // postgres/mysql: VALUES ('System started', CURRENT_TIMESTAMP)
@@ -571,19 +574,19 @@ function buildTimestampQuery(dialect: DatabaseDialect) {
 Inspect database schema:
 
 ```typescript
-import { getAdapter } from '@kysera/dialects';
+import { getAdapter } from '@kysera/dialects'
 
 async function inspectDatabase(db: Kysely<any>, dialect: DatabaseDialect) {
-  const adapter = getAdapter(dialect);
+  const adapter = getAdapter(dialect)
 
-  const tables = await adapter.getTables(db);
+  const tables = await adapter.getTables(db)
 
-  const schema: Record<string, string[]> = {};
+  const schema: Record<string, string[]> = {}
   for (const table of tables) {
-    schema[table] = await adapter.getTableColumns(db, table);
+    schema[table] = await adapter.getTableColumns(db, table)
   }
 
-  return schema;
+  return schema
 }
 
 // Returns:
@@ -598,22 +601,22 @@ async function inspectDatabase(db: Kysely<any>, dialect: DatabaseDialect) {
 Clean database state between tests:
 
 ```typescript
-import { getAdapter } from '@kysera/dialects';
-import { beforeEach, describe, it } from 'vitest';
+import { getAdapter } from '@kysera/dialects'
+import { beforeEach, describe, it } from 'vitest'
 
 describe('User Repository', () => {
-  const adapter = getAdapter('postgres');
+  const adapter = getAdapter('postgres')
 
   beforeEach(async () => {
     // Truncate all tables except migrations
-    await adapter.truncateAllTables(db, ['kysely_migrations']);
-  });
+    await adapter.truncateAllTables(db, ['kysely_migrations'])
+  })
 
   it('creates user', async () => {
-    const user = await createUser({ email: 'test@example.com' });
-    expect(user.email).toBe('test@example.com');
-  });
-});
+    const user = await createUser({ email: 'test@example.com' })
+    expect(user.email).toBe('test@example.com')
+  })
+})
 ```
 
 ### 6. Connection URL Management
@@ -621,11 +624,11 @@ describe('User Repository', () => {
 Parse and build connection URLs:
 
 ```typescript
-import { parseConnectionUrl, buildConnectionUrl } from '@kysera/dialects';
+import { parseConnectionUrl, buildConnectionUrl } from '@kysera/dialects'
 
 // Parse from environment variable
-const config = parseConnectionUrl(process.env.DATABASE_URL!);
-console.log(`Connecting to ${config.host}:${config.port}`);
+const config = parseConnectionUrl(process.env.DATABASE_URL!)
+console.log(`Connecting to ${config.host}:${config.port}`)
 
 // Build for different environments
 const devUrl = buildConnectionUrl('postgres', {
@@ -633,7 +636,7 @@ const devUrl = buildConnectionUrl('postgres', {
   database: 'myapp_dev',
   user: 'dev',
   password: 'dev'
-});
+})
 
 const prodUrl = buildConnectionUrl('postgres', {
   host: 'db.production.com',
@@ -641,7 +644,7 @@ const prodUrl = buildConnectionUrl('postgres', {
   user: 'app',
   password: process.env.DB_PASSWORD!,
   ssl: true
-});
+})
 ```
 
 ### 7. Database Migration Validation
@@ -649,28 +652,26 @@ const prodUrl = buildConnectionUrl('postgres', {
 Validate migration state:
 
 ```typescript
-import { getAdapter } from '@kysera/dialects';
+import { getAdapter } from '@kysera/dialects'
 
 async function validateMigrations(db: Kysely<any>, dialect: DatabaseDialect) {
-  const adapter = getAdapter(dialect);
+  const adapter = getAdapter(dialect)
 
-  const hasMigrationsTable = await adapter.tableExists(db, 'kysely_migrations');
+  const hasMigrationsTable = await adapter.tableExists(db, 'kysely_migrations')
   if (!hasMigrationsTable) {
-    throw new Error('Migrations table not found. Run migrations first.');
+    throw new Error('Migrations table not found. Run migrations first.')
   }
 
-  const requiredTables = ['users', 'posts', 'comments'];
-  const existingTables = await adapter.getTables(db);
+  const requiredTables = ['users', 'posts', 'comments']
+  const existingTables = await adapter.getTables(db)
 
-  const missingTables = requiredTables.filter(
-    table => !existingTables.includes(table)
-  );
+  const missingTables = requiredTables.filter(table => !existingTables.includes(table))
 
   if (missingTables.length > 0) {
-    throw new Error(`Missing tables: ${missingTables.join(', ')}`);
+    throw new Error(`Missing tables: ${missingTables.join(', ')}`)
   }
 
-  console.log('✓ All required tables exist');
+  console.log('✓ All required tables exist')
 }
 ```
 
@@ -679,18 +680,19 @@ async function validateMigrations(db: Kysely<any>, dialect: DatabaseDialect) {
 Monitor database growth:
 
 ```typescript
-import { getAdapter } from '@kysera/dialects';
+import { getAdapter } from '@kysera/dialects'
 
 async function monitorDatabaseSize(db: Kysely<any>, dialect: DatabaseDialect) {
-  const adapter = getAdapter(dialect);
+  const adapter = getAdapter(dialect)
 
-  const sizeBytes = await adapter.getDatabaseSize(db);
-  const sizeMB = (sizeBytes / 1024 / 1024).toFixed(2);
+  const sizeBytes = await adapter.getDatabaseSize(db)
+  const sizeMB = (sizeBytes / 1024 / 1024).toFixed(2)
 
-  console.log(`Database size: ${sizeMB} MB`);
+  console.log(`Database size: ${sizeMB} MB`)
 
-  if (sizeBytes > 1024 * 1024 * 1024) { // 1 GB
-    console.warn('Database exceeds 1 GB, consider archiving old data');
+  if (sizeBytes > 1024 * 1024 * 1024) {
+    // 1 GB
+    console.warn('Database exceeds 1 GB, consider archiving old data')
   }
 }
 ```
@@ -700,15 +702,15 @@ async function monitorDatabaseSize(db: Kysely<any>, dialect: DatabaseDialect) {
 ### PostgreSQL
 
 ```typescript
-const adapter = getAdapter('postgres');
+const adapter = getAdapter('postgres')
 
-adapter.getDefaultPort()              // 5432
-adapter.getCurrentTimestamp()         // 'CURRENT_TIMESTAMP'
-adapter.escapeIdentifier('my-table')  // "my-table"
-adapter.formatDate(new Date())        // ISO string
-adapter.isUniqueConstraintError(e)    // code === '23505'
-adapter.isForeignKeyError(e)          // code === '23503'
-adapter.isNotNullError(e)             // code === '23502'
+adapter.getDefaultPort() // 5432
+adapter.getCurrentTimestamp() // 'CURRENT_TIMESTAMP'
+adapter.escapeIdentifier('my-table') // "my-table"
+adapter.formatDate(new Date()) // ISO string
+adapter.isUniqueConstraintError(e) // code === '23505'
+adapter.isForeignKeyError(e) // code === '23503'
+adapter.isNotNullError(e) // code === '23502'
 
 // Uses information_schema.tables for introspection
 // Uses pg_database_size() for database size
@@ -718,15 +720,15 @@ adapter.isNotNullError(e)             // code === '23502'
 ### MySQL
 
 ```typescript
-const adapter = getAdapter('mysql');
+const adapter = getAdapter('mysql')
 
-adapter.getDefaultPort()              // 3306
-adapter.getCurrentTimestamp()         // 'CURRENT_TIMESTAMP'
-adapter.escapeIdentifier('my-table')  // `my-table`
-adapter.formatDate(new Date())        // 'YYYY-MM-DD HH:MM:SS'
-adapter.isUniqueConstraintError(e)    // code === 'ER_DUP_ENTRY'
-adapter.isForeignKeyError(e)          // code === 'ER_NO_REFERENCED_ROW_2'
-adapter.isNotNullError(e)             // code === 'ER_BAD_NULL_ERROR'
+adapter.getDefaultPort() // 3306
+adapter.getCurrentTimestamp() // 'CURRENT_TIMESTAMP'
+adapter.escapeIdentifier('my-table') // `my-table`
+adapter.formatDate(new Date()) // 'YYYY-MM-DD HH:MM:SS'
+adapter.isUniqueConstraintError(e) // code === 'ER_DUP_ENTRY'
+adapter.isForeignKeyError(e) // code === 'ER_NO_REFERENCED_ROW_2'
+adapter.isNotNullError(e) // code === 'ER_BAD_NULL_ERROR'
 
 // Uses information_schema.tables for introspection
 // Uses SUM(data_length + index_length) for database size
@@ -736,15 +738,15 @@ adapter.isNotNullError(e)             // code === 'ER_BAD_NULL_ERROR'
 ### SQLite
 
 ```typescript
-const adapter = getAdapter('sqlite');
+const adapter = getAdapter('sqlite')
 
-adapter.getDefaultPort()              // null
-adapter.getCurrentTimestamp()         // "datetime('now')"
-adapter.escapeIdentifier('my-table')  // "my-table"
-adapter.formatDate(new Date())        // ISO string
-adapter.isUniqueConstraintError(e)    // message includes 'UNIQUE constraint'
-adapter.isForeignKeyError(e)          // message includes 'FOREIGN KEY constraint'
-adapter.isNotNullError(e)             // message includes 'NOT NULL constraint'
+adapter.getDefaultPort() // null
+adapter.getCurrentTimestamp() // "datetime('now')"
+adapter.escapeIdentifier('my-table') // "my-table"
+adapter.formatDate(new Date()) // ISO string
+adapter.isUniqueConstraintError(e) // message includes 'UNIQUE constraint'
+adapter.isForeignKeyError(e) // message includes 'FOREIGN KEY constraint'
+adapter.isNotNullError(e) // message includes 'NOT NULL constraint'
 
 // Uses sqlite_master for introspection
 // Uses page_count * page_size for database size
@@ -757,89 +759,97 @@ adapter.isNotNullError(e)             // message includes 'NOT NULL constraint'
 
 ```typescript
 // Executor uses dialects for error detection
-import { createExecutor } from '@kysera/executor';
-import { getAdapter } from '@kysera/dialects';
+import { createExecutor } from '@kysera/executor'
+import { getAdapter } from '@kysera/dialects'
 
 const executor = await createExecutor(db, [], {
   dialect: 'postgres' // Uses adapter internally
-});
+})
 ```
 
 ### Used by @kysera/repository
 
 ```typescript
 // Repository uses dialects for constraint error handling
-import { createORM } from '@kysera/repository';
+import { createORM } from '@kysera/repository'
 
 const orm = await createORM(db, [], {
   dialect: 'mysql' // Uses adapter for error detection
-});
+})
 ```
 
 ### Used by @kysera/dal
 
 ```typescript
 // DAL uses dialects for cross-database compatibility
-import { createContext } from '@kysera/dal';
+import { createContext } from '@kysera/dal'
 
 const ctx = createContext(db, {
   dialect: 'sqlite' // Uses adapter for introspection
-});
+})
 ```
 
 ## Best Practices
 
 1. **Use adapters over helper functions:**
+
    ```typescript
    // ✅ Good - single adapter lookup
-   const adapter = getAdapter('postgres');
-   const exists = await adapter.tableExists(db, 'users');
-   const columns = await adapter.getTableColumns(db, 'users');
+   const adapter = getAdapter('postgres')
+   const exists = await adapter.tableExists(db, 'users')
+   const columns = await adapter.getTableColumns(db, 'users')
 
    // ❌ Avoid - multiple adapter lookups
-   const exists = await tableExists(db, 'users', 'postgres');
-   const columns = await getTableColumns(db, 'users', 'postgres');
+   const exists = await tableExists(db, 'users', 'postgres')
+   const columns = await getTableColumns(db, 'users', 'postgres')
    ```
 
 2. **Store dialect in configuration:**
+
    ```typescript
    // ✅ Good - single source of truth
-   const config = { dialect: 'postgres' as DatabaseDialect };
-   const adapter = getAdapter(config.dialect);
+   const config = { dialect: 'postgres' as DatabaseDialect }
+   const adapter = getAdapter(config.dialect)
 
    // ❌ Avoid - hardcoded dialect strings
-   const adapter = getAdapter('postgres');
+   const adapter = getAdapter('postgres')
    ```
 
 3. **Handle all constraint errors:**
+
    ```typescript
    // ✅ Good - comprehensive error handling
-   if (adapter.isUniqueConstraintError(e)) { /* ... */ }
-   else if (adapter.isForeignKeyError(e)) { /* ... */ }
-   else if (adapter.isNotNullError(e)) { /* ... */ }
-   else throw e;
+   if (adapter.isUniqueConstraintError(e)) {
+     /* ... */
+   } else if (adapter.isForeignKeyError(e)) {
+     /* ... */
+   } else if (adapter.isNotNullError(e)) {
+     /* ... */
+   } else throw e
    ```
 
 4. **Use connection URLs in production:**
+
    ```typescript
    // ✅ Good - single DATABASE_URL environment variable
-   const config = parseConnectionUrl(process.env.DATABASE_URL!);
+   const config = parseConnectionUrl(process.env.DATABASE_URL!)
 
    // ❌ Avoid - multiple environment variables
    const config = {
      host: process.env.DB_HOST,
-     port: parseInt(process.env.DB_PORT!),
+     port: parseInt(process.env.DB_PORT!)
      // ...
-   };
+   }
    ```
 
 5. **Exclude migrations from truncation:**
+
    ```typescript
    // ✅ Good - preserve migration history
-   await adapter.truncateAllTables(db, ['kysely_migrations']);
+   await adapter.truncateAllTables(db, ['kysely_migrations'])
 
    // ❌ Avoid - truncating everything
-   await adapter.truncateAllTables(db);
+   await adapter.truncateAllTables(db)
    ```
 
 ## Performance Considerations
@@ -855,17 +865,17 @@ Works on Node.js >=20, Bun >=1.0, and Deno (experimental):
 
 ```typescript
 // Node.js with pg
-import pg from 'pg';
-const { Pool } = pg;
+import pg from 'pg'
+const { Pool } = pg
 
 // Bun with pg
-import { Pool } from 'pg';
+import { Pool } from 'pg'
 
 // Node.js with better-sqlite3
-import Database from 'better-sqlite3';
+import Database from 'better-sqlite3'
 
 // All work the same way
-const adapter = getAdapter('postgres');
+const adapter = getAdapter('postgres')
 ```
 
 ## Migration Guide
@@ -874,12 +884,12 @@ If you were using internal Kysera utilities for dialect operations:
 
 ```typescript
 // Before (internal utilities)
-import { detectDialect, isConstraintError } from '@kysera/core/internal';
+import { detectDialect, isConstraintError } from '@kysera/core/internal'
 
 // After (dedicated package)
-import { getAdapter, isUniqueConstraintError } from '@kysera/dialects';
+import { getAdapter, isUniqueConstraintError } from '@kysera/dialects'
 
-const adapter = getAdapter('postgres');
+const adapter = getAdapter('postgres')
 if (adapter.isUniqueConstraintError(error)) {
   // Handle duplicate
 }

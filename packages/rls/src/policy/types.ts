@@ -8,7 +8,7 @@
  * @module @kysera/rls/policy/types
  */
 
-import type { Kysely } from 'kysely';
+import type { Kysely } from 'kysely'
 
 // ============================================================================
 // Operation Types
@@ -32,7 +32,7 @@ import type { Kysely } from 'kysely';
  * };
  * ```
  */
-export type Operation = 'read' | 'create' | 'update' | 'delete' | 'all';
+export type Operation = 'read' | 'create' | 'update' | 'delete' | 'all'
 
 // ============================================================================
 // Authentication Context
@@ -63,43 +63,43 @@ export interface RLSAuthContext<TUser = unknown> {
    * Unique identifier for the authenticated user
    * Can be a string or number depending on your ID strategy
    */
-  userId: string | number;
+  userId: string | number
 
   /**
    * List of roles assigned to the user
    * Used for role-based access control (RBAC)
    */
-  roles: string[];
+  roles: string[]
 
   /**
    * Optional tenant identifier for multi-tenancy
    * Use for tenant isolation in SaaS applications
    */
-  tenantId?: string | number;
+  tenantId?: string | number
 
   /**
    * Optional list of organization IDs the user belongs to
    * Use for hierarchical multi-tenancy or organization-based access
    */
-  organizationIds?: (string | number)[];
+  organizationIds?: (string | number)[]
 
   /**
    * Optional list of granular permissions
    * Use for fine-grained access control
    */
-  permissions?: string[];
+  permissions?: string[]
 
   /**
    * Optional custom attributes for advanced policy logic
    * Can contain any additional context needed for policy evaluation
    */
-  attributes?: Record<string, unknown>;
+  attributes?: Record<string, unknown>
 
   /**
    * Optional full user object for accessing user properties
    * Useful when policies need to check user-specific attributes
    */
-  user?: TUser;
+  user?: TUser
 
   /**
    * Flag indicating if this is a system/admin context
@@ -107,7 +107,7 @@ export interface RLSAuthContext<TUser = unknown> {
    *
    * @default false
    */
-  isSystem?: boolean;
+  isSystem?: boolean
 }
 
 // ============================================================================
@@ -136,31 +136,31 @@ export interface RLSRequestContext {
    * Unique identifier for the request
    * Useful for tracing and debugging
    */
-  requestId?: string;
+  requestId?: string
 
   /**
    * Client IP address
    * Can be used for IP-based access policies
    */
-  ipAddress?: string;
+  ipAddress?: string
 
   /**
    * Client user agent string
    * Useful for device-based access policies
    */
-  userAgent?: string;
+  userAgent?: string
 
   /**
    * Request timestamp
    * Required for time-based policies and audit logs
    */
-  timestamp: Date;
+  timestamp: Date
 
   /**
    * HTTP headers
    * Can contain custom authentication or context headers
    */
-  headers?: Record<string, string>;
+  headers?: Record<string, string>
 }
 
 // ============================================================================
@@ -201,26 +201,26 @@ export interface RLSContext<TUser = unknown, TMeta = unknown> {
    * Authentication context (required)
    * Contains user identity and authorization information
    */
-  auth: RLSAuthContext<TUser>;
+  auth: RLSAuthContext<TUser>
 
   /**
    * Request context (optional)
    * Contains HTTP request information
    */
-  request?: RLSRequestContext;
+  request?: RLSRequestContext
 
   /**
    * Custom metadata (optional)
    * Can contain any additional context needed for policy evaluation
    * Examples: feature flags, A/B test groups, regional settings
    */
-  meta?: TMeta;
+  meta?: TMeta
 
   /**
    * Context creation timestamp
    * Used for temporal policies and audit trails
    */
-  timestamp: Date;
+  timestamp: Date
 }
 
 // ============================================================================
@@ -237,7 +237,7 @@ export interface RLSContext<TUser = unknown, TMeta = unknown> {
  * @typeParam TAuth - Custom user type for auth context
  * @typeParam TRow - Type of the database row being evaluated
  * @typeParam TData - Type of the data being inserted/updated
- * @typeParam TDB - Database schema type for Kysely
+ * @typeParam DB - Database schema type for Kysely
  *
  * @example
  * ```typescript
@@ -259,58 +259,58 @@ export interface PolicyEvaluationContext<
   TAuth = unknown,
   TRow = unknown,
   TData = unknown,
-  TDB = unknown
+  DB = unknown
 > {
   /**
    * Authentication context
    * Contains user identity and authorization information
    */
-  auth: RLSAuthContext<TAuth>;
+  auth: RLSAuthContext<TAuth>
 
   /**
    * Current row being evaluated (optional)
    * Available during read/update/delete operations
    * Used for row-level policies that check row attributes
    */
-  row?: TRow;
+  row?: TRow
 
   /**
    * Data being inserted or updated (optional)
    * Available during create/update operations
    * Used for validation policies
    */
-  data?: TData;
+  data?: TData
 
   /**
    * Request context (optional)
    * Contains HTTP request information
    */
-  request?: RLSRequestContext;
+  request?: RLSRequestContext
 
   /**
    * Kysely database instance (optional)
    * Available for policies that need to perform additional queries
    * Use sparingly as it can impact performance
    */
-  db?: Kysely<TDB>;
+  db?: Kysely<DB>
 
   /**
    * Custom metadata (optional)
    * Can contain any additional context needed for policy evaluation
    */
-  meta?: Record<string, unknown>;
+  meta?: Record<string, unknown>
 
   /**
    * Table name being accessed (optional)
    * Available during mutation operations
    */
-  table?: string;
+  table?: string
 
   /**
    * Operation being performed (optional)
    * E.g., 'create', 'update', 'delete'
    */
-  operation?: string;
+  operation?: string
 }
 
 // ============================================================================
@@ -346,7 +346,7 @@ export interface PolicyEvaluationContext<
  */
 export type PolicyCondition<TCtx extends PolicyEvaluationContext = PolicyEvaluationContext> =
   | ((ctx: TCtx) => boolean | Promise<boolean>)
-  | string;
+  | string
 
 /**
  * Filter condition that returns WHERE clause conditions
@@ -375,7 +375,7 @@ export type PolicyCondition<TCtx extends PolicyEvaluationContext = PolicyEvaluat
  */
 export type FilterCondition<TCtx extends PolicyEvaluationContext = PolicyEvaluationContext> =
   | ((ctx: TCtx) => Record<string, unknown>)
-  | Record<string, string>;
+  | Record<string, string>
 
 // ============================================================================
 // Policy Types
@@ -420,7 +420,7 @@ export type FilterCondition<TCtx extends PolicyEvaluationContext = PolicyEvaluat
  * };
  * ```
  */
-export type PolicyType = 'allow' | 'deny' | 'filter' | 'validate';
+export type PolicyType = 'allow' | 'deny' | 'filter' | 'validate'
 
 // ============================================================================
 // Policy Definition
@@ -474,13 +474,13 @@ export interface PolicyDefinition<
    * Policy behavior type
    * Determines how the policy affects access control
    */
-  type: PolicyType;
+  type: PolicyType
 
   /**
    * Operation(s) this policy applies to
    * Can be a single operation or an array of operations
    */
-  operation: TOperation | TOperation[];
+  operation: TOperation | TOperation[]
 
   /**
    * Condition function or expression
@@ -488,13 +488,13 @@ export interface PolicyDefinition<
    * - For 'filter': returns WHERE conditions object
    * - For native RLS: SQL expression string
    */
-  condition: TCondition;
+  condition: TCondition
 
   /**
    * Optional policy name for debugging and logging
    * Recommended for easier policy management
    */
-  name?: string;
+  name?: string
 
   /**
    * Optional priority for policy evaluation order
@@ -503,7 +503,7 @@ export interface PolicyDefinition<
    *
    * @default 0
    */
-  priority?: number;
+  priority?: number
 
   /**
    * Optional SQL expression for native RLS USING clause
@@ -511,7 +511,7 @@ export interface PolicyDefinition<
    *
    * @example 'user_id = current_user_id()'
    */
-  using?: string;
+  using?: string
 
   /**
    * Optional SQL expression for native RLS WITH CHECK clause
@@ -519,7 +519,7 @@ export interface PolicyDefinition<
    *
    * @example 'tenant_id = current_tenant_id()'
    */
-  withCheck?: string;
+  withCheck?: string
 
   /**
    * Optional database role this policy applies to
@@ -527,13 +527,13 @@ export interface PolicyDefinition<
    *
    * @example 'authenticated'
    */
-  role?: string;
+  role?: string
 
   /**
    * Optional performance optimization hints
    * Used for query optimization and index suggestions
    */
-  hints?: PolicyHints;
+  hints?: PolicyHints
 }
 
 // ============================================================================
@@ -573,7 +573,7 @@ export interface TableRLSConfig {
    * List of policies to enforce on this table
    * Policies are evaluated in priority order (highest first)
    */
-  policies: PolicyDefinition[];
+  policies: PolicyDefinition[]
 
   /**
    * Default behavior when no policies match
@@ -582,7 +582,7 @@ export interface TableRLSConfig {
    *
    * @default true
    */
-  defaultDeny?: boolean;
+  defaultDeny?: boolean
 
   /**
    * List of roles that bypass RLS policies
@@ -590,7 +590,7 @@ export interface TableRLSConfig {
    *
    * @example ['system', 'admin', 'superuser']
    */
-  skipFor?: string[];
+  skipFor?: string[]
 }
 
 // ============================================================================
@@ -636,8 +636,8 @@ export interface TableRLSConfig {
  * ```
  */
 export type RLSSchema<DB> = {
-  [K in keyof DB]?: TableRLSConfig;
-};
+  [K in keyof DB]?: TableRLSConfig
+}
 
 // ============================================================================
 // Compiled Policies
@@ -654,29 +654,29 @@ export interface CompiledPolicy<TCtx = PolicyEvaluationContext> {
   /**
    * Policy behavior type
    */
-  type: PolicyType;
+  type: PolicyType
 
   /**
    * Operations this policy applies to
    * Always an array after compilation
    */
-  operation: Operation[];
+  operation: Operation[]
 
   /**
    * Compiled evaluation function
    * Returns boolean or Promise<boolean>
    */
-  evaluate: (ctx: TCtx) => boolean | Promise<boolean>;
+  evaluate: (ctx: TCtx) => boolean | Promise<boolean>
 
   /**
    * Policy name for debugging
    */
-  name: string;
+  name: string
 
   /**
    * Priority for evaluation order
    */
-  priority: number;
+  priority: number
 }
 
 /**
@@ -690,18 +690,18 @@ export interface CompiledFilterPolicy<TCtx = PolicyEvaluationContext> {
   /**
    * Always 'read' for filter policies
    */
-  operation: 'read';
+  operation: 'read'
 
   /**
    * Function to get WHERE conditions
    * Returns object with column-value pairs
    */
-  getConditions: (ctx: TCtx) => Record<string, unknown>;
+  getConditions: (ctx: TCtx) => Record<string, unknown>
 
   /**
    * Policy name for debugging
    */
-  name: string;
+  name: string
 }
 
 // ============================================================================
@@ -729,7 +729,7 @@ export interface PolicyHints {
    * Columns that should be indexed for optimal performance
    * Suggests which columns are frequently used in policy conditions
    */
-  indexColumns?: string[];
+  indexColumns?: string[]
 
   /**
    * Expected selectivity of the policy
@@ -737,18 +737,18 @@ export interface PolicyHints {
    * - 'medium': Filters moderate number of rows
    * - 'low': Filters few rows (evaluate later)
    */
-  selectivity?: 'high' | 'medium' | 'low';
+  selectivity?: 'high' | 'medium' | 'low'
 
   /**
    * Whether the policy is leakproof (PostgreSQL concept)
    * Leakproof functions don't reveal information about their inputs
    * Safe to execute before other security checks
    */
-  leakproof?: boolean;
+  leakproof?: boolean
 
   /**
    * Whether the policy result is stable for the same inputs
    * Stable policies can be cached during a query execution
    */
-  stable?: boolean;
+  stable?: boolean
 }

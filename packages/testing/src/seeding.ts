@@ -4,7 +4,7 @@
  * @module @kysera/testing
  */
 
-import type { Kysely, Transaction } from 'kysely';
+import type { Kysely, Transaction } from 'kysely'
 
 /**
  * Seed database with test data.
@@ -45,13 +45,13 @@ export async function seedDatabase<DB>(
   db: Kysely<DB>,
   fn: (trx: Transaction<DB>) => Promise<void>
 ): Promise<void> {
-  await db.transaction().execute(fn);
+  await db.transaction().execute(fn)
 }
 
 /**
  * Seed function type for reusable seeders.
  */
-export type SeedFunction<DB> = (trx: Transaction<DB>) => Promise<void>;
+export type SeedFunction<DB> = (trx: Transaction<DB>) => Promise<void>
 
 /**
  * Create a composable seeder.
@@ -80,12 +80,10 @@ export type SeedFunction<DB> = (trx: Transaction<DB>) => Promise<void>;
  * });
  * ```
  */
-export function composeSeeders<DB>(
-  seeders: SeedFunction<DB>[]
-): SeedFunction<DB> {
+export function composeSeeders<DB>(seeders: SeedFunction<DB>[]): SeedFunction<DB> {
   return async (trx: Transaction<DB>): Promise<void> => {
     for (const seeder of seeders) {
-      await seeder(trx);
+      await seeder(trx)
     }
-  };
+  }
 }

@@ -53,6 +53,7 @@ kysera <TAB>
 ```
 
 **Expected output:**
+
 - init
 - migrate
 - generate
@@ -69,11 +70,13 @@ kysera <TAB>
 ### 2. Subcommands Completion
 
 #### Migrate Subcommands
+
 ```bash
 kysera migrate <TAB>
 ```
 
 **Expected output:**
+
 - create
 - up
 - down
@@ -84,11 +87,13 @@ kysera migrate <TAB>
 - rollback
 
 #### Generate Subcommands
+
 ```bash
 kysera generate <TAB>
 ```
 
 **Expected output:**
+
 - model
 - repository
 - schema
@@ -98,52 +103,62 @@ kysera generate <TAB>
 ### 3. Option Value Completion
 
 #### Database Dialects
+
 ```bash
 kysera init --dialect <TAB>
 ```
 
 **Expected output:**
+
 - postgres
 - mysql
 - sqlite
 
 #### Validation Libraries
+
 ```bash
 kysera generate model User --validation <TAB>
 ```
 
 **Expected output:**
+
 - zod
 - yup
 - joi
 - none
 
 #### Output Formats
+
 ```bash
 kysera db dump --format <TAB>
 ```
 
 **Expected output:**
+
 - sql
 - json
 - yaml
 
 #### Environments
+
 ```bash
 kysera test setup --env <TAB>
 ```
 
 **Expected output:**
+
 - development
 - test
 - production
 
 #### Seeding Strategies
+
 ```bash
 kysera test seed --strategy <TAB>
 ```
 
 **Expected output:**
+
 - realistic
 - minimal
 - random
@@ -156,6 +171,7 @@ kysera --<TAB>
 ```
 
 **Expected output:**
+
 - --help
 - --version
 - --verbose
@@ -182,11 +198,13 @@ kysera generate model User --output <TAB>
 ### 6. Command-Specific Options
 
 #### Init Command
+
 ```bash
 kysera init --<TAB>
 ```
 
 **Expected output:**
+
 - --dialect
 - --typescript
 - --javascript
@@ -195,11 +213,13 @@ kysera init --<TAB>
 - (plus global options)
 
 #### Generate Command
+
 ```bash
 kysera generate model User --<TAB>
 ```
 
 **Expected output:**
+
 - --table
 - --output
 - --with-validation
@@ -210,11 +230,13 @@ kysera generate model User --<TAB>
 - (plus global options)
 
 #### Test Command
+
 ```bash
 kysera test seed --<TAB>
 ```
 
 **Expected output:**
+
 - --env
 - --count
 - --strategy
@@ -240,6 +262,7 @@ kysera test seed --<TAB>
 
 **Issue:** Completions not working after sourcing
 **Solution:** Ensure bash-completion package is installed
+
 ```bash
 # macOS
 brew install bash-completion
@@ -248,13 +271,14 @@ brew install bash-completion
 sudo apt-get install bash-completion
 ```
 
-**Issue:** _init_completion command not found
+**Issue:** \_init_completion command not found
 **Solution:** Install bash-completion 2.0 or later
 
 ### Zsh
 
 **Issue:** Completions not appearing
 **Solution:** Rebuild completion cache
+
 ```zsh
 rm ~/.zcompdump
 autoload -U compinit && compinit
@@ -262,6 +286,7 @@ autoload -U compinit && compinit
 
 **Issue:** Completions not updating after changes
 **Solution:** Force reload
+
 ```zsh
 unfunction _kysera
 autoload -U compinit && compinit
@@ -271,6 +296,7 @@ autoload -U compinit && compinit
 
 **Issue:** Completions not working
 **Solution:** Verify file location
+
 ```fish
 # Check Fish completion search paths
 echo $fish_complete_path

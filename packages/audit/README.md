@@ -9,6 +9,7 @@
 ## 🎯 Features
 
 ### Core Audit Logging
+
 - ✅ **Automatic tracking** - Logs all INSERT, UPDATE, DELETE operations
 - ✅ **Old/New values** - Captures state before and after changes
 - ✅ **User attribution** - Tracks who made each change
@@ -17,6 +18,7 @@
 - ✅ **Configurable primary key** - Support for custom PK columns (numeric & string IDs)
 
 ### Advanced Features
+
 - ✅ **Transaction-aware** - Audit logs commit/rollback with transactions
 - ✅ **Bulk operations** - Optimized for bulkCreate, bulkUpdate, bulkDelete
 - ✅ **Restoration** - Restore deleted entities or revert updates
@@ -26,6 +28,7 @@
 - ✅ **UUID support** - Works with UUID and other string-based primary keys
 
 ### Performance Optimizations
+
 - ✅ **Single-query fetching** - Bulk operations avoid N+1 queries
 - ✅ **Minimal overhead** - <5% performance impact
 - ✅ **Selective auditing** - Audit only what you need
@@ -67,10 +70,10 @@ const orm = await createORM(db, [audit])
 
 // Create repository - audit logging is automatic!
 // Note: Use the executor from orm.createRepository callback for proper plugin integration
-const userRepo = orm.createRepository((executor) =>
+const userRepo = orm.createRepository(executor =>
   createRepositoryFactory(executor).create({
     tableName: 'users',
-    mapRow: (row) => row as User,
+    mapRow: row => row as User,
     schemas: {
       create: CreateUserSchema,
       update: UpdateUserSchema
@@ -263,11 +266,11 @@ const audit = auditPlugin({
   auditTable: 'my_audit_logs',
 
   // Custom primary key column (default: 'id')
-  primaryKeyColumn: 'id',  // or 'uuid', 'user_id', etc.
+  primaryKeyColumn: 'id', // or 'uuid', 'user_id', etc.
 
   // Value capture options
-  captureOldValues: true,  // Capture state before changes
-  captureNewValues: true,   // Capture state after changes
+  captureOldValues: true, // Capture state before changes
+  captureNewValues: true, // Capture state after changes
 
   // User tracking
   getUserId: () => {
@@ -290,7 +293,7 @@ const audit = auditPlugin({
   skipSystemOperations: false,
 
   // Table filtering (whitelist)
-  tables: ['users', 'posts', 'comments'],
+  tables: ['users', 'posts', 'comments']
 
   // Or use blacklist
   // excludeTables: ['sessions', 'cache', 'migrations']
@@ -483,12 +486,12 @@ export interface AuditLogEntry {
   id: number
   table_name: string
   entity_id: string
-  operation: string              // 'INSERT' | 'UPDATE' | 'DELETE'
-  old_values: string | null      // JSON string
-  new_values: string | null      // JSON string
+  operation: string // 'INSERT' | 'UPDATE' | 'DELETE'
+  old_values: string | null // JSON string
+  new_values: string | null // JSON string
   changed_by: string | null
   changed_at: string
-  metadata: string | null        // JSON string
+  metadata: string | null // JSON string
 }
 
 /**
@@ -499,11 +502,11 @@ export interface ParsedAuditLogEntry {
   table_name: string
   entity_id: string
   operation: string
-  old_values: Record<string, unknown> | null  // Parsed JSON
-  new_values: Record<string, unknown> | null  // Parsed JSON
+  old_values: Record<string, unknown> | null // Parsed JSON
+  new_values: Record<string, unknown> | null // Parsed JSON
   changed_by: string | null
   changed_at: Date | string
-  metadata: Record<string, unknown> | null    // Parsed JSON
+  metadata: Record<string, unknown> | null // Parsed JSON
 }
 ```
 
@@ -650,7 +653,7 @@ console.log(history)
 // ]
 
 // Alias available for backwards compatibility
-const logs = await userRepo.getAuditLogs(123)  // Same as getAuditHistory
+const logs = await userRepo.getAuditLogs(123) // Same as getAuditHistory
 ```
 
 #### getAuditLog()
@@ -695,9 +698,9 @@ interface Repository<T> {
    * @returns Array of parsed audit log entries
    */
   getTableAuditLogs(filters?: {
-    operation?: string          // Filter by operation type
-    userId?: string             // Filter by user
-    startDate?: Date | string   // Filter by date range
+    operation?: string // Filter by operation type
+    userId?: string // Filter by user
+    startDate?: Date | string // Filter by date range
     endDate?: Date | string
   }): Promise<ParsedAuditLogEntry[]>
 }
@@ -746,10 +749,13 @@ const adminChanges = await userRepo.getUserChanges('admin-123')
 console.log(`Admin made ${adminChanges.length} changes`)
 
 // Analyze changes
-const operations = adminChanges.reduce((acc, log) => {
-  acc[log.operation] = (acc[log.operation] || 0) + 1
-  return acc
-}, {} as Record<string, number>)
+const operations = adminChanges.reduce(
+  (acc, log) => {
+    acc[log.operation] = (acc[log.operation] || 0) + 1
+    return acc
+  },
+  {} as Record<string, number>
+)
 
 console.log('Operations:', operations)
 // { INSERT: 50, UPDATE: 120, DELETE: 10 }
@@ -786,9 +792,8 @@ if (deleteLogs.length > 0) {
 
 // Revert an update
 const updateLogs = await userRepo.getAuditHistory(userId)
-const badUpdate = updateLogs.find(log =>
-  log.operation === 'UPDATE' &&
-  log.changed_at > '2025-01-15T10:00:00Z'
+const badUpdate = updateLogs.find(
+  log => log.operation === 'UPDATE' && log.changed_at > '2025-01-15T10:00:00Z'
 )
 
 if (badUpdate) {
@@ -811,8 +816,8 @@ if (badUpdate) {
 
 ```typescript
 // ✅ CORRECT: Audit logs are part of transaction
-await db.transaction().execute(async (trx) => {
-  const repos = createRepositories(trx)  // Use transaction executor
+await db.transaction().execute(async trx => {
+  const repos = createRepositories(trx) // Use transaction executor
 
   await repos.users.create({ email: 'test@example.com' })
   await repos.posts.create({ user_id: 1, title: 'First Post' })
@@ -823,8 +828,8 @@ await db.transaction().execute(async (trx) => {
 // Result: No user, no post, no audit logs ✅
 
 // ❌ INCORRECT: Using db instead of trx
-await db.transaction().execute(async (trx) => {
-  const repos = createRepositories(db)  // Wrong! Using db, not trx
+await db.transaction().execute(async trx => {
+  const repos = createRepositories(db) // Wrong! Using db, not trx
 
   await repos.users.create({ email: 'test@example.com' })
 
@@ -841,21 +846,23 @@ import { auditPlugin } from '@kysera/audit'
 import { createORM, createRepositoryFactory } from '@kysera/repository'
 
 // Setup
-const db = new Kysely<Database>({ /* ... */ })
+const db = new Kysely<Database>({
+  /* ... */
+})
 const audit = auditPlugin({ getUserId: () => currentUserId })
 
 // Transaction with audit logging
 async function transferFunds(fromId: number, toId: number, amount: number) {
-  return await db.transaction().execute(async (trx) => {
+  return await db.transaction().execute(async trx => {
     // IMPORTANT: Create a new plugin container with the transaction executor
     // This ensures all plugins (including audit) use the transaction
     const trxOrm = await createORM(trx as unknown as Kysely<Database>, [audit])
 
     // Create repositories using transaction-bound plugin container
-    const accountRepo = trxOrm.createRepository((executor) =>
+    const accountRepo = trxOrm.createRepository(executor =>
       createRepositoryFactory(executor).create({
         tableName: 'accounts',
-        mapRow: (row) => row as Account,
+        mapRow: row => row as Account,
         schemas: { update: UpdateAccountSchema }
       })
     )
@@ -892,7 +899,7 @@ await transferFunds(1, 2, 100)
 
 // Failed transaction
 try {
-  await transferFunds(1, 2, 999999)  // Insufficient funds
+  await transferFunds(1, 2, 999999) // Insufficient funds
 } catch (error) {
   // ✅ No accounts updated
   // ✅ No audit logs created
@@ -905,22 +912,22 @@ try {
 // Example: Rollback with audit logs
 async function createUserWithPosts() {
   try {
-    await db.transaction().execute(async (trx) => {
+    await db.transaction().execute(async trx => {
       // Create transaction-bound plugin container for proper audit logging
       const trxOrm = await createORM(trx as unknown as Kysely<Database>, [audit])
 
-      const userRepo = trxOrm.createRepository((executor) =>
+      const userRepo = trxOrm.createRepository(executor =>
         createRepositoryFactory(executor).create({
           tableName: 'users',
-          mapRow: (row) => row as User,
+          mapRow: row => row as User,
           schemas: { create: CreateUserSchema }
         })
       )
 
-      const postRepo = trxOrm.createRepository((executor) =>
+      const postRepo = trxOrm.createRepository(executor =>
         createRepositoryFactory(executor).create({
           tableName: 'posts',
-          mapRow: (row) => row as Post,
+          mapRow: row => row as Post,
           schemas: { create: CreatePostSchema }
         })
       )
@@ -965,7 +972,7 @@ const auditLogs = await db
   .where('changed_by', '=', currentUserId)
   .execute()
 
-console.log(auditLogs.length)  // 0 if rolled back, 6 if committed
+console.log(auditLogs.length) // 0 if rolled back, 6 if committed
 ```
 
 ## 🚀 Bulk Operations
@@ -999,7 +1006,7 @@ Bulk operations use optimized single-query fetching to avoid N+1 problems:
 const users = await userRepo.bulkCreate([
   { email: 'user1@example.com', name: 'User 1' },
   { email: 'user2@example.com', name: 'User 2' },
-  { email: 'user3@example.com', name: 'User 3' },
+  { email: 'user3@example.com', name: 'User 3' }
   // ... 100 more users
 ])
 
@@ -1071,9 +1078,7 @@ console.log(`Completed in ${elapsed}ms`)
 // Benchmark: bulkDelete with 100 records
 const startTime = Date.now()
 
-await userRepo.bulkDelete(
-  Array.from({ length: 100 }, (_, i) => i + 1)
-)
+await userRepo.bulkDelete(Array.from({ length: 100 }, (_, i) => i + 1))
 
 const elapsed = Date.now() - startTime
 console.log(`Completed in ${elapsed}ms`)
@@ -1236,14 +1241,14 @@ The audit plugin supports custom primary key columns, including UUID and other s
 ```typescript
 // Table with UUID primary key
 interface UsersTable {
-  uuid: string  // UUID primary key instead of numeric id
+  uuid: string // UUID primary key instead of numeric id
   email: string
   name: string
 }
 
 // Configure audit plugin for UUID
 const audit = auditPlugin({
-  primaryKeyColumn: 'uuid',  // Specify custom primary key
+  primaryKeyColumn: 'uuid', // Specify custom primary key
   tables: ['users']
 })
 
@@ -1251,7 +1256,7 @@ const audit = auditPlugin({
 const userRepo = orm.createRepository(() =>
   factory.create({
     tableName: 'users',
-    mapRow: (row) => row as User,
+    mapRow: row => row as User,
     schemas: { create: CreateUserSchema }
   })
 )
@@ -1264,7 +1269,7 @@ await userRepo.delete(uuid)
 
 // Query audit history with UUID
 const history = await userRepo.getAuditHistory(uuid)
-console.log(history)  // Full audit trail with UUID references
+console.log(history) // Full audit trail with UUID references
 ```
 
 #### Custom String Primary Keys
@@ -1272,14 +1277,14 @@ console.log(history)  // Full audit trail with UUID references
 ```typescript
 // Table with custom string primary key
 interface OrdersTable {
-  order_id: string  // Custom primary key like 'ORD-12345'
+  order_id: string // Custom primary key like 'ORD-12345'
   product_id: number
   total: number
 }
 
 // Configure audit plugin
 const audit = auditPlugin({
-  primaryKeyColumn: 'order_id',  // Custom primary key column
+  primaryKeyColumn: 'order_id', // Custom primary key column
   tables: ['orders']
 })
 
@@ -1287,7 +1292,7 @@ const audit = auditPlugin({
 const orderRepo = orm.createRepository(() =>
   factory.create({
     tableName: 'orders',
-    mapRow: (row) => row as Order,
+    mapRow: row => row as Order,
     schemas: { create: CreateOrderSchema }
   })
 )
@@ -1358,8 +1363,8 @@ const audit = auditPlugin({
 ```typescript
 // Minimize storage by capturing only new values
 const audit = auditPlugin({
-  captureOldValues: false,   // Don't capture old values
-  captureNewValues: true     // Only capture new values
+  captureOldValues: false, // Don't capture old values
+  captureNewValues: true // Only capture new values
 })
 
 // Useful for:
@@ -1369,8 +1374,8 @@ const audit = auditPlugin({
 
 // Or capture only old values (for compliance)
 const audit = auditPlugin({
-  captureOldValues: true,    // Capture what was there
-  captureNewValues: false    // Don't capture new values
+  captureOldValues: true, // Capture what was there
+  captureNewValues: false // Don't capture new values
 })
 
 // Useful for:
@@ -1386,7 +1391,7 @@ const audit = auditPlugin({
 ```typescript
 // Skip auditing for ALL operations when skipSystemOperations is true
 const audit = auditPlugin({
-  skipSystemOperations: true,  // This alone disables all audit logging
+  skipSystemOperations: true, // This alone disables all audit logging
   getUserId: () => currentUser?.id || null
 })
 
@@ -1408,7 +1413,7 @@ const conditionalAudit = auditPlugin({
 // Or manage auditing per-operation using table filtering:
 const selectiveAudit = auditPlugin({
   getUserId: () => currentUser?.id || null,
-  excludeTables: ['migrations', 'seeds']  // Exclude specific tables instead
+  excludeTables: ['migrations', 'seeds'] // Exclude specific tables instead
 })
 ```
 
@@ -1587,9 +1592,9 @@ const history: ParsedAuditLogEntry[] = await userRepo.getAuditHistory(123)
 
 // Type-safe access
 history.forEach(entry => {
-  console.log(entry.operation)        // 'INSERT' | 'UPDATE' | 'DELETE'
-  console.log(entry.changed_by)       // string | null
-  console.log(entry.changed_at)       // Date | string
+  console.log(entry.operation) // 'INSERT' | 'UPDATE' | 'DELETE'
+  console.log(entry.changed_by) // string | null
+  console.log(entry.changed_at) // Date | string
 
   if (entry.old_values) {
     // Type: Record<string, unknown>
@@ -1802,23 +1807,17 @@ async function maintainAuditLogs() {
   const cutoffDate = new Date()
   cutoffDate.setDate(cutoffDate.getDate() - retentionDays)
 
-  await db.transaction().execute(async (trx) => {
+  await db.transaction().execute(async trx => {
     // Archive to separate table
     await trx
       .insertInto('audit_logs_archive')
       .from(
-        trx
-          .selectFrom('audit_logs')
-          .selectAll()
-          .where('changed_at', '<', cutoffDate.toISOString())
+        trx.selectFrom('audit_logs').selectAll().where('changed_at', '<', cutoffDate.toISOString())
       )
       .execute()
 
     // Delete archived logs
-    await trx
-      .deleteFrom('audit_logs')
-      .where('changed_at', '<', cutoffDate.toISOString())
-      .execute()
+    await trx.deleteFrom('audit_logs').where('changed_at', '<', cutoffDate.toISOString()).execute()
   })
 }
 
@@ -1873,12 +1872,14 @@ const audit = auditPlugin({
 // In your repository, implement custom mapRow to exclude sensitive fields
 const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => {
+  mapRow: row => {
     // Remove sensitive fields before they reach audit logs
     const { password, ssn, creditCard, ...safeData } = row
     return safeData as User
   },
-  schemas: { /* ... */ }
+  schemas: {
+    /* ... */
+  }
 })
 ```
 
@@ -1914,6 +1915,7 @@ async function checkAuditLogSize() {
 **Problem**: Operations succeed but no audit logs appear
 
 **Solutions**:
+
 ```typescript
 // 1. Check table filtering
 const audit = auditPlugin({
@@ -1942,6 +1944,7 @@ const userRepo = factory.create(...)         // ❌ No audit
 **Problem**: Audit logs persist even when transaction rolls back
 
 **Solution**:
+
 ```typescript
 // ❌ WRONG: Using db instead of trx
 await db.transaction().execute(async (trx) => {
@@ -1961,10 +1964,11 @@ await db.transaction().execute(async (trx) => {
 **Problem**: UPDATE/DELETE logs show null for old_values
 
 **Solutions**:
+
 ```typescript
 // 1. Enable old value capture
 const audit = auditPlugin({
-  captureOldValues: true  // Must be true
+  captureOldValues: true // Must be true
 })
 
 // 2. Check entity exists before operation
@@ -1983,6 +1987,7 @@ await userRepo.update(123, { name: 'New Name' })
 **Problem**: Operations take too long with audit logging
 
 **Solutions**:
+
 ```typescript
 // 1. Create indexes
 CREATE INDEX idx_audit_logs_table_name ON audit_logs(table_name);
@@ -2009,6 +2014,7 @@ const audit = auditPlugin({
 **Problem**: JSON.parse() fails when reading audit logs
 
 **Solution**:
+
 ```typescript
 // Use parsed entries instead of raw entries
 const history: ParsedAuditLogEntry[] = await userRepo.getAuditHistory(123)
@@ -2032,6 +2038,7 @@ logs.forEach(log => {
 **Problem**: Out of memory when processing large batches
 
 **Solution**:
+
 ```typescript
 // Process in smaller batches
 async function bulkUpdateInBatches(updates: Update[], batchSize = 100) {

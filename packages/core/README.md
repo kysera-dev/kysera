@@ -79,19 +79,16 @@ try {
 }
 
 // Paginate results (offset-based)
-const users = await paginate(
-  db.selectFrom('users').selectAll().orderBy('created_at', 'desc'),
-  { page: 1, limit: 20 }
-)
+const users = await paginate(db.selectFrom('users').selectAll().orderBy('created_at', 'desc'), {
+  page: 1,
+  limit: 20
+})
 
 // Cursor-based pagination for large datasets
-const posts = await paginateCursor(
-  db.selectFrom('posts').selectAll(),
-  {
-    orderBy: [{ column: 'id', direction: 'asc' }],
-    limit: 20
-  }
-)
+const posts = await paginateCursor(db.selectFrom('posts').selectAll(), {
+  orderBy: [{ column: 'id', direction: 'asc' }],
+  limit: 20
+})
 ```
 
 ---
@@ -139,32 +136,32 @@ The `parseDatabaseError` function automatically detects and parses database-spec
 
 #### PostgreSQL Error Codes
 
-| Error Code | Type | Description |
-|------------|------|-------------|
-| `23505` | UniqueConstraintError | UNIQUE constraint violation |
-| `23503` | ForeignKeyError | FOREIGN KEY constraint violation |
-| `23502` | NotNullError | NOT NULL constraint violation |
-| `23514` | CheckConstraintError | CHECK constraint violation |
+| Error Code | Type                  | Description                      |
+| ---------- | --------------------- | -------------------------------- |
+| `23505`    | UniqueConstraintError | UNIQUE constraint violation      |
+| `23503`    | ForeignKeyError       | FOREIGN KEY constraint violation |
+| `23502`    | NotNullError          | NOT NULL constraint violation    |
+| `23514`    | CheckConstraintError  | CHECK constraint violation       |
 
 #### MySQL Error Codes
 
-| Error Code | Type | Description |
-|------------|------|-------------|
-| `ER_DUP_ENTRY` | UniqueConstraintError | Duplicate entry |
-| `ER_DUP_KEY` | UniqueConstraintError | Duplicate key |
-| `ER_NO_REFERENCED_ROW` | ForeignKeyError | Foreign key violation |
-| `ER_ROW_IS_REFERENCED` | ForeignKeyError | Foreign key violation |
-| `ER_BAD_NULL_ERROR` | NotNullError | NOT NULL violation |
-| `ER_NO_DEFAULT_FOR_FIELD` | NotNullError | Required field missing |
+| Error Code                | Type                  | Description            |
+| ------------------------- | --------------------- | ---------------------- |
+| `ER_DUP_ENTRY`            | UniqueConstraintError | Duplicate entry        |
+| `ER_DUP_KEY`              | UniqueConstraintError | Duplicate key          |
+| `ER_NO_REFERENCED_ROW`    | ForeignKeyError       | Foreign key violation  |
+| `ER_ROW_IS_REFERENCED`    | ForeignKeyError       | Foreign key violation  |
+| `ER_BAD_NULL_ERROR`       | NotNullError          | NOT NULL violation     |
+| `ER_NO_DEFAULT_FOR_FIELD` | NotNullError          | Required field missing |
 
 #### SQLite Error Messages
 
-| Message Pattern | Type | Description |
-|----------------|------|-------------|
-| `UNIQUE constraint failed` | UniqueConstraintError | Unique violation |
-| `FOREIGN KEY constraint failed` | ForeignKeyError | Foreign key violation |
-| `NOT NULL constraint failed` | NotNullError | NOT NULL violation |
-| `CHECK constraint failed` | CheckConstraintError | CHECK violation |
+| Message Pattern                 | Type                  | Description           |
+| ------------------------------- | --------------------- | --------------------- |
+| `UNIQUE constraint failed`      | UniqueConstraintError | Unique violation      |
+| `FOREIGN KEY constraint failed` | ForeignKeyError       | Foreign key violation |
+| `NOT NULL constraint failed`    | NotNullError          | NOT NULL violation    |
+| `CHECK constraint failed`       | CheckConstraintError  | CHECK violation       |
 
 ### Error Codes
 
@@ -186,6 +183,7 @@ const isValid = isValidErrorCode('DB_CONNECTION_FAILED') // true
 ```
 
 **Error Code Categories:**
+
 - `DB_*` - Database errors (connection, query, transaction)
 - `VALIDATION_*` - Validation and constraint errors
 - `RESOURCE_*` - Resource errors (not found, conflict)
@@ -204,10 +202,7 @@ const isValid = isValidErrorCode('DB_CONNECTION_FAILED') // true
 import { parseDatabaseError, UniqueConstraintError } from '@kysera/core'
 
 try {
-  await db
-    .insertInto('users')
-    .values({ email: 'existing@example.com', name: 'John' })
-    .execute()
+  await db.insertInto('users').values({ email: 'existing@example.com', name: 'John' }).execute()
 } catch (error) {
   const dbError = parseDatabaseError(error, 'postgres')
 
@@ -283,11 +278,7 @@ console.log(JSON.stringify(dbError.toJSON(), null, 2))
 ```typescript
 import { NotFoundError } from '@kysera/core'
 
-const user = await db
-  .selectFrom('users')
-  .selectAll()
-  .where('id', '=', userId)
-  .executeTakeFirst()
+const user = await db.selectFrom('users').selectAll().where('id', '=', userId).executeTakeFirst()
 
 if (!user) {
   throw new NotFoundError('User', { id: userId })
@@ -312,24 +303,21 @@ Lightweight utility functions for common query patterns.
 
 ### applyOffset
 
-Lightweight limit/offset pagination without COUNT(*) query (~50% faster than `paginate`):
+Lightweight limit/offset pagination without COUNT(\*) query (~50% faster than `paginate`):
 
 ```typescript
 import { applyOffset } from '@kysera/core'
 
 // Simple offset pagination
-const users = await applyOffset(
-  db.selectFrom('users').selectAll().orderBy('id'),
-  { limit: 20, offset: 0 }
-).execute()
+const users = await applyOffset(db.selectFrom('users').selectAll().orderBy('id'), {
+  limit: 20,
+  offset: 0
+}).execute()
 
 // Infinite scroll pattern
 async function loadMore(offset: number) {
   const posts = await applyOffset(
-    db.selectFrom('posts')
-      .selectAll()
-      .where('published', '=', true)
-      .orderBy('created_at', 'desc'),
+    db.selectFrom('posts').selectAll().where('published', '=', true).orderBy('created_at', 'desc'),
     { limit: 20, offset }
   ).execute()
   return {
@@ -340,6 +328,7 @@ async function loadMore(offset: number) {
 ```
 
 **Options:**
+
 - `limit`: 1-100 (default: 20)
 - `offset`: >= 0 (default: 0)
 
@@ -351,24 +340,23 @@ Apply date range filter to a query:
 import { applyDateRange } from '@kysera/core'
 
 // Date range filtering
-const posts = await applyDateRange(
-  db.selectFrom('posts').selectAll(),
-  'created_at',
-  { from: new Date('2024-01-01'), to: new Date('2024-12-31') }
-).execute()
+const posts = await applyDateRange(db.selectFrom('posts').selectAll(), 'created_at', {
+  from: new Date('2024-01-01'),
+  to: new Date('2024-12-31')
+}).execute()
 
 // Combine with offset
 const analytics = await applyOffset(
-  applyDateRange(
-    db.selectFrom('events').selectAll().orderBy('created_at', 'desc'),
-    'created_at',
-    { from: startDate, to: endDate }
-  ),
+  applyDateRange(db.selectFrom('events').selectAll().orderBy('created_at', 'desc'), 'created_at', {
+    from: startDate,
+    to: endDate
+  }),
   { limit: 100 }
 ).execute()
 ```
 
 **Options:**
+
 - `from`: Start date (inclusive)
 - `to`: End date (inclusive)
 
@@ -385,10 +373,10 @@ Best for: Small to medium datasets, UIs with page numbers.
 ```typescript
 import { paginate } from '@kysera/core'
 
-const result = await paginate(
-  db.selectFrom('users').selectAll().orderBy('created_at', 'desc'),
-  { page: 2, limit: 20 }
-)
+const result = await paginate(db.selectFrom('users').selectAll().orderBy('created_at', 'desc'), {
+  page: 2,
+  limit: 20
+})
 
 console.log(`Page ${result.pagination.page} of ${result.pagination.totalPages}`)
 console.log(`Total records: ${result.pagination.total}`)
@@ -416,12 +404,7 @@ const result = await paginate(
   db
     .selectFrom('posts')
     .innerJoin('users', 'users.id', 'posts.user_id')
-    .select([
-      'posts.id',
-      'posts.title',
-      'posts.created_at',
-      'users.name as author'
-    ])
+    .select(['posts.id', 'posts.title', 'posts.created_at', 'users.name as author'])
     .where('posts.published', '=', true)
     .orderBy('posts.created_at', 'desc'),
   { page: 1, limit: 10 }
@@ -438,43 +421,34 @@ Best for: Large datasets, infinite scroll, real-time feeds, APIs.
 import { paginateCursor } from '@kysera/core'
 
 // First page
-const page1 = await paginateCursor(
-  db.selectFrom('posts').selectAll(),
-  {
-    orderBy: [{ column: 'id', direction: 'asc' }],
-    limit: 20
-  }
-)
+const page1 = await paginateCursor(db.selectFrom('posts').selectAll(), {
+  orderBy: [{ column: 'id', direction: 'asc' }],
+  limit: 20
+})
 
 console.log(`Loaded ${page1.data.length} posts`)
 console.log(`Has next: ${page1.pagination.hasNext}`)
 
 // Next page
 if (page1.pagination.nextCursor) {
-  const page2 = await paginateCursor(
-    db.selectFrom('posts').selectAll(),
-    {
-      orderBy: [{ column: 'id', direction: 'asc' }],
-      cursor: page1.pagination.nextCursor,
-      limit: 20
-    }
-  )
+  const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
+    orderBy: [{ column: 'id', direction: 'asc' }],
+    cursor: page1.pagination.nextCursor,
+    limit: 20
+  })
 }
 ```
 
 #### Multi-Column Ordering
 
 ```typescript
-const result = await paginateCursor(
-  db.selectFrom('posts').selectAll(),
-  {
-    orderBy: [
-      { column: 'score', direction: 'desc' },      // Primary sort
-      { column: 'created_at', direction: 'desc' }  // Secondary sort (tie-breaker)
-    ],
-    limit: 20
-  }
-)
+const result = await paginateCursor(db.selectFrom('posts').selectAll(), {
+  orderBy: [
+    { column: 'score', direction: 'desc' }, // Primary sort
+    { column: 'created_at', direction: 'desc' } // Secondary sort (tie-breaker)
+  ],
+  limit: 20
+})
 ```
 
 #### Cursor Format
@@ -492,10 +466,10 @@ Cursors are base64-encoded for security and compactness:
 
 ### Performance Comparison
 
-| Strategy | Query Complexity | Dataset Size | Use Case |
-|----------|-----------------|--------------|----------|
-| **Offset** | `O(n)` at high pages | Small-Medium (<100k) | Admin panels, page numbers |
-| **Cursor** | `O(log n)` with index | Large (millions+) | Feeds, infinite scroll, APIs |
+| Strategy   | Query Complexity      | Dataset Size         | Use Case                     |
+| ---------- | --------------------- | -------------------- | ---------------------------- |
+| **Offset** | `O(n)` at high pages  | Small-Medium (<100k) | Admin panels, page numbers   |
+| **Cursor** | `O(log n)` with index | Large (millions+)    | Feeds, infinite scroll, APIs |
 
 #### Cursor Optimization Details
 
@@ -504,6 +478,7 @@ Cursors are base64-encoded for security and compactness:
 - **Database compatibility:** Works with PostgreSQL, MySQL, and SQLite
 
 **Index Recommendation:**
+
 ```sql
 -- For multi-column cursor pagination
 CREATE INDEX idx_posts_score_created ON posts(score DESC, created_at DESC);
@@ -522,19 +497,11 @@ import type { Executor } from '@kysera/core'
 
 class UserRepository {
   async findById(executor: Executor<Database>, id: number) {
-    return await executor
-      .selectFrom('users')
-      .selectAll()
-      .where('id', '=', id)
-      .executeTakeFirst()
+    return await executor.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
   }
 
   async create(executor: Executor<Database>, data: NewUser) {
-    return await executor
-      .insertInto('users')
-      .values(data)
-      .returningAll()
-      .executeTakeFirstOrThrow()
+    return await executor.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
   }
 }
 
@@ -542,7 +509,7 @@ class UserRepository {
 const user = await repo.findById(db, 123)
 
 // Usage with transaction
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const user = await repo.findById(trx, 123)
   await repo.create(trx, { email: 'new@example.com' })
 })
@@ -574,7 +541,7 @@ interface UsersTable {
   id: Generated<number>
   email: string
   name: string
-  created_at: ColumnType<Date, never, never>  // Read-only
+  created_at: ColumnType<Date, never, never> // Read-only
 }
 
 type User = Selectable<UsersTable>
@@ -609,12 +576,7 @@ interface QueryMetrics {
 Core provides a shared logger interface for consistency across the Kysera ecosystem:
 
 ```typescript
-import {
-  type KyseraLogger,
-  consoleLogger,
-  silentLogger,
-  createPrefixedLogger
-} from '@kysera/core'
+import { type KyseraLogger, consoleLogger, silentLogger, createPrefixedLogger } from '@kysera/core'
 
 // Console logger (default)
 const logger = consoleLogger
@@ -634,7 +596,7 @@ const customLogger: KyseraLogger = {
   debug: (msg, ...args) => winston.debug(msg, ...args),
   info: (msg, ...args) => winston.info(msg, ...args),
   warn: (msg, ...args) => winston.warn(msg, ...args),
-  error: (msg, ...args) => winston.error(msg, ...args),
+  error: (msg, ...args) => winston.error(msg, ...args)
 }
 ```
 
@@ -645,9 +607,11 @@ const customLogger: KyseraLogger = {
 ### Errors
 
 #### `parseDatabaseError(error: unknown, dialect: DatabaseDialect): DatabaseError`
+
 Parse database-specific errors into unified format.
 
 **Parameters:**
+
 - `error` - Original database error
 - `dialect` - `'postgres' | 'mysql' | 'sqlite'`
 
@@ -656,9 +620,11 @@ Parse database-specific errors into unified format.
 ---
 
 #### `class DatabaseError extends Error`
+
 Base error class with serialization support.
 
 **Properties:**
+
 - `code: string` - Error code
 - `detail?: string` - Additional details
 - `toJSON(): object` - Serialize to JSON
@@ -666,9 +632,11 @@ Base error class with serialization support.
 ---
 
 #### `class UniqueConstraintError extends DatabaseError`
+
 UNIQUE constraint violation.
 
 **Properties:**
+
 - `constraint: string` - Constraint name
 - `table: string` - Table name
 - `columns: string[]` - Affected columns
@@ -676,9 +644,11 @@ UNIQUE constraint violation.
 ---
 
 #### `class ForeignKeyError extends DatabaseError`
+
 FOREIGN KEY constraint violation.
 
 **Properties:**
+
 - `constraint: string` - Constraint name
 - `table: string` - Table name
 - `referencedTable: string` - Referenced table
@@ -686,33 +656,40 @@ FOREIGN KEY constraint violation.
 ---
 
 #### `class NotNullError extends DatabaseError`
+
 NOT NULL constraint violation.
 
 **Properties:**
+
 - `column: string` - Column name
 - `table?: string` - Table name
 
 ---
 
 #### `class CheckConstraintError extends DatabaseError`
+
 CHECK constraint violation.
 
 **Properties:**
+
 - `constraint: string` - Constraint name
 - `table?: string` - Table name
 
 ---
 
 #### `class NotFoundError extends DatabaseError`
+
 Entity not found.
 
 **Constructor:**
+
 - `entity: string` - Entity name
 - `filters?: Record<string, unknown>` - Search filters
 
 ---
 
 #### `class BadRequestError extends DatabaseError`
+
 Invalid request/data.
 
 ---
@@ -720,9 +697,11 @@ Invalid request/data.
 ### Error Codes
 
 #### `ErrorCodes`
+
 Object containing all unified error codes.
 
 **Examples:**
+
 ```typescript
 ErrorCodes.DB_CONNECTION_FAILED
 ErrorCodes.VALIDATION_UNIQUE_VIOLATION
@@ -732,6 +711,7 @@ ErrorCodes.RESOURCE_NOT_FOUND
 ---
 
 #### `getErrorCategory(code: string): string`
+
 Get error category from error code.
 
 **Returns:** Category prefix (e.g., 'DB', 'VALIDATION')
@@ -739,6 +719,7 @@ Get error category from error code.
 ---
 
 #### `isValidErrorCode(code: string): boolean`
+
 Type guard to check if a string is a valid error code.
 
 ---
@@ -746,17 +727,20 @@ Type guard to check if a string is a valid error code.
 ### Pagination
 
 #### `paginate<DB, TB, O>(query: SelectQueryBuilder<DB, TB, O>, options?: PaginationOptions): Promise<PaginatedResult<O>>`
+
 Offset-based pagination.
 
 **Options:**
+
 ```typescript
 interface PaginationOptions {
-  page?: number      // Default: 1
-  limit?: number     // Default: 20, max: 100
+  page?: number // Default: 1
+  limit?: number // Default: 20, max: 100
 }
 ```
 
 **Returns:**
+
 ```typescript
 interface PaginatedResult<T> {
   data: T[]
@@ -774,9 +758,11 @@ interface PaginatedResult<T> {
 ---
 
 #### `paginateCursor<DB, TB, O>(query: SelectQueryBuilder<DB, TB, O>, options: CursorOptions<O>): Promise<PaginatedResult<O>>`
+
 Cursor-based pagination.
 
 **Options:**
+
 ```typescript
 interface CursorOptions<T> {
   orderBy: Array<{
@@ -784,11 +770,12 @@ interface CursorOptions<T> {
     direction: 'asc' | 'desc'
   }>
   cursor?: string
-  limit?: number    // Default: 20
+  limit?: number // Default: 20
 }
 ```
 
 **Returns:**
+
 ```typescript
 interface PaginatedResult<T> {
   data: T[]
@@ -805,12 +792,15 @@ interface PaginatedResult<T> {
 ### Types
 
 #### `type Executor<DB> = Kysely<DB> | Transaction<DB>`
+
 Universal executor type.
 
 ---
 
 #### `interface Timestamps`
+
 Timestamp columns.
+
 ```typescript
 { created_at: Date, updated_at?: Date }
 ```
@@ -818,15 +808,21 @@ Timestamp columns.
 ---
 
 #### `interface SoftDelete`
+
 Soft delete column.
+
 ```typescript
-{ deleted_at: Date | null }
+{
+  deleted_at: Date | null
+}
 ```
 
 ---
 
 #### `interface AuditFields`
+
 Audit columns.
+
 ```typescript
 { created_by?: number, updated_by?: number }
 ```
@@ -834,7 +830,9 @@ Audit columns.
 ---
 
 #### `interface QueryMetrics`
+
 Query performance metrics.
+
 ```typescript
 {
   sql: string
@@ -849,9 +847,11 @@ Query performance metrics.
 ### Logger
 
 #### `interface KyseraLogger`
+
 Logger interface for Kysera ecosystem.
 
 **Methods:**
+
 - `debug(message: string, ...args: unknown[]): void`
 - `info(message: string, ...args: unknown[]): void`
 - `warn(message: string, ...args: unknown[]): void`
@@ -860,16 +860,19 @@ Logger interface for Kysera ecosystem.
 ---
 
 #### `consoleLogger: KyseraLogger`
+
 Simple console logger implementation.
 
 ---
 
 #### `silentLogger: KyseraLogger`
+
 No-op logger for silent operation.
 
 ---
 
 #### `createPrefixedLogger(prefix: string, baseLogger?: KyseraLogger): KyseraLogger`
+
 Create a logger with a specific prefix.
 
 ---
@@ -933,6 +936,7 @@ import { withDebug, QueryProfiler, formatSQL } from '@kysera/debug'
 ### What Remains in Core
 
 Core now focuses on fundamental utilities:
+
 - ✅ Error handling (DatabaseError, parseDatabaseError, error codes)
 - ✅ Pagination (paginate, paginateCursor)
 - ✅ Types (Executor, Timestamps, QueryMetrics)

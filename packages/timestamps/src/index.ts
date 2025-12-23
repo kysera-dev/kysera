@@ -1,32 +1,33 @@
-import type { Plugin, Repository } from '@kysera/repository';
-import type { Kysely, SelectQueryBuilder } from 'kysely';
-import { silentLogger } from '@kysera/core';
-import type { KyseraLogger } from '@kysera/core';
-import { z } from 'zod';
-import { VERSION } from './version.js';
+import type { Plugin } from '@kysera/executor'
+import type { Repository } from '@kysera/repository'
+import type { Kysely, SelectQueryBuilder } from 'kysely'
+import { silentLogger } from '@kysera/core'
+import type { KyseraLogger } from '@kysera/core'
+import { z } from 'zod'
+import { VERSION } from './version.js'
 
 /**
  * Database schema with timestamp columns
  */
-type TimestampedTable = Record<string, unknown>;
+type TimestampedTable = Record<string, unknown>
 
 /**
  * Timestamp methods added to repositories
  */
 export interface TimestampMethods<T> {
-  findCreatedAfter(date: Date | string): Promise<T[]>;
-  findCreatedBefore(date: Date | string): Promise<T[]>;
-  findCreatedBetween(startDate: Date | string, endDate: Date | string): Promise<T[]>;
-  findUpdatedAfter(date: Date | string): Promise<T[]>;
-  findRecentlyUpdated(limit?: number): Promise<T[]>;
-  findRecentlyCreated(limit?: number): Promise<T[]>;
-  createWithoutTimestamps(input: unknown): Promise<T>;
-  updateWithoutTimestamp(id: number, input: unknown): Promise<T>;
-  touch(id: number): Promise<void>;
-  getTimestampColumns(): { createdAt: string; updatedAt: string };
-  createMany(inputs: unknown[]): Promise<T[]>;
-  updateMany(ids: (number | string)[], input: unknown): Promise<T[]>;
-  touchMany(ids: (number | string)[]): Promise<void>;
+  findCreatedAfter(date: Date | string): Promise<T[]>
+  findCreatedBefore(date: Date | string): Promise<T[]>
+  findCreatedBetween(startDate: Date | string, endDate: Date | string): Promise<T[]>
+  findUpdatedAfter(date: Date | string): Promise<T[]>
+  findRecentlyUpdated(limit?: number): Promise<T[]>
+  findRecentlyCreated(limit?: number): Promise<T[]>
+  createWithoutTimestamps(input: unknown): Promise<T>
+  updateWithoutTimestamp(id: number, input: unknown): Promise<T>
+  touch(id: number): Promise<void>
+  getTimestampColumns(): { createdAt: string; updatedAt: string }
+  createMany(inputs: unknown[]): Promise<T[]>
+  updateMany(ids: (number | string)[], input: unknown): Promise<T[]>
+  touchMany(ids: (number | string)[]): Promise<void>
 }
 
 /**
@@ -37,46 +38,46 @@ export interface TimestampsOptions {
    * Name of the created_at column
    * @default 'created_at'
    */
-  createdAtColumn?: string;
+  createdAtColumn?: string
 
   /**
    * Name of the updated_at column
    * @default 'updated_at'
    */
-  updatedAtColumn?: string;
+  updatedAtColumn?: string
 
   /**
    * Whether to set updated_at on insert
    * @default false
    */
-  setUpdatedAtOnInsert?: boolean;
+  setUpdatedAtOnInsert?: boolean
 
   /**
    * List of tables that should have timestamps
    * If not specified, all tables will have timestamps
    */
-  tables?: string[];
+  tables?: string[]
 
   /**
    * Tables that should be excluded from timestamps
    */
-  excludeTables?: string[];
+  excludeTables?: string[]
 
   /**
    * Custom timestamp function (defaults to new Date().toISOString())
    */
-  getTimestamp?: () => Date | string | number;
+  getTimestamp?: () => Date | string | number
 
   /**
    * Date format for database (ISO string by default)
    */
-  dateFormat?: 'iso' | 'unix' | 'date';
+  dateFormat?: 'iso' | 'unix' | 'date'
 
   /**
    * Name of the primary key column used by touch() method
    * @default 'id'
    */
-  primaryKeyColumn?: string;
+  primaryKeyColumn?: string
 
   /**
    * Logger for plugin operations.
@@ -84,7 +85,7 @@ export interface TimestampsOptions {
    *
    * @default silentLogger (no output)
    */
-  logger?: KyseraLogger;
+  logger?: KyseraLogger
 }
 
 /**
@@ -99,32 +100,32 @@ export const TimestampsOptionsSchema = z.object({
   excludeTables: z.array(z.string()).optional(),
   getTimestamp: z.function().optional(),
   dateFormat: z.enum(['iso', 'unix', 'date']).optional(),
-  primaryKeyColumn: z.string().optional(),
-});
+  primaryKeyColumn: z.string().optional()
+})
 
 /**
  * Repository extended with timestamp methods
  */
-export type TimestampsRepository<Entity, DB> = Repository<Entity, DB> & TimestampMethods<Entity>;
+export type TimestampsRepository<Entity, DB> = Repository<Entity, DB> & TimestampMethods<Entity>
 
 /**
  * Get the current timestamp based on options
  */
 function getTimestamp(options: TimestampsOptions): Date | string | number {
   if (options.getTimestamp) {
-    return options.getTimestamp();
+    return options.getTimestamp()
   }
 
-  const now = new Date();
+  const now = new Date()
 
   switch (options.dateFormat) {
     case 'unix':
-      return Math.floor(now.getTime() / 1000);
+      return Math.floor(now.getTime() / 1000)
     case 'date':
-      return now;
+      return now
     case 'iso':
     default:
-      return now.toISOString();
+      return now.toISOString()
   }
 }
 
@@ -133,14 +134,14 @@ function getTimestamp(options: TimestampsOptions): Date | string | number {
  */
 function shouldApplyTimestamps(tableName: string, options: TimestampsOptions): boolean {
   if (options.excludeTables?.includes(tableName)) {
-    return false;
+    return false
   }
 
   if (options.tables) {
-    return options.tables.includes(tableName);
+    return options.tables.includes(tableName)
   }
 
-  return true;
+  return true
 }
 
 /**
@@ -151,17 +152,22 @@ function createTimestampQuery(
   tableName: string,
   column: string
 ): {
-  select(): SelectQueryBuilder<Record<string, TimestampedTable>, typeof tableName, {}>;
-  where<V>(operator: string, value: V): SelectQueryBuilder<Record<string, TimestampedTable>, typeof tableName, {}>;
+  select(): SelectQueryBuilder<Record<string, TimestampedTable>, typeof tableName, {}>
+  where<V>(
+    operator: string,
+    value: V
+  ): SelectQueryBuilder<Record<string, TimestampedTable>, typeof tableName, {}>
 } {
   return {
     select() {
-      return executor.selectFrom(tableName as never);
+      return executor.selectFrom(tableName as never)
     },
     where<V>(operator: string, value: V) {
-      return executor.selectFrom(tableName as never).where(column as never, operator as never, value as never);
-    },
-  };
+      return executor
+        .selectFrom(tableName as never)
+        .where(column as never, operator as never, value as never)
+    }
+  }
 }
 
 /**
@@ -237,90 +243,89 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
     updatedAtColumn = 'updated_at',
     setUpdatedAtOnInsert = false,
     primaryKeyColumn = 'id',
-    logger = silentLogger,
-  } = options;
+    logger = silentLogger
+  } = options
 
   return {
     name: '@kysera/timestamps',
     version: VERSION,
 
-    interceptQuery(qb, _context) {
-      // The interceptQuery method can't modify INSERT/UPDATE values in Kysely
-      // We handle timestamps through repository method overrides instead
-      return qb;
-    },
-
     extendRepository<T extends object>(repo: T): T {
       // Check if it's actually a repository (has required properties)
       if (!('tableName' in repo) || !('executor' in repo)) {
-        return repo;
+        return repo
       }
 
       // Type assertion is safe here as we've checked for properties
-      const baseRepo = repo as T & { tableName: string; executor: unknown; create: Function; update: Function };
+      const baseRepo = repo as T & {
+        tableName: string
+        executor: unknown
+        create: Function
+        update: Function
+      }
 
       // Skip if table doesn't support timestamps
       if (!shouldApplyTimestamps(baseRepo.tableName, options)) {
-        logger.debug(`Table ${baseRepo.tableName} excluded from timestamps, skipping extension`);
-        return repo;
+        logger.debug(`Table ${baseRepo.tableName} excluded from timestamps, skipping extension`)
+        return repo
       }
 
-      logger.debug(`Extending repository for table ${baseRepo.tableName} with timestamp methods`);
+      logger.debug(`Extending repository for table ${baseRepo.tableName} with timestamp methods`)
 
       // Save original methods
-      const originalCreate = baseRepo.create.bind(baseRepo);
-      const originalUpdate = baseRepo.update.bind(baseRepo);
-      const executor = baseRepo.executor as Kysely<Record<string, TimestampedTable>>;
+      const originalCreate = baseRepo.create.bind(baseRepo)
+      const originalUpdate = baseRepo.update.bind(baseRepo)
+      const executor = baseRepo.executor as Kysely<Record<string, TimestampedTable>>
 
       const extendedRepo = {
         ...baseRepo,
 
         // Override create to add timestamps
         async create(input: unknown): Promise<unknown> {
-          const data = input as Record<string, unknown>;
-          const timestamp = getTimestamp(options);
+          const data = input as Record<string, unknown>
+          const timestamp = getTimestamp(options)
           const dataWithTimestamps: Record<string, unknown> = {
             ...data,
-            [createdAtColumn]: data[createdAtColumn] ?? timestamp,
-          };
-
-          if (setUpdatedAtOnInsert) {
-            dataWithTimestamps[updatedAtColumn] = data[updatedAtColumn] ?? timestamp;
+            [createdAtColumn]: data[createdAtColumn] ?? timestamp
           }
 
-          logger.debug(`Creating record in ${baseRepo.tableName} with timestamp ${timestamp}`);
-          return await originalCreate(dataWithTimestamps);
+          if (setUpdatedAtOnInsert) {
+            dataWithTimestamps[updatedAtColumn] = data[updatedAtColumn] ?? timestamp
+          }
+
+          logger.debug(`Creating record in ${baseRepo.tableName} with timestamp ${timestamp}`)
+          return await originalCreate(dataWithTimestamps)
         },
 
         // Override update to set updated_at
         async update(id: number, input: unknown): Promise<unknown> {
-          const data = input as Record<string, unknown>;
-          const timestamp = getTimestamp(options);
+          const data = input as Record<string, unknown>
+          const timestamp = getTimestamp(options)
           const dataWithTimestamp: Record<string, unknown> = {
             ...data,
-            [updatedAtColumn]: data[updatedAtColumn] ?? timestamp,
-          };
+            [updatedAtColumn]: data[updatedAtColumn] ?? timestamp
+          }
 
-          logger.debug(`Updating record ${id} in ${baseRepo.tableName} with timestamp ${timestamp}`);
-          return await originalUpdate(id, dataWithTimestamp);
+          logger.debug(`Updating record ${id} in ${baseRepo.tableName} with timestamp ${timestamp}`)
+          return await originalUpdate(id, dataWithTimestamp)
         },
 
         /**
          * Find records created after a specific date
          */
         async findCreatedAfter(date: Date | string | number): Promise<unknown[]> {
-          const query = createTimestampQuery(executor, baseRepo.tableName, createdAtColumn);
-          const result = await query.where('>', String(date)).selectAll().execute();
-          return result;
+          const query = createTimestampQuery(executor, baseRepo.tableName, createdAtColumn)
+          const result = await query.where('>', String(date)).selectAll().execute()
+          return result
         },
 
         /**
          * Find records created before a specific date
          */
         async findCreatedBefore(date: Date | string | number): Promise<unknown[]> {
-          const query = createTimestampQuery(executor, baseRepo.tableName, createdAtColumn);
-          const result = await query.where('<', String(date)).selectAll().execute();
-          return result;
+          const query = createTimestampQuery(executor, baseRepo.tableName, createdAtColumn)
+          const result = await query.where('<', String(date)).selectAll().execute()
+          return result
         },
 
         /**
@@ -335,17 +340,17 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             .selectAll()
             .where(createdAtColumn as never, '>=', startDate as never)
             .where(createdAtColumn as never, '<=', endDate as never)
-            .execute();
-          return result;
+            .execute()
+          return result
         },
 
         /**
          * Find records updated after a specific date
          */
         async findUpdatedAfter(date: Date | string | number): Promise<unknown[]> {
-          const query = createTimestampQuery(executor, baseRepo.tableName, updatedAtColumn);
-          const result = await query.where('>', String(date)).selectAll().execute();
-          return result;
+          const query = createTimestampQuery(executor, baseRepo.tableName, updatedAtColumn)
+          const result = await query.where('>', String(date)).selectAll().execute()
+          return result
         },
 
         /**
@@ -357,8 +362,8 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             .selectAll()
             .orderBy(updatedAtColumn as never, 'desc')
             .limit(limit)
-            .execute();
-          return result;
+            .execute()
+          return result
         },
 
         /**
@@ -370,39 +375,39 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             .selectAll()
             .orderBy(createdAtColumn as never, 'desc')
             .limit(limit)
-            .execute();
-          return result;
+            .execute()
+          return result
         },
 
         /**
          * Create without adding timestamps
          */
         async createWithoutTimestamps(input: unknown): Promise<unknown> {
-          logger.debug(`Creating record in ${baseRepo.tableName} without timestamps`);
-          return await originalCreate(input);
+          logger.debug(`Creating record in ${baseRepo.tableName} without timestamps`)
+          return await originalCreate(input)
         },
 
         /**
          * Update without modifying timestamp
          */
         async updateWithoutTimestamp(id: number, input: unknown): Promise<unknown> {
-          logger.debug(`Updating record ${id} in ${baseRepo.tableName} without timestamp`);
-          return await originalUpdate(id, input);
+          logger.debug(`Updating record ${id} in ${baseRepo.tableName} without timestamp`)
+          return await originalUpdate(id, input)
         },
 
         /**
          * Touch a record (update its timestamp)
          */
         async touch(id: number): Promise<void> {
-          const timestamp = getTimestamp(options);
-          const updateData = { [updatedAtColumn]: timestamp };
+          const timestamp = getTimestamp(options)
+          const updateData = { [updatedAtColumn]: timestamp }
 
-          logger.info(`Touching record ${id} in ${baseRepo.tableName}`);
+          logger.info(`Touching record ${id} in ${baseRepo.tableName}`)
           await executor
             .updateTable(baseRepo.tableName as never)
             .set(updateData as never)
             .where(primaryKeyColumn as never, '=', id as never)
-            .execute();
+            .execute()
         },
 
         /**
@@ -411,8 +416,8 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
         getTimestampColumns(): { createdAt: string; updatedAt: string } {
           return {
             createdAt: createdAtColumn,
-            updatedAt: updatedAtColumn,
-          };
+            updatedAt: updatedAtColumn
+          }
         },
 
         /**
@@ -422,34 +427,36 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
         async createMany(inputs: unknown[]): Promise<unknown[]> {
           // Handle empty arrays gracefully
           if (!inputs || inputs.length === 0) {
-            return [];
+            return []
           }
 
-          const timestamp = getTimestamp(options);
-          const dataWithTimestamps = inputs.map((input) => {
-            const data = input as Record<string, unknown>;
+          const timestamp = getTimestamp(options)
+          const dataWithTimestamps = inputs.map(input => {
+            const data = input as Record<string, unknown>
             const result: Record<string, unknown> = {
               ...data,
-              [createdAtColumn]: data[createdAtColumn] ?? timestamp,
-            };
-
-            if (setUpdatedAtOnInsert) {
-              result[updatedAtColumn] = data[updatedAtColumn] ?? timestamp;
+              [createdAtColumn]: data[createdAtColumn] ?? timestamp
             }
 
-            return result;
-          });
+            if (setUpdatedAtOnInsert) {
+              result[updatedAtColumn] = data[updatedAtColumn] ?? timestamp
+            }
 
-          logger.info(`Creating ${inputs.length} records in ${baseRepo.tableName} with timestamp ${timestamp}`);
+            return result
+          })
+
+          logger.info(
+            `Creating ${inputs.length} records in ${baseRepo.tableName} with timestamp ${timestamp}`
+          )
 
           // Use Kysely's insertInto for efficient bulk insert
           const result = await executor
             .insertInto(baseRepo.tableName as never)
             .values(dataWithTimestamps as never)
             .returningAll()
-            .execute();
+            .execute()
 
-          return result;
+          return result
         },
 
         /**
@@ -459,33 +466,35 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
         async updateMany(ids: (number | string)[], input: unknown): Promise<unknown[]> {
           // Handle empty arrays gracefully
           if (!ids || ids.length === 0) {
-            return [];
+            return []
           }
 
-          const data = input as Record<string, unknown>;
-          const timestamp = getTimestamp(options);
+          const data = input as Record<string, unknown>
+          const timestamp = getTimestamp(options)
           const dataWithTimestamp: Record<string, unknown> = {
             ...data,
-            [updatedAtColumn]: data[updatedAtColumn] ?? timestamp,
-          };
+            [updatedAtColumn]: data[updatedAtColumn] ?? timestamp
+          }
 
-          logger.info(`Updating ${ids.length} records in ${baseRepo.tableName} with timestamp ${timestamp}`);
+          logger.info(
+            `Updating ${ids.length} records in ${baseRepo.tableName} with timestamp ${timestamp}`
+          )
 
           // Use Kysely's update with IN clause for efficient bulk update
           await executor
             .updateTable(baseRepo.tableName as never)
             .set(dataWithTimestamp as never)
             .where(primaryKeyColumn as never, 'in', ids as never)
-            .execute();
+            .execute()
 
           // Fetch and return updated records
           const result = await executor
             .selectFrom(baseRepo.tableName as never)
             .selectAll()
             .where(primaryKeyColumn as never, 'in', ids as never)
-            .execute();
+            .execute()
 
-          return result;
+          return result
         },
 
         /**
@@ -495,22 +504,22 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
         async touchMany(ids: (number | string)[]): Promise<void> {
           // Handle empty arrays gracefully
           if (!ids || ids.length === 0) {
-            return;
+            return
           }
 
-          const timestamp = getTimestamp(options);
-          const updateData = { [updatedAtColumn]: timestamp };
+          const timestamp = getTimestamp(options)
+          const updateData = { [updatedAtColumn]: timestamp }
 
-          logger.info(`Touching ${ids.length} records in ${baseRepo.tableName}`);
+          logger.info(`Touching ${ids.length} records in ${baseRepo.tableName}`)
           await executor
             .updateTable(baseRepo.tableName as never)
             .set(updateData as never)
             .where(primaryKeyColumn as never, 'in', ids as never)
-            .execute();
-        },
-      };
+            .execute()
+        }
+      }
 
-      return extendedRepo as T;
-    },
-  };
-};
+      return extendedRepo as T
+    }
+  }
+}

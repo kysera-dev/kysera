@@ -19,6 +19,7 @@ This documentation shows **recommended production patterns** using the full Kyse
 Foundational example demonstrating core Kysera features.
 
 **Features:**
+
 - Repository pattern with Zod validation
 - Soft delete with restore
 - Pagination (offset and cursor)
@@ -32,6 +33,7 @@ Foundational example demonstrating core Kysera features.
 Advanced patterns for production e-commerce systems.
 
 **Features:**
+
 - Complex ACID transactions
 - Inventory management with locking
 - Shopping cart operations
@@ -45,6 +47,7 @@ Advanced patterns for production e-commerce systems.
 Enterprise multi-tenant architecture patterns.
 
 **Features:**
+
 - Tenant isolation (discriminator column)
 - Automatic tenant filtering
 - Request-scoped context
@@ -73,7 +76,7 @@ import { z } from 'zod'
 // Validation schemas
 export const CreateUserSchema = z.object({
   email: z.string().email(),
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(100)
 })
 
 export const UpdateUserSchema = CreateUserSchema.partial()
@@ -98,7 +101,7 @@ export function createUserRepository(executor: Executor<Database>) {
 ### Transaction Usage
 
 ```typescript
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   // Create repositories with transaction executor
   const userRepo = createUserRepository(trx)
   const postRepo = createPostRepository(trx)

@@ -33,18 +33,21 @@ This specification defines a comprehensive, high-performance Row-Level Security 
 ### 1.1 PostgreSQL Native RLS
 
 **Strengths:**
+
 - Database-level enforcement (can't bypass through raw SQL)
 - Automatic WHERE clause injection
 - USING/WITH CHECK separation for read vs write
 - Role-based policy application
 
 **Limitations:**
+
 - Coarse-grained (row-level only, not field-level)
 - Performance pitfalls (non-STABLE functions, missing indexes)
 - Complex join policies cause performance degradation
 - No centralized policy management
 
 **Key Insights:**
+
 ```sql
 -- Best practice: Use STABLE functions for context
 CREATE FUNCTION current_tenant_id() RETURNS uuid
@@ -59,6 +62,7 @@ USING (tenant_id = (SELECT current_tenant_id()));
 ### 1.2 ZenStack
 
 **Strengths:**
+
 - Declarative @@allow/@@deny syntax
 - Relationship traversal in policies
 - auth() function for current user context
@@ -66,11 +70,13 @@ USING (tenant_id = (SELECT current_tenant_id()));
 - Auto-generated enhanced client
 
 **Limitations:**
+
 - Prisma-specific (V2), but V3 uses Kysely
 - Limited native database enforcement
 - Runtime overhead for policy evaluation
 
 **Key Insights:**
+
 ```zmodel
 // ZenStack's elegant syntax
 @@allow('read', auth().roles?[permissions?[name == 'view']])
@@ -81,17 +87,20 @@ USING (tenant_id = (SELECT current_tenant_id()));
 ### 1.3 Supabase RLS
 
 **Strengths:**
+
 - Native PostgreSQL RLS with helper functions
 - auth.uid(), auth.jwt() for context
 - Subselect caching pattern
 - Permissive/restrictive policy types
 
 **Limitations:**
+
 - PostgreSQL-only
 - Requires manual SQL policy management
 - Performance debugging is complex
 
 **Key Insights:**
+
 ```sql
 -- Supabase pattern: Cached context via subselect
 USING (user_id = (SELECT auth.uid()))
@@ -103,17 +112,20 @@ USING (team_id = ANY((SELECT auth.jwt() -> 'app_metadata' -> 'teams')::uuid[]))
 ### 1.4 Drizzle ORM
 
 **Strengths:**
+
 - TypeScript-native policy definitions
 - pgPolicy() in table schema
 - crudPolicy() helper for common patterns
 - Migration integration
 
 **Limitations:**
+
 - PostgreSQL-specific
 - Generates native RLS only (no ORM enforcement)
 - Limited dynamic policy support
 
 **Key Insights:**
+
 ```typescript
 // Drizzle's TypeScript-native approach
 pgPolicy('tenant_isolation', {
@@ -228,32 +240,34 @@ Based on analysis, Kysera RLS must provide:
 ### 3.1 Policy
 
 A **Policy** defines access rules for database operations. Policies are:
+
 - **Declarative**: Defined at schema level, not in business logic
 - **Composable**: Multiple policies combine with AND/OR logic
 - **Type-Safe**: Full TypeScript inference for entities and context
 
 ### 3.2 Policy Types
 
-| Type | Description | Enforcement Point |
-|------|-------------|-------------------|
-| `allow` | Grants access when condition is true | Pre-query |
-| `deny` | Blocks access when condition is true (overrides allow) | Pre-query |
-| `filter` | Adds WHERE clause to queries | Query transformation |
-| `validate` | Checks mutation data | Pre-execution |
+| Type       | Description                                            | Enforcement Point    |
+| ---------- | ------------------------------------------------------ | -------------------- |
+| `allow`    | Grants access when condition is true                   | Pre-query            |
+| `deny`     | Blocks access when condition is true (overrides allow) | Pre-query            |
+| `filter`   | Adds WHERE clause to queries                           | Query transformation |
+| `validate` | Checks mutation data                                   | Pre-execution        |
 
 ### 3.3 Operations
 
-| Operation | SQL | USING | WITH CHECK |
-|-----------|-----|-------|------------|
-| `read` | SELECT | ✅ | - |
-| `create` | INSERT | - | ✅ |
-| `update` | UPDATE | ✅ | ✅ |
-| `delete` | DELETE | ✅ | - |
-| `all` | All operations | ✅ | ✅ |
+| Operation | SQL            | USING | WITH CHECK |
+| --------- | -------------- | ----- | ---------- |
+| `read`    | SELECT         | ✅    | -          |
+| `create`  | INSERT         | -     | ✅         |
+| `update`  | UPDATE         | ✅    | ✅         |
+| `delete`  | DELETE         | ✅    | -          |
+| `all`     | All operations | ✅    | ✅         |
 
 ### 3.4 Context
 
 The **RLS Context** provides runtime information for policy evaluation:
+
 - Current user (identity, roles, attributes)
 - Tenant/organization context
 - Request metadata (IP, timestamp, etc.)
@@ -279,7 +293,7 @@ The **RLS Context** provides runtime information for policy evaluation:
 ### 4.1 Schema-Based Definition (Primary)
 
 ```typescript
-import { defineRLSSchema, allow, deny, filter } from '@kysera/rls';
+import { defineRLSSchema, allow, deny, filter } from '@kysera/rls'
 
 // Define database schema with RLS policies
 export const rlsSchema = defineRLSSchema<Database>({
@@ -299,8 +313,8 @@ export const rlsSchema = defineRLSSchema<Database>({
       deny('delete', ({ row }) => row.role === 'admin'),
 
       // Super admins can do anything
-      allow('all', ({ auth }) => auth.roles.includes('super_admin')),
-    ],
+      allow('all', ({ auth }) => auth.roles.includes('super_admin'))
+    ]
   },
 
   // Multi-tenant resources
@@ -308,7 +322,7 @@ export const rlsSchema = defineRLSSchema<Database>({
     policies: [
       // Tenant isolation filter (auto-applied to all SELECTs)
       filter('read', ({ auth }) => ({
-        tenant_id: auth.tenantId,
+        tenant_id: auth.tenantId
       })),
 
       // Users can only create in their tenant
@@ -319,10 +333,11 @@ export const rlsSchema = defineRLSSchema<Database>({
       allow('delete', ({ auth, row }) => row.owner_id === auth.userId),
 
       // Managers can modify any resource in their tenant
-      allow(['update', 'delete'], ({ auth, row }) =>
-        auth.roles.includes('manager') && row.tenant_id === auth.tenantId
-      ),
-    ],
+      allow(
+        ['update', 'delete'],
+        ({ auth, row }) => auth.roles.includes('manager') && row.tenant_id === auth.tenantId
+      )
+    ]
   },
 
   // Documents with complex access rules
@@ -332,14 +347,16 @@ export const rlsSchema = defineRLSSchema<Database>({
       allow('read', ({ row }) => row.visibility === 'public'),
 
       // Organization members can read org documents
-      allow('read', ({ auth, row }) =>
-        row.visibility === 'organization' &&
-        auth.organizationIds.includes(row.organization_id)
+      allow(
+        'read',
+        ({ auth, row }) =>
+          row.visibility === 'organization' && auth.organizationIds.includes(row.organization_id)
       ),
 
       // Only owner can read private documents
-      allow('read', ({ auth, row }) =>
-        row.visibility === 'private' && row.owner_id === auth.userId
+      allow(
+        'read',
+        ({ auth, row }) => row.visibility === 'private' && row.owner_id === auth.userId
       ),
 
       // Shared documents (via join table)
@@ -348,73 +365,70 @@ export const rlsSchema = defineRLSSchema<Database>({
           .selectFrom('document_shares')
           .where('document_id', '=', row.id)
           .where('user_id', '=', auth.userId)
-          .executeTakeFirst();
-        return share !== undefined;
+          .executeTakeFirst()
+        return share !== undefined
       }),
 
       // Time-based access (e.g., embargo period)
-      deny('read', ({ row }) =>
-        row.embargo_until && new Date(row.embargo_until) > new Date()
-      ),
-    ],
+      deny('read', ({ row }) => row.embargo_until && new Date(row.embargo_until) > new Date())
+    ]
   },
 
   // Audit logs (read-only, admin-only)
   audit_logs: {
     policies: [
-      deny('create'),  // No direct inserts
-      deny('update'),  // Immutable
-      deny('delete'),  // Can't delete audit logs
-      allow('read', ({ auth }) => auth.roles.includes('auditor')),
-    ],
-  },
-});
+      deny('create'), // No direct inserts
+      deny('update'), // Immutable
+      deny('delete'), // Can't delete audit logs
+      allow('read', ({ auth }) => auth.roles.includes('auditor'))
+    ]
+  }
+})
 ```
 
 ### 4.2 Fluent Builder API (Alternative)
 
 ```typescript
-import { RLSBuilder } from '@kysera/rls';
+import { RLSBuilder } from '@kysera/rls'
 
 const policies = new RLSBuilder<Database>()
   .table('users')
-    .allowRead(ctx => ctx.auth.userId === ctx.row.id)
-    .allowRead(ctx => ctx.auth.isAdmin)
-    .allowUpdate(ctx => ctx.auth.userId === ctx.row.id)
-    .denyDelete(ctx => ctx.row.role === 'admin')
+  .allowRead(ctx => ctx.auth.userId === ctx.row.id)
+  .allowRead(ctx => ctx.auth.isAdmin)
+  .allowUpdate(ctx => ctx.auth.userId === ctx.row.id)
+  .denyDelete(ctx => ctx.row.role === 'admin')
   .table('resources')
-    .filterRead(ctx => ({ tenant_id: ctx.auth.tenantId }))
-    .allowCreate(ctx => ctx.data.tenant_id === ctx.auth.tenantId)
-    .allowUpdate(ctx => ctx.auth.userId === ctx.row.owner_id)
-  .build();
+  .filterRead(ctx => ({ tenant_id: ctx.auth.tenantId }))
+  .allowCreate(ctx => ctx.data.tenant_id === ctx.auth.tenantId)
+  .allowUpdate(ctx => ctx.auth.userId === ctx.row.owner_id)
+  .build()
 ```
 
 ### 4.3 Decorator-Based Definition (for Titan)
 
 ```typescript
-import { Repository, Policy, Allow, Deny, Filter } from '@kysera/rls/decorators';
+import { Repository, Policy, Allow, Deny, Filter } from '@kysera/rls/decorators'
 
 @Repository({ table: 'users' })
 @Policy({
-  defaultDeny: true,  // Reject unless explicitly allowed
+  defaultDeny: true // Reject unless explicitly allowed
 })
 export class UserRepository extends BaseRepository<User> {
-
   @Allow('read', ctx => ctx.auth.userId === ctx.row.id)
   @Allow('read', ctx => ctx.auth.isAdmin)
   async findById(id: number): Promise<User | null> {
-    return super.findById(id);
+    return super.findById(id)
   }
 
   @Allow('update', ctx => ctx.auth.userId === ctx.row.id)
   @Deny('update', ctx => ctx.row.locked)
   async update(id: number, data: UpdateUser): Promise<User> {
-    return super.update(id, data);
+    return super.update(id, data)
   }
 
   @Filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
   async findAll(): Promise<User[]> {
-    return super.findAll();
+    return super.findAll()
   }
 }
 ```
@@ -434,12 +448,13 @@ const policies = defineRLSSchema({
       deny('delete', 'row.status == "published"'),
 
       // Complex expressions
-      allow('update',
+      allow(
+        'update',
         '(auth.userId == row.owner_id) or (auth.roles contains "manager" and row.tenant_id == auth.tenantId)'
-      ),
-    ],
-  },
-});
+      )
+    ]
+  }
+})
 ```
 
 ### 4.5 Relationship Traversal (Advanced)
@@ -454,18 +469,21 @@ const policies = defineRLSSchema({
           .selectFrom('organization_members')
           .where('organization_id', '=', row.organization_id)
           .where('user_id', '=', auth.userId)
-          .executeTakeFirst();
-        return membership !== undefined;
+          .executeTakeFirst()
+        return membership !== undefined
       }),
 
       // Shorthand for common patterns (pre-defined helpers)
-      allow('read', belongsTo('organization_members', {
-        on: ['organization_id', 'organization_id'],
-        where: { user_id: 'auth.userId' }
-      })),
-    ],
-  },
-});
+      allow(
+        'read',
+        belongsTo('organization_members', {
+          on: ['organization_id', 'organization_id'],
+          where: { user_id: 'auth.userId' }
+        })
+      )
+    ]
+  }
+})
 ```
 
 ---
@@ -477,83 +495,83 @@ const policies = defineRLSSchema({
 ```typescript
 export interface RLSContext<TUser = unknown, TMeta = unknown> {
   /** Current authenticated user */
-  auth: RLSAuthContext<TUser>;
+  auth: RLSAuthContext<TUser>
 
   /** Request metadata */
-  request?: RLSRequestContext;
+  request?: RLSRequestContext
 
   /** Custom metadata */
-  meta?: TMeta;
+  meta?: TMeta
 
   /** Timestamp of context creation */
-  timestamp: Date;
+  timestamp: Date
 }
 
 export interface RLSAuthContext<TUser = unknown> {
   /** User ID (required) */
-  userId: string | number;
+  userId: string | number
 
   /** User's roles */
-  roles: string[];
+  roles: string[]
 
   /** Tenant/organization ID for multi-tenancy */
-  tenantId?: string | number;
+  tenantId?: string | number
 
   /** Organization IDs user belongs to */
-  organizationIds?: (string | number)[];
+  organizationIds?: (string | number)[]
 
   /** User permissions (fine-grained) */
-  permissions?: string[];
+  permissions?: string[]
 
   /** Additional user attributes (for ABAC) */
-  attributes?: Record<string, unknown>;
+  attributes?: Record<string, unknown>
 
   /** Raw user object (type-safe) */
-  user?: TUser;
+  user?: TUser
 
   /** Is this a system/service account? (bypass RLS) */
-  isSystem?: boolean;
+  isSystem?: boolean
 }
 
 export interface RLSRequestContext {
   /** Request ID for tracing */
-  requestId?: string;
+  requestId?: string
 
   /** Client IP address */
-  ipAddress?: string;
+  ipAddress?: string
 
   /** User agent */
-  userAgent?: string;
+  userAgent?: string
 
   /** Request timestamp */
-  timestamp: Date;
+  timestamp: Date
 
   /** Additional headers */
-  headers?: Record<string, string>;
+  headers?: Record<string, string>
 }
 ```
 
 ### 5.2 Context Storage (AsyncLocalStorage)
 
 ```typescript
-import { AsyncLocalStorage } from 'node:async_hooks';
-import type { RLSContext } from './types';
+import { AsyncLocalStorage } from 'node:async_hooks'
+import type { RLSContext } from './types'
 
 class RLSContextManager {
-  private storage = new AsyncLocalStorage<RLSContext>();
+  private storage = new AsyncLocalStorage<RLSContext>()
 
   /**
    * Run a function within an RLS context
    */
   run<T>(context: RLSContext, fn: () => T): T {
-    return this.storage.run(context, fn);
+    return this.storage.run(context, fn)
   }
 
   /**
    * Run async function within an RLS context
    */
   async runAsync<T>(context: RLSContext, fn: () => Promise<T>): Promise<T> {
-    return this.storage.run(context, fn);
+    return this.storage.run(context, fn)
   }
 
   /**
@@ -561,29 +579,29 @@ class RLSContextManager {
    * @throws RLSContextError if no context is set
    */
   getContext(): RLSContext {
-    const ctx = this.storage.getStore();
+    const ctx = this.storage.getStore()
     if (!ctx) {
-      throw new RLSContextError('No RLS context found. Ensure code runs within rls.withContext()');
+      throw new RLSContextError('No RLS context found. Ensure code runs within rls.withContext()')
     }
-    return ctx;
+    return ctx
   }
 
   /**
    * Get current RLS context or null
    */
   getContextOrNull(): RLSContext | null {
-    return this.storage.getStore() ?? null;
+    return this.storage.getStore() ?? null
   }
 
   /**
    * Check if running within RLS context
    */
   hasContext(): boolean {
-    return this.storage.getStore() !== undefined;
+    return this.storage.getStore() !== undefined
   }
 }
 
-export const rlsContext = new RLSContextManager();
+export const rlsContext = new RLSContextManager()
 ```
 
 ### 5.3 Context Setup Patterns
@@ -591,45 +609,43 @@ export const rlsContext = new RLSContextManager();
 #### Express/Fastify Middleware
 
 ```typescript
-import { rlsContext, createRLSContext } from '@kysera/rls';
+import { rlsContext, createRLSContext } from '@kysera/rls'
 
 // Express middleware
-export function rlsMiddleware(
-  getUserFromRequest: (req: Request) => Promise<RLSAuthContext>
-) {
+export function rlsMiddleware(getUserFromRequest: (req: Request) => Promise<RLSAuthContext>) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const auth = await getUserFromRequest(req);
+      const auth = await getUserFromRequest(req)
       const context = createRLSContext({
         auth,
         request: {
           requestId: req.headers['x-request-id'] as string,
           ipAddress: req.ip,
           userAgent: req.headers['user-agent'],
-          timestamp: new Date(),
-        },
-      });
+          timestamp: new Date()
+        }
+      })
 
       rlsContext.run(context, () => {
-        next();
-      });
+        next()
+      })
     } catch (error) {
-      next(error);
+      next(error)
     }
-  };
+  }
 }
 ```
 
 #### Titan Interceptor
 
 ```typescript
-import { Interceptor, ExecutionContext } from '@omnitron-dev/titan';
-import { rlsContext, createRLSContext } from '@kysera/rls';
+import { Interceptor, ExecutionContext } from '@omnitron-dev/titan'
+import { rlsContext, createRLSContext } from '@kysera/rls'
 
 @Interceptor()
 export class RLSInterceptor {
   async intercept(context: ExecutionContext, next: () => Promise<unknown>) {
-    const user = context.getUser(); // From auth interceptor
+    const user = context.getUser() // From auth interceptor
 
     const rlsCtx = createRLSContext({
       auth: {
@@ -637,15 +653,15 @@ export class RLSInterceptor {
         roles: user.roles,
         tenantId: user.tenantId,
         permissions: user.permissions,
-        user,
+        user
       },
       request: {
         requestId: context.getRequestId(),
-        timestamp: new Date(),
-      },
-    });
+        timestamp: new Date()
+      }
+    })
 
-    return rlsContext.runAsync(rlsCtx, () => next());
+    return rlsContext.runAsync(rlsCtx, () => next())
   }
 }
 ```
@@ -671,9 +687,9 @@ await db.transaction().execute(async (trx) => {
 ### 6.1 SELECT Query Transformation
 
 ```typescript
-import type { SelectQueryBuilder } from 'kysely';
-import { rlsContext } from '../context';
-import type { PolicyRegistry, FilterPolicy } from '../policy/types';
+import type { SelectQueryBuilder } from 'kysely'
+import { rlsContext } from '../context'
+import type { PolicyRegistry, FilterPolicy } from '../policy/types'
 
 export class SelectTransformer {
   constructor(private registry: PolicyRegistry) {}
@@ -685,23 +701,23 @@ export class SelectTransformer {
     qb: SelectQueryBuilder<DB, TB, O>,
     table: string
   ): SelectQueryBuilder<DB, TB, O> {
-    const ctx = rlsContext.getContext();
+    const ctx = rlsContext.getContext()
 
     // Get filter policies for this table
-    const filters = this.registry.getFilters(table, 'read');
+    const filters = this.registry.getFilters(table, 'read')
 
     if (filters.length === 0) {
-      return qb;
+      return qb
     }
 
     // Apply each filter as WHERE condition
-    let result = qb;
+    let result = qb
     for (const filter of filters) {
-      const conditions = this.evaluateFilter(filter, ctx, table);
-      result = this.applyConditions(result, conditions);
+      const conditions = this.evaluateFilter(filter, ctx, table)
+      result = this.applyConditions(result, conditions)
     }
 
-    return result;
+    return result
   }
 
   /**
@@ -716,10 +732,10 @@ export class SelectTransformer {
     const evalCtx = {
       auth: ctx.auth,
       request: ctx.request,
-      meta: ctx.meta,
-    };
+      meta: ctx.meta
+    }
 
-    return filter.condition(evalCtx);
+    return filter.condition(evalCtx)
   }
 
   /**
@@ -729,19 +745,19 @@ export class SelectTransformer {
     qb: SelectQueryBuilder<DB, TB, O>,
     conditions: Record<string, unknown>
   ): SelectQueryBuilder<DB, TB, O> {
-    let result = qb;
+    let result = qb
 
     for (const [column, value] of Object.entries(conditions)) {
       if (value === null) {
-        result = result.where(column as any, 'is', null);
+        result = result.where(column as any, 'is', null)
       } else if (Array.isArray(value)) {
-        result = result.where(column as any, 'in', value as any);
+        result = result.where(column as any, 'in', value as any)
       } else {
-        result = result.where(column as any, '=', value as any);
+        result = result.where(column as any, '=', value as any)
       }
     }
 
-    return result;
+    return result
   }
 }
 ```
@@ -755,97 +771,89 @@ export class MutationGuard {
   /**
    * Check if INSERT is allowed
    */
-  async checkCreate<T>(
-    table: string,
-    data: T
-  ): Promise<void> {
-    const ctx = rlsContext.getContext();
+  async checkCreate<T>(table: string, data: T): Promise<void> {
+    const ctx = rlsContext.getContext()
 
     // System users bypass RLS
-    if (ctx.auth.isSystem) return;
+    if (ctx.auth.isSystem) return
 
     // Evaluate deny policies first
-    const denyPolicies = this.registry.getDenies(table, 'create');
+    const denyPolicies = this.registry.getDenies(table, 'create')
     for (const policy of denyPolicies) {
-      const denied = await policy.condition({ auth: ctx.auth, data });
+      const denied = await policy.condition({ auth: ctx.auth, data })
       if (denied) {
-        throw new RLSPolicyViolation('create', table, 'Denied by policy');
+        throw new RLSPolicyViolation('create', table, 'Denied by policy')
       }
     }
 
     // Evaluate allow policies
-    const allowPolicies = this.registry.getAllows(table, 'create');
+    const allowPolicies = this.registry.getAllows(table, 'create')
     if (allowPolicies.length === 0) {
-      throw new RLSPolicyViolation('create', table, 'No allow policy');
+      throw new RLSPolicyViolation('create', table, 'No allow policy')
     }
 
-    let allowed = false;
+    let allowed = false
     for (const policy of allowPolicies) {
       if (await policy.condition({ auth: ctx.auth, data })) {
-        allowed = true;
-        break;
+        allowed = true
+        break
       }
     }
 
     if (!allowed) {
-      throw new RLSPolicyViolation('create', table, 'Not allowed');
+      throw new RLSPolicyViolation('create', table, 'Not allowed')
     }
   }
 
   /**
    * Check if UPDATE is allowed (requires row data)
    */
-  async checkUpdate<T, U>(
-    table: string,
-    existingRow: T,
-    newData: U
-  ): Promise<void> {
-    const ctx = rlsContext.getContext();
+  async checkUpdate<T, U>(table: string, existingRow: T, newData: U): Promise<void> {
+    const ctx = rlsContext.getContext()
 
-    if (ctx.auth.isSystem) return;
+    if (ctx.auth.isSystem) return
 
     // Check deny policies
-    const denyPolicies = this.registry.getDenies(table, 'update');
+    const denyPolicies = this.registry.getDenies(table, 'update')
     for (const policy of denyPolicies) {
       const denied = await policy.condition({
         auth: ctx.auth,
         row: existingRow,
         data: newData
-      });
+      })
       if (denied) {
-        throw new RLSPolicyViolation('update', table, 'Denied by policy');
+        throw new RLSPolicyViolation('update', table, 'Denied by policy')
       }
     }
 
     // Check allow policies
-    const allowPolicies = this.registry.getAllows(table, 'update');
-    let allowed = false;
+    const allowPolicies = this.registry.getAllows(table, 'update')
+    let allowed = false
     for (const policy of allowPolicies) {
-      if (await policy.condition({
-        auth: ctx.auth,
-        row: existingRow,
-        data: newData
-      })) {
-        allowed = true;
-        break;
+      if (
+        await policy.condition({
+          auth: ctx.auth,
+          row: existingRow,
+          data: newData
+        })
+      ) {
+        allowed = true
+        break
       }
     }
 
     if (!allowed) {
-      throw new RLSPolicyViolation('update', table, 'Not allowed');
+      throw new RLSPolicyViolation('update', table, 'Not allowed')
     }
   }
 
   /**
    * Check if DELETE is allowed
    */
-  async checkDelete<T>(
-    table: string,
-    row: T
-  ): Promise<void> {
-    const ctx = rlsContext.getContext();
+  async checkDelete<T>(table: string, row: T): Promise<void> {
+    const ctx = rlsContext.getContext()
 
-    if (ctx.auth.isSystem) return;
+    if (ctx.auth.isSystem) return
 
     // Similar to checkUpdate, but for delete operation
     // ...
@@ -856,48 +864,45 @@ export class MutationGuard {
 ### 6.3 Query Interceptor Integration
 
 ```typescript
-import type { Plugin, QueryBuilderContext, AnyQueryBuilder } from '@kysera/repository';
+import type { Plugin, QueryBuilderContext, AnyQueryBuilder } from '@kysera/repository'
 
 export class RLSQueryInterceptor {
-  private selectTransformer: SelectTransformer;
-  private mutationGuard: MutationGuard;
+  private selectTransformer: SelectTransformer
+  private mutationGuard: MutationGuard
 
   /**
    * Intercept and transform query
    */
-  interceptQuery<QB extends AnyQueryBuilder>(
-    qb: QB,
-    context: QueryBuilderContext
-  ): QB {
-    const { operation, table, metadata } = context;
+  interceptQuery<QB extends AnyQueryBuilder>(qb: QB, context: QueryBuilderContext): QB {
+    const { operation, table, metadata } = context
 
     // Skip if explicitly disabled
     if (metadata['skipRLS'] === true) {
-      return qb;
+      return qb
     }
 
     // Check if context exists
     if (!rlsContext.hasContext()) {
       if (metadata['requireRLS'] === true) {
-        throw new RLSContextError('RLS context required but not found');
+        throw new RLSContextError('RLS context required but not found')
       }
-      return qb;
+      return qb
     }
 
     switch (operation) {
       case 'select':
-        return this.selectTransformer.transform(qb as any, table) as QB;
+        return this.selectTransformer.transform(qb as any, table) as QB
 
       case 'insert':
       case 'update':
       case 'delete':
         // Mutations are handled by extendRepository wrapper
         // Store metadata for later checking
-        metadata['__rlsChecked'] = false;
-        return qb;
+        metadata['__rlsChecked'] = false
+        return qb
 
       default:
-        return qb;
+        return qb
     }
   }
 }
@@ -910,76 +915,66 @@ export class RLSQueryInterceptor {
 ### 7.1 Native Policy Generator
 
 ```typescript
-import { sql, type Kysely } from 'kysely';
-import type { PolicySchema, PolicyDefinition } from '../policy/types';
+import { sql, type Kysely } from 'kysely'
+import type { PolicySchema, PolicyDefinition } from '../policy/types'
 
 export class PostgresRLSGenerator {
   /**
    * Generate PostgreSQL RLS statements from policy schema
    */
-  generateStatements(
-    schema: PolicySchema,
-    options: GeneratorOptions = {}
-  ): string[] {
-    const statements: string[] = [];
+  generateStatements(schema: PolicySchema, options: GeneratorOptions = {}): string[] {
+    const statements: string[] = []
 
     for (const [table, config] of Object.entries(schema)) {
       // Enable RLS on table
-      statements.push(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`);
+      statements.push(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`)
 
       if (options.force) {
-        statements.push(`ALTER TABLE ${table} FORCE ROW LEVEL SECURITY;`);
+        statements.push(`ALTER TABLE ${table} FORCE ROW LEVEL SECURITY;`)
       }
 
       // Generate policies
-      let policyIndex = 0;
+      let policyIndex = 0
       for (const policy of config.policies) {
-        const policyName = `rls_${table}_${policy.type}_${policyIndex++}`;
-        const policySQL = this.generatePolicy(table, policyName, policy);
-        statements.push(policySQL);
+        const policyName = `rls_${table}_${policy.type}_${policyIndex++}`
+        const policySQL = this.generatePolicy(table, policyName, policy)
+        statements.push(policySQL)
       }
     }
 
-    return statements;
+    return statements
   }
 
   /**
    * Generate single policy statement
    */
-  private generatePolicy(
-    table: string,
-    name: string,
-    policy: PolicyDefinition
-  ): string {
-    const parts: string[] = [
-      `CREATE POLICY ${name}`,
-      `ON ${table}`,
-    ];
+  private generatePolicy(table: string, name: string, policy: PolicyDefinition): string {
+    const parts: string[] = [`CREATE POLICY ${name}`, `ON ${table}`]
 
     // Policy type (permissive/restrictive)
     if (policy.type === 'deny') {
-      parts.push('AS RESTRICTIVE');
+      parts.push('AS RESTRICTIVE')
     } else {
-      parts.push('AS PERMISSIVE');
+      parts.push('AS PERMISSIVE')
     }
 
     // Target role
-    parts.push(`TO ${policy.role ?? 'public'}`);
+    parts.push(`TO ${policy.role ?? 'public'}`)
 
     // Operation
-    parts.push(`FOR ${this.mapOperation(policy.operation)}`);
+    parts.push(`FOR ${this.mapOperation(policy.operation)}`)
 
     // USING clause (for SELECT, UPDATE, DELETE)
     if (policy.using) {
-      parts.push(`USING (${policy.using})`);
+      parts.push(`USING (${policy.using})`)
     }
 
     // WITH CHECK clause (for INSERT, UPDATE)
     if (policy.withCheck) {
-      parts.push(`WITH CHECK (${policy.withCheck})`);
+      parts.push(`WITH CHECK (${policy.withCheck})`)
     }
 
-    return parts.join('\n  ') + ';';
+    return parts.join('\n  ') + ';'
   }
 
   /**
@@ -1003,20 +998,26 @@ AS $$ SELECT string_to_array(current_setting('app.roles', true), ',') $$;
 CREATE OR REPLACE FUNCTION rls_has_role(role_name text)
 RETURNS boolean LANGUAGE SQL STABLE
 AS $$ SELECT role_name = ANY(rls_current_roles()) $$;
-`;
+`
   }
 
   private mapOperation(op: string | string[]): string {
     if (Array.isArray(op)) {
-      return 'ALL';
+      return 'ALL'
     }
     switch (op) {
-      case 'read': return 'SELECT';
-      case 'create': return 'INSERT';
-      case 'update': return 'UPDATE';
-      case 'delete': return 'DELETE';
-      case 'all': return 'ALL';
-      default: return 'ALL';
+      case 'read':
+        return 'SELECT'
+      case 'create':
+        return 'INSERT'
+      case 'update':
+        return 'UPDATE'
+      case 'delete':
+        return 'DELETE'
+      case 'all':
+        return 'ALL'
+      default:
+        return 'ALL'
     }
   }
 }
@@ -1038,48 +1039,43 @@ export async function syncContextToPostgres<DB>(
       set_config('app.user_id', ${context.auth.userId}::text, true),
       set_config('app.tenant_id', ${context.auth.tenantId ?? ''}::text, true),
       set_config('app.roles', ${context.auth.roles.join(',')}::text, true)
-  `.execute(db);
+  `.execute(db)
 }
 
 /**
  * Middleware to sync context on transaction start
  */
-export function withPostgresRLSSync<DB>(
-  db: Kysely<DB>
-): Kysely<DB> {
+export function withPostgresRLSSync<DB>(db: Kysely<DB>): Kysely<DB> {
   return db.withPlugin({
     transformQuery(args) {
-      return args.node;
+      return args.node
     },
     async transformResult(args) {
       // Sync context after connection is acquired
-      const ctx = rlsContext.getContextOrNull();
+      const ctx = rlsContext.getContextOrNull()
       if (ctx && args.queryId.includes('transaction')) {
-        await syncContextToPostgres(db, ctx);
+        await syncContextToPostgres(db, ctx)
       }
-      return args.result;
-    },
-  });
+      return args.result
+    }
+  })
 }
 ```
 
 ### 7.3 Migration Generator
 
 ```typescript
-import { Migrator } from '@kysera/migrations';
-import type { PolicySchema } from '../policy/types';
+import { Migrator } from '@kysera/migrations'
+import type { PolicySchema } from '../policy/types'
 
 export class RLSMigrationGenerator {
   /**
    * Generate migration file for RLS policies
    */
-  generateMigration(
-    schema: PolicySchema,
-    name: string
-  ): string {
-    const generator = new PostgresRLSGenerator();
-    const upStatements = generator.generateStatements(schema);
-    const downStatements = this.generateDownStatements(schema);
+  generateMigration(schema: PolicySchema, name: string): string {
+    const generator = new PostgresRLSGenerator()
+    const upStatements = generator.generateStatements(schema)
+    const downStatements = this.generateDownStatements(schema)
 
     return `
 import { Kysely, sql } from 'kysely';
@@ -1095,18 +1091,18 @@ ${upStatements.map(s => `  await sql.raw(\`${s}\`).execute(db);`).join('\n')}
 export async function down(db: Kysely<any>): Promise<void> {
 ${downStatements.map(s => `  await sql.raw(\`${s}\`).execute(db);`).join('\n')}
 }
-`;
+`
   }
 
   private generateDownStatements(schema: PolicySchema): string[] {
-    const statements: string[] = [];
+    const statements: string[] = []
 
     for (const table of Object.keys(schema)) {
-      statements.push(`DROP POLICY IF EXISTS rls_${table}_* ON ${table};`);
-      statements.push(`ALTER TABLE ${table} DISABLE ROW LEVEL SECURITY;`);
+      statements.push(`DROP POLICY IF EXISTS rls_${table}_* ON ${table};`)
+      statements.push(`ALTER TABLE ${table} DISABLE ROW LEVEL SECURITY;`)
     }
 
-    return statements;
+    return statements
   }
 }
 ```
@@ -1118,7 +1114,7 @@ ${downStatements.map(s => `  await sql.raw(\`${s}\`).execute(db);`).join('\n')}
 ### 8.1 Policy Type Definitions
 
 ```typescript
-import type { Kysely } from 'kysely';
+import type { Kysely } from 'kysely'
 
 /**
  * Policy evaluation context (passed to policy functions)
@@ -1130,22 +1126,22 @@ export interface PolicyEvaluationContext<
   TDB = unknown
 > {
   /** Current auth context */
-  auth: RLSAuthContext<TAuth>;
+  auth: RLSAuthContext<TAuth>
 
   /** Existing row (for read/update/delete) */
-  row?: TRow;
+  row?: TRow
 
   /** New data (for create/update) */
-  data?: TData;
+  data?: TData
 
   /** Request context */
-  request?: RLSRequestContext;
+  request?: RLSRequestContext
 
   /** Database executor (for subqueries in policies) */
-  db?: Kysely<TDB>;
+  db?: Kysely<TDB>
 
   /** Custom metadata */
-  meta?: Record<string, unknown>;
+  meta?: Record<string, unknown>
 }
 
 /**
@@ -1153,14 +1149,14 @@ export interface PolicyEvaluationContext<
  */
 export type PolicyCondition<TCtx extends PolicyEvaluationContext = PolicyEvaluationContext> =
   | ((ctx: TCtx) => boolean | Promise<boolean>)
-  | string; // Expression string
+  | string // Expression string
 
 /**
  * Filter condition function type (returns WHERE conditions)
  */
 export type FilterCondition<TCtx extends PolicyEvaluationContext = PolicyEvaluationContext> =
   | ((ctx: TCtx) => Record<string, unknown>)
-  | Record<string, string>; // Static mapping { column: 'auth.field' }
+  | Record<string, string> // Static mapping { column: 'auth.field' }
 
 /**
  * Policy definition
@@ -1169,38 +1165,38 @@ export interface PolicyDefinition<
   TOperation extends Operation = Operation,
   TCondition = PolicyCondition
 > {
-  type: 'allow' | 'deny' | 'filter' | 'validate';
-  operation: TOperation | TOperation[];
-  condition: TCondition;
-  name?: string;
-  priority?: number;
+  type: 'allow' | 'deny' | 'filter' | 'validate'
+  operation: TOperation | TOperation[]
+  condition: TCondition
+  name?: string
+  priority?: number
 
   // For native RLS generation
-  using?: string;
-  withCheck?: string;
-  role?: string;
+  using?: string
+  withCheck?: string
+  role?: string
 }
 
 /**
  * Operation types
  */
-export type Operation = 'read' | 'create' | 'update' | 'delete' | 'all';
+export type Operation = 'read' | 'create' | 'update' | 'delete' | 'all'
 
 /**
  * Table RLS configuration
  */
 export interface TableRLSConfig<TEntity = unknown> {
-  policies: PolicyDefinition[];
-  defaultDeny?: boolean;
-  skipFor?: string[]; // Roles that bypass RLS
+  policies: PolicyDefinition[]
+  defaultDeny?: boolean
+  skipFor?: string[] // Roles that bypass RLS
 }
 
 /**
  * Complete RLS schema
  */
 export type RLSSchema<DB> = {
-  [K in keyof DB]?: TableRLSConfig<DB[K]>;
-};
+  [K in keyof DB]?: TableRLSConfig<DB[K]>
+}
 ```
 
 ### 8.2 Type-Safe Policy Builders
@@ -1209,63 +1205,50 @@ export type RLSSchema<DB> = {
 /**
  * Type-safe allow policy builder
  */
-export function allow<
-  DB,
-  TN extends keyof DB,
-  Op extends Operation
->(
+export function allow<DB, TN extends keyof DB, Op extends Operation>(
   operation: Op | Op[],
   condition: PolicyCondition<PolicyEvaluationContext<unknown, DB[TN], DB[TN]>>
 ): PolicyDefinition<Op> {
   return {
     type: 'allow',
     operation,
-    condition,
-  };
+    condition
+  }
 }
 
 /**
  * Type-safe deny policy builder
  */
-export function deny<
-  DB,
-  TN extends keyof DB,
-  Op extends Operation
->(
+export function deny<DB, TN extends keyof DB, Op extends Operation>(
   operation: Op | Op[],
   condition?: PolicyCondition<PolicyEvaluationContext<unknown, DB[TN], DB[TN]>>
 ): PolicyDefinition<Op> {
   return {
     type: 'deny',
     operation,
-    condition: condition ?? (() => true), // Default: always deny
-  };
+    condition: condition ?? (() => true) // Default: always deny
+  }
 }
 
 /**
  * Type-safe filter policy builder
  */
-export function filter<
-  DB,
-  TN extends keyof DB
->(
+export function filter<DB, TN extends keyof DB>(
   operation: 'read' | 'all',
   condition: FilterCondition<PolicyEvaluationContext<unknown, DB[TN]>>
 ): PolicyDefinition<'read'> {
   return {
     type: 'filter',
     operation: 'read',
-    condition: condition as any,
-  };
+    condition: condition as any
+  }
 }
 
 /**
  * Define complete RLS schema with full type safety
  */
-export function defineRLSSchema<DB>(
-  schema: RLSSchema<DB>
-): RLSSchema<DB> {
-  return schema;
+export function defineRLSSchema<DB>(schema: RLSSchema<DB>): RLSSchema<DB> {
+  return schema
 }
 ```
 
@@ -1276,8 +1259,8 @@ export function defineRLSSchema<DB>(
  * Extract tables that have RLS configured
  */
 export type RLSProtectedTables<S extends RLSSchema<any>> = {
-  [K in keyof S]: S[K] extends TableRLSConfig ? K : never;
-}[keyof S];
+  [K in keyof S]: S[K] extends TableRLSConfig ? K : never
+}[keyof S]
 
 /**
  * Get policy operations for a table
@@ -1285,9 +1268,7 @@ export type RLSProtectedTables<S extends RLSSchema<any>> = {
 export type TableOperations<
   S extends RLSSchema<any>,
   T extends keyof S
-> = S[T] extends TableRLSConfig
-  ? S[T]['policies'][number]['operation']
-  : never;
+> = S[T] extends TableRLSConfig ? S[T]['policies'][number]['operation'] : never
 
 /**
  * Validate that all required policies exist
@@ -1297,8 +1278,8 @@ export type ValidateRLSSchema<DB, S extends RLSSchema<DB>> = {
     ? S[K] extends TableRLSConfig
       ? S[K]
       : 'Missing RLS configuration'
-    : 'Unprotected table';
-};
+    : 'Unprotected table'
+}
 ```
 
 ---
@@ -1308,34 +1289,30 @@ export type ValidateRLSSchema<DB, S extends RLSSchema<DB>> = {
 ### 9.1 Kysera Plugin Implementation
 
 ```typescript
-import type {
-  Plugin,
-  QueryBuilderContext,
-  AnyQueryBuilder
-} from '@kysera/repository';
-import { RLSErrorCodes } from './errors';
+import type { Plugin, QueryBuilderContext, AnyQueryBuilder } from '@kysera/repository'
+import { RLSErrorCodes } from './errors'
 
 export interface RLSPluginOptions<DB = unknown> {
   /** RLS policy schema */
-  schema: RLSSchema<DB>;
+  schema: RLSSchema<DB>
 
   /** Enable native PostgreSQL RLS sync */
-  nativeSync?: boolean;
+  nativeSync?: boolean
 
   /** Tables to skip RLS for */
-  skipTables?: string[];
+  skipTables?: string[]
 
   /** Roles that bypass RLS */
-  bypassRoles?: string[];
+  bypassRoles?: string[]
 
   /** Logger */
-  logger?: KyseraLogger;
+  logger?: KyseraLogger
 
   /** Throw on missing context (default: false) */
-  requireContext?: boolean;
+  requireContext?: boolean
 
   /** Enable audit logging of policy decisions */
-  auditDecisions?: boolean;
+  auditDecisions?: boolean
 }
 
 /**
@@ -1349,13 +1326,13 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     bypassRoles = [],
     logger = silentLogger,
     requireContext = false,
-    auditDecisions = false,
-  } = options;
+    auditDecisions = false
+  } = options
 
   // Compile policies at initialization
-  const registry = new PolicyRegistry(schema);
-  const selectTransformer = new SelectTransformer(registry);
-  const mutationGuard = new MutationGuard(registry);
+  const registry = new PolicyRegistry(schema)
+  const selectTransformer = new SelectTransformer(registry)
+  const mutationGuard = new MutationGuard(registry)
 
   return {
     name: '@kysera/rls',
@@ -1373,18 +1350,18 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     async onInit<DB>(executor: Kysely<DB>): Promise<void> {
       logger.info('RLS plugin initialized', {
         tables: Object.keys(schema).length,
-        nativeSync,
-      });
+        nativeSync
+      })
 
       // Validate schema
-      registry.validate();
+      registry.validate()
 
       // Sync to PostgreSQL if enabled
       if (nativeSync) {
-        const generator = new PostgresRLSGenerator();
-        const statements = generator.generateStatements(schema as any);
+        const generator = new PostgresRLSGenerator()
+        const statements = generator.generateStatements(schema as any)
         for (const stmt of statements) {
-          await sql.raw(stmt).execute(executor);
+          await sql.raw(stmt).execute(executor)
         }
       }
     },
@@ -1392,178 +1369,171 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     /**
      * Intercept queries for RLS filtering
      */
-    interceptQuery<QB extends AnyQueryBuilder>(
-      qb: QB,
-      context: QueryBuilderContext
-    ): QB {
-      const { operation, table, metadata } = context;
+    interceptQuery<QB extends AnyQueryBuilder>(qb: QB, context: QueryBuilderContext): QB {
+      const { operation, table, metadata } = context
 
       // Skip if table is excluded
       if (skipTables.includes(table)) {
-        return qb;
+        return qb
       }
 
       // Skip if explicitly disabled
       if (metadata['skipRLS'] === true) {
-        logger.debug(`RLS skipped for ${table} (explicit)`);
-        return qb;
+        logger.debug(`RLS skipped for ${table} (explicit)`)
+        return qb
       }
 
       // Check for context
-      const rlsCtx = rlsContext.getContextOrNull();
+      const rlsCtx = rlsContext.getContextOrNull()
       if (!rlsCtx) {
         if (requireContext) {
-          throw new RLSContextError('RLS context required');
+          throw new RLSContextError('RLS context required')
         }
-        logger.warn(`No RLS context for ${operation} on ${table}`);
-        return qb;
+        logger.warn(`No RLS context for ${operation} on ${table}`)
+        return qb
       }
 
       // Check bypass roles
-      if (rlsCtx.auth.isSystem ||
-          bypassRoles.some(r => rlsCtx.auth.roles.includes(r))) {
-        logger.debug(`RLS bypassed for ${table} (system/bypass role)`);
-        return qb;
+      if (rlsCtx.auth.isSystem || bypassRoles.some(r => rlsCtx.auth.roles.includes(r))) {
+        logger.debug(`RLS bypassed for ${table} (system/bypass role)`)
+        return qb
       }
 
       // Apply SELECT filtering
       if (operation === 'select') {
-        const transformed = selectTransformer.transform(qb as any, table);
+        const transformed = selectTransformer.transform(qb as any, table)
 
         if (auditDecisions) {
-          logger.info('RLS filter applied', { table, operation, userId: rlsCtx.auth.userId });
+          logger.info('RLS filter applied', { table, operation, userId: rlsCtx.auth.userId })
         }
 
-        return transformed as QB;
+        return transformed as QB
       }
 
-      return qb;
+      return qb
     },
 
     /**
      * Extend repository with RLS-aware methods
      */
     extendRepository<T extends object>(repo: T): T {
-      const baseRepo = repo as unknown as BaseRepository;
+      const baseRepo = repo as unknown as BaseRepository
 
       if (!('tableName' in baseRepo) || !('executor' in baseRepo)) {
-        return repo;
+        return repo
       }
 
-      const table = baseRepo.tableName;
+      const table = baseRepo.tableName
 
       // Skip excluded tables
       if (skipTables.includes(table)) {
-        return repo;
+        return repo
       }
 
       // Wrap mutation methods
-      const originalCreate = baseRepo.create?.bind(baseRepo);
-      const originalUpdate = baseRepo.update?.bind(baseRepo);
-      const originalDelete = baseRepo.delete?.bind(baseRepo);
-      const originalFindById = baseRepo.findById?.bind(baseRepo);
+      const originalCreate = baseRepo.create?.bind(baseRepo)
+      const originalUpdate = baseRepo.update?.bind(baseRepo)
+      const originalDelete = baseRepo.delete?.bind(baseRepo)
+      const originalFindById = baseRepo.findById?.bind(baseRepo)
 
       const extendedRepo = {
         ...baseRepo,
 
         // Wrapped create with RLS check
         async create(data: unknown): Promise<unknown> {
-          const ctx = rlsContext.getContextOrNull();
+          const ctx = rlsContext.getContextOrNull()
 
-          if (ctx && !ctx.auth.isSystem &&
-              !bypassRoles.some(r => ctx.auth.roles.includes(r))) {
-            await mutationGuard.checkCreate(table, data);
+          if (ctx && !ctx.auth.isSystem && !bypassRoles.some(r => ctx.auth.roles.includes(r))) {
+            await mutationGuard.checkCreate(table, data)
           }
 
-          return originalCreate?.(data);
+          return originalCreate?.(data)
         },
 
         // Wrapped update with RLS check
         async update(id: unknown, data: unknown): Promise<unknown> {
-          const ctx = rlsContext.getContextOrNull();
+          const ctx = rlsContext.getContextOrNull()
 
-          if (ctx && !ctx.auth.isSystem &&
-              !bypassRoles.some(r => ctx.auth.roles.includes(r))) {
+          if (ctx && !ctx.auth.isSystem && !bypassRoles.some(r => ctx.auth.roles.includes(r))) {
             // Fetch existing row for policy evaluation
-            const existingRow = await originalFindById?.(id);
+            const existingRow = await originalFindById?.(id)
             if (!existingRow) {
-              throw new NotFoundError('Record', { id });
+              throw new NotFoundError('Record', { id })
             }
-            await mutationGuard.checkUpdate(table, existingRow, data);
+            await mutationGuard.checkUpdate(table, existingRow, data)
           }
 
-          return originalUpdate?.(id, data);
+          return originalUpdate?.(id, data)
         },
 
         // Wrapped delete with RLS check
         async delete(id: unknown): Promise<unknown> {
-          const ctx = rlsContext.getContextOrNull();
+          const ctx = rlsContext.getContextOrNull()
 
-          if (ctx && !ctx.auth.isSystem &&
-              !bypassRoles.some(r => ctx.auth.roles.includes(r))) {
-            const existingRow = await originalFindById?.(id);
+          if (ctx && !ctx.auth.isSystem && !bypassRoles.some(r => ctx.auth.roles.includes(r))) {
+            const existingRow = await originalFindById?.(id)
             if (!existingRow) {
-              throw new NotFoundError('Record', { id });
+              throw new NotFoundError('Record', { id })
             }
-            await mutationGuard.checkDelete(table, existingRow);
+            await mutationGuard.checkDelete(table, existingRow)
           }
 
-          return originalDelete?.(id);
+          return originalDelete?.(id)
         },
 
         // Utility: bypass RLS for specific operation
         async withoutRLS<R>(fn: () => Promise<R>): Promise<R> {
-          const ctx = rlsContext.getContextOrNull();
+          const ctx = rlsContext.getContextOrNull()
           if (!ctx) {
-            return fn();
+            return fn()
           }
 
           const systemCtx: RLSContext = {
             ...ctx,
-            auth: { ...ctx.auth, isSystem: true },
-          };
+            auth: { ...ctx.auth, isSystem: true }
+          }
 
-          return rlsContext.runAsync(systemCtx, fn);
-        },
-      };
+          return rlsContext.runAsync(systemCtx, fn)
+        }
+      }
 
-      return extendedRepo as T;
-    },
-  };
+      return extendedRepo as T
+    }
+  }
 }
 ```
 
 ### 9.2 Error Types
 
 ```typescript
-import { ErrorCode, createError } from '@kysera/core';
+import { ErrorCode, createError } from '@kysera/core'
 
 export const RLSErrorCodes = {
   RLS_CONTEXT_MISSING: 'RLS_CONTEXT_MISSING' as ErrorCode,
   RLS_POLICY_VIOLATION: 'RLS_POLICY_VIOLATION' as ErrorCode,
   RLS_POLICY_INVALID: 'RLS_POLICY_INVALID' as ErrorCode,
-  RLS_SCHEMA_INVALID: 'RLS_SCHEMA_INVALID' as ErrorCode,
-} as const;
+  RLS_SCHEMA_INVALID: 'RLS_SCHEMA_INVALID' as ErrorCode
+} as const
 
 export class RLSContextError extends Error {
-  public readonly code = RLSErrorCodes.RLS_CONTEXT_MISSING;
+  public readonly code = RLSErrorCodes.RLS_CONTEXT_MISSING
 
   constructor(message: string) {
-    super(message);
-    this.name = 'RLSContextError';
+    super(message)
+    this.name = 'RLSContextError'
   }
 }
 
 export class RLSPolicyViolation extends Error {
-  public readonly code = RLSErrorCodes.RLS_POLICY_VIOLATION;
+  public readonly code = RLSErrorCodes.RLS_POLICY_VIOLATION
 
   constructor(
     public readonly operation: string,
     public readonly table: string,
     public readonly reason: string
   ) {
-    super(`RLS policy violation: ${operation} on ${table} - ${reason}`);
-    this.name = 'RLSPolicyViolation';
+    super(`RLS policy violation: ${operation} on ${table} - ${reason}`)
+    this.name = 'RLSPolicyViolation'
   }
 }
 ```
@@ -1576,23 +1546,17 @@ export class RLSPolicyViolation extends Error {
 
 ```typescript
 // @kysera/rls/titan
-import { TitanModule, type ModuleMetadata } from '@omnitron-dev/titan';
-import { rlsPlugin, type RLSPluginOptions } from '@kysera/rls';
+import { TitanModule, type ModuleMetadata } from '@omnitron-dev/titan'
+import { rlsPlugin, type RLSPluginOptions } from '@kysera/rls'
 
 export interface RLSModuleOptions<DB = unknown> extends RLSPluginOptions<DB> {
   /** Global interceptor for context setup */
-  contextProvider?: Type<RLSContextProvider>;
+  contextProvider?: Type<RLSContextProvider>
 }
 
 @TitanModule({
-  providers: [
-    RLSContextManager,
-    RLSPolicyRegistry,
-  ],
-  exports: [
-    RLSContextManager,
-    RLSPolicyRegistry,
-  ],
+  providers: [RLSContextManager, RLSPolicyRegistry],
+  exports: [RLSContextManager, RLSPolicyRegistry]
 })
 export class RLSModule {
   static forRoot<DB>(options: RLSModuleOptions<DB>): DynamicModule {
@@ -1601,22 +1565,24 @@ export class RLSModule {
       providers: [
         {
           provide: RLS_OPTIONS,
-          useValue: options,
+          useValue: options
         },
         {
           provide: RLS_PLUGIN,
           useFactory: (opts: RLSModuleOptions<DB>) => rlsPlugin(opts),
-          inject: [RLS_OPTIONS],
+          inject: [RLS_OPTIONS]
         },
-        ...(options.contextProvider ? [
-          {
-            provide: RLS_CONTEXT_PROVIDER,
-            useClass: options.contextProvider,
-          }
-        ] : []),
+        ...(options.contextProvider
+          ? [
+              {
+                provide: RLS_CONTEXT_PROVIDER,
+                useClass: options.contextProvider
+              }
+            ]
+          : [])
       ],
-      exports: [RLS_PLUGIN, RLS_OPTIONS],
-    };
+      exports: [RLS_PLUGIN, RLS_OPTIONS]
+    }
   }
 }
 ```
@@ -1624,19 +1590,17 @@ export class RLSModule {
 ### 10.2 Decorators
 
 ```typescript
-import { createMethodDecorator, createClassDecorator } from '@omnitron-dev/titan';
+import { createMethodDecorator, createClassDecorator } from '@omnitron-dev/titan'
 
 /**
  * @Policy - Class decorator for repository-level policies
  */
-export const Policy = createClassDecorator<PolicyDecoratorOptions>(
-  (options) => {
-    return (target) => {
-      Reflect.defineMetadata(RLS_POLICY_METADATA, options, target);
-      return target;
-    };
+export const Policy = createClassDecorator<PolicyDecoratorOptions>(options => {
+  return target => {
+    Reflect.defineMetadata(RLS_POLICY_METADATA, options, target)
+    return target
   }
-);
+})
 
 /**
  * @Allow - Method decorator for allow policies
@@ -1644,13 +1608,13 @@ export const Policy = createClassDecorator<PolicyDecoratorOptions>(
 export const Allow = createMethodDecorator<AllowDecoratorOptions>(
   (operation: Operation | Operation[], condition: PolicyCondition) => {
     return (target, propertyKey, descriptor) => {
-      const existing = Reflect.getMetadata(RLS_ALLOW_METADATA, target, propertyKey) || [];
-      existing.push({ operation, condition });
-      Reflect.defineMetadata(RLS_ALLOW_METADATA, existing, target, propertyKey);
-      return descriptor;
-    };
+      const existing = Reflect.getMetadata(RLS_ALLOW_METADATA, target, propertyKey) || []
+      existing.push({ operation, condition })
+      Reflect.defineMetadata(RLS_ALLOW_METADATA, existing, target, propertyKey)
+      return descriptor
+    }
   }
-);
+)
 
 /**
  * @Deny - Method decorator for deny policies
@@ -1658,13 +1622,13 @@ export const Allow = createMethodDecorator<AllowDecoratorOptions>(
 export const Deny = createMethodDecorator<DenyDecoratorOptions>(
   (operation: Operation | Operation[], condition?: PolicyCondition) => {
     return (target, propertyKey, descriptor) => {
-      const existing = Reflect.getMetadata(RLS_DENY_METADATA, target, propertyKey) || [];
-      existing.push({ operation, condition: condition ?? (() => true) });
-      Reflect.defineMetadata(RLS_DENY_METADATA, existing, target, propertyKey);
-      return descriptor;
-    };
+      const existing = Reflect.getMetadata(RLS_DENY_METADATA, target, propertyKey) || []
+      existing.push({ operation, condition: condition ?? (() => true) })
+      Reflect.defineMetadata(RLS_DENY_METADATA, existing, target, propertyKey)
+      return descriptor
+    }
   }
-);
+)
 
 /**
  * @Filter - Method decorator for filter policies
@@ -1672,70 +1636,65 @@ export const Deny = createMethodDecorator<DenyDecoratorOptions>(
 export const Filter = createMethodDecorator<FilterDecoratorOptions>(
   (operation: 'read' | 'all', condition: FilterCondition) => {
     return (target, propertyKey, descriptor) => {
-      const existing = Reflect.getMetadata(RLS_FILTER_METADATA, target, propertyKey) || [];
-      existing.push({ operation, condition });
-      Reflect.defineMetadata(RLS_FILTER_METADATA, existing, target, propertyKey);
-      return descriptor;
-    };
+      const existing = Reflect.getMetadata(RLS_FILTER_METADATA, target, propertyKey) || []
+      existing.push({ operation, condition })
+      Reflect.defineMetadata(RLS_FILTER_METADATA, existing, target, propertyKey)
+      return descriptor
+    }
   }
-);
+)
 
 /**
  * @BypassRLS - Skip RLS for this method (requires system role)
  */
 export const BypassRLS = createMethodDecorator(() => {
   return (target, propertyKey, descriptor) => {
-    Reflect.defineMetadata(RLS_BYPASS_METADATA, true, target, propertyKey);
-    return descriptor;
-  };
-});
+    Reflect.defineMetadata(RLS_BYPASS_METADATA, true, target, propertyKey)
+    return descriptor
+  }
+})
 ```
 
 ### 10.3 Repository Integration
 
 ```typescript
-import {
-  Repository,
-  InjectRepository,
-  Transactional
-} from '@omnitron-dev/titan/module/database';
-import { Policy, Allow, Deny, Filter, BypassRLS } from '@kysera/rls/titan';
+import { Repository, InjectRepository, Transactional } from '@omnitron-dev/titan/module/database'
+import { Policy, Allow, Deny, Filter, BypassRLS } from '@kysera/rls/titan'
 
 @Repository({
   table: 'resources',
-  plugins: ['@kysera/rls', '@kysera/soft-delete', '@kysera/timestamps'],
+  plugins: ['@kysera/rls', '@kysera/soft-delete', '@kysera/timestamps']
 })
 @Policy({
-  defaultDeny: true,
+  defaultDeny: true
 })
 export class ResourceRepository extends BaseRepository<Resource> {
-
   @Filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
   async findAll(): Promise<Resource[]> {
-    return super.findAll();
+    return super.findAll()
   }
 
   @Filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
   async findById(id: number): Promise<Resource | null> {
-    return super.findById(id);
+    return super.findById(id)
   }
 
   @Allow('create', ctx => ctx.data.tenant_id === ctx.auth.tenantId)
   async create(data: CreateResourceInput): Promise<Resource> {
-    return super.create(data);
+    return super.create(data)
   }
 
   @Allow('update', ctx => ctx.auth.userId === ctx.row.owner_id)
   @Allow('update', ctx => ctx.auth.roles.includes('manager'))
   @Deny('update', ctx => ctx.row.locked)
   async update(id: number, data: UpdateResourceInput): Promise<Resource> {
-    return super.update(id, data);
+    return super.update(id, data)
   }
 
   @Allow('delete', ctx => ctx.auth.userId === ctx.row.owner_id)
   @Deny('delete', ctx => ctx.row.status === 'published')
   async delete(id: number): Promise<void> {
-    return super.delete(id);
+    return super.delete(id)
   }
 
   // Admin-only method with RLS bypass
@@ -1743,7 +1702,7 @@ export class ResourceRepository extends BaseRepository<Resource> {
   @Transactional()
   async adminBulkDelete(ids: number[]): Promise<void> {
     for (const id of ids) {
-      await super.delete(id);
+      await super.delete(id)
     }
   }
 }
@@ -1752,18 +1711,18 @@ export class ResourceRepository extends BaseRepository<Resource> {
 ### 10.4 Context Provider
 
 ```typescript
-import { Injectable, Interceptor, ExecutionContext } from '@omnitron-dev/titan';
-import { rlsContext, createRLSContext } from '@kysera/rls';
+import { Injectable, Interceptor, ExecutionContext } from '@omnitron-dev/titan'
+import { rlsContext, createRLSContext } from '@kysera/rls'
 
 export interface RLSContextProvider {
-  getContext(executionContext: ExecutionContext): Promise<RLSContext>;
+  getContext(executionContext: ExecutionContext): Promise<RLSContext>
 }
 
 @Injectable()
 export class DefaultRLSContextProvider implements RLSContextProvider {
   async getContext(ctx: ExecutionContext): Promise<RLSContext> {
-    const user = ctx.getUser();
-    const request = ctx.getRequest();
+    const user = ctx.getUser()
+    const request = ctx.getRequest()
 
     return createRLSContext({
       auth: {
@@ -1772,15 +1731,15 @@ export class DefaultRLSContextProvider implements RLSContextProvider {
         tenantId: user?.tenantId,
         permissions: user?.permissions,
         user,
-        isSystem: user?.isSystem ?? false,
+        isSystem: user?.isSystem ?? false
       },
       request: {
         requestId: request?.id,
         ipAddress: request?.ip,
         userAgent: request?.headers?.['user-agent'],
-        timestamp: new Date(),
-      },
-    });
+        timestamp: new Date()
+      }
+    })
   }
 }
 
@@ -1789,8 +1748,8 @@ export class RLSInterceptor {
   constructor(private contextProvider: RLSContextProvider) {}
 
   async intercept(ctx: ExecutionContext, next: () => Promise<unknown>) {
-    const rlsCtx = await this.contextProvider.getContext(ctx);
-    return rlsContext.runAsync(rlsCtx, next);
+    const rlsCtx = await this.contextProvider.getContext(ctx)
+    return rlsContext.runAsync(rlsCtx, next)
   }
 }
 ```
@@ -1812,11 +1771,11 @@ export class PolicyCompiler {
   compile<TCtx>(condition: PolicyCondition<TCtx>): CompiledCondition<TCtx> {
     // String expressions are parsed and compiled once
     if (typeof condition === 'string') {
-      return this.compileExpression(condition);
+      return this.compileExpression(condition)
     }
 
     // Functions are wrapped with caching if STABLE
-    return this.wrapWithCaching(condition);
+    return this.wrapWithCaching(condition)
   }
 
   /**
@@ -1824,13 +1783,13 @@ export class PolicyCompiler {
    */
   private compileExpression(expr: string): CompiledCondition<any> {
     // Parse expression into AST
-    const ast = parseExpression(expr);
+    const ast = parseExpression(expr)
 
     // Optimize AST (constant folding, etc.)
-    const optimized = optimizeAST(ast);
+    const optimized = optimizeAST(ast)
 
     // Generate efficient evaluator function
-    return generateEvaluator(optimized);
+    return generateEvaluator(optimized)
   }
 
   /**
@@ -1839,20 +1798,20 @@ export class PolicyCompiler {
   private wrapWithCaching<TCtx>(
     fn: (ctx: TCtx) => boolean | Promise<boolean>
   ): CompiledCondition<TCtx> {
-    const cache = new WeakMap<object, boolean>();
+    const cache = new WeakMap<object, boolean>()
 
     return async (ctx: TCtx) => {
       // Use transaction/request as cache key
-      const cacheKey = (ctx as any).auth;
+      const cacheKey = (ctx as any).auth
 
       if (cache.has(cacheKey)) {
-        return cache.get(cacheKey)!;
+        return cache.get(cacheKey)!
       }
 
-      const result = await fn(ctx);
-      cache.set(cacheKey, result);
-      return result;
-    };
+      const result = await fn(ctx)
+      cache.set(cacheKey, result)
+      return result
+    }
   }
 }
 ```
@@ -1867,54 +1826,48 @@ export class FilterOptimizer {
   /**
    * Combine multiple filters into single WHERE clause
    */
-  combineFilters(
-    filters: FilterPolicy[],
-    ctx: RLSContext
-  ): CombinedFilter {
-    const conditions: Record<string, unknown> = {};
+  combineFilters(filters: FilterPolicy[], ctx: RLSContext): CombinedFilter {
+    const conditions: Record<string, unknown> = {}
 
     for (const filter of filters) {
-      const filterConditions = this.evaluateFilter(filter, ctx);
+      const filterConditions = this.evaluateFilter(filter, ctx)
 
       // Merge conditions (AND logic)
       for (const [key, value] of Object.entries(filterConditions)) {
         if (key in conditions) {
           // Handle conflicting conditions
-          conditions[key] = this.mergeCondition(conditions[key], value);
+          conditions[key] = this.mergeCondition(conditions[key], value)
         } else {
-          conditions[key] = value;
+          conditions[key] = value
         }
       }
     }
 
-    return conditions;
+    return conditions
   }
 
   /**
    * Generate optimized WHERE clause from conditions
    */
-  toWhereClause(
-    conditions: Record<string, unknown>,
-    table: string
-  ): string {
-    const parts: string[] = [];
+  toWhereClause(conditions: Record<string, unknown>, table: string): string {
+    const parts: string[] = []
 
     for (const [column, value] of Object.entries(conditions)) {
-      const qualifiedColumn = `${table}.${column}`;
+      const qualifiedColumn = `${table}.${column}`
 
       if (value === null) {
-        parts.push(`${qualifiedColumn} IS NULL`);
+        parts.push(`${qualifiedColumn} IS NULL`)
       } else if (Array.isArray(value)) {
-        parts.push(`${qualifiedColumn} IN (${value.map(v => this.escape(v)).join(', ')})`);
+        parts.push(`${qualifiedColumn} IN (${value.map(v => this.escape(v)).join(', ')})`)
       } else if (typeof value === 'object' && value !== null) {
         // Complex conditions (>, <, BETWEEN, etc.)
-        parts.push(this.buildComplexCondition(qualifiedColumn, value as ConditionObject));
+        parts.push(this.buildComplexCondition(qualifiedColumn, value as ConditionObject))
       } else {
-        parts.push(`${qualifiedColumn} = ${this.escape(value)}`);
+        parts.push(`${qualifiedColumn} = ${this.escape(value)}`)
       }
     }
 
-    return parts.join(' AND ');
+    return parts.join(' AND ')
   }
 }
 ```
@@ -1927,13 +1880,13 @@ export class FilterOptimizer {
  */
 export interface PolicyHints {
   /** Columns that should be indexed for this policy */
-  indexColumns?: string[];
+  indexColumns?: string[]
 
   /** Expected cardinality (for query planner) */
-  selectivity?: 'high' | 'medium' | 'low';
+  selectivity?: 'high' | 'medium' | 'low'
 
   /** Mark as LEAKPROOF (PostgreSQL) */
-  leakproof?: boolean;
+  leakproof?: boolean
 }
 
 // Example with hints
@@ -1943,12 +1896,12 @@ const policies = defineRLSSchema<Database>({
       filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }), {
         hints: {
           indexColumns: ['tenant_id'],
-          selectivity: 'high', // Each tenant has many rows
-        },
-      }),
-    ],
-  },
-});
+          selectivity: 'high' // Each tenant has many rows
+        }
+      })
+    ]
+  }
+})
 ```
 
 ### 11.4 Subselect Caching Pattern
@@ -1975,7 +1928,7 @@ RETURNS TABLE (
 $$;
 
 -- Usage in policies: (SELECT user_id FROM rls_get_context())
-`;
+`
 }
 ```
 
@@ -1992,22 +1945,20 @@ export class BatchPolicyEvaluator {
     rows: T[],
     ctx: RLSContext
   ): Promise<T[]> {
-    const policies = this.registry.getAllows(table, operation);
+    const policies = this.registry.getAllows(table, operation)
 
     if (policies.length === 0) {
-      return []; // Default deny
+      return [] // Default deny
     }
 
     // Group policies by evaluation type
-    const syncPolicies = policies.filter(p => !isAsyncPolicy(p));
-    const asyncPolicies = policies.filter(p => isAsyncPolicy(p));
+    const syncPolicies = policies.filter(p => !isAsyncPolicy(p))
+    const asyncPolicies = policies.filter(p => isAsyncPolicy(p))
 
     // Fast path: sync policies can filter in-memory
-    let remaining = rows;
+    let remaining = rows
     for (const policy of syncPolicies) {
-      remaining = remaining.filter(row =>
-        policy.condition({ auth: ctx.auth, row })
-      );
+      remaining = remaining.filter(row => policy.condition({ auth: ctx.auth, row }))
     }
 
     // Async policies require individual evaluation (can be parallelized)
@@ -2016,16 +1967,16 @@ export class BatchPolicyEvaluator {
         remaining.map(async row => {
           for (const policy of asyncPolicies) {
             if (await policy.condition({ auth: ctx.auth, row, db: this.db })) {
-              return row;
+              return row
             }
           }
-          return null;
+          return null
         })
-      );
-      remaining = results.filter((r): r is T => r !== null);
+      )
+      remaining = results.filter((r): r is T => r !== null)
     }
 
-    return remaining;
+    return remaining
   }
 }
 ```
@@ -2043,25 +1994,25 @@ export class BatchPolicyEvaluator {
 export function validateContext(ctx: RLSContext): void {
   // User ID is required
   if (!ctx.auth.userId) {
-    throw new RLSContextError('User ID is required in RLS context');
+    throw new RLSContextError('User ID is required in RLS context')
   }
 
   // Validate roles format
   if (!Array.isArray(ctx.auth.roles)) {
-    throw new RLSContextError('Roles must be an array');
+    throw new RLSContextError('Roles must be an array')
   }
 
   // Prevent privilege escalation via roles
-  const dangerousRoles = ['admin', 'super_admin', 'system'];
+  const dangerousRoles = ['admin', 'super_admin', 'system']
   for (const role of ctx.auth.roles) {
     if (dangerousRoles.includes(role) && !ctx.auth.isVerified) {
-      throw new RLSContextError(`Dangerous role "${role}" requires verified context`);
+      throw new RLSContextError(`Dangerous role "${role}" requires verified context`)
     }
   }
 
   // Validate tenant ID format if present
   if (ctx.auth.tenantId && !isValidUUID(ctx.auth.tenantId)) {
-    throw new RLSContextError('Invalid tenant ID format');
+    throw new RLSContextError('Invalid tenant ID format')
   }
 }
 ```
@@ -2076,40 +2027,38 @@ export class SafeSQLGenerator {
   /**
    * Generate parameterized WHERE clause
    */
-  generateWhere(
-    conditions: Record<string, unknown>
-  ): { sql: string; params: unknown[] } {
-    const parts: string[] = [];
-    const params: unknown[] = [];
-    let paramIndex = 1;
+  generateWhere(conditions: Record<string, unknown>): { sql: string; params: unknown[] } {
+    const parts: string[] = []
+    const params: unknown[] = []
+    let paramIndex = 1
 
     for (const [column, value] of Object.entries(conditions)) {
       // Validate column name (prevent injection)
       if (!this.isValidColumnName(column)) {
-        throw new RLSSchemaError(`Invalid column name: ${column}`);
+        throw new RLSSchemaError(`Invalid column name: ${column}`)
       }
 
       if (value === null) {
-        parts.push(`${column} IS NULL`);
+        parts.push(`${column} IS NULL`)
       } else if (Array.isArray(value)) {
-        const placeholders = value.map(() => `$${paramIndex++}`);
-        parts.push(`${column} IN (${placeholders.join(', ')})`);
-        params.push(...value);
+        const placeholders = value.map(() => `$${paramIndex++}`)
+        parts.push(`${column} IN (${placeholders.join(', ')})`)
+        params.push(...value)
       } else {
-        parts.push(`${column} = $${paramIndex++}`);
-        params.push(value);
+        parts.push(`${column} = $${paramIndex++}`)
+        params.push(value)
       }
     }
 
     return {
       sql: parts.join(' AND '),
-      params,
-    };
+      params
+    }
   }
 
   private isValidColumnName(name: string): boolean {
     // Only allow alphanumeric, underscore, and dots (for table.column)
-    return /^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(name);
+    return /^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(name)
   }
 }
 ```
@@ -2121,15 +2070,15 @@ export class SafeSQLGenerator {
  * Integration with @kysera/audit for RLS decisions
  */
 export interface RLSAuditEntry {
-  timestamp: Date;
-  operation: Operation;
-  table: string;
-  userId: string | number;
-  allowed: boolean;
-  policyName?: string;
-  reason?: string;
-  rowId?: unknown;
-  metadata?: Record<string, unknown>;
+  timestamp: Date
+  operation: Operation
+  table: string
+  userId: string | number
+  allowed: boolean
+  policyName?: string
+  reason?: string
+  rowId?: unknown
+  metadata?: Record<string, unknown>
 }
 
 export class RLSAuditLogger {
@@ -2140,14 +2089,14 @@ export class RLSAuditLogger {
       // Always log denials
       await this.auditRepo.create({
         type: 'RLS_DENIAL',
-        ...entry,
-      });
+        ...entry
+      })
     } else if (this.options.logAllows) {
       // Optionally log allows
       await this.auditRepo.create({
         type: 'RLS_ALLOW',
-        ...entry,
-      });
+        ...entry
+      })
     }
   }
 }
@@ -2169,36 +2118,36 @@ export class RLSTestHelper {
     row: T,
     contexts: RLSContext[]
   ): Promise<Map<string, boolean>> {
-    const results = new Map<string, boolean>();
+    const results = new Map<string, boolean>()
 
     for (const ctx of contexts) {
-      const key = `${ctx.auth.userId}:${ctx.auth.roles.join(',')}`;
+      const key = `${ctx.auth.userId}:${ctx.auth.roles.join(',')}`
 
       try {
         await rlsContext.runAsync(ctx, async () => {
           switch (operation) {
             case 'read':
-              await this.mutationGuard.checkRead(table, row);
-              break;
+              await this.mutationGuard.checkRead(table, row)
+              break
             case 'update':
-              await this.mutationGuard.checkUpdate(table, row, {});
-              break;
+              await this.mutationGuard.checkUpdate(table, row, {})
+              break
             case 'delete':
-              await this.mutationGuard.checkDelete(table, row);
-              break;
+              await this.mutationGuard.checkDelete(table, row)
+              break
           }
-        });
-        results.set(key, true);
+        })
+        results.set(key, true)
       } catch (e) {
         if (e instanceof RLSPolicyViolation) {
-          results.set(key, false);
+          results.set(key, false)
         } else {
-          throw e;
+          throw e
         }
       }
     }
 
-    return results;
+    return results
   }
 
   /**
@@ -2207,40 +2156,38 @@ export class RLSTestHelper {
   verifyCoverage(schema: RLSSchema<any>): CoverageReport {
     const report: CoverageReport = {
       tables: {},
-      issues: [],
-    };
+      issues: []
+    }
 
     for (const [table, config] of Object.entries(schema)) {
-      const operations = new Set(['read', 'create', 'update', 'delete']);
-      const covered = new Set<string>();
+      const operations = new Set(['read', 'create', 'update', 'delete'])
+      const covered = new Set<string>()
 
       for (const policy of config.policies) {
-        const ops = Array.isArray(policy.operation)
-          ? policy.operation
-          : [policy.operation];
-        ops.forEach(op => covered.add(op === 'all' ? 'read' : op));
+        const ops = Array.isArray(policy.operation) ? policy.operation : [policy.operation]
+        ops.forEach(op => covered.add(op === 'all' ? 'read' : op))
         if (policy.operation === 'all') {
-          operations.forEach(op => covered.add(op));
+          operations.forEach(op => covered.add(op))
         }
       }
 
-      const uncovered = [...operations].filter(op => !covered.has(op));
+      const uncovered = [...operations].filter(op => !covered.has(op))
 
       report.tables[table] = {
         covered: [...covered],
         uncovered,
-        policyCount: config.policies.length,
-      };
+        policyCount: config.policies.length
+      }
 
       if (uncovered.length > 0 && !config.defaultDeny) {
         report.issues.push({
           table,
-          message: `Operations ${uncovered.join(', ')} have no policies and defaultDeny is false`,
-        });
+          message: `Operations ${uncovered.join(', ')} have no policies and defaultDeny is false`
+        })
       }
     }
 
-    return report;
+    return report
   }
 }
 ```
@@ -2253,7 +2200,7 @@ export class RLSTestHelper {
 
 ```typescript
 // Core exports
-export { defineRLSSchema, allow, deny, filter, validate } from '@kysera/rls';
+export { defineRLSSchema, allow, deny, filter, validate } from '@kysera/rls'
 
 // Type exports
 export type {
@@ -2263,59 +2210,41 @@ export type {
   PolicyDefinition,
   PolicyCondition,
   FilterCondition,
-  Operation,
-} from '@kysera/rls';
+  Operation
+} from '@kysera/rls'
 ```
 
 ### 13.2 Context Management
 
 ```typescript
 // Context management
-export {
-  rlsContext,
-  createRLSContext,
-  withRLSContext,
-} from '@kysera/rls';
+export { rlsContext, createRLSContext, withRLSContext } from '@kysera/rls'
 
 // Context types
-export type {
-  RLSContext,
-  RLSAuthContext,
-  RLSRequestContext,
-} from '@kysera/rls';
+export type { RLSContext, RLSAuthContext, RLSRequestContext } from '@kysera/rls'
 ```
 
 ### 13.3 Plugin
 
 ```typescript
 // Plugin export
-export { rlsPlugin } from '@kysera/rls';
+export { rlsPlugin } from '@kysera/rls'
 
 // Plugin options
-export type { RLSPluginOptions } from '@kysera/rls';
+export type { RLSPluginOptions } from '@kysera/rls'
 ```
 
 ### 13.4 Titan Integration
 
 ```typescript
 // Module
-export { RLSModule } from '@kysera/rls/titan';
+export { RLSModule } from '@kysera/rls/titan'
 
 // Decorators
-export {
-  Policy,
-  Allow,
-  Deny,
-  Filter,
-  BypassRLS,
-} from '@kysera/rls/titan';
+export { Policy, Allow, Deny, Filter, BypassRLS } from '@kysera/rls/titan'
 
 // Interceptor
-export {
-  RLSInterceptor,
-  RLSContextProvider,
-  DefaultRLSContextProvider,
-} from '@kysera/rls/titan';
+export { RLSInterceptor, RLSContextProvider, DefaultRLSContextProvider } from '@kysera/rls/titan'
 ```
 
 ### 13.5 Native RLS
@@ -2325,20 +2254,15 @@ export {
 export {
   PostgresRLSGenerator,
   RLSMigrationGenerator,
-  syncContextToPostgres,
-} from '@kysera/rls/native';
+  syncContextToPostgres
+} from '@kysera/rls/native'
 ```
 
 ### 13.6 Errors
 
 ```typescript
 // Error types
-export {
-  RLSContextError,
-  RLSPolicyViolation,
-  RLSSchemaError,
-  RLSErrorCodes,
-} from '@kysera/rls';
+export { RLSContextError, RLSPolicyViolation, RLSSchemaError, RLSErrorCodes } from '@kysera/rls'
 ```
 
 ---
@@ -2449,12 +2373,9 @@ class ResourceRepository {
     return this.db
       .selectFrom('resources')
       .where('tenant_id', '=', tenantId)
-      .where(eb => eb.or([
-        eb('owner_id', '=', userId),
-        eb('visibility', '=', 'public'),
-      ]))
+      .where(eb => eb.or([eb('owner_id', '=', userId), eb('visibility', '=', 'public')]))
       .selectAll()
-      .execute();
+      .execute()
   }
 }
 
@@ -2464,16 +2385,16 @@ const schema = defineRLSSchema<Database>({
     policies: [
       filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
       allow('read', ctx => ctx.auth.userId === ctx.row.owner_id),
-      allow('read', ctx => ctx.row.visibility === 'public'),
-    ],
-  },
-});
+      allow('read', ctx => ctx.row.visibility === 'public')
+    ]
+  }
+})
 
 // Repository is now simple
 class ResourceRepository {
   async findAll() {
     // RLS automatically applied
-    return this.db.selectFrom('resources').selectAll().execute();
+    return this.db.selectFrom('resources').selectAll().execute()
   }
 }
 ```
@@ -2495,15 +2416,13 @@ const schema = defineRLSSchema<Database>({
   resources: {
     policies: [
       filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-      allow('read', ctx => ctx.auth.userId === ctx.row.owner_id),
-    ],
-  },
-});
+      allow('read', ctx => ctx.auth.userId === ctx.row.owner_id)
+    ]
+  }
+})
 
 // Plugin generates equivalent PostgreSQL RLS
-const orm = await createORM(db, [
-  rlsPlugin({ schema, nativeSync: true }),
-]);
+const orm = await createORM(db, [rlsPlugin({ schema, nativeSync: true })])
 ```
 
 ### 15.3 From Manual Permission Checks
@@ -2579,12 +2498,14 @@ auth.user.attributes.clearance >= row.required_clearance
 ## Appendix B: Common Policy Patterns
 
 ### Multi-Tenant Isolation
+
 ```typescript
 filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
 allow('create', ctx => ctx.data.tenant_id === ctx.auth.tenantId)
 ```
 
 ### Owner-Based Access
+
 ```typescript
 allow('read', ctx => ctx.auth.userId === ctx.row.owner_id)
 allow('update', ctx => ctx.auth.userId === ctx.row.owner_id)
@@ -2592,6 +2513,7 @@ allow('delete', ctx => ctx.auth.userId === ctx.row.owner_id)
 ```
 
 ### Role-Based Access Control (RBAC)
+
 ```typescript
 allow('all', ctx => ctx.auth.roles.includes('admin'))
 allow('read', ctx => ctx.auth.roles.includes('viewer'))
@@ -2599,32 +2521,34 @@ allow(['create', 'update'], ctx => ctx.auth.roles.includes('editor'))
 ```
 
 ### Attribute-Based Access Control (ABAC)
+
 ```typescript
 allow('read', ctx => ctx.auth.attributes.clearance >= ctx.row.classification_level)
 allow('update', ctx => ctx.auth.attributes.department === ctx.row.department)
 ```
 
 ### Team/Organization Access
+
 ```typescript
 allow('read', async ({ auth, row, db }) => {
   const member = await db
     .selectFrom('team_members')
     .where('team_id', '=', row.team_id)
     .where('user_id', '=', auth.userId)
-    .executeTakeFirst();
-  return member !== undefined;
+    .executeTakeFirst()
+  return member !== undefined
 })
 ```
 
 ### Time-Based Access
+
 ```typescript
-deny('read', ctx =>
-  ctx.row.embargo_until && new Date(ctx.row.embargo_until) > new Date()
-)
+deny('read', ctx => ctx.row.embargo_until && new Date(ctx.row.embargo_until) > new Date())
 allow('read', ctx => ctx.row.published_at <= new Date())
 ```
 
 ### Status-Based Access
+
 ```typescript
 allow('read', ctx => ctx.row.status === 'published')
 deny('delete', ctx => ctx.row.status === 'archived')
@@ -2635,13 +2559,13 @@ deny('update', ctx => ctx.row.locked === true)
 
 ## Appendix C: Performance Benchmarks (Target)
 
-| Scenario | Without RLS | With ORM RLS | With Native RLS |
-|----------|-------------|--------------|-----------------|
-| SELECT 1000 rows (tenant filter) | 5ms | 6ms (+20%) | 5.5ms (+10%) |
-| SELECT with complex policy | 5ms | 8ms (+60%) | 6ms (+20%) |
-| INSERT with validation | 2ms | 3ms (+50%) | 2.5ms (+25%) |
-| UPDATE with row check | 3ms | 5ms (+66%) | 4ms (+33%) |
-| Batch 100 inserts | 50ms | 80ms (+60%) | 60ms (+20%) |
+| Scenario                         | Without RLS | With ORM RLS | With Native RLS |
+| -------------------------------- | ----------- | ------------ | --------------- |
+| SELECT 1000 rows (tenant filter) | 5ms         | 6ms (+20%)   | 5.5ms (+10%)    |
+| SELECT with complex policy       | 5ms         | 8ms (+60%)   | 6ms (+20%)      |
+| INSERT with validation           | 2ms         | 3ms (+50%)   | 2.5ms (+25%)    |
+| UPDATE with row check            | 3ms         | 5ms (+66%)   | 4ms (+33%)      |
+| Batch 100 inserts                | 50ms        | 80ms (+60%)  | 60ms (+20%)     |
 
 **Target**: ORM-level RLS should add no more than 100% overhead for typical operations.
 

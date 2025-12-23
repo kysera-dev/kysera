@@ -27,5 +27,5 @@ export type {
   ColumnInfo,
   IndexInfo,
   ForeignKeyInfo,
-  TableInfo,
-} from './database.js';
+  TableInfo
+} from './database.js'

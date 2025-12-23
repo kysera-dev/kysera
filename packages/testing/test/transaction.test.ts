@@ -2,24 +2,24 @@
  * Tests for transaction utilities.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Kysely, Transaction } from 'kysely';
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { Kysely, Transaction } from 'kysely'
 import {
   testInTransaction,
   testWithSavepoints,
   testWithIsolation,
-  type IsolationLevel,
-} from '../src/transaction.js';
+  type IsolationLevel
+} from '../src/transaction.js'
 
 /**
  * Mock database interface for testing
  */
 interface TestDB {
   users: {
-    id: number;
-    email: string;
-    name: string;
-  };
+    id: number
+    email: string
+    name: string
+  }
 }
 
 /**
@@ -32,68 +32,68 @@ function createMockDb(): Kysely<TestDB> {
     updateTable: vi.fn(),
     deleteFrom: vi.fn(),
     raw: vi.fn().mockReturnThis(),
-    execute: vi.fn(),
-  } as unknown as Transaction<TestDB>;
+    execute: vi.fn()
+  } as unknown as Transaction<TestDB>
 
   const transactionExecutor = {
     execute: vi.fn(async (fn: (trx: Transaction<TestDB>) => Promise<unknown>) => {
-      return await fn(mockTransaction);
-    }),
-  };
+      return await fn(mockTransaction)
+    })
+  }
 
   const mockDb = {
     transaction: vi.fn(() => transactionExecutor),
     insertInto: vi.fn(),
     selectFrom: vi.fn(),
     updateTable: vi.fn(),
-    deleteFrom: vi.fn(),
-  } as unknown as Kysely<TestDB>;
+    deleteFrom: vi.fn()
+  } as unknown as Kysely<TestDB>
 
-  return mockDb;
+  return mockDb
 }
 
 describe('testInTransaction', () => {
-  let mockDb: Kysely<TestDB>;
+  let mockDb: Kysely<TestDB>
 
   beforeEach(() => {
-    mockDb = createMockDb();
-  });
+    mockDb = createMockDb()
+  })
 
   it('should execute test function within a transaction', async () => {
     const testFn = vi.fn(async () => {
       // Test logic
-    });
+    })
 
-    await testInTransaction(mockDb, testFn);
+    await testInTransaction(mockDb, testFn)
 
-    expect(mockDb.transaction).toHaveBeenCalledTimes(1);
-    expect(testFn).toHaveBeenCalledTimes(1);
-  });
+    expect(mockDb.transaction).toHaveBeenCalledTimes(1)
+    expect(testFn).toHaveBeenCalledTimes(1)
+  })
 
   it('should pass transaction object to test function', async () => {
-    let receivedTrx: Transaction<TestDB> | undefined;
+    let receivedTrx: Transaction<TestDB> | undefined
 
-    await testInTransaction(mockDb, async (trx) => {
-      receivedTrx = trx;
-    });
+    await testInTransaction(mockDb, async trx => {
+      receivedTrx = trx
+    })
 
-    expect(receivedTrx).toBeDefined();
-  });
+    expect(receivedTrx).toBeDefined()
+  })
 
   it('should automatically rollback transaction after test completes', async () => {
-    const transactionExecutor = mockDb.transaction();
-    const executeSpy = vi.spyOn(transactionExecutor, 'execute');
+    const transactionExecutor = mockDb.transaction()
+    const executeSpy = vi.spyOn(transactionExecutor, 'execute')
 
     await testInTransaction(mockDb, async () => {
       // Test logic that should be rolled back
-    });
+    })
 
     // Verify the transaction was executed
-    expect(executeSpy).toHaveBeenCalled();
+    expect(executeSpy).toHaveBeenCalled()
 
     // The function should throw RollbackError internally to trigger rollback
     // We verify this by checking that no error was propagated to the caller
-  });
+  })
 
   it('should not propagate RollbackError to caller', async () => {
     // This should not throw
@@ -101,18 +101,18 @@ describe('testInTransaction', () => {
       testInTransaction(mockDb, async () => {
         // Test logic
       })
-    ).resolves.toBeUndefined();
-  });
+    ).resolves.toBeUndefined()
+  })
 
   it('should propagate other errors from test function', async () => {
-    const testError = new Error('Test error');
+    const testError = new Error('Test error')
 
     await expect(
       testInTransaction(mockDb, async () => {
-        throw testError;
+        throw testError
       })
-    ).rejects.toThrow('Test error');
-  });
+    ).rejects.toThrow('Test error')
+  })
 
   it('should allow database operations within transaction', async () => {
     const insertIntoMock = vi.fn().mockReturnValue({
@@ -121,62 +121,64 @@ describe('testInTransaction', () => {
           executeTakeFirst: vi.fn().mockResolvedValue({
             id: 1,
             email: 'test@example.com',
-            name: 'Test User',
-          }),
-        }),
-      }),
-    });
-
-    await testInTransaction(mockDb, async (trx) => {
-      (trx as unknown as { insertInto: typeof insertIntoMock }).insertInto = insertIntoMock;
-
-      const result = await (trx as unknown as {
-        insertInto: (table: string) => {
-          values: (vals: unknown) => {
-            returningAll: () => {
-              executeTakeFirst: () => Promise<{ id: number; email: string; name: string }>;
-            };
-          };
-        };
+            name: 'Test User'
+          })
+        })
       })
+    })
+
+    await testInTransaction(mockDb, async trx => {
+      ;(trx as unknown as { insertInto: typeof insertIntoMock }).insertInto = insertIntoMock
+
+      const result = await (
+        trx as unknown as {
+          insertInto: (table: string) => {
+            values: (vals: unknown) => {
+              returningAll: () => {
+                executeTakeFirst: () => Promise<{ id: number; email: string; name: string }>
+              }
+            }
+          }
+        }
+      )
         .insertInto('users')
         .values({ email: 'test@example.com', name: 'Test User' })
         .returningAll()
-        .executeTakeFirst();
+        .executeTakeFirst()
 
       expect(result).toEqual({
         id: 1,
         email: 'test@example.com',
-        name: 'Test User',
-      });
-    });
-  });
+        name: 'Test User'
+      })
+    })
+  })
 
   it('should handle async operations in test function', async () => {
-    let asyncComplete = false;
+    let asyncComplete = false
 
     await testInTransaction(mockDb, async () => {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      asyncComplete = true;
-    });
+      await new Promise(resolve => setTimeout(resolve, 10))
+      asyncComplete = true
+    })
 
-    expect(asyncComplete).toBe(true);
-  });
+    expect(asyncComplete).toBe(true)
+  })
 
   it('should handle multiple operations in sequence', async () => {
-    const operations: string[] = [];
+    const operations: string[] = []
 
     await testInTransaction(mockDb, async () => {
-      operations.push('operation1');
-      await Promise.resolve();
-      operations.push('operation2');
-      await Promise.resolve();
-      operations.push('operation3');
-    });
+      operations.push('operation1')
+      await Promise.resolve()
+      operations.push('operation2')
+      await Promise.resolve()
+      operations.push('operation3')
+    })
 
-    expect(operations).toEqual(['operation1', 'operation2', 'operation3']);
-  });
-});
+    expect(operations).toEqual(['operation1', 'operation2', 'operation3'])
+  })
+})
 
 describe('testWithSavepoints', () => {
   // Note: testWithSavepoints uses sql`` template literals which require a real database connection
@@ -184,16 +186,16 @@ describe('testWithSavepoints', () => {
   // Full integration tests with actual database are in the integration test suite.
 
   it('should have correct function signature', () => {
-    expect(typeof testWithSavepoints).toBe('function');
-    expect(testWithSavepoints.length).toBe(2);
-  });
+    expect(typeof testWithSavepoints).toBe('function')
+    expect(testWithSavepoints.length).toBe(2)
+  })
 
   it('should be exported from module', async () => {
-    const module = await import('../src/transaction.js');
-    expect(module.testWithSavepoints).toBeDefined();
-    expect(typeof module.testWithSavepoints).toBe('function');
-  });
-});
+    const module = await import('../src/transaction.js')
+    expect(module.testWithSavepoints).toBeDefined()
+    expect(typeof module.testWithSavepoints).toBe('function')
+  })
+})
 
 describe('testWithIsolation', () => {
   // Note: testWithIsolation uses raw SQL which requires a real database connection
@@ -201,28 +203,28 @@ describe('testWithIsolation', () => {
   // Full integration tests with actual database are in the integration test suite.
 
   it('should have correct function signature', () => {
-    expect(typeof testWithIsolation).toBe('function');
-    expect(testWithIsolation.length).toBe(3);
-  });
+    expect(typeof testWithIsolation).toBe('function')
+    expect(testWithIsolation.length).toBe(3)
+  })
 
   it('should be exported from module', async () => {
-    const module = await import('../src/transaction.js');
-    expect(module.testWithIsolation).toBeDefined();
-    expect(typeof module.testWithIsolation).toBe('function');
-  });
+    const module = await import('../src/transaction.js')
+    expect(module.testWithIsolation).toBeDefined()
+    expect(typeof module.testWithIsolation).toBe('function')
+  })
 
   it('should accept all valid isolation levels', () => {
     const isolationLevels: IsolationLevel[] = [
       'read uncommitted',
       'read committed',
       'repeatable read',
-      'serializable',
-    ];
+      'serializable'
+    ]
 
     // Just verify the types are correct
-    expect(isolationLevels).toHaveLength(4);
-  });
-});
+    expect(isolationLevels).toHaveLength(4)
+  })
+})
 
 describe('IsolationLevel type', () => {
   it('should accept valid isolation level strings', () => {
@@ -230,9 +232,9 @@ describe('IsolationLevel type', () => {
       'read uncommitted',
       'read committed',
       'repeatable read',
-      'serializable',
-    ];
+      'serializable'
+    ]
 
-    expect(validLevels).toHaveLength(4);
-  });
-});
+    expect(validLevels).toHaveLength(4)
+  })
+})

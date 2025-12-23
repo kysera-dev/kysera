@@ -4,20 +4,22 @@
  * @module @kysera/dal
  */
 
-import type { Kysely } from 'kysely';
-import type { KyseraExecutor } from '@kysera/executor';
-import type { DbContext, QueryFunction } from './types.js';
-import { createContext } from './context.js';
+import type { Kysely } from 'kysely'
+import type { KyseraExecutor } from '@kysera/executor'
+import type { DbContext, QueryFunction } from './types.js'
+import { isDbContext } from './types.js'
+import { createContext } from './context.js'
 
 /**
  * Normalize input to DbContext.
+ * Uses Symbol-based detection for reliable context identification.
  * @internal
  */
 function toContext<DB>(ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>): DbContext<DB> {
-  if ('db' in ctxOrDb && 'isTransaction' in ctxOrDb) {
-    return ctxOrDb;
+  if (isDbContext<DB>(ctxOrDb)) {
+    return ctxOrDb
   }
-  return createContext(ctxOrDb);
+  return createContext(ctxOrDb)
 }
 
 /**
@@ -57,11 +59,14 @@ export function compose<DB, TArgs extends readonly unknown[], TFirst, TResult>(
   first: QueryFunction<DB, TArgs, TFirst>,
   second: (ctx: DbContext<DB>, result: TFirst) => Promise<TResult>
 ): QueryFunction<DB, TArgs, TResult> {
-  return async (ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>, ...args: TArgs): Promise<TResult> => {
-    const ctx = toContext(ctxOrDb);
-    const firstResult = await first(ctx, ...args);
-    return await second(ctx, firstResult);
-  };
+  return async (
+    ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>,
+    ...args: TArgs
+  ): Promise<TResult> => {
+    const ctx = toContext(ctxOrDb)
+    const firstResult = await first(ctx, ...args)
+    return await second(ctx, firstResult)
+  }
 }
 
 /**
@@ -89,30 +94,33 @@ export function compose<DB, TArgs extends readonly unknown[], TFirst, TResult>(
 export function chain<DB, TArgs extends readonly unknown[], T1, T2>(
   query: QueryFunction<DB, TArgs, T1>,
   t1: (ctx: DbContext<DB>, result: T1) => Promise<T2>
-): QueryFunction<DB, TArgs, T2>;
+): QueryFunction<DB, TArgs, T2>
 export function chain<DB, TArgs extends readonly unknown[], T1, T2, T3>(
   query: QueryFunction<DB, TArgs, T1>,
   t1: (ctx: DbContext<DB>, result: T1) => Promise<T2>,
   t2: (ctx: DbContext<DB>, result: T2) => Promise<T3>
-): QueryFunction<DB, TArgs, T3>;
+): QueryFunction<DB, TArgs, T3>
 export function chain<DB, TArgs extends readonly unknown[], T1, T2, T3, T4>(
   query: QueryFunction<DB, TArgs, T1>,
   t1: (ctx: DbContext<DB>, result: T1) => Promise<T2>,
   t2: (ctx: DbContext<DB>, result: T2) => Promise<T3>,
   t3: (ctx: DbContext<DB>, result: T3) => Promise<T4>
-): QueryFunction<DB, TArgs, T4>;
+): QueryFunction<DB, TArgs, T4>
 export function chain<DB, TArgs extends readonly unknown[]>(
   query: QueryFunction<DB, TArgs, unknown>,
   ...transforms: ((ctx: DbContext<DB>, result: unknown) => Promise<unknown>)[]
 ): QueryFunction<DB, TArgs, unknown> {
-  return async (ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>, ...args: TArgs): Promise<unknown> => {
-    const ctx = toContext(ctxOrDb);
-    let result = await query(ctx, ...args);
+  return async (
+    ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>,
+    ...args: TArgs
+  ): Promise<unknown> => {
+    const ctx = toContext(ctxOrDb)
+    let result = await query(ctx, ...args)
     for (const transform of transforms) {
-      result = await transform(ctx, result);
+      result = await transform(ctx, result)
     }
-    return result;
-  };
+    return result
+  }
 }
 
 /**
@@ -123,8 +131,8 @@ export type ParallelResult<
 > = {
   [K in keyof T]: T[K] extends QueryFunction<Record<string, unknown>, readonly unknown[], infer R>
     ? R
-    : never;
-};
+    : never
+}
 
 /**
  * Execute multiple queries in parallel.
@@ -166,21 +174,25 @@ export function parallel<
   T extends Record<string, QueryFunction<DB, TArgs, unknown>>
 >(
   queries: T
-): QueryFunction<DB, TArgs, { [K in keyof T]: T[K] extends QueryFunction<DB, TArgs, infer R> ? R : never }> {
+): QueryFunction<
+  DB,
+  TArgs,
+  { [K in keyof T]: T[K] extends QueryFunction<DB, TArgs, infer R> ? R : never }
+> {
   return async (ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>, ...args: TArgs) => {
-    const ctx = toContext(ctxOrDb);
-    const entries = Object.entries(queries);
+    const ctx = toContext(ctxOrDb)
+    const entries = Object.entries(queries)
     const results = await Promise.all(
       entries.map(async ([key, query]) => {
-        const result = await query(ctx, ...args);
-        return [key, result] as const;
+        const result = await query(ctx, ...args)
+        return [key, result] as const
       })
-    );
+    )
 
     return Object.fromEntries(results) as {
-      [K in keyof T]: T[K] extends QueryFunction<DB, TArgs, infer R> ? R : never;
-    };
-  };
+      [K in keyof T]: T[K] extends QueryFunction<DB, TArgs, infer R> ? R : never
+    }
+  }
 }
 
 /**
@@ -211,14 +223,17 @@ export function conditional<DB, TArgs extends readonly unknown[], TResult, TFall
   query: QueryFunction<DB, TArgs, TResult>,
   fallback?: TFallback
 ): QueryFunction<DB, TArgs, TResult | TFallback> {
-  return async (ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>, ...args: TArgs): Promise<TResult | TFallback> => {
-    const ctx = toContext(ctxOrDb);
-    const shouldExecute = await condition(ctx, ...args);
+  return async (
+    ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>,
+    ...args: TArgs
+  ): Promise<TResult | TFallback> => {
+    const ctx = toContext(ctxOrDb)
+    const shouldExecute = await condition(ctx, ...args)
     if (shouldExecute) {
-      return await query(ctx, ...args);
+      return await query(ctx, ...args)
     }
-    return fallback as TFallback;
-  };
+    return fallback as TFallback
+  }
 }
 
 /**
@@ -245,9 +260,12 @@ export function mapResult<DB, TArgs extends readonly unknown[], TItem, TResult>(
   query: QueryFunction<DB, TArgs, TItem[]>,
   mapper: (item: TItem, index: number) => TResult
 ): QueryFunction<DB, TArgs, TResult[]> {
-  return async (ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>, ...args: TArgs): Promise<TResult[]> => {
-    const ctx = toContext(ctxOrDb);
-    const items = await query(ctx, ...args);
-    return items.map(mapper);
-  };
+  return async (
+    ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>,
+    ...args: TArgs
+  ): Promise<TResult[]> => {
+    const ctx = toContext(ctxOrDb)
+    const items = await query(ctx, ...args)
+    return items.map(mapper)
+  }
 }

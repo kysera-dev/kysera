@@ -30,7 +30,7 @@ const factory = createRepositoryFactory(db)
 
 const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
     create: CreateUserSchema,
     update: UpdateUserSchema
@@ -93,12 +93,7 @@ function createSimpleRepository<DB, TableName extends keyof DB, Entity, PK = num
 ### Usage
 
 ```typescript
-const userRepo = createSimpleRepository(
-  db,
-  'users',
-  (row) => row,
-  { primaryKey: 'id' }
-)
+const userRepo = createSimpleRepository(db, 'users', row => row, { primaryKey: 'id' })
 ```
 
 ## Repository Configuration
@@ -117,9 +112,9 @@ interface RepositoryConfig<Table, Entity, PK = number> {
   }
 
   // Optional
-  primaryKey?: string | string[]           // Default: 'id'
+  primaryKey?: string | string[] // Default: 'id'
   primaryKeyType?: 'number' | 'string' | 'uuid'
-  validationStrategy?: 'none' | 'strict'   // Default: 'strict'
+  validationStrategy?: 'none' | 'strict' // Default: 'strict'
   // Output validation controlled via KYSERA_VALIDATION_MODE or NODE_ENV
 }
 ```
@@ -238,7 +233,7 @@ class UserService {
   constructor(private repos = createRepositories(db)) {}
 
   async createUserWithProfile(data: CreateUserInput) {
-    return this.repos.users.transaction(async (trx) => {
+    return this.repos.users.transaction(async trx => {
       const repos = createRepositories(trx)
       const user = await repos.users.create(data)
       await repos.profiles.create({ userId: user.id })

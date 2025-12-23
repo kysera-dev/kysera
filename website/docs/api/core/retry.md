@@ -15,10 +15,10 @@ npm install @kysera/infra
 
 ```typescript
 // Before (deprecated)
-import { withRetry, CircuitBreaker, isTransientError } from '@kysera/core';
+import { withRetry, CircuitBreaker, isTransientError } from '@kysera/core'
 
 // After
-import { withRetry, CircuitBreaker, isTransientError } from '@kysera/infra';
+import { withRetry, CircuitBreaker, isTransientError } from '@kysera/infra'
 ```
 
 See the full documentation at **[@kysera/infra](/docs/api/infra)**.
@@ -39,20 +39,17 @@ Retry operations with exponential backoff and circuit breaker pattern.
 Retry an async operation with configurable options.
 
 ```typescript
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  options?: RetryOptions
-): Promise<T>
+async function withRetry<T>(fn: () => Promise<T>, options?: RetryOptions): Promise<T>
 ```
 
 ### RetryOptions
 
 ```typescript
 interface RetryOptions {
-  maxAttempts?: number             // Default: 3
-  delayMs?: number                 // Initial delay (default: 1000)
-  backoff?: boolean                // Exponential backoff (default: true)
-  shouldRetry?: (error: unknown) => boolean  // Custom retry condition
+  maxAttempts?: number // Default: 3
+  delayMs?: number // Initial delay (default: 1000)
+  backoff?: boolean // Exponential backoff (default: true)
+  shouldRetry?: (error: unknown) => boolean // Custom retry condition
   onRetry?: (attempt: number, error: unknown) => void
 }
 ```
@@ -81,12 +78,12 @@ const result = await withRetry(
 
 With `backoff: true` and `delayMs: 1000`:
 
-| Attempt | Delay |
-|---------|-------|
-| 1 | 1000ms |
-| 2 | 2000ms |
-| 3 | 4000ms |
-| 4 | 8000ms |
+| Attempt | Delay  |
+| ------- | ------ |
+| 1       | 1000ms |
+| 2       | 2000ms |
+| 3       | 4000ms |
+| 4       | 8000ms |
 
 ## isTransientError
 
@@ -99,12 +96,14 @@ function isTransientError(error: unknown): boolean
 ### Transient Error Codes
 
 **Network:**
+
 - `ECONNREFUSED`
 - `ETIMEDOUT`
 - `ECONNRESET`
 - `EPIPE`
 
 **PostgreSQL:**
+
 - `57P03` - Cannot connect now
 - `08006` - Connection failure
 - `08001` - Unable to establish connection
@@ -112,11 +111,13 @@ function isTransientError(error: unknown): boolean
 - `40P01` - Deadlock detected
 
 **MySQL:**
+
 - `ER_LOCK_DEADLOCK`
 - `ER_LOCK_WAIT_TIMEOUT`
 - `ER_CON_COUNT_ERROR`
 
 **SQLite:**
+
 - `SQLITE_BUSY`
 - `SQLITE_LOCKED`
 
@@ -149,8 +150,8 @@ Prevent cascading failures with the circuit breaker pattern.
 ```typescript
 class CircuitBreaker {
   constructor(
-    threshold?: number,      // Failures before opening (default: 5)
-    resetTimeMs?: number     // Time before half-open (default: 60000)
+    threshold?: number, // Failures before opening (default: 5)
+    resetTimeMs?: number // Time before half-open (default: 60000)
   )
 
   async execute<T>(fn: () => Promise<T>): Promise<T>
@@ -165,11 +166,11 @@ class CircuitBreaker {
 
 ### States
 
-| State | Behavior |
-|-------|----------|
-| **closed** | Normal operation, tracking failures |
-| **open** | Rejects all requests immediately |
-| **half-open** | Allows one test request |
+| State         | Behavior                            |
+| ------------- | ----------------------------------- |
+| **closed**    | Normal operation, tracking failures |
+| **open**      | Rejects all requests immediately    |
+| **half-open** | Allows one test request             |
 
 ### Example
 
@@ -219,10 +220,7 @@ const breaker = new CircuitBreaker(5, 60000)
 
 async function resilientQuery() {
   return breaker.execute(async () => {
-    return withRetry(
-      async () => db.selectFrom('users').execute(),
-      { maxAttempts: 3 }
-    )
+    return withRetry(async () => db.selectFrom('users').execute(), { maxAttempts: 3 })
   })
 }
 ```
@@ -233,7 +231,7 @@ async function resilientQuery() {
 
 ```typescript
 await withRetry(operation, {
-  shouldRetry: isTransientError  // Default
+  shouldRetry: isTransientError // Default
 })
 ```
 
@@ -253,9 +251,7 @@ await withRetry(operation, {
 const externalServiceBreaker = new CircuitBreaker(3, 30000)
 
 // Wrap all external service calls
-const result = await externalServiceBreaker.execute(() =>
-  externalService.call()
-)
+const result = await externalServiceBreaker.execute(() => externalService.call())
 ```
 
 ### 4. Set Appropriate Timeouts
@@ -263,6 +259,6 @@ const result = await externalServiceBreaker.execute(() =>
 ```typescript
 await withRetry(operation, {
   maxAttempts: 3,
-  delayMs: 500,  // Shorter for user-facing requests
+  delayMs: 500 // Shorter for user-facing requests
 })
 ```

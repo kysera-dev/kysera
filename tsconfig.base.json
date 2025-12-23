@@ -57,10 +57,5 @@
     "experimentalDecorators": false,
     "emitDecoratorMetadata": false
   },
-  "exclude": [
-    "node_modules",
-    "dist",
-    "build",
-    "coverage"
-  ]
+  "exclude": ["node_modules", "dist", "build", "coverage"]
 }

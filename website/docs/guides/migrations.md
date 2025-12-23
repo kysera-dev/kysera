@@ -28,9 +28,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     .addColumn('id', 'serial', col => col.primaryKey())
     .addColumn('email', 'varchar(255)', col => col.notNull().unique())
     .addColumn('name', 'varchar(100)', col => col.notNull())
-    .addColumn('created_at', 'timestamp', col =>
-      col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`)
-    )
+    .addColumn('created_at', 'timestamp', col => col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`))
     .execute()
 }
 
@@ -54,24 +52,14 @@ export async function up(db: Kysely<any>): Promise<void> {
     .addColumn('title', 'varchar(255)', col => col.notNull())
     .addColumn('content', 'text')
     .addColumn('status', 'varchar(20)', col => col.notNull().defaultTo('draft'))
-    .addColumn('created_at', 'timestamp', col =>
-      col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`)
-    )
+    .addColumn('created_at', 'timestamp', col => col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`))
     .addColumn('updated_at', 'timestamp')
     .execute()
 
   // Create indexes
-  await db.schema
-    .createIndex('idx_posts_user_id')
-    .on('posts')
-    .column('user_id')
-    .execute()
+  await db.schema.createIndex('idx_posts_user_id').on('posts').column('user_id').execute()
 
-  await db.schema
-    .createIndex('idx_posts_status')
-    .on('posts')
-    .column('status')
-    .execute()
+  await db.schema.createIndex('idx_posts_status').on('posts').column('status').execute()
 }
 ```
 
@@ -87,11 +75,7 @@ export async function up(db: Kysely<any>): Promise<void> {
 }
 
 export async function down(db: Kysely<any>): Promise<void> {
-  await db.schema
-    .alterTable('users')
-    .dropColumn('avatar_url')
-    .dropColumn('bio')
-    .execute()
+  await db.schema.alterTable('users').dropColumn('avatar_url').dropColumn('bio').execute()
 }
 ```
 
@@ -115,11 +99,7 @@ export async function up(db: Kysely<any>): Promise<void> {
 ```typescript
 export async function up(db: Kysely<any>): Promise<void> {
   // Simple index
-  await db.schema
-    .createIndex('idx_users_email')
-    .on('users')
-    .column('email')
-    .execute()
+  await db.schema.createIndex('idx_users_email').on('users').column('email').execute()
 
   // Composite index
   await db.schema
@@ -150,12 +130,7 @@ export async function up(db: Kysely<any>): Promise<void> {
 export async function up(db: Kysely<any>): Promise<void> {
   await db.schema
     .alterTable('posts')
-    .addForeignKeyConstraint(
-      'fk_posts_category',
-      ['category_id'],
-      'categories',
-      ['id']
-    )
+    .addForeignKeyConstraint('fk_posts_category', ['category_id'], 'categories', ['id'])
     .onDelete('set null')
     .execute()
 }
@@ -242,10 +217,7 @@ await db.schema
 ```typescript
 // Step 1: Add new nullable column
 export async function up(db: Kysely<any>) {
-  await db.schema
-    .alterTable('users')
-    .addColumn('email_new', 'varchar(255)')
-    .execute()
+  await db.schema.alterTable('users').addColumn('email_new', 'varchar(255)').execute()
 }
 
 // Step 2: Migrate data (separate migration)
@@ -291,7 +263,7 @@ export async function down(db: Kysely<any>) {
 ```typescript
 const runner = createMigrationRunner(db, migrations, {
   useTransactions: true,
-  logger: console  // Optional: enable logging
+  logger: console // Optional: enable logging
 })
 ```
 

@@ -7,115 +7,115 @@
  * you can configure the plugin to use those columns instead.
  */
 
-import { Kysely, Generated } from 'kysely';
-import { createORM, createRepositoryFactory } from '@kysera/repository';
-import { timestampsPlugin } from '@kysera/timestamps';
+import { Kysely, Generated } from 'kysely'
+import { createORM, createRepositoryFactory } from '@kysera/repository'
+import { timestampsPlugin } from '@kysera/timestamps'
 
 // Example 1: Using 'user_id' as primary key
 interface Database {
   users: {
-    user_id: Generated<number>; // Custom primary key
-    email: string;
-    name: string;
-    created_at: Generated<Date>;
-    updated_at: Date | null;
-  };
+    user_id: Generated<number> // Custom primary key
+    email: string
+    name: string
+    created_at: Generated<Date>
+    updated_at: Date | null
+  }
 }
 
 // Configure the plugin with custom primary key
 const plugin = timestampsPlugin({
-  primaryKeyColumn: 'user_id', // Specify custom primary key column
-});
+  primaryKeyColumn: 'user_id' // Specify custom primary key column
+})
 
 // Example usage
 async function example(db: Kysely<Database>) {
-  const orm = await createORM(db, [plugin]);
+  const orm = await createORM(db, [plugin])
 
-  const userRepo = orm.createRepository((executor) => {
-    const factory = createRepositoryFactory(executor);
+  const userRepo = orm.createRepository(executor => {
+    const factory = createRepositoryFactory(executor)
     return factory.create({
       tableName: 'users',
-      mapRow: (row) => row,
+      mapRow: row => row,
       schemas: {
         create: { parse: (v: any) => v },
-        update: { parse: (v: any) => v },
-      },
-    });
-  });
+        update: { parse: (v: any) => v }
+      }
+    })
+  })
 
   // Create a user
   const user = await userRepo.create({
     email: 'alice@example.com',
-    name: 'Alice',
-  });
+    name: 'Alice'
+  })
 
-  console.log('Created user:', user);
+  console.log('Created user:', user)
   // Output: { user_id: 1, email: 'alice@example.com', name: 'Alice', created_at: '2024-...', updated_at: null }
 
   // Touch the user using the custom primary key
   // The plugin will use 'user_id' instead of 'id' for the WHERE clause
-  await userRepo.touch(user.user_id);
+  await userRepo.touch(user.user_id)
 
-  console.log('Touched user - updated_at timestamp updated');
+  console.log('Touched user - updated_at timestamp updated')
 }
 
 // Example 2: Using UUID as primary key
 interface ProductDatabase {
   products: {
-    uuid: string; // UUID primary key
-    title: string;
-    price: number;
-    created_at: Generated<Date>;
-    updated_at: Date | null;
-  };
+    uuid: string // UUID primary key
+    title: string
+    price: number
+    created_at: Generated<Date>
+    updated_at: Date | null
+  }
 }
 
 const uuidPlugin = timestampsPlugin({
-  primaryKeyColumn: 'uuid', // Use UUID column
-});
+  primaryKeyColumn: 'uuid' // Use UUID column
+})
 
 async function uuidExample(db: Kysely<ProductDatabase>) {
-  const orm = await createORM(db, [uuidPlugin]);
+  const orm = await createORM(db, [uuidPlugin])
 
-  const productRepo = orm.createRepository((executor) => {
-    const factory = createRepositoryFactory(executor);
+  const productRepo = orm.createRepository(executor => {
+    const factory = createRepositoryFactory(executor)
     return factory.create({
       tableName: 'products',
-      mapRow: (row) => row,
+      mapRow: row => row,
       schemas: {
         create: { parse: (v: any) => v },
-        update: { parse: (v: any) => v },
-      },
-    });
-  });
+        update: { parse: (v: any) => v }
+      }
+    })
+  })
 
   // Create a product
   const product = await productRepo.create({
     uuid: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
     title: 'Widget',
-    price: 2999,
-  });
+    price: 2999
+  })
 
   // Touch using UUID
-  await productRepo.touch(product.uuid as any);
+  await productRepo.touch(product.uuid as any)
 
-  console.log('Product touched using UUID primary key');
+  console.log('Product touched using UUID primary key')
 }
 
 // Example 3: Multiple tables with different primary keys
 interface MultiTableDatabase {
   accounts: {
-    account_id: Generated<number>;
-    name: string;
-    created_at: Generated<Date>;
-    updated_at: Date | null;
-  };
+    account_id: Generated<number>
+    name: string
+    created_at: Generated<Date>
+    updated_at: Date | null
+  }
   transactions: {
-    transaction_id: Generated<number>;
-    amount: number;
-    created_at: Generated<Date>;
-    updated_at: Date | null;
-  };
+    transaction_id: Generated<number>
+    amount: number
+    created_at: Generated<Date>
+    updated_at: Date | null
+  }
 }
 
 // Note: If you have multiple tables with different primary key columns,
@@ -123,76 +123,76 @@ interface MultiTableDatabase {
 
 const accountPlugin = timestampsPlugin({
   primaryKeyColumn: 'account_id',
-  tables: ['accounts'], // Only apply to accounts table
-});
+  tables: ['accounts'] // Only apply to accounts table
+})
 
 const transactionPlugin = timestampsPlugin({
   primaryKeyColumn: 'transaction_id',
-  tables: ['transactions'], // Only apply to transactions table
-});
+  tables: ['transactions'] // Only apply to transactions table
+})
 
 async function multiTableExample(db: Kysely<MultiTableDatabase>) {
-  const orm = await createORM(db, [accountPlugin, transactionPlugin]);
+  const orm = await createORM(db, [accountPlugin, transactionPlugin])
 
   // Both repositories will use their respective primary key columns for touch()
-  const accountRepo = orm.createRepository((executor) => {
-    const factory = createRepositoryFactory(executor);
+  const accountRepo = orm.createRepository(executor => {
+    const factory = createRepositoryFactory(executor)
     return factory.create({
       tableName: 'accounts',
-      mapRow: (row) => row,
+      mapRow: row => row,
       schemas: {
         create: { parse: (v: any) => v },
-        update: { parse: (v: any) => v },
-      },
-    });
-  });
+        update: { parse: (v: any) => v }
+      }
+    })
+  })
 
   const account = await accountRepo.create({
-    name: 'Premium Account',
-  });
+    name: 'Premium Account'
+  })
 
   // Uses 'account_id' for WHERE clause
-  await accountRepo.touch(account.account_id);
+  await accountRepo.touch(account.account_id)
 }
 
 // Example 4: Backward compatibility (default behavior)
 interface StandardDatabase {
   posts: {
-    id: Generated<number>; // Standard 'id' primary key
-    title: string;
-    content: string;
-    created_at: Generated<Date>;
-    updated_at: Date | null;
-  };
+    id: Generated<number> // Standard 'id' primary key
+    title: string
+    content: string
+    created_at: Generated<Date>
+    updated_at: Date | null
+  }
 }
 
 // Don't specify primaryKeyColumn - defaults to 'id'
-const defaultPlugin = timestampsPlugin();
+const defaultPlugin = timestampsPlugin()
 
 async function backwardCompatibilityExample(db: Kysely<StandardDatabase>) {
-  const orm = await createORM(db, [defaultPlugin]);
+  const orm = await createORM(db, [defaultPlugin])
 
-  const postRepo = orm.createRepository((executor) => {
-    const factory = createRepositoryFactory(executor);
+  const postRepo = orm.createRepository(executor => {
+    const factory = createRepositoryFactory(executor)
     return factory.create({
       tableName: 'posts',
-      mapRow: (row) => row,
+      mapRow: row => row,
       schemas: {
         create: { parse: (v: any) => v },
-        update: { parse: (v: any) => v },
-      },
-    });
-  });
+        update: { parse: (v: any) => v }
+      }
+    })
+  })
 
   const post = await postRepo.create({
     title: 'Hello World',
-    content: 'This is my first post',
-  });
+    content: 'This is my first post'
+  })
 
   // Works with default 'id' column
-  await postRepo.touch(post.id);
+  await postRepo.touch(post.id)
 
-  console.log('Backward compatible - uses default "id" column');
+  console.log('Backward compatible - uses default "id" column')
 }
 
 /**

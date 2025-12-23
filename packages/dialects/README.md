@@ -53,7 +53,11 @@ import { getAdapter } from '@kysera/dialects'
 
 // Create database connection
 const db = new Kysely({
-  dialect: new PostgresDialect({ pool: new Pool({ /* config */ }) })
+  dialect: new PostgresDialect({
+    pool: new Pool({
+      /* config */
+    })
+  })
 })
 
 // Get dialect adapter
@@ -90,8 +94,8 @@ const exists = await tableExists(db, 'users', 'postgres')
 const columns = await getTableColumns(db, 'users', 'postgres')
 
 // Escape identifiers
-const escaped = escapeIdentifier('user-data', 'mysql')  // `user-data`
-const pgEscaped = escapeIdentifier('user-data', 'postgres')  // "user-data"
+const escaped = escapeIdentifier('user-data', 'mysql') // `user-data`
+const pgEscaped = escapeIdentifier('user-data', 'postgres') // "user-data"
 
 // Error detection
 try {
@@ -129,9 +133,9 @@ const url = buildConnectionUrl('postgres', {
 // 'postgresql://admin:secret@localhost:5432/mydb'
 
 // Get default ports
-getDefaultPort('postgres')  // 5432
-getDefaultPort('mysql')     // 3306
-getDefaultPort('sqlite')    // null
+getDefaultPort('postgres') // 5432
+getDefaultPort('mysql') // 3306
+getDefaultPort('sqlite') // null
 ```
 
 ---
@@ -188,18 +192,19 @@ const adapter = postgresAdapter
 const adapter = new PostgresAdapter()
 
 // Adapter methods
-adapter.getDefaultPort()           // 5432
-adapter.getCurrentTimestamp()      // 'CURRENT_TIMESTAMP'
-adapter.escapeIdentifier('col')    // '"col"'
-adapter.formatDate(new Date())     // ISO 8601 string
+adapter.getDefaultPort() // 5432
+adapter.getCurrentTimestamp() // 'CURRENT_TIMESTAMP'
+adapter.escapeIdentifier('col') // '"col"'
+adapter.formatDate(new Date()) // ISO 8601 string
 
 // PostgreSQL error detection
-adapter.isUniqueConstraintError(error)    // Code: 23505
-adapter.isForeignKeyError(error)          // Code: 23503
-adapter.isNotNullError(error)             // Code: 23502
+adapter.isUniqueConstraintError(error) // Code: 23505
+adapter.isForeignKeyError(error) // Code: 23503
+adapter.isNotNullError(error) // Code: 23502
 ```
 
 **PostgreSQL-specific features:**
+
 - Uses `information_schema.tables` for schema introspection
 - Filters by `table_schema = 'public'` by default
 - Supports `pg_database_size()` for database size queries
@@ -212,21 +217,22 @@ import { MySQLAdapter, mysqlAdapter } from '@kysera/dialects'
 
 const adapter = mysqlAdapter
 
-adapter.getDefaultPort()           // 3306
-adapter.getCurrentTimestamp()      // 'CURRENT_TIMESTAMP'
-adapter.escapeIdentifier('col')    // '`col`'
-adapter.formatDate(new Date())     // ISO 8601 string
+adapter.getDefaultPort() // 3306
+adapter.getCurrentTimestamp() // 'CURRENT_TIMESTAMP'
+adapter.escapeIdentifier('col') // '`col`'
+adapter.formatDate(new Date()) // ISO 8601 string
 
 // MySQL error detection
-adapter.isUniqueConstraintError(error)    // ER_DUP_ENTRY, ER_DUP_KEY
-adapter.isForeignKeyError(error)          // ER_NO_REFERENCED_ROW, ER_ROW_IS_REFERENCED
-adapter.isNotNullError(error)             // ER_BAD_NULL_ERROR, ER_NO_DEFAULT_FOR_FIELD
+adapter.isUniqueConstraintError(error) // ER_DUP_ENTRY, ER_DUP_KEY
+adapter.isForeignKeyError(error) // ER_NO_REFERENCED_ROW, ER_ROW_IS_REFERENCED
+adapter.isNotNullError(error) // ER_BAD_NULL_ERROR, ER_NO_DEFAULT_FOR_FIELD
 ```
 
 **MySQL-specific features:**
+
 - Uses `information_schema.tables` with `table_schema = database()`
 - Supports backtick identifier escaping
-- Error detection via MySQL error codes (ER_* constants)
+- Error detection via MySQL error codes (ER\_\* constants)
 - Database size queries via `information_schema.tables`
 
 ### SQLite Adapter
@@ -236,18 +242,19 @@ import { SQLiteAdapter, sqliteAdapter } from '@kysera/dialects'
 
 const adapter = sqliteAdapter
 
-adapter.getDefaultPort()           // null (file-based)
-adapter.getCurrentTimestamp()      // "datetime('now')"
-adapter.escapeIdentifier('col')    // '"col"'
-adapter.formatDate(new Date())     // ISO 8601 string
+adapter.getDefaultPort() // null (file-based)
+adapter.getCurrentTimestamp() // "datetime('now')"
+adapter.escapeIdentifier('col') // '"col"'
+adapter.formatDate(new Date()) // ISO 8601 string
 
 // SQLite error detection (message-based)
-adapter.isUniqueConstraintError(error)    // "UNIQUE constraint failed"
-adapter.isForeignKeyError(error)          // "FOREIGN KEY constraint failed"
-adapter.isNotNullError(error)             // "NOT NULL constraint failed"
+adapter.isUniqueConstraintError(error) // "UNIQUE constraint failed"
+adapter.isForeignKeyError(error) // "FOREIGN KEY constraint failed"
+adapter.isNotNullError(error) // "NOT NULL constraint failed"
 ```
 
 **SQLite-specific features:**
+
 - Uses `sqlite_master` for schema introspection
 - No default port (file-based database)
 - Error detection via message parsing
@@ -261,8 +268,12 @@ import { registerAdapter, type DialectAdapter } from '@kysera/dialects'
 class CustomDialectAdapter implements DialectAdapter {
   readonly dialect = 'custom' as any
 
-  getDefaultPort() { return 9999 }
-  getCurrentTimestamp() { return 'NOW()' }
+  getDefaultPort() {
+    return 9999
+  }
+  getCurrentTimestamp() {
+    return 'NOW()'
+  }
   // ... implement all required methods
 }
 
@@ -319,6 +330,7 @@ const sqliteConfig = parseConnectionUrl('sqlite:///path/to/database.db')
 ```
 
 **Supported URL formats:**
+
 - `postgresql://[user[:password]@][host][:port]/database[?ssl=true]`
 - `mysql://[user[:password]@][host][:port]/database[?ssl=true]`
 - `sqlite:///path/to/file.db`
@@ -358,6 +370,7 @@ const sslUrl = buildConnectionUrl('postgres', {
 ```
 
 **Default ports:**
+
 - PostgreSQL: 5432
 - MySQL: 3306
 - SQLite: null (file-based)
@@ -367,9 +380,9 @@ const sslUrl = buildConnectionUrl('postgres', {
 ```typescript
 import { getDefaultPort } from '@kysera/dialects'
 
-getDefaultPort('postgres')  // 5432
-getDefaultPort('mysql')     // 3306
-getDefaultPort('sqlite')    // null
+getDefaultPort('postgres') // 5432
+getDefaultPort('mysql') // 3306
+getDefaultPort('sqlite') // null
 ```
 
 ---
@@ -384,10 +397,7 @@ Detect database constraint violations across different dialects with a unified A
 import { isUniqueConstraintError } from '@kysera/dialects'
 
 try {
-  await db
-    .insertInto('users')
-    .values({ email: 'existing@example.com', name: 'John' })
-    .execute()
+  await db.insertInto('users').values({ email: 'existing@example.com', name: 'John' }).execute()
 } catch (error) {
   if (isUniqueConstraintError(error, 'postgres')) {
     console.error('Email already exists')
@@ -398,11 +408,11 @@ try {
 
 **Detection criteria:**
 
-| Dialect | Detection Method |
-|---------|------------------|
+| Dialect    | Detection Method                                           |
+| ---------- | ---------------------------------------------------------- |
 | PostgreSQL | Error code `23505` or message contains "unique constraint" |
-| MySQL | Error code `ER_DUP_ENTRY` or `ER_DUP_KEY` |
-| SQLite | Message contains "UNIQUE constraint failed" |
+| MySQL      | Error code `ER_DUP_ENTRY` or `ER_DUP_KEY`                  |
+| SQLite     | Message contains "UNIQUE constraint failed"                |
 
 ### Foreign Key Errors
 
@@ -410,10 +420,7 @@ try {
 import { isForeignKeyError } from '@kysera/dialects'
 
 try {
-  await db
-    .insertInto('posts')
-    .values({ user_id: 999, title: 'Post', content: '...' })
-    .execute()
+  await db.insertInto('posts').values({ user_id: 999, title: 'Post', content: '...' }).execute()
 } catch (error) {
   if (isForeignKeyError(error, 'postgres')) {
     console.error('User does not exist')
@@ -424,11 +431,11 @@ try {
 
 **Detection criteria:**
 
-| Dialect | Detection Method |
-|---------|------------------|
+| Dialect    | Detection Method                                                |
+| ---------- | --------------------------------------------------------------- |
 | PostgreSQL | Error code `23503` or message contains "foreign key constraint" |
-| MySQL | Error code `ER_NO_REFERENCED_ROW` or `ER_ROW_IS_REFERENCED` |
-| SQLite | Message contains "FOREIGN KEY constraint failed" |
+| MySQL      | Error code `ER_NO_REFERENCED_ROW` or `ER_ROW_IS_REFERENCED`     |
+| SQLite     | Message contains "FOREIGN KEY constraint failed"                |
 
 ### Not-Null Errors
 
@@ -450,11 +457,11 @@ try {
 
 **Detection criteria:**
 
-| Dialect | Detection Method |
-|---------|------------------|
+| Dialect    | Detection Method                                             |
+| ---------- | ------------------------------------------------------------ |
 | PostgreSQL | Error code `23502` or message contains "not-null constraint" |
-| MySQL | Error code `ER_BAD_NULL_ERROR` or `ER_NO_DEFAULT_FOR_FIELD` |
-| SQLite | Message contains "NOT NULL constraint failed" |
+| MySQL      | Error code `ER_BAD_NULL_ERROR` or `ER_NO_DEFAULT_FOR_FIELD`  |
+| SQLite     | Message contains "NOT NULL constraint failed"                |
 
 ### Adapter-based Error Detection
 
@@ -525,19 +532,19 @@ console.log(`Database has ${tables.length} tables`)
 import { escapeIdentifier } from '@kysera/dialects'
 
 // PostgreSQL (double quotes)
-escapeIdentifier('user-data', 'postgres')  // "user-data"
-escapeIdentifier('select', 'postgres')     // "select"
+escapeIdentifier('user-data', 'postgres') // "user-data"
+escapeIdentifier('select', 'postgres') // "select"
 
 // MySQL (backticks)
-escapeIdentifier('user-data', 'mysql')     // `user-data`
-escapeIdentifier('order', 'mysql')         // `order`
+escapeIdentifier('user-data', 'mysql') // `user-data`
+escapeIdentifier('order', 'mysql') // `order`
 
 // SQLite (double quotes)
-escapeIdentifier('user-data', 'sqlite')    // "user-data"
+escapeIdentifier('user-data', 'sqlite') // "user-data"
 
 // Handles quotes in identifiers
-escapeIdentifier('user"data', 'postgres')  // "user""data"
-escapeIdentifier('user`data', 'mysql')     // `user``data`
+escapeIdentifier('user"data', 'postgres') // "user""data"
+escapeIdentifier('user`data', 'mysql') // `user``data`
 ```
 
 ### Timestamp Utilities
@@ -548,13 +555,13 @@ escapeIdentifier('user`data', 'mysql')     // `user``data`
 import { getCurrentTimestamp } from '@kysera/dialects'
 
 // PostgreSQL
-getCurrentTimestamp('postgres')  // 'CURRENT_TIMESTAMP'
+getCurrentTimestamp('postgres') // 'CURRENT_TIMESTAMP'
 
 // MySQL
-getCurrentTimestamp('mysql')     // 'CURRENT_TIMESTAMP'
+getCurrentTimestamp('mysql') // 'CURRENT_TIMESTAMP'
 
 // SQLite
-getCurrentTimestamp('sqlite')    // "datetime('now')"
+getCurrentTimestamp('sqlite') // "datetime('now')"
 
 // Usage in queries
 const timestamp = getCurrentTimestamp('postgres')
@@ -572,9 +579,9 @@ import { formatDate } from '@kysera/dialects'
 const date = new Date('2024-01-15T10:30:00Z')
 
 // All dialects return ISO 8601 format
-formatDate(date, 'postgres')  // '2024-01-15T10:30:00.000Z'
-formatDate(date, 'mysql')     // '2024-01-15T10:30:00.000Z'
-formatDate(date, 'sqlite')    // '2024-01-15T10:30:00.000Z'
+formatDate(date, 'postgres') // '2024-01-15T10:30:00.000Z'
+formatDate(date, 'mysql') // '2024-01-15T10:30:00.000Z'
+formatDate(date, 'sqlite') // '2024-01-15T10:30:00.000Z'
 ```
 
 ### Database Management
@@ -612,6 +619,7 @@ await truncateAllTables(db, 'postgres', ['migrations', 'schema_version'])
 **Warning:** This permanently deletes all data. Use only in test environments.
 
 **Behavior:**
+
 - PostgreSQL: `TRUNCATE TABLE ... CASCADE`
 - MySQL: `TRUNCATE TABLE ...`
 - SQLite: `DELETE FROM ...` (no TRUNCATE support)
@@ -627,6 +635,7 @@ await truncateAllTables(db, 'postgres', ['migrations', 'schema_version'])
 Get singleton adapter for specified dialect.
 
 **Parameters:**
+
 - `dialect` - `'postgres' | 'mysql' | 'sqlite'`
 
 **Returns:** Dialect adapter instance
@@ -640,6 +649,7 @@ Get singleton adapter for specified dialect.
 Create new adapter instance.
 
 **Parameters:**
+
 - `dialect` - `'postgres' | 'mysql' | 'sqlite'`
 
 **Returns:** New dialect adapter instance
@@ -653,6 +663,7 @@ Create new adapter instance.
 Register custom dialect adapter.
 
 **Parameters:**
+
 - `adapter` - Custom adapter implementing `DialectAdapter` interface
 
 **Use Case:** Extend with custom database support.
@@ -666,9 +677,11 @@ Register custom dialect adapter.
 Interface for dialect-specific operations.
 
 **Properties:**
+
 - `dialect: DatabaseDialect` - The dialect this adapter handles
 
 **Methods:**
+
 - `getDefaultPort(): number | null` - Get default port for this dialect
 - `getCurrentTimestamp(): string` - Get SQL expression for current timestamp
 - `escapeIdentifier(identifier: string): string` - Escape identifier for this dialect
@@ -692,6 +705,7 @@ Interface for dialect-specific operations.
 Parse connection URL into configuration object.
 
 **Parameters:**
+
 - `url` - Database connection URL
 
 **Returns:** `ConnectionConfig` object
@@ -703,6 +717,7 @@ Parse connection URL into configuration object.
 Build connection URL from configuration.
 
 **Parameters:**
+
 - `dialect` - Database dialect
 - `config` - Connection configuration
 
@@ -715,6 +730,7 @@ Build connection URL from configuration.
 Get default port for dialect.
 
 **Parameters:**
+
 - `dialect` - Database dialect
 
 **Returns:** Port number or null for SQLite
@@ -842,7 +858,8 @@ function checkSchema(db: Kysely<any>, dialect: DatabaseDialect) {
 
 // ❌ Bad: Hard-coded dialect logic
 function checkSchema(db: Kysely<any>) {
-  return db.selectFrom('information_schema.tables')
+  return db
+    .selectFrom('information_schema.tables')
     .where('table_name', '=', 'users')
     .executeTakeFirst()
 }

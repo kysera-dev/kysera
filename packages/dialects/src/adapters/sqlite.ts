@@ -2,68 +2,73 @@
  * SQLite Dialect Adapter
  */
 
-import type { Kysely } from 'kysely';
-import { sql } from 'kysely';
-import type { DialectAdapter, DatabaseErrorLike } from '../types.js';
+import type { Kysely } from 'kysely'
+import { sql } from 'kysely'
+import type { DialectAdapter, DatabaseErrorLike } from '../types.js'
+import { assertValidIdentifier } from '../helpers.js'
 
 export class SQLiteAdapter implements DialectAdapter {
-  readonly dialect = 'sqlite' as const;
+  readonly dialect = 'sqlite' as const
 
   getDefaultPort(): null {
     // SQLite is file-based, no port
-    return null;
+    return null
   }
 
   getCurrentTimestamp(): string {
-    return "datetime('now')";
+    return "datetime('now')"
   }
 
   escapeIdentifier(identifier: string): string {
-    return `"${identifier.replace(/"/g, '""')}"`;
+    return '"' + identifier.replace(/"/g, '""') + '"'
   }
 
   formatDate(date: Date): string {
-    return date.toISOString();
+    return date.toISOString()
   }
 
   isUniqueConstraintError(error: unknown): boolean {
-    const e = error as DatabaseErrorLike;
-    const message = e.message?.toLowerCase() || '';
-    return message.includes('unique constraint failed');
+    const e = error as DatabaseErrorLike
+    const message = e.message?.toLowerCase() || ''
+    return message.includes('unique constraint failed')
   }
 
   isForeignKeyError(error: unknown): boolean {
-    const e = error as DatabaseErrorLike;
-    const message = e.message?.toLowerCase() || '';
-    return message.includes('foreign key constraint failed');
+    const e = error as DatabaseErrorLike
+    const message = e.message?.toLowerCase() || ''
+    return message.includes('foreign key constraint failed')
   }
 
   isNotNullError(error: unknown): boolean {
-    const e = error as DatabaseErrorLike;
-    const message = e.message?.toLowerCase() || '';
-    return message.includes('not null constraint failed');
+    const e = error as DatabaseErrorLike
+    const message = e.message?.toLowerCase() || ''
+    return message.includes('not null constraint failed')
   }
 
   async tableExists(db: Kysely<any>, tableName: string): Promise<boolean> {
+    assertValidIdentifier(tableName, 'table name')
     try {
       const result = await db
         .selectFrom('sqlite_master')
         .select('name')
         .where('type', '=', 'table')
         .where('name', '=', tableName)
-        .executeTakeFirst();
-      return !!result;
+        .executeTakeFirst()
+      return !!result
     } catch {
-      return false;
+      return false
     }
   }
 
   async getTableColumns(db: Kysely<any>, tableName: string): Promise<string[]> {
+    assertValidIdentifier(tableName, 'table name')
     try {
-      const results = await sql.raw(`PRAGMA table_info(${tableName})`).execute(db);
-      return (results.rows as Array<{ name: string }>).map((r) => r.name);
+      const results = await sql
+        .raw(`PRAGMA table_info(${this.escapeIdentifier(tableName)})`)
+        .execute(db)
+      return (results.rows as { name: string }[]).map(r => r.name)
     } catch {
-      return [];
+      return []
     }
   }
 
@@ -74,36 +79,44 @@ export class SQLiteAdapter implements DialectAdapter {
         .select('name')
         .where('type', '=', 'table')
         .where('name', 'not like', 'sqlite_%')
-        .execute();
-      return results.map((r) => r.name as string);
+        .execute()
+      return results.map(r => r.name as string)
     } catch {
-      return [];
+      return []
     }
   }
 
   async getDatabaseSize(_db: Kysely<any>, _databaseName?: string): Promise<number> {
     // SQLite database size requires file system access
     // which is not available in a cross-runtime way
-    return 0;
+    return 0
   }
 
-  async truncateTable(db: Kysely<any>, tableName: string): Promise<void> {
+  async truncateTable(db: Kysely<any>, tableName: string): Promise<boolean> {
+    assertValidIdentifier(tableName, 'table name')
     try {
       // SQLite doesn't support TRUNCATE, use DELETE instead
-      await db.deleteFrom(tableName as any).execute();
-    } catch {
-      // Ignore errors for tables that might not exist
+      await sql.raw(`DELETE FROM ${this.escapeIdentifier(tableName)}`).execute(db)
+      return true
+    } catch (error) {
+      const errorMessage = String(error)
+      if (errorMessage.includes('no such table')) {
+        return false
+      }
+      // Log and rethrow unexpected errors
+      console.error(`[Kysera Dialects] Failed to truncate table "${tableName}":`, error)
+      throw error
     }
   }
 
   async truncateAllTables(db: Kysely<any>, exclude: string[] = []): Promise<void> {
-    const tables = await this.getTables(db);
+    const tables = await this.getTables(db)
     for (const table of tables) {
       if (!exclude.includes(table)) {
-        await this.truncateTable(db, table);
+        await this.truncateTable(db, table)
       }
     }
   }
 }
 
-export const sqliteAdapter = new SQLiteAdapter();
+export const sqliteAdapter = new SQLiteAdapter()

@@ -5,13 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-
 ## [0.7.3] - 2025-12-21
 
 ### ✨ Features
 
 - feat(dialects): add @kysera/dialects package with dialect-specific utilities
-
 
 ## [0.7.2] - 2025-12-21
 
@@ -23,7 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - docs: remove Package Information sections from README files
 
-
 ## [0.7.1] - 2025-12-16
 
 ### 📝 Other Changes
@@ -32,7 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - docs: clarify Kysera is not a traditional ORM
 - docs: remove version numbers from README package tables
 - docs(website): update homepage with accurate, stable metrics
-
 
 ## [0.7.0] - 2025-12-11
 
@@ -49,7 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - docs: update CLAUDE.md to reflect v0.6.1 project state
 - docs(website): add comprehensive DAL vs Repository guide and update plugin docs
 
-
 ## [0.6.1] - 2025-12-10
 
 ### ✨ Features
@@ -61,7 +56,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - docs(website): add complete API Reference for all plugin packages
 - docs: update README.md for v0.6.0 release
 - chore: update pnpm-lock.yaml
-
 
 ## [0.6.0] - 2025-12-10
 
@@ -76,7 +70,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - del specs
 - feat!: major architectural refactoring with Vertical Slice Architecture
 - docs: add comprehensive documentation website with Docusaurus
-
 
 ## [0.5.1] - 2025-12-08
 
@@ -95,7 +88,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - update main package.json
 - fix
 - docs: update all README files to reflect v0.5.1 release
-
 
 ## [0.4.1] - 2025-10-03
 
@@ -127,4 +119,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - docs: add comprehensive README.md for @kysera/repository package
 - docs: add comprehensive README.md for @kysera/core package
 - docs: update README.md and specs/spec.md with Phase 3 completion
-

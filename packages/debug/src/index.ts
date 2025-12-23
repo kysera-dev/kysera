@@ -29,24 +29,10 @@
  */
 
 // Plugin
-export {
-  type QueryMetrics,
-  type DebugOptions,
-  type DebugDatabase,
-  withDebug,
-} from './plugin.js';
+export { type QueryMetrics, type DebugOptions, type DebugDatabase, withDebug } from './plugin.js'
 
 // Profiler
-export {
-  type ProfilerSummary,
-  type ProfilerOptions,
-  QueryProfiler,
-} from './profiler.js';
+export { type ProfilerSummary, type ProfilerOptions, QueryProfiler } from './profiler.js'
 
 // Formatting
-export {
-  formatSQL,
-  formatSQLPretty,
-  minifySQL,
-  highlightSQL,
-} from './format.js';
+export { formatSQL, formatSQLPretty, minifySQL, highlightSQL } from './format.js'

@@ -86,7 +86,7 @@ const factory = createRepositoryFactory(db)
 // Create repositories
 const userRepo = factory.create({
   tableName: 'users' as const,
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
     create: userSchema,
     update: userSchema.partial()
@@ -95,7 +95,7 @@ const userRepo = factory.create({
 
 const postRepo = factory.create({
   tableName: 'posts' as const,
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
     create: postSchema,
     update: postSchema.partial()
@@ -137,12 +137,12 @@ import { createRepositoriesFactory } from '@kysera/repository'
 
 // Create factory for all repositories
 const createRepositories = createRepositoriesFactory({
-  users: (executor) => factory.create({ ...userConfig }),
-  posts: (executor) => factory.create({ ...postConfig })
+  users: executor => factory.create({ ...userConfig }),
+  posts: executor => factory.create({ ...postConfig })
 })
 
 // Use in transaction
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   // Create repositories with transaction executor
   const repos = createRepositories(trx)
 
@@ -185,7 +185,7 @@ const orm = await createORM(db, [audit])
 const userRepo = orm.createRepository(() =>
   factory.create({
     tableName: 'users',
-    mapRow: (row) => row,
+    mapRow: row => row,
     schemas: { create: userSchema, update: userSchema.partial() }
   })
 )
@@ -268,7 +268,7 @@ import { sql } from 'kysely'
 const migrations = [
   createMigration(
     '001_create_users',
-    async (db) => {
+    async db => {
       await db.schema
         .createTable('users')
         .addColumn('id', 'serial', col => col.primaryKey())
@@ -279,14 +279,14 @@ const migrations = [
         )
         .execute()
     },
-    async (db) => {
+    async db => {
       await db.schema.dropTable('users').execute()
     }
   ),
 
   createMigration(
     '002_create_posts',
-    async (db) => {
+    async db => {
       await db.schema
         .createTable('posts')
         .addColumn('id', 'serial', col => col.primaryKey())
@@ -300,7 +300,7 @@ const migrations = [
         )
         .execute()
     },
-    async (db) => {
+    async db => {
       await db.schema.dropTable('posts').execute()
     }
   )
@@ -331,7 +331,9 @@ await runner.up({ dryRun: true })
 import { checkDatabaseHealth, createMetricsPool } from '@kysera/core'
 import { Pool } from 'pg'
 
-const pool = new Pool({ /* config */ })
+const pool = new Pool({
+  /* config */
+})
 const metricsPool = createMetricsPool(pool)
 
 // Check database health
@@ -363,7 +365,7 @@ import { testInTransaction, createFactory } from '@kysera/core'
 
 describe('User Repository', () => {
   it('should create user in transaction', async () => {
-    await testInTransaction(db, async (trx) => {
+    await testInTransaction(db, async trx => {
       const repos = createRepositories(trx)
 
       const user = await repos.users.create({
@@ -380,14 +382,14 @@ describe('User Repository', () => {
 
   it('should use test factories', async () => {
     const createUser = createFactory({
-      email: (i) => `user${i}@example.com`,
-      name: (i) => `User ${i}`
+      email: i => `user${i}@example.com`,
+      name: i => `User ${i}`
     })
 
     const users = [
       createUser(1), // { email: 'user1@example.com', name: 'User 1' }
       createUser(2), // { email: 'user2@example.com', name: 'User 2' }
-      createUser(3)  // { email: 'user3@example.com', name: 'User 3' }
+      createUser(3) // { email: 'user3@example.com', name: 'User 3' }
     ]
 
     await userRepo.bulkCreate(users)
@@ -398,11 +400,7 @@ describe('User Repository', () => {
 ## Error Handling
 
 ```typescript
-import {
-  DatabaseError,
-  UniqueConstraintError,
-  ValidationError
-} from '@kysera/core'
+import { DatabaseError, UniqueConstraintError, ValidationError } from '@kysera/core'
 
 try {
   await userRepo.create({
@@ -433,23 +431,17 @@ const page2 = await userRepo.findAll({ limit: 10, offset: 10 })
 // Cursor-based pagination (more efficient)
 import { cursorPaginate } from '@kysera/core'
 
-const firstPage = await cursorPaginate(
-  db.selectFrom('users').selectAll(),
-  {
-    orderBy: [{ column: 'created_at', direction: 'desc' }],
-    limit: 10
-  }
-)
+const firstPage = await cursorPaginate(db.selectFrom('users').selectAll(), {
+  orderBy: [{ column: 'created_at', direction: 'desc' }],
+  limit: 10
+})
 
 // Get next page using cursor
-const secondPage = await cursorPaginate(
-  db.selectFrom('users').selectAll(),
-  {
-    orderBy: [{ column: 'created_at', direction: 'desc' }],
-    limit: 10,
-    cursor: firstPage.nextCursor
-  }
-)
+const secondPage = await cursorPaginate(db.selectFrom('users').selectAll(), {
+  orderBy: [{ column: 'created_at', direction: 'desc' }],
+  limit: 10,
+  cursor: firstPage.nextCursor
+})
 ```
 
 ## Best Practices

@@ -1,21 +1,21 @@
-import { Command } from 'commander';
-import { prism } from '@xec-sh/kit';
-import { displayTable } from '../../utils/table-helper.js';
-import { spinner } from '../../utils/spinner.js';
-import { logger } from '../../utils/logger.js';
-import { CLIError } from '../../utils/errors.js';
-import { withDatabase } from '../../utils/with-database.js';
+import { Command } from 'commander'
+import { prism } from '@xec-sh/kit'
+import { displayTable } from '../../utils/table-helper.js'
+import { spinner } from '../../utils/spinner.js'
+import { logger } from '../../utils/logger.js'
+import { CLIError } from '../../utils/errors.js'
+import { withDatabase } from '../../utils/with-database.js'
 
 export interface ByTimestampOptions {
-  table?: string;
-  column?: string;
-  from?: string;
-  to?: string;
-  last?: string;
-  order?: 'asc' | 'desc';
-  limit?: string;
-  json?: boolean;
-  config?: string;
+  table?: string
+  column?: string
+  from?: string
+  to?: string
+  last?: string
+  order?: 'asc' | 'desc'
+  limit?: string
+  json?: boolean
+  config?: string
 }
 
 export function byTimestampCommand(): Command {
@@ -32,132 +32,142 @@ export function byTimestampCommand(): Command {
     .option('--config <path>', 'Path to configuration file')
     .action(async (options: ByTimestampOptions) => {
       try {
-        await queryByTimestamp(options);
+        await queryByTimestamp(options)
       } catch (error) {
         if (error instanceof CLIError) {
-          throw error;
+          throw error
         }
         throw new CLIError(
           `Failed to query by timestamp: ${error instanceof Error ? error.message : String(error)}`,
           'TIMESTAMP_QUERY_ERROR'
-        );
+        )
       }
-    });
+    })
 
-  return cmd;
+  return cmd
 }
 
 async function queryByTimestamp(options: ByTimestampOptions): Promise<void> {
   if (!options.table) {
-    throw new CLIError('Table name is required', 'MISSING_TABLE', ['Use --table to specify a table name']);
+    throw new CLIError('Table name is required', 'MISSING_TABLE', [
+      'Use --table to specify a table name'
+    ])
   }
 
   await withDatabase({ config: options.config }, async (db, config) => {
-    const querySpinner = spinner();
-    const column = options.column || 'created_at';
-    const limit = parseInt(options.limit || '100', 10);
+    const querySpinner = spinner()
+    const column = options.column || 'created_at'
+    const limit = parseInt(options.limit || '100', 10)
 
-    let fromDate: Date | undefined;
-    let toDate: Date | undefined;
+    let fromDate: Date | undefined
+    let toDate: Date | undefined
 
     if (options.last) {
-      const match = options.last.match(/^(\d+)([hdwm])$/);
+      const match = options.last.match(/^(\d+)([hdwm])$/)
       if (!match) {
-        throw new CLIError('Invalid duration format. Use format like 24h, 7d, 2w, 1m', 'INVALID_DURATION');
+        throw new CLIError(
+          'Invalid duration format. Use format like 24h, 7d, 2w, 1m',
+          'INVALID_DURATION'
+        )
       }
 
-      const value = parseInt(match[1], 10);
-      const unit = match[2];
+      const value = parseInt(match[1], 10)
+      const unit = match[2]
 
-      toDate = new Date();
-      fromDate = new Date();
+      toDate = new Date()
+      fromDate = new Date()
 
       switch (unit) {
         case 'h':
-          fromDate.setHours(fromDate.getHours() - value);
-          break;
+          fromDate.setHours(fromDate.getHours() - value)
+          break
         case 'd':
-          fromDate.setDate(fromDate.getDate() - value);
-          break;
+          fromDate.setDate(fromDate.getDate() - value)
+          break
         case 'w':
-          fromDate.setDate(fromDate.getDate() - value * 7);
-          break;
+          fromDate.setDate(fromDate.getDate() - value * 7)
+          break
         case 'm':
-          fromDate.setMonth(fromDate.getMonth() - value);
-          break;
+          fromDate.setMonth(fromDate.getMonth() - value)
+          break
       }
     } else {
       if (options.from) {
-        fromDate = new Date(options.from);
+        fromDate = new Date(options.from)
         if (isNaN(fromDate.getTime())) {
-          throw new CLIError('Invalid from date format', 'INVALID_DATE');
+          throw new CLIError('Invalid from date format', 'INVALID_DATE')
         }
       }
       if (options.to) {
-        toDate = new Date(options.to);
+        toDate = new Date(options.to)
         if (isNaN(toDate.getTime())) {
-          throw new CLIError('Invalid to date format', 'INVALID_DATE');
+          throw new CLIError('Invalid to date format', 'INVALID_DATE')
         }
       }
     }
 
-    const timeRange = fromDate && toDate
-      ? `from ${fromDate.toISOString()} to ${toDate.toISOString()}`
-      : fromDate
-      ? `from ${fromDate.toISOString()}`
-      : toDate
-      ? `until ${toDate.toISOString()}`
-      : 'all time';
+    const timeRange =
+      fromDate && toDate
+        ? `from ${fromDate.toISOString()} to ${toDate.toISOString()}`
+        : fromDate
+          ? `from ${fromDate.toISOString()}`
+          : toDate
+            ? `until ${toDate.toISOString()}`
+            : 'all time'
 
-    querySpinner.start(`Querying ${options.table} ${timeRange}...`);
+    querySpinner.start(`Querying ${options.table} ${timeRange}...`)
 
-    let query = db.selectFrom(options.table).selectAll();
+    let query = db.selectFrom(options.table).selectAll()
 
     if (fromDate) {
-      query = query.where(column as any, '>=', fromDate as any);
+      query = query.where(column as any, '>=', fromDate as any)
     }
     if (toDate) {
-      query = query.where(column as any, '<=', toDate as any);
+      query = query.where(column as any, '<=', toDate as any)
     }
 
-    query = query.orderBy(column as any, options.order || 'desc').limit(limit);
+    query = query.orderBy(column as any, options.order || 'desc').limit(limit)
 
-    const results = await query.execute();
+    const results = await query.execute()
 
-    querySpinner.succeed(`Found ${results.length} record${results.length !== 1 ? 's' : ''}`);
+    querySpinner.succeed(`Found ${results.length} record${results.length !== 1 ? 's' : ''}`)
 
     if (results.length === 0) {
-      console.log(prism.gray('No records found in the specified time range'));
-      return;
+      console.log(prism.gray('No records found in the specified time range'))
+      return
     }
 
     if (options.json) {
-      console.log(JSON.stringify(results, null, 2));
+      console.log(JSON.stringify(results, null, 2))
     } else {
-      console.log('');
-      console.log(prism.bold(`Records in '${options.table}' (${timeRange}):`));
-      console.log('');
+      console.log('')
+      console.log(prism.bold(`Records in '${options.table}' (${timeRange}):`))
+      console.log('')
 
       const formattedResults = results.map((row: any) => {
-        const formatted: any = {};
+        const formatted: any = {}
         for (const [key, value] of Object.entries(row)) {
           if (value === null) {
-            formatted[key] = prism.gray('NULL');
+            formatted[key] = prism.gray('NULL')
           } else if (value instanceof Date) {
-            formatted[key] = value.toISOString();
+            formatted[key] = value.toISOString()
           } else if (typeof value === 'object') {
-            formatted[key] = JSON.stringify(value);
+            formatted[key] = JSON.stringify(value)
           } else {
-            formatted[key] = String(value);
+            formatted[key] = String(value)
           }
         }
-        return formatted;
-      });
+        return formatted
+      })
 
-      console.log(displayTable(formattedResults));
+      console.log(displayTable(formattedResults))
 
-      console.log('');
-      console.log(prism.gray(`Showing ${results.length} of up to ${limit} records, ordered by ${column} ${options.order || 'desc'}`));
+      console.log('')
+      console.log(
+        prism.gray(
+          `Showing ${results.length} of up to ${limit} records, ordered by ${column} ${options.order || 'desc'}`
+        )
+      )
     }
-  });
+  })
 }

@@ -52,14 +52,10 @@ Use plugins and factory functions instead of extending classes:
 
 ```typescript
 // ✅ Good: Composition with plugins
-const userRepo = withAudit(
-  withSoftDelete(
-    createRepository(db, 'users', userSchema)
-  )
-)
+const userRepo = withAudit(withSoftDelete(createRepository(db, 'users', userSchema)))
 
 // ❌ Bad: Deep inheritance hierarchies
-class AuditableUserRepository extends SoftDeleteRepository<User> { }
+class AuditableUserRepository extends SoftDeleteRepository<User> {}
 ```
 
 ---
@@ -124,10 +120,7 @@ class UserRepository {
   constructor(private db: Kysely<DB>) {}
 
   async findActive(): Promise<User[]> {
-    return this.db.selectFrom('users')
-      .where('active', '=', true)
-      .selectAll()
-      .execute()
+    return this.db.selectFrom('users').where('active', '=', true).selectAll().execute()
   }
 }
 ```
@@ -142,7 +135,7 @@ Always wrap related database operations in transactions:
 
 ```typescript
 // ✅ Good: Transaction for related operations
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const repos = createRepositories(trx)
 
   const user = await repos.users.create({ email, name })
@@ -160,14 +153,17 @@ Minimize transaction duration to avoid lock contention:
 const userData = await validateAndPrepareUserData(input)
 const profileData = await fetchExternalProfile(input.socialId)
 
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   // Quick database operations only
   const user = await trx.insertInto('users').values(userData).execute()
-  await trx.insertInto('profiles').values({ ...profileData, user_id: user.id }).execute()
+  await trx
+    .insertInto('profiles')
+    .values({ ...profileData, user_id: user.id })
+    .execute()
 })
 
 // ❌ Bad: Long transaction with external calls
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const user = await trx.insertInto('users').values(input).execute()
   await sendWelcomeEmail(user.email) // ❌ External call in transaction
   await updateExternalService(user.id) // ❌ External call in transaction
@@ -179,7 +175,7 @@ await db.transaction().execute(async (trx) => {
 ```typescript
 // ✅ Good: Explicit error handling
 try {
-  await db.transaction().execute(async (trx) => {
+  await db.transaction().execute(async trx => {
     const repos = createRepositories(trx)
     await repos.users.create({ email, name })
 
@@ -275,17 +271,19 @@ app.post('/users', async (req, res) => {
 
 ```typescript
 // ✅ Good: Custom validation for business rules
-const createUserSchema = z.object({
-  email: z.string().email(),
-  age: z.number().min(18, 'Must be 18 or older')
-}).refine(
-  async (data) => {
-    // Custom business rule: check if email is unique
-    const existing = await userRepo.findByEmail(data.email)
-    return !existing
-  },
-  { message: 'Email already exists' }
-)
+const createUserSchema = z
+  .object({
+    email: z.string().email(),
+    age: z.number().min(18, 'Must be 18 or older')
+  })
+  .refine(
+    async data => {
+      // Custom business rule: check if email is unique
+      const existing = await userRepo.findByEmail(data.email)
+      return !existing
+    },
+    { message: 'Email already exists' }
+  )
 ```
 
 ---
@@ -362,17 +360,14 @@ try {
 
 ```typescript
 // ✅ Good: Cursor pagination for infinite scroll
-const result = await paginateCursor(
-  db.selectFrom('posts').selectAll(),
-  {
-    limit: 20,
-    cursor: req.query.cursor,
-    orderBy: [
-      { column: 'created_at', direction: 'desc' },
-      { column: 'id', direction: 'desc' } // Tie-breaker for consistency
-    ]
-  }
-)
+const result = await paginateCursor(db.selectFrom('posts').selectAll(), {
+  limit: 20,
+  cursor: req.query.cursor,
+  orderBy: [
+    { column: 'created_at', direction: 'desc' },
+    { column: 'id', direction: 'desc' } // Tie-breaker for consistency
+  ]
+})
 
 res.json({
   items: result.data,
@@ -384,13 +379,10 @@ res.json({
 
 ```typescript
 // ✅ Good: Offset pagination when users need page numbers
-const result = await paginate(
-  db.selectFrom('users').selectAll(),
-  {
-    page: parseInt(req.query.page) || 1,
-    limit: 20
-  }
-)
+const result = await paginate(db.selectFrom('users').selectAll(), {
+  page: parseInt(req.query.page) || 1,
+  limit: 20
+})
 
 res.json({
   items: result.data,
@@ -426,11 +418,7 @@ Plugin order matters - outer plugins wrap inner plugins:
 // 2. Soft Delete (affects queries)
 // 3. Timestamps (innermost - modifies data)
 const userRepo = withAudit(
-  withSoftDelete(
-    withTimestamps(
-      createRepository(db, 'users', userSchema)
-    )
-  )
+  withSoftDelete(withTimestamps(createRepository(db, 'users', userSchema)))
 )
 ```
 
@@ -439,9 +427,9 @@ const userRepo = withAudit(
 ```typescript
 // ✅ Good: Different plugins for different tables
 const createRepositories = createRepositoryFactory({
-  users: (db) => withAudit(withSoftDelete(createUserRepository(db))),
-  audit_logs: (db) => createAuditLogRepository(db), // No plugins
-  sessions: (db) => withTimestamps(createSessionRepository(db)) // Only timestamps
+  users: db => withAudit(withSoftDelete(createUserRepository(db))),
+  audit_logs: db => createAuditLogRepository(db), // No plugins
+  sessions: db => withTimestamps(createSessionRepository(db)) // Only timestamps
 })
 ```
 
@@ -469,7 +457,7 @@ import { testInTransaction } from '@kysera/core'
 
 describe('User Repository', () => {
   it('should create user', async () => {
-    await testInTransaction(db, async (trx) => {
+    await testInTransaction(db, async trx => {
       const repos = createRepositories(trx)
 
       const user = await repos.users.create({
@@ -509,7 +497,7 @@ expect(user1.email).not.toBe(user2.email)
 ```typescript
 it('should rollback on error', async () => {
   await expect(
-    db.transaction().execute(async (trx) => {
+    db.transaction().execute(async trx => {
       const repos = createRepositories(trx)
       await repos.users.create({ email, name })
       throw new Error('Force rollback')
@@ -569,10 +557,7 @@ const users = await db.selectFrom('users').selectAll().execute()
 const names = users.map(u => u.name)
 
 // ✅ Good: Select only needed columns
-const users = await db
-  .selectFrom('users')
-  .select(['id', 'name'])
-  .execute()
+const users = await db.selectFrom('users').select(['id', 'name']).execute()
 ```
 
 ---

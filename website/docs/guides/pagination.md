@@ -16,30 +16,28 @@ When you don't need total count, use `applyOffset` for a ~50% performance boost:
 import { applyOffset } from '@kysera/core'
 
 // Simple pagination without COUNT(*)
-const users = await applyOffset(
-  db.selectFrom('users').selectAll().orderBy('id'),
-  { limit: 20, offset: 0 }
-).execute()
+const users = await applyOffset(db.selectFrom('users').selectAll().orderBy('id'), {
+  limit: 20,
+  offset: 0
+}).execute()
 
 // Infinite scroll pattern
 async function loadMore(offset: number) {
   const posts = await applyOffset(
-    db.selectFrom('posts')
-      .selectAll()
-      .where('published', '=', true)
-      .orderBy('created_at', 'desc'),
+    db.selectFrom('posts').selectAll().where('published', '=', true).orderBy('created_at', 'desc'),
     { limit: 20, offset }
   ).execute()
 
   return {
     posts,
-    hasMore: posts.length === 20  // If full page, might be more
+    hasMore: posts.length === 20 // If full page, might be more
   }
 }
 ```
 
 **Key features:**
-- No COUNT(*) query
+
+- No COUNT(\*) query
 - Limit: 1-100 (auto-bounded)
 - SQLite compatible
 
@@ -78,11 +76,11 @@ console.log(result)
 
 ### Pros and Cons
 
-| Pros | Cons |
-|------|------|
-| Simple to implement | O(n) at high pages |
-| Page numbers | Inconsistent with data changes |
-| Jump to any page | Performance degrades |
+| Pros                | Cons                           |
+| ------------------- | ------------------------------ |
+| Simple to implement | O(n) at high pages             |
+| Page numbers        | Inconsistent with data changes |
+| Jump to any page    | Performance degrades           |
 
 ## Cursor Pagination
 
@@ -92,29 +90,23 @@ Efficient keyset-based pagination.
 import { paginateCursor } from '@kysera/core'
 
 // First page
-const page1 = await paginateCursor(
-  db.selectFrom('posts').selectAll(),
-  {
-    orderBy: [
-      { column: 'created_at', direction: 'desc' },
-      { column: 'id', direction: 'desc' }
-    ],
-    limit: 20
-  }
-)
+const page1 = await paginateCursor(db.selectFrom('posts').selectAll(), {
+  orderBy: [
+    { column: 'created_at', direction: 'desc' },
+    { column: 'id', direction: 'desc' }
+  ],
+  limit: 20
+})
 
 // Next page
-const page2 = await paginateCursor(
-  db.selectFrom('posts').selectAll(),
-  {
-    orderBy: [
-      { column: 'created_at', direction: 'desc' },
-      { column: 'id', direction: 'desc' }
-    ],
-    limit: 20,
-    cursor: page1.pagination.nextCursor
-  }
-)
+const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
+  orderBy: [
+    { column: 'created_at', direction: 'desc' },
+    { column: 'id', direction: 'desc' }
+  ],
+  limit: 20,
+  cursor: page1.pagination.nextCursor
+})
 ```
 
 ### When to Use
@@ -127,11 +119,11 @@ const page2 = await paginateCursor(
 
 ### Pros and Cons
 
-| Pros | Cons |
-|------|------|
-| O(log n) with index | No page numbers |
+| Pros                     | Cons                   |
+| ------------------------ | ---------------------- |
+| O(log n) with index      | No page numbers        |
 | Stable with data changes | Sequential access only |
-| Consistent performance | More complex |
+| Consistent performance   | More complex           |
 
 ## Repository Pagination
 
@@ -164,10 +156,7 @@ app.get('/posts', async (req, res) => {
   const page = parseInt(req.query.page) || 1
   const limit = Math.min(parseInt(req.query.limit) || 20, 100)
 
-  const result = await paginate(
-    db.selectFrom('posts').selectAll(),
-    { page, limit }
-  )
+  const result = await paginate(db.selectFrom('posts').selectAll(), { page, limit })
 
   res.json({
     data: result.data,
@@ -181,12 +170,8 @@ app.get('/posts', async (req, res) => {
       self: `/posts?page=${page}&limit=${limit}`,
       first: `/posts?page=1&limit=${limit}`,
       last: `/posts?page=${result.pagination.totalPages}&limit=${limit}`,
-      next: result.pagination.hasNext
-        ? `/posts?page=${page + 1}&limit=${limit}`
-        : null,
-      prev: result.pagination.hasPrev
-        ? `/posts?page=${page - 1}&limit=${limit}`
-        : null
+      next: result.pagination.hasNext ? `/posts?page=${page + 1}&limit=${limit}` : null,
+      prev: result.pagination.hasPrev ? `/posts?page=${page - 1}&limit=${limit}` : null
     }
   })
 })
@@ -199,17 +184,14 @@ app.get('/posts', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 20, 100)
   const cursor = req.query.cursor || null
 
-  const result = await paginateCursor(
-    db.selectFrom('posts').selectAll(),
-    {
-      orderBy: [
-        { column: 'created_at', direction: 'desc' },
-        { column: 'id', direction: 'desc' }
-      ],
-      limit,
-      cursor
-    }
-  )
+  const result = await paginateCursor(db.selectFrom('posts').selectAll(), {
+    orderBy: [
+      { column: 'created_at', direction: 'desc' },
+      { column: 'id', direction: 'desc' }
+    ],
+    limit,
+    cursor
+  })
 
   res.json({
     data: result.data,
@@ -233,16 +215,10 @@ import { applyOffset, applyDateRange } from '@kysera/core'
 
 // Get posts from last month, paginated
 const result = await applyOffset(
-  applyDateRange(
-    db.selectFrom('posts')
-      .selectAll()
-      .orderBy('created_at', 'desc'),
-    'created_at',
-    {
-      from: new Date('2024-01-01'),
-      to: new Date('2024-01-31')
-    }
-  ),
+  applyDateRange(db.selectFrom('posts').selectAll().orderBy('created_at', 'desc'), 'created_at', {
+    from: new Date('2024-01-01'),
+    to: new Date('2024-01-31')
+  }),
   { limit: 50 }
 ).execute()
 
@@ -292,7 +268,7 @@ WHERE status = 'published';
 {
   orderBy: [
     { column: 'created_at', direction: 'desc' },
-    { column: 'id', direction: 'desc' }  // Unique!
+    { column: 'id', direction: 'desc' } // Unique!
   ]
 }
 
@@ -330,7 +306,7 @@ let total = await cache.get(cacheKey)
 
 if (!total) {
   total = await db.selectFrom('posts').select(db.fn.count('id')).executeTakeFirst()
-  await cache.set(cacheKey, total, 60)  // Cache for 60s
+  await cache.set(cacheKey, total, 60) // Cache for 60s
 }
 ```
 
@@ -352,6 +328,10 @@ const ids = await db
 const posts = await db
   .selectFrom('posts')
   .selectAll()
-  .where('id', 'in', ids.map(r => r.id))
+  .where(
+    'id',
+    'in',
+    ids.map(r => r.id)
+  )
   .execute()
 ```

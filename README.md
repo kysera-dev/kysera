@@ -48,39 +48,41 @@ const db = new Kysely<Database>({
 })
 
 // 3. Query - that's it!
-const users = await db
-  .selectFrom('users')
-  .selectAll()
-  .execute()
+const users = await db.selectFrom('users').selectAll().execute()
 ```
 
 ## Core Philosophy
 
 ### 1. Minimal Core, Optional Everything
+
 - Core contains only essentials: errors, pagination, types
 - Infrastructure (health, retry) in separate package
 - All features are opt-in plugins
 - Tree-shakeable ESM architecture
 
 ### 2. Explicit Over Implicit
+
 - Every operation is traceable
 - No hidden context propagation
 - Transaction boundaries are clear
 - No automatic behaviors
 
 ### 3. Smart Validation Strategy
+
 - Validate external inputs always
 - Trust database outputs (configurable)
 - Support for multiple validation libraries (Zod, Valibot, ArkType, Yup)
 - Performance-conscious approach
 
 ### 4. Functional Architecture
+
 - Functions over classes
 - No `this` context issues
 - Composable patterns
 - Dependency injection friendly
 
 ### 5. Production-First Design
+
 - Health checks and monitoring
 - Graceful shutdown support
 - Circuit breaker and retry patterns
@@ -90,29 +92,29 @@ const users = await db
 
 ### Core Packages
 
-| Package | Description |
-|---------|-------------|
-| `@kysera/core` | Core utilities - errors, pagination, types, logger |
-| `@kysera/repository` | Repository pattern with smart validation |
-| `@kysera/dal` | Functional Data Access Layer - query composition |
+| Package              | Description                                        |
+| -------------------- | -------------------------------------------------- |
+| `@kysera/core`       | Core utilities - errors, pagination, types, logger |
+| `@kysera/repository` | Repository pattern with smart validation           |
+| `@kysera/dal`        | Functional Data Access Layer - query composition   |
 
 ### Infrastructure
 
-| Package | Description |
-|---------|-------------|
-| `@kysera/infra` | Health checks, retry, circuit breaker, graceful shutdown |
-| `@kysera/debug` | Query logging, profiling, SQL formatting |
-| `@kysera/testing` | Test utilities - transaction isolation, factories, seeding |
-| `@kysera/migrations` | Migration system with dry-run support |
+| Package              | Description                                                |
+| -------------------- | ---------------------------------------------------------- |
+| `@kysera/infra`      | Health checks, retry, circuit breaker, graceful shutdown   |
+| `@kysera/debug`      | Query logging, profiling, SQL formatting                   |
+| `@kysera/testing`    | Test utilities - transaction isolation, factories, seeding |
+| `@kysera/migrations` | Migration system with dry-run support                      |
 
 ### Plugins
 
-| Package | Description |
-|---------|-------------|
-| `@kysera/soft-delete` | Soft delete with auto-filtering |
-| `@kysera/audit` | Audit logging with bulk optimization |
-| `@kysera/timestamps` | Auto created_at/updated_at |
-| `@kysera/rls` | Row-Level Security policies |
+| Package               | Description                          |
+| --------------------- | ------------------------------------ |
+| `@kysera/soft-delete` | Soft delete with auto-filtering      |
+| `@kysera/audit`       | Audit logging with bulk optimization |
+| `@kysera/timestamps`  | Auto created_at/updated_at           |
+| `@kysera/rls`         | Row-Level Security policies          |
 
 ## Development
 
@@ -212,7 +214,7 @@ const health = await checkDatabaseHealth(db, pool)
 
 // Continuous monitoring
 const monitor = new HealthMonitor(db, { interval: 30000 })
-monitor.on('unhealthy', (result) => alertOps(result))
+monitor.on('unhealthy', result => alertOps(result))
 monitor.start()
 ```
 
@@ -224,10 +226,10 @@ Built-in retry and circuit breaker:
 import { withRetry, CircuitBreaker } from '@kysera/infra'
 
 // Retry with exponential backoff
-const result = await withRetry(
-  () => db.selectFrom('users').execute(),
-  { maxAttempts: 3, backoff: 'exponential' }
-)
+const result = await withRetry(() => db.selectFrom('users').execute(), {
+  maxAttempts: 3,
+  backoff: 'exponential'
+})
 
 // Circuit breaker for external calls
 const breaker = new CircuitBreaker({ threshold: 5, resetTimeout: 60000 })
@@ -283,16 +285,13 @@ const getUserById = createQuery((ctx, id: number) =>
   ctx.db.selectFrom('users').where('id', '=', id).executeTakeFirst()
 )
 
-const getUserWithPosts = compose(
-  getUserById,
-  async (ctx, user) => ({
-    ...user,
-    posts: await getPostsByUserId(ctx, user.id)
-  })
-)
+const getUserWithPosts = compose(getUserById, async (ctx, user) => ({
+  ...user,
+  posts: await getPostsByUserId(ctx, user.id)
+}))
 
 // Execute in transaction
-const result = await withTransaction(db, async (ctx) => {
+const result = await withTransaction(db, async ctx => {
   return getUserWithPosts(ctx, 1)
 })
 ```
@@ -308,14 +307,14 @@ const factory = createRepositoryFactory(db)
 
 const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => ({
+  mapRow: row => ({
     id: row.id,
     email: row.email,
     name: row.name,
     created_at: row.created_at
   }),
   schemas: {
-    entity: UserSchema,      // Zod schema
+    entity: UserSchema, // Zod schema
     create: CreateUserSchema,
     update: UpdateUserSchema
   },
@@ -336,7 +335,7 @@ const userFactory = createFactory({
 })
 
 it('creates user', async () => {
-  await testInTransaction(db, async (trx) => {
+  await testInTransaction(db, async trx => {
     const userData = userFactory({ name: 'Alice' })
     const user = await trx.insertInto('users').values(userData).execute()
     expect(user.name).toBe('Alice')
@@ -353,9 +352,7 @@ Extend functionality with plugins:
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { createORM } from '@kysera/repository'
 
-const orm = createORM(db, [
-  softDeletePlugin({ deletedAtColumn: 'deleted_at' })
-])
+const orm = createORM(db, [softDeletePlugin({ deletedAtColumn: 'deleted_at' })])
 
 const userRepo = orm.createRepository(createUserRepository)
 
@@ -442,6 +439,7 @@ MIT
 > "Start minimal, grow as needed, stay transparent."
 
 Kysera believes in:
+
 - **No magic** - Everything is explicit and traceable
 - **Performance first** - Minimal overhead on top of Kysely
 - **Type safety** - Full TypeScript support with proper types

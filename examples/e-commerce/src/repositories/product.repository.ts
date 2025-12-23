@@ -25,7 +25,7 @@ export const ProductSchema = z.object({
   stock: z.number().int().min(0),
   is_active: z.boolean(),
   created_at: z.date(),
-  updated_at: z.date().nullable(),
+  updated_at: z.date().nullable()
 })
 
 export const CreateProductSchema = z.object({
@@ -34,7 +34,7 @@ export const CreateProductSchema = z.object({
   description: z.string(),
   price: z.number().positive(),
   stock: z.number().int().min(0),
-  is_active: z.boolean().optional(),
+  is_active: z.boolean().optional()
 })
 
 export const UpdateProductSchema = CreateProductSchema.partial()
@@ -81,9 +81,7 @@ export function createProductRepository(executor: Executor<Database>) {
         .execute()
 
       const products = rows.map(mapProductRow)
-      return validateDbResults
-        ? products.map(p => ProductSchema.parse(p))
-        : products
+      return validateDbResults ? products.map(p => ProductSchema.parse(p)) : products
     },
 
     async findByCategory(categoryId: number): Promise<Product[]> {
@@ -96,20 +94,15 @@ export function createProductRepository(executor: Executor<Database>) {
         .execute()
 
       const products = rows.map(mapProductRow)
-      return validateDbResults
-        ? products.map(p => ProductSchema.parse(p))
-        : products
+      return validateDbResults ? products.map(p => ProductSchema.parse(p)) : products
     },
 
     async search(query: string): Promise<Product[]> {
       const rows = await executor
         .selectFrom('products')
         .selectAll()
-        .where((eb) =>
-          eb.or([
-            eb('name', 'ilike', `%${query}%`),
-            eb('description', 'ilike', `%${query}%`)
-          ])
+        .where(eb =>
+          eb.or([eb('name', 'ilike', `%${query}%`), eb('description', 'ilike', `%${query}%`)])
         )
         .where('is_active', '=', true)
         .where('stock', '>', 0)
@@ -117,9 +110,7 @@ export function createProductRepository(executor: Executor<Database>) {
         .execute()
 
       const products = rows.map(mapProductRow)
-      return validateDbResults
-        ? products.map(p => ProductSchema.parse(p))
-        : products
+      return validateDbResults ? products.map(p => ProductSchema.parse(p)) : products
     },
 
     async create(input: unknown): Promise<Product> {
@@ -129,7 +120,7 @@ export function createProductRepository(executor: Executor<Database>) {
         .insertInto('products')
         .values({
           ...validated,
-          updated_at: null,
+          updated_at: null
         })
         .returningAll()
         .executeTakeFirstOrThrow()

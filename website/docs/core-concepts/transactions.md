@@ -11,16 +11,15 @@ Kysera provides clean transaction support through the Executor pattern, making i
 ## Basic Transaction Usage
 
 ```typescript
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   // All operations in this block are atomic
-  const user = await trx.insertInto('users')
+  const user = await trx
+    .insertInto('users')
     .values({ email: 'john@example.com', name: 'John' })
     .returningAll()
     .executeTakeFirstOrThrow()
 
-  await trx.insertInto('profiles')
-    .values({ user_id: user.id, bio: 'Hello!' })
-    .execute()
+  await trx.insertInto('profiles').values({ user_id: user.id, bio: 'Hello!' }).execute()
 
   // If any operation fails, all changes are rolled back
 })
@@ -40,16 +39,10 @@ This allows repository factories to work with both normal database instances and
 export function createUserRepository(executor: Executor<Database>) {
   return {
     async findById(id: number) {
-      return executor.selectFrom('users')
-        .where('id', '=', id)
-        .selectAll()
-        .executeTakeFirst()
+      return executor.selectFrom('users').where('id', '=', id).selectAll().executeTakeFirst()
     },
     async create(data: CreateUserInput) {
-      return executor.insertInto('users')
-        .values(data)
-        .returningAll()
-        .executeTakeFirstOrThrow()
+      return executor.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
     }
   }
 }
@@ -71,7 +64,7 @@ const repos = createRepos(db)
 const users = await repos.users.findAll()
 
 // Transaction usage - same API!
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const repos = createRepos(trx)
 
   const user = await repos.users.create({
@@ -98,29 +91,19 @@ import { ContextAwareRepository } from '@kysera/repository'
 
 class UserRepository extends ContextAwareRepository<Database, 'users'> {
   async create(data: { email: string; name: string }): Promise<User> {
-    return this.db
-      .insertInto(this.tableName)
-      .values(data)
-      .returningAll()
-      .executeTakeFirstOrThrow()
+    return this.db.insertInto(this.tableName).values(data).returningAll().executeTakeFirstOrThrow()
   }
 
   async findById(id: number): Promise<User | null> {
-    return this.db
-      .selectFrom(this.tableName)
-      .selectAll()
-      .where('id', '=', id)
-      .executeTakeFirst() ?? null
+    return (
+      this.db.selectFrom(this.tableName).selectAll().where('id', '=', id).executeTakeFirst() ?? null
+    )
   }
 }
 
 class PostRepository extends ContextAwareRepository<Database, 'posts'> {
   async create(data: { user_id: number; title: string }): Promise<Post> {
-    return this.db
-      .insertInto(this.tableName)
-      .values(data)
-      .returningAll()
-      .executeTakeFirstOrThrow()
+    return this.db.insertInto(this.tableName).values(data).returningAll().executeTakeFirstOrThrow()
   }
 }
 
@@ -132,7 +115,7 @@ const postRepo = new PostRepository(db, 'posts')
 const user = await userRepo.findById(1)
 
 // Transaction usage - switch executor cleanly
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const txUserRepo = userRepo.withExecutor(trx)
   const txPostRepo = postRepo.withExecutor(trx)
 
@@ -143,6 +126,7 @@ await db.transaction().execute(async (trx) => {
 ```
 
 **Benefits:**
+
 - No `executor` parameter in every method
 - Type-safe: `withExecutor()` returns same type
 - Custom properties preserved
@@ -152,7 +136,7 @@ await db.transaction().execute(async (trx) => {
 ```typescript
 const userRepo = createUserRepository(db)
 
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const txUserRepo = userRepo.withTransaction(trx)
   await txUserRepo.create({ email: 'test@example.com', name: 'Test' })
 })
@@ -186,17 +170,20 @@ Minimize transaction duration to avoid lock contention:
 const userData = await validateAndPrepareUserData(input)
 const profileData = await fetchExternalProfile(input.socialId)
 
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   // Quick database operations only
   const user = await trx.insertInto('users').values(userData).execute()
-  await trx.insertInto('profiles').values({ ...profileData, user_id: user.id }).execute()
+  await trx
+    .insertInto('profiles')
+    .values({ ...profileData, user_id: user.id })
+    .execute()
 })
 
 // Bad: Long-running operations inside transaction
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const user = await trx.insertInto('users').values(input).execute()
-  await sendWelcomeEmail(user.email)        // External call - avoid!
-  await updateExternalService(user.id)       // External call - avoid!
+  await sendWelcomeEmail(user.email) // External call - avoid!
+  await updateExternalService(user.id) // External call - avoid!
 })
 ```
 
@@ -224,7 +211,7 @@ await db.transaction().execute(async (trx) => {
 
 ```typescript
 try {
-  await db.transaction().execute(async (trx) => {
+  await db.transaction().execute(async trx => {
     const repos = createRepos(trx)
     await repos.users.create({ email, name })
 
@@ -272,14 +259,16 @@ await db.transaction().execute(async (trx) => {
 Control isolation level when needed:
 
 ```typescript
-await db.transaction()
+await db
+  .transaction()
   .setIsolationLevel('serializable')
-  .execute(async (trx) => {
+  .execute(async trx => {
     // Operations with serializable isolation
   })
 ```
 
 Available levels:
+
 - `read uncommitted`
 - `read committed` (default for most databases)
 - `repeatable read`
@@ -294,7 +283,7 @@ import { testInTransaction } from '@kysera/testing'
 
 describe('User Repository', () => {
   it('should create user', async () => {
-    await testInTransaction(db, async (trx) => {
+    await testInTransaction(db, async trx => {
       const repos = createRepos(trx)
 
       const user = await repos.users.create({

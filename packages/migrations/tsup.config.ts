@@ -1,15 +1,15 @@
-import { defineConfig } from 'tsup';
-import { readFileSync } from 'node:fs';
+import { defineConfig } from 'tsup'
+import { readFileSync } from 'node:fs'
 
-const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
 export default defineConfig({
   entry: ['src/index.ts', 'src/schemas.ts'],
   format: ['esm'],
   dts: {
     compilerOptions: {
-      composite: false,
-    },
+      composite: false
+    }
   },
   splitting: false,
   sourcemap: true,
@@ -21,6 +21,6 @@ export default defineConfig({
   platform: 'neutral',
   tsconfig: './tsconfig.build.json',
   define: {
-    __VERSION__: JSON.stringify(pkg.version),
-  },
-});
+    __VERSION__: JSON.stringify(pkg.version)
+  }
+})

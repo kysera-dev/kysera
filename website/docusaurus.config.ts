@@ -1,6 +1,6 @@
-import {themes as prismThemes} from 'prism-react-renderer';
-import type {Config} from '@docusaurus/types';
-import type * as Preset from '@docusaurus/preset-classic';
+import { themes as prismThemes } from 'prism-react-renderer'
+import type { Config } from '@docusaurus/types'
+import type * as Preset from '@docusaurus/preset-classic'
 
 const config: Config = {
   title: 'Kysera',
@@ -8,7 +8,7 @@ const config: Config = {
   favicon: 'img/favicon.ico',
 
   future: {
-    v4: true,
+    v4: true
   },
 
   url: 'https://kysera.dev',
@@ -23,13 +23,13 @@ const config: Config = {
 
   markdown: {
     hooks: {
-      onBrokenMarkdownLinks: 'warn',
-    },
+      onBrokenMarkdownLinks: 'warn'
+    }
   },
 
   i18n: {
     defaultLocale: 'en',
-    locales: ['en'],
+    locales: ['en']
   },
 
   presets: [
@@ -39,14 +39,14 @@ const config: Config = {
         docs: {
           sidebarPath: './sidebars.ts',
           editUrl: 'https://github.com/kysera-dev/kysera/tree/main/website/',
-          showLastUpdateTime: true,
+          showLastUpdateTime: true
         },
         blog: false,
         theme: {
-          customCss: './src/css/custom.css',
-        },
-      } satisfies Preset.Options,
-    ],
+          customCss: './src/css/custom.css'
+        }
+      } satisfies Preset.Options
+    ]
   ],
 
   themes: [
@@ -60,48 +60,48 @@ const config: Config = {
         indexPages: false,
         docsRouteBasePath: '/docs',
         highlightSearchTermsOnTargetPage: true,
-        explicitSearchResultPath: true,
-      },
-    ],
+        explicitSearchResultPath: true
+      }
+    ]
   ],
 
   themeConfig: {
     image: 'img/logo.png',
     colorMode: {
       defaultMode: 'dark',
-      respectPrefersColorScheme: true,
+      respectPrefersColorScheme: true
     },
     navbar: {
       title: 'Kysera',
       logo: {
         alt: 'Kysera Logo',
-        src: 'img/logo.png',
+        src: 'img/logo.png'
       },
       items: [
         {
           type: 'docSidebar',
           sidebarId: 'docsSidebar',
           position: 'left',
-          label: 'Docs',
+          label: 'Docs'
         },
         {
           type: 'docSidebar',
           sidebarId: 'apiSidebar',
           position: 'left',
-          label: 'API Reference',
+          label: 'API Reference'
         },
         {
           type: 'docSidebar',
           sidebarId: 'cliSidebar',
           position: 'left',
-          label: 'CLI',
+          label: 'CLI'
         },
         {
           href: 'https://github.com/kysera-dev/kysera',
           label: 'GitHub',
-          position: 'right',
-        },
-      ],
+          position: 'right'
+        }
+      ]
     },
     footer: {
       links: [
@@ -110,74 +110,74 @@ const config: Config = {
           items: [
             {
               label: 'Getting Started',
-              to: '/docs/getting-started',
+              to: '/docs/getting-started'
             },
             {
               label: 'Core Concepts',
-              to: '/docs/core-concepts/overview',
+              to: '/docs/core-concepts/overview'
             },
             {
               label: 'API Reference',
-              to: '/docs/api/core',
-            },
-          ],
+              to: '/docs/api/core'
+            }
+          ]
         },
         {
           title: 'Packages',
           items: [
             {
               label: '@kysera/core',
-              to: '/docs/api/core',
+              to: '/docs/api/core'
             },
             {
               label: '@kysera/repository',
-              to: '/docs/api/repository',
+              to: '/docs/api/repository'
             },
             {
               label: 'Plugins',
-              to: '/docs/plugins/overview',
-            },
-          ],
+              to: '/docs/plugins/overview'
+            }
+          ]
         },
         {
           title: 'Community',
           items: [
             {
               label: 'GitHub',
-              href: 'https://github.com/kysera-dev/kysera',
+              href: 'https://github.com/kysera-dev/kysera'
             },
             {
               label: 'Issues',
-              href: 'https://github.com/kysera-dev/kysera/issues',
+              href: 'https://github.com/kysera-dev/kysera/issues'
             },
             {
               label: 'Discussions',
-              href: 'https://github.com/kysera-dev/kysera/discussions',
-            },
-          ],
+              href: 'https://github.com/kysera-dev/kysera/discussions'
+            }
+          ]
         },
         {
           title: 'More',
           items: [
             {
               label: 'Kysely',
-              href: 'https://kysely.dev',
+              href: 'https://kysely.dev'
             },
             {
               label: 'npm',
-              href: 'https://www.npmjs.com/org/kysera',
-            },
-          ],
-        },
+              href: 'https://www.npmjs.com/org/kysera'
+            }
+          ]
+        }
       ],
-      copyright: `Copyright ${new Date().getFullYear()} Kysera. Built with Docusaurus.`,
+      copyright: `Copyright ${new Date().getFullYear()} Kysera. Built with Docusaurus.`
     },
     prism: {
       theme: prismThemes.github,
       darkTheme: prismThemes.dracula,
-      additionalLanguages: ['bash', 'typescript', 'json', 'sql'],
-    },
-  } satisfies Preset.ThemeConfig,
-};
+      additionalLanguages: ['bash', 'typescript', 'json', 'sql']
+    }
+  } satisfies Preset.ThemeConfig
+}
 
-export default config;
+export default config

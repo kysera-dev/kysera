@@ -10,12 +10,7 @@
   ],
   "entryPointStrategy": "expand",
   "out": "docs/api",
-  "exclude": [
-    "**/*.test.ts",
-    "**/*.spec.ts",
-    "**/*.bench.ts",
-    "**/node_modules/**"
-  ],
+  "exclude": ["**/*.test.ts", "**/*.spec.ts", "**/*.bench.ts", "**/node_modules/**"],
   "excludePrivate": true,
   "excludeProtected": false,
   "excludeInternal": false,
@@ -25,13 +20,7 @@
   "sort": ["source-order"],
   "categorizeByGroup": true,
   "defaultCategory": "Other",
-  "categoryOrder": [
-    "Core",
-    "Repository",
-    "Migrations",
-    "Plugins",
-    "*"
-  ],
+  "categoryOrder": ["Core", "Repository", "Migrations", "Plugins", "*"],
   "navigation": {
     "includeCategories": true,
     "includeGroups": true

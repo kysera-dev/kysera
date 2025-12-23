@@ -1,5 +1,5 @@
-import { defineConfig } from 'vitest/config';
-import path from 'node:path';
+import { defineConfig } from 'vitest/config'
+import path from 'node:path'
 
 export default defineConfig({
   test: {
@@ -16,19 +16,19 @@ export default defineConfig({
         '**/*.test.ts',
         '**/*.spec.ts',
         '**/test/**',
-        '**/index.ts',
+        '**/index.ts'
       ],
       thresholds: {
         lines: 95,
         functions: 95,
         branches: 85,
-        statements: 95,
-      },
-    },
+        statements: 95
+      }
+    }
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
-});
+      '@': path.resolve(__dirname, './src')
+    }
+  }
+})

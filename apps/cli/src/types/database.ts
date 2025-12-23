@@ -1,29 +1,29 @@
-import type { Kysely, RawBuilder, sql } from 'kysely';
+import type { Kysely, RawBuilder, sql } from 'kysely'
 
 /**
  * Generic database schema type for dynamic table access.
  * Tables are represented as key-value pairs where values are records with unknown columns.
  */
 export interface Database {
-  [key: string]: Record<string, unknown>;
+  [key: string]: Record<string, unknown>
 }
 
 /**
  * Compiled query interface for raw SQL execution.
  */
 export interface CompiledQuery {
-  sql: string;
-  parameters: readonly unknown[];
+  sql: string
+  parameters: readonly unknown[]
 }
 
 /**
  * Query execution result.
  */
 export interface QueryResult<T = unknown> {
-  rows: T[];
-  numAffectedRows?: bigint | number;
-  numChangedRows?: bigint;
-  insertId?: bigint | number;
+  rows: T[]
+  numAffectedRows?: bigint | number
+  numChangedRows?: bigint
+  insertId?: bigint | number
 }
 
 /**
@@ -38,14 +38,14 @@ export type DatabaseInstance = Kysely<Database> & {
    * Execute a raw SQL query.
    * @param query - Raw SQL string or CompiledQuery
    */
-  executeQuery(query: CompiledQuery | RawBuilder<unknown>): Promise<QueryResult>;
+  executeQuery(query: CompiledQuery | RawBuilder<unknown>): Promise<QueryResult>
 
   /**
    * Create a raw SQL builder.
    * @param sql - SQL template string
    */
-  raw<T = unknown>(sql: string): RawBuilder<T>;
-};
+  raw<T = unknown>(sql: string): RawBuilder<T>
+}
 
 /**
  * Base interface for query execution plans across all dialects.
@@ -53,33 +53,33 @@ export type DatabaseInstance = Kysely<Database> & {
  */
 export interface QueryPlan {
   /** The type of operation node (e.g., 'Seq Scan', 'Index Scan', 'Hash Join') */
-  'Node Type'?: string;
+  'Node Type'?: string
   /** Estimated total cost of the operation */
-  'Total Cost'?: number;
+  'Total Cost'?: number
   /** Estimated number of rows to be returned */
-  'Plan Rows'?: number;
+  'Plan Rows'?: number
   /** Child plans in the execution tree */
-  Plans?: QueryPlan[];
+  Plans?: QueryPlan[]
   /** Table/relation being accessed */
-  'Relation Name'?: string;
+  'Relation Name'?: string
   /** Index being used (if any) */
-  'Index Name'?: string;
+  'Index Name'?: string
   /** Filter condition applied */
-  Filter?: string;
+  Filter?: string
   /** Join condition */
-  'Join Filter'?: string;
+  'Join Filter'?: string
   /** Hash join condition */
-  'Hash Cond'?: string;
+  'Hash Cond'?: string
   /** Index condition */
-  'Index Cond'?: string;
+  'Index Cond'?: string
   /** Sort keys */
-  'Sort Key'?: string | string[];
+  'Sort Key'?: string | string[]
   /** Sort method used */
-  'Sort Method'?: string;
+  'Sort Method'?: string
   /** Memory used for sorting */
-  'Sort Space Used'?: number;
+  'Sort Space Used'?: number
   /** Width of output rows in bytes */
-  'Plan Width'?: number;
+  'Plan Width'?: number
 }
 
 /**
@@ -88,33 +88,33 @@ export interface QueryPlan {
  */
 export interface PostgresPlan extends QueryPlan {
   /** Cost to return first row */
-  'Startup Cost'?: number;
+  'Startup Cost'?: number
   /** Actual time to complete operation (ms) */
-  'Actual Total Time'?: number;
+  'Actual Total Time'?: number
   /** Actual time to return first row (ms) */
-  'Actual Startup Time'?: number;
+  'Actual Startup Time'?: number
   /** Actual number of rows returned */
-  'Actual Rows'?: number;
+  'Actual Rows'?: number
   /** Number of times this node was executed */
-  'Actual Loops'?: number;
+  'Actual Loops'?: number
   /** Number of rows removed by filter */
-  'Rows Removed by Filter'?: number;
+  'Rows Removed by Filter'?: number
   /** Number of rows removed by join filter */
-  'Rows Removed by Join Filter'?: number;
+  'Rows Removed by Join Filter'?: number
   /** Shared buffer hits */
-  'Shared Hit Blocks'?: number;
+  'Shared Hit Blocks'?: number
   /** Shared buffer reads */
-  'Shared Read Blocks'?: number;
+  'Shared Read Blocks'?: number
   /** Shared buffer dirtied */
-  'Shared Dirtied Blocks'?: number;
+  'Shared Dirtied Blocks'?: number
   /** Shared buffer written */
-  'Shared Written Blocks'?: number;
+  'Shared Written Blocks'?: number
   /** Hash batches used */
-  'Hash Batches'?: number;
+  'Hash Batches'?: number
   /** Output columns (verbose mode) */
-  Output?: string | string[];
+  Output?: string | string[]
   /** Child plans with PostgreSQL-specific fields */
-  Plans?: PostgresPlan[];
+  Plans?: PostgresPlan[]
 }
 
 /**
@@ -122,44 +122,44 @@ export interface PostgresPlan extends QueryPlan {
  */
 export interface PostgresExplainOutput {
   /** The root execution plan */
-  Plan?: PostgresPlan;
+  Plan?: PostgresPlan
   /** Planning time in milliseconds */
-  'Planning Time'?: number;
+  'Planning Time'?: number
   /** Execution time in milliseconds */
-  'Execution Time'?: number;
+  'Execution Time'?: number
   /** Total runtime in milliseconds */
-  'Total Runtime'?: number;
+  'Total Runtime'?: number
   /** Trigger execution information */
-  Triggers?: PostgresTriggerInfo[];
+  Triggers?: PostgresTriggerInfo[]
   /** JIT compilation information */
-  JIT?: PostgresJitInfo;
+  JIT?: PostgresJitInfo
 }
 
 /**
  * PostgreSQL trigger execution information.
  */
 export interface PostgresTriggerInfo {
-  'Trigger Name': string;
-  Time: number;
-  Calls: number;
+  'Trigger Name': string
+  Time: number
+  Calls: number
 }
 
 /**
  * PostgreSQL JIT compilation information.
  */
 export interface PostgresJitInfo {
-  Functions: number;
+  Functions: number
   Options: {
-    Inlining: boolean;
-    Optimization: boolean;
-  };
+    Inlining: boolean
+    Optimization: boolean
+  }
   Timing: {
-    Generation: number;
-    Inlining: number;
-    Optimization: number;
-    Emission: number;
-    Total: number;
-  };
+    Generation: number
+    Inlining: number
+    Optimization: number
+    Emission: number
+    Total: number
+  }
 }
 
 /**
@@ -168,72 +168,72 @@ export interface PostgresJitInfo {
  */
 export interface MySQLPlan {
   /** Unique identifier for the SELECT */
-  id?: number;
+  id?: number
   /** Type of SELECT (SIMPLE, PRIMARY, UNION, etc.) */
-  select_type?: string;
+  select_type?: string
   /** Table being accessed */
-  table?: string;
+  table?: string
   /** Join type (system, const, eq_ref, ref, range, index, ALL) */
-  type?: string;
+  type?: string
   /** Indexes that could potentially be used */
-  possible_keys?: string | null;
+  possible_keys?: string | null
   /** Index actually used */
-  key?: string | null;
+  key?: string | null
   /** Length of the key used */
-  key_length?: string | null;
+  key_length?: string | null
   /** Column or constant compared with index */
-  ref?: string | null;
+  ref?: string | null
   /** Estimated number of rows to examine */
-  rows?: number;
+  rows?: number
   /** Percentage of rows filtered by condition */
-  filtered?: number;
+  filtered?: number
   /** Additional information (Using where, Using filesort, Using temporary, etc.) */
-  Extra?: string;
+  Extra?: string
 }
 
 /**
  * MySQL JSON EXPLAIN format structures.
  */
 export interface MySQLJsonPlan {
-  query_block?: MySQLQueryBlock;
+  query_block?: MySQLQueryBlock
 }
 
 export interface MySQLQueryBlock {
-  select_id?: number;
-  cost_info?: MySQLCostInfo;
-  table?: MySQLTableInfo;
-  nested_loop?: Array<{ table: MySQLTableInfo }>;
-  ordering_operation?: MySQLOrderingOperation;
-  grouping_operation?: MySQLGroupingOperation;
+  select_id?: number
+  cost_info?: MySQLCostInfo
+  table?: MySQLTableInfo
+  nested_loop?: Array<{ table: MySQLTableInfo }>
+  ordering_operation?: MySQLOrderingOperation
+  grouping_operation?: MySQLGroupingOperation
 }
 
 export interface MySQLCostInfo {
-  query_cost?: string;
-  read_cost?: string;
-  eval_cost?: string;
-  prefix_cost?: string;
+  query_cost?: string
+  read_cost?: string
+  eval_cost?: string
+  prefix_cost?: string
 }
 
 export interface MySQLTableInfo {
-  table_name?: string;
-  access_type?: string;
-  key?: string;
-  key_length?: string;
-  rows_examined_per_scan?: number;
-  rows_produced_per_join?: number;
-  filtered?: number;
-  cost_info?: MySQLCostInfo;
-  used_columns?: string[];
-  attached_condition?: string;
+  table_name?: string
+  access_type?: string
+  key?: string
+  key_length?: string
+  rows_examined_per_scan?: number
+  rows_produced_per_join?: number
+  filtered?: number
+  cost_info?: MySQLCostInfo
+  used_columns?: string[]
+  attached_condition?: string
 }
 
 export interface MySQLOrderingOperation {
-  using_temporary_table?: boolean;
-  using_filesort?: boolean;
+  using_temporary_table?: boolean
+  using_filesort?: boolean
 }
 
 export interface MySQLGroupingOperation {
-  using_temporary_table?: boolean;
+  using_temporary_table?: boolean
 }
 
 /**
@@ -241,37 +241,37 @@ export interface MySQLGroupingOperation {
  */
 export interface SQLitePlan {
   /** Node ID in the plan tree */
-  id?: number;
+  id?: number
   /** Parent node ID */
-  parent?: number;
+  parent?: number
   /** Not used */
-  notused?: number;
+  notused?: number
   /** Human-readable description of the operation */
-  detail?: string;
+  detail?: string
 }
 
 /**
  * Union type for all dialect-specific plans.
  */
-export type DialectPlan = QueryPlan | PostgresPlan | MySQLPlan | SQLitePlan;
+export type DialectPlan = QueryPlan | PostgresPlan | MySQLPlan | SQLitePlan
 
 /**
  * Generic query result row type.
  */
-export type QueryResultRow = Record<string, unknown>;
+export type QueryResultRow = Record<string, unknown>
 
 /**
  * PostgreSQL EXPLAIN text output row.
  */
 export interface PostgresExplainTextRow {
-  'QUERY PLAN': string;
+  'QUERY PLAN': string
 }
 
 /**
  * MySQL EXPLAIN JSON output row.
  */
 export interface MySQLExplainJsonRow {
-  EXPLAIN: string | MySQLJsonPlan;
+  EXPLAIN: string | MySQLJsonPlan
 }
 
 /**
@@ -279,23 +279,23 @@ export interface MySQLExplainJsonRow {
  */
 export interface ColumnInfo {
   /** Column name */
-  name: string;
+  name: string
   /** Database-specific data type */
-  dataType: string;
+  dataType: string
   /** Whether the column accepts null values */
-  isNullable: boolean;
+  isNullable: boolean
   /** Whether this column is part of the primary key */
-  isPrimaryKey: boolean;
+  isPrimaryKey: boolean
   /** Whether this column is part of a foreign key */
-  isForeignKey: boolean;
+  isForeignKey: boolean
   /** Default value for the column */
-  defaultValue?: string | null;
+  defaultValue?: string | null
   /** Maximum length for string/varchar types */
-  maxLength?: number;
+  maxLength?: number
   /** Referenced table (if foreign key) */
-  referencedTable?: string;
+  referencedTable?: string
   /** Referenced column (if foreign key) */
-  referencedColumn?: string;
+  referencedColumn?: string
 }
 
 /**
@@ -303,17 +303,17 @@ export interface ColumnInfo {
  */
 export interface IndexInfo {
   /** Index name */
-  name: string;
+  name: string
   /** Columns included in the index */
-  columns: string[];
+  columns: string[]
   /** Whether the index enforces uniqueness */
-  isUnique: boolean;
+  isUnique: boolean
   /** Whether this is the primary key index */
-  isPrimary: boolean;
+  isPrimary: boolean
   /** Index cardinality (if available) */
-  cardinality?: number;
+  cardinality?: number
   /** Index usage statistics (if available) */
-  usage?: number;
+  usage?: number
 }
 
 /**
@@ -321,17 +321,17 @@ export interface IndexInfo {
  */
 export interface ForeignKeyInfo {
   /** Column name in current table */
-  column: string;
+  column: string
   /** Referenced table name */
-  referencedTable: string;
+  referencedTable: string
   /** Referenced column name */
-  referencedColumn: string;
+  referencedColumn: string
   /** Foreign key constraint name */
-  constraintName?: string;
+  constraintName?: string
   /** On delete action */
-  onDelete?: string;
+  onDelete?: string
   /** On update action */
-  onUpdate?: string;
+  onUpdate?: string
 }
 
 /**
@@ -339,17 +339,17 @@ export interface ForeignKeyInfo {
  */
 export interface TableInfo {
   /** Table name */
-  name: string;
+  name: string
   /** Table schema/database */
-  schema?: string;
+  schema?: string
   /** List of columns */
-  columns: ColumnInfo[];
+  columns: ColumnInfo[]
   /** Primary key column names */
-  primaryKey?: string[];
+  primaryKey?: string[]
   /** List of indexes */
-  indexes: IndexInfo[];
+  indexes: IndexInfo[]
   /** List of foreign keys */
-  foreignKeys?: ForeignKeyInfo[];
+  foreignKeys?: ForeignKeyInfo[]
   /** Row count (if available) */
-  rowCount?: number;
+  rowCount?: number
 }

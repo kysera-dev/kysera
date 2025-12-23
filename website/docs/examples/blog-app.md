@@ -35,7 +35,7 @@ interface Database {
     user_id: number
     title: string
     content: string
-    published: boolean  // Note: boolean, not status enum
+    published: boolean // Note: boolean, not status enum
     created_at: Generated<Date>
     updated_at: Date | null
     deleted_at: Date | null
@@ -67,7 +67,7 @@ const basePool = new Pool({
   connectionString: process.env['DATABASE_URL'] || 'postgresql://localhost/blog_example',
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 2000
 })
 
 // Wrap pool with metrics (for health checks)
@@ -76,9 +76,7 @@ export const pool = createMetricsPool(basePool)
 // Create Kysely instance
 const baseDb = new Kysely<Database>({
   dialect: new PostgresDialect({ pool: basePool }),
-  log: process.env['NODE_ENV'] === 'development'
-    ? ['query', 'error']
-    : ['error']
+  log: process.env['NODE_ENV'] === 'development' ? ['query', 'error'] : ['error']
 })
 
 // Add debug wrapper in development
@@ -107,7 +105,7 @@ export const executor = await createExecutor(db, [softDeletePlugin()])
 const userRepo = createUserRepository(executor)
 
 // Queries automatically filter deleted records
-const users = await userRepo.findAll()  // WHERE deleted_at IS NULL applied automatically
+const users = await userRepo.findAll() // WHERE deleted_at IS NULL applied automatically
 ```
 
 ## Repository Implementation
@@ -131,12 +129,12 @@ export const UserSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(100),
   created_at: z.date(),
-  deleted_at: z.date().nullable(),
+  deleted_at: z.date().nullable()
 })
 
 export const CreateUserSchema = z.object({
   email: z.string().email(),
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(100)
 })
 
 export const UpdateUserSchema = CreateUserSchema.partial()
@@ -162,7 +160,7 @@ export function createUserRepository(executor: Executor<Database>) {
         .selectFrom('users')
         .selectAll()
         .where('id', '=', id)
-        .where('deleted_at', 'is', null)  // Manual soft-delete filtering
+        .where('deleted_at', 'is', null) // Manual soft-delete filtering
         .executeTakeFirst()
 
       if (!row) return null
@@ -194,9 +192,7 @@ export function createUserRepository(executor: Executor<Database>) {
         .execute()
 
       const users = rows.map(mapUserRow)
-      return validateDbResults
-        ? users.map(u => UserSchema.parse(u))
-        : users
+      return validateDbResults ? users.map(u => UserSchema.parse(u)) : users
     },
 
     async create(input: unknown): Promise<User> {
@@ -206,7 +202,7 @@ export function createUserRepository(executor: Executor<Database>) {
         .insertInto('users')
         .values({
           ...validated,
-          deleted_at: null,
+          deleted_at: null
         })
         .returningAll()
         .executeTakeFirstOrThrow()
@@ -239,11 +235,7 @@ export function createUserRepository(executor: Executor<Database>) {
     },
 
     async restore(id: number): Promise<void> {
-      await executor
-        .updateTable('users')
-        .set({ deleted_at: null })
-        .where('id', '=', id)
-        .execute()
+      await executor.updateTable('users').set({ deleted_at: null }).where('id', '=', id).execute()
     }
   }
 }
@@ -290,9 +282,7 @@ export function createUserRepository(executor: Executor<Database>) {
         .execute()
 
       const users = rows.map(mapUserRow)
-      return validateDbResults
-        ? users.map(u => UserSchema.parse(u))
-        : users
+      return validateDbResults ? users.map(u => UserSchema.parse(u)) : users
     },
 
     // Soft delete and restore still implemented manually
@@ -306,17 +296,14 @@ export function createUserRepository(executor: Executor<Database>) {
     },
 
     async restore(id: number): Promise<void> {
-      await executor
-        .updateTable('users')
-        .set({ deleted_at: null })
-        .where('id', '=', id)
-        .execute()
+      await executor.updateTable('users').set({ deleted_at: null }).where('id', '=', id).execute()
     }
   }
 }
 ```
 
 **Key Benefits:**
+
 - Automatic `deleted_at IS NULL` filtering on all SELECT queries
 - No risk of forgetting the filter in new queries
 - Consistent behavior across all queries
@@ -431,6 +418,7 @@ pnpm start
 ```
 
 The example will:
+
 1. Check database health
 2. Create a user
 3. Find user by email

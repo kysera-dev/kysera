@@ -1,6 +1,6 @@
 ---
 sidebar_position: 6
-title: "@kysera/testing"
+title: '@kysera/testing'
 description: Testing utilities API reference
 ---
 
@@ -35,22 +35,22 @@ This is a **utility package** for testing. It's not part of the Repository/DAL p
 ## Quick Start
 
 ```typescript
-import { testInTransaction, createFactory } from '@kysera/testing';
+import { testInTransaction, createFactory } from '@kysera/testing'
 
 const createUser = createFactory({
   email: () => `user-${Date.now()}@example.com`,
   name: 'Test User',
-  role: 'user',
-});
+  role: 'user'
+})
 
 it('creates user', async () => {
-  await testInTransaction(db, async (trx) => {
-    const userData = createUser({ name: 'Alice' });
-    const user = await trx.insertInto('users').values(userData).returningAll().executeTakeFirst();
-    expect(user?.name).toBe('Alice');
-  });
+  await testInTransaction(db, async trx => {
+    const userData = createUser({ name: 'Alice' })
+    const user = await trx.insertInto('users').values(userData).returningAll().executeTakeFirst()
+    expect(user?.name).toBe('Alice')
+  })
   // Database automatically rolled back - no cleanup needed!
-});
+})
 ```
 
 ## Transaction Testing
@@ -60,16 +60,20 @@ it('creates user', async () => {
 Test in a transaction that automatically rolls back. **Fastest testing approach.**
 
 ```typescript
-import { testInTransaction } from '@kysera/testing';
+import { testInTransaction } from '@kysera/testing'
 
 it('creates and queries user', async () => {
-  await testInTransaction(db, async (trx) => {
-    await trx.insertInto('users').values({ email: 'test@example.com', name: 'Test' }).execute();
-    const user = await trx.selectFrom('users').where('email', '=', 'test@example.com').selectAll().executeTakeFirst();
-    expect(user?.name).toBe('Test');
-  });
+  await testInTransaction(db, async trx => {
+    await trx.insertInto('users').values({ email: 'test@example.com', name: 'Test' }).execute()
+    const user = await trx
+      .selectFrom('users')
+      .where('email', '=', 'test@example.com')
+      .selectAll()
+      .executeTakeFirst()
+    expect(user?.name).toBe('Test')
+  })
   // Automatically rolled back
-});
+})
 ```
 
 ### testWithSavepoints()
@@ -77,14 +81,14 @@ it('creates and queries user', async () => {
 Test with savepoints for nested transaction testing.
 
 ```typescript
-import { testWithSavepoints } from '@kysera/testing';
+import { testWithSavepoints } from '@kysera/testing'
 
 it('handles nested operations', async () => {
-  await testWithSavepoints(db, async (trx) => {
-    await createUserWithProfile(trx, userData);
+  await testWithSavepoints(db, async trx => {
+    await createUserWithProfile(trx, userData)
     // Verify results...
-  });
-});
+  })
+})
 ```
 
 ### testWithIsolation()
@@ -92,13 +96,13 @@ it('handles nested operations', async () => {
 Test with specific transaction isolation level.
 
 ```typescript
-import { testWithIsolation } from '@kysera/testing';
+import { testWithIsolation } from '@kysera/testing'
 
 it('handles serializable isolation', async () => {
-  await testWithIsolation(db, 'serializable', async (trx) => {
+  await testWithIsolation(db, 'serializable', async trx => {
     // Test behavior under serializable isolation
-  });
-});
+  })
+})
 ```
 
 **Isolation Levels:** `'read uncommitted'`, `'read committed'`, `'repeatable read'`, `'serializable'`
@@ -110,20 +114,21 @@ it('handles serializable isolation', async () => {
 Clean database using specified strategy.
 
 ```typescript
-import { cleanDatabase } from '@kysera/testing';
+import { cleanDatabase } from '@kysera/testing'
 
 // Truncate - fast bulk cleanup
 afterEach(async () => {
-  await cleanDatabase(db, 'truncate', ['users', 'orders', 'order_items']);
-});
+  await cleanDatabase(db, 'truncate', ['users', 'orders', 'order_items'])
+})
 
 // Delete - requires FK-safe order (children first)
 afterEach(async () => {
-  await cleanDatabase(db, 'delete', ['order_items', 'orders', 'users']);
-});
+  await cleanDatabase(db, 'delete', ['order_items', 'orders', 'users'])
+})
 ```
 
 **Strategies:**
+
 - `'transaction'` - No cleanup (use with `testInTransaction`)
 - `'delete'` - DELETE FROM each table (medium speed, FK-safe order required)
 - `'truncate'` - TRUNCATE TABLE (fastest bulk clean, handles FKs automatically)
@@ -135,16 +140,16 @@ afterEach(async () => {
 Create a generic test data factory.
 
 ```typescript
-import { createFactory } from '@kysera/testing';
+import { createFactory } from '@kysera/testing'
 
 const createUser = createFactory({
   email: () => `user-${Date.now()}@example.com`,
   name: 'Test User',
-  role: 'user',
-});
+  role: 'user'
+})
 
-const user1 = createUser();                    // Use defaults
-const admin = createUser({ role: 'admin' });   // Override
+const user1 = createUser() // Use defaults
+const admin = createUser({ role: 'admin' }) // Override
 ```
 
 ### createMany()
@@ -152,13 +157,13 @@ const admin = createUser({ role: 'admin' });   // Override
 Create multiple instances.
 
 ```typescript
-import { createMany } from '@kysera/testing';
+import { createMany } from '@kysera/testing'
 
-const users = createMany(createUser, 5);
-const admins = createMany(createUser, 3, (i) => ({
+const users = createMany(createUser, 5)
+const admins = createMany(createUser, 3, i => ({
   name: `Admin ${i + 1}`,
-  role: 'admin',
-}));
+  role: 'admin'
+}))
 ```
 
 ### createSequenceFactory()
@@ -166,16 +171,16 @@ const admins = createMany(createUser, 3, (i) => ({
 Factory with built-in sequence counter.
 
 ```typescript
-import { createSequenceFactory } from '@kysera/testing';
+import { createSequenceFactory } from '@kysera/testing'
 
-const createUser = createSequenceFactory((seq) => ({
+const createUser = createSequenceFactory(seq => ({
   id: seq,
   email: `user-${seq}@example.com`,
-  name: `User ${seq}`,
-}));
+  name: `User ${seq}`
+}))
 
-const user1 = createUser(); // { id: 1, email: 'user-1@...' }
-const user2 = createUser(); // { id: 2, email: 'user-2@...' }
+const user1 = createUser() // { id: 1, email: 'user-1@...' }
+const user2 = createUser() // { id: 2, email: 'user-2@...' }
 ```
 
 ## Database Seeding
@@ -185,16 +190,19 @@ const user2 = createUser(); // { id: 2, email: 'user-2@...' }
 Seed database with test data.
 
 ```typescript
-import { seedDatabase } from '@kysera/testing';
+import { seedDatabase } from '@kysera/testing'
 
 beforeAll(async () => {
-  await seedDatabase(db, async (trx) => {
-    await trx.insertInto('users').values([
-      { email: 'alice@example.com', name: 'Alice' },
-      { email: 'bob@example.com', name: 'Bob' },
-    ]).execute();
-  });
-});
+  await seedDatabase(db, async trx => {
+    await trx
+      .insertInto('users')
+      .values([
+        { email: 'alice@example.com', name: 'Alice' },
+        { email: 'bob@example.com', name: 'Bob' }
+      ])
+      .execute()
+  })
+})
 ```
 
 ### composeSeeders()
@@ -226,18 +234,22 @@ beforeAll(async () => {
 Wait for a condition to be true.
 
 ```typescript
-import { waitFor } from '@kysera/testing';
+import { waitFor } from '@kysera/testing'
 
 await waitFor(async () => {
-  const user = await db.selectFrom('users').where('email', '=', 'test@example.com').executeTakeFirst();
-  return user !== undefined;
-});
+  const user = await db
+    .selectFrom('users')
+    .where('email', '=', 'test@example.com')
+    .executeTakeFirst()
+  return user !== undefined
+})
 
 // With options
-await waitFor(
-  async () => (await getProcessedCount()) >= 10,
-  { timeout: 10000, interval: 200, timeoutMessage: 'Jobs did not complete' }
-);
+await waitFor(async () => (await getProcessedCount()) >= 10, {
+  timeout: 10000,
+  interval: 200,
+  timeoutMessage: 'Jobs did not complete'
+})
 ```
 
 ### snapshotTable()
@@ -245,12 +257,12 @@ await waitFor(
 Snapshot table state for comparison.
 
 ```typescript
-import { snapshotTable } from '@kysera/testing';
+import { snapshotTable } from '@kysera/testing'
 
-const before = await snapshotTable(db, 'users');
-await createUser(db, userData);
-const after = await snapshotTable(db, 'users');
-expect(after.length).toBe(before.length + 1);
+const before = await snapshotTable(db, 'users')
+await createUser(db, userData)
+const after = await snapshotTable(db, 'users')
+expect(after.length).toBe(before.length + 1)
 ```
 
 ### countRows()
@@ -258,10 +270,10 @@ expect(after.length).toBe(before.length + 1);
 Count rows in a table.
 
 ```typescript
-import { countRows } from '@kysera/testing';
+import { countRows } from '@kysera/testing'
 
-const count = await countRows(db, 'users');
-expect(count).toBe(5);
+const count = await countRows(db, 'users')
+expect(count).toBe(5)
 ```
 
 ### assertRowExists()
@@ -269,10 +281,10 @@ expect(count).toBe(5);
 Assert that a row exists.
 
 ```typescript
-import { assertRowExists } from '@kysera/testing';
+import { assertRowExists } from '@kysera/testing'
 
-const user = await assertRowExists(db, 'users', { email: 'test@example.com' });
-expect(user.name).toBe('Test User');
+const user = await assertRowExists(db, 'users', { email: 'test@example.com' })
+expect(user.name).toBe('Test User')
 ```
 
 ### assertRowNotExists()
@@ -280,24 +292,24 @@ expect(user.name).toBe('Test User');
 Assert that no row exists.
 
 ```typescript
-import { assertRowNotExists } from '@kysera/testing';
+import { assertRowNotExists } from '@kysera/testing'
 
-await deleteUser(db, userId);
-await assertRowNotExists(db, 'users', { id: userId });
+await deleteUser(db, userId)
+await assertRowNotExists(db, 'users', { id: userId })
 ```
 
 ## TypeScript Types
 
 ```typescript
-type IsolationLevel = 'read uncommitted' | 'read committed' | 'repeatable read' | 'serializable';
-type CleanupStrategy = 'truncate' | 'transaction' | 'delete';
-type FactoryFunction<T> = (overrides?: Partial<T>) => T;
-type SeedFunction<DB> = (trx: Transaction<DB>) => Promise<void>;
+type IsolationLevel = 'read uncommitted' | 'read committed' | 'repeatable read' | 'serializable'
+type CleanupStrategy = 'truncate' | 'transaction' | 'delete'
+type FactoryFunction<T> = (overrides?: Partial<T>) => T
+type SeedFunction<DB> = (trx: Transaction<DB>) => Promise<void>
 
 interface WaitForOptions {
-  timeout?: number;        // Default: 5000
-  interval?: number;       // Default: 100
-  timeoutMessage?: string;
+  timeout?: number // Default: 5000
+  interval?: number // Default: 100
+  timeoutMessage?: string
 }
 ```
 
@@ -307,11 +319,13 @@ interface WaitForOptions {
 
 ```typescript
 // Fast - automatic rollback
-await testInTransaction(db, async (trx) => { /* test */ });
+await testInTransaction(db, async trx => {
+  /* test */
+})
 
 // Slower - manual cleanup
-await createUser(db, userData);
-await cleanDatabase(db, 'truncate', ['users']);
+await createUser(db, userData)
+await cleanDatabase(db, 'truncate', ['users'])
 ```
 
 ### 2. Define Factories Once
@@ -320,11 +334,11 @@ await cleanDatabase(db, 'truncate', ['users']);
 // factories.ts
 export const createUser = createFactory({
   email: () => `user-${Date.now()}@example.com`,
-  name: 'Test User',
-});
+  name: 'Test User'
+})
 
 // test file
-import { createUser } from './factories';
+import { createUser } from './factories'
 ```
 
 ### 3. Compose Seeders

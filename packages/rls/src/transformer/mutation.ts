@@ -3,11 +3,11 @@
  * Validates CREATE, UPDATE, DELETE operations against RLS policies
  */
 
-import type { PolicyRegistry } from '../policy/registry.js';
-import type { PolicyEvaluationContext, Operation } from '../policy/types.js';
-import type { RLSContext } from '../context/types.js';
-import { rlsContext } from '../context/manager.js';
-import { RLSPolicyViolation, RLSPolicyEvaluationError } from '../errors.js';
+import type { PolicyRegistry } from '../policy/registry.js'
+import type { PolicyEvaluationContext, Operation } from '../policy/types.js'
+import type { RLSContext } from '../context/types.js'
+import { rlsContext } from '../context/manager.js'
+import { RLSPolicyViolation, RLSPolicyEvaluationError } from '../errors.js'
 
 /**
  * Mutation guard
@@ -29,11 +29,8 @@ export class MutationGuard<DB = unknown> {
    * await guard.checkCreate('posts', { title: 'Hello', tenant_id: 1 });
    * ```
    */
-  async checkCreate(
-    table: string,
-    data: Record<string, unknown>
-  ): Promise<void> {
-    await this.checkMutation(table, 'create', undefined, data);
+  async checkCreate(table: string, data: Record<string, unknown>): Promise<void> {
+    await this.checkMutation(table, 'create', undefined, data)
   }
 
   /**
@@ -56,7 +53,7 @@ export class MutationGuard<DB = unknown> {
     existingRow: Record<string, unknown>,
     data: Record<string, unknown>
   ): Promise<void> {
-    await this.checkMutation(table, 'update', existingRow, data);
+    await this.checkMutation(table, 'update', existingRow, data)
   }
 
   /**
@@ -73,11 +70,8 @@ export class MutationGuard<DB = unknown> {
    * await guard.checkDelete('posts', existingPost);
    * ```
    */
-  async checkDelete(
-    table: string,
-    existingRow: Record<string, unknown>
-  ): Promise<void> {
-    await this.checkMutation(table, 'delete', existingRow);
+  async checkDelete(table: string, existingRow: Record<string, unknown>): Promise<void> {
+    await this.checkMutation(table, 'delete', existingRow)
   }
 
   /**
@@ -94,19 +88,16 @@ export class MutationGuard<DB = unknown> {
    * const canRead = await guard.checkRead('posts', post);
    * ```
    */
-  async checkRead(
-    table: string,
-    row: Record<string, unknown>
-  ): Promise<boolean> {
+  async checkRead(table: string, row: Record<string, unknown>): Promise<boolean> {
     try {
-      await this.checkMutation(table, 'read', row);
-      return true;
+      await this.checkMutation(table, 'read', row)
+      return true
     } catch (error) {
       // Both policy violations and evaluation errors result in denial
       if (error instanceof RLSPolicyViolation || error instanceof RLSPolicyEvaluationError) {
-        return false;
+        return false
       }
-      throw error;
+      throw error
     }
   }
 
@@ -126,14 +117,14 @@ export class MutationGuard<DB = unknown> {
     data?: Record<string, unknown>
   ): Promise<boolean> {
     try {
-      await this.checkMutation(table, operation, row, data);
-      return true;
+      await this.checkMutation(table, operation, row, data)
+      return true
     } catch (error) {
       // Both policy violations and evaluation errors result in denial
       if (error instanceof RLSPolicyViolation || error instanceof RLSPolicyEvaluationError) {
-        return false;
+        return false
       }
-      throw error;
+      throw error
     }
   }
 
@@ -152,26 +143,26 @@ export class MutationGuard<DB = unknown> {
     data: Record<string, unknown>,
     row?: Record<string, unknown>
   ): Promise<boolean> {
-    const ctx = rlsContext.getContextOrNull();
+    const ctx = rlsContext.getContextOrNull()
     if (!ctx) {
-      return false;
+      return false
     }
 
     // System users bypass validation
     if (ctx.auth.isSystem) {
-      return true;
+      return true
     }
 
     // Check skipFor roles
-    const skipFor = this.registry.getSkipFor(table);
+    const skipFor = this.registry.getSkipFor(table)
     if (skipFor.some(role => ctx.auth.roles.includes(role))) {
-      return true;
+      return true
     }
 
     // Get validate policies for this operation
-    const validates = this.registry.getValidates(table, operation);
+    const validates = this.registry.getValidates(table, operation)
     if (validates.length === 0) {
-      return true;
+      return true
     }
 
     // Build evaluation context
@@ -181,18 +172,18 @@ export class MutationGuard<DB = unknown> {
       data: data,
       table: table,
       operation: operation,
-      ...(ctx.meta !== undefined && { meta: ctx.meta as Record<string, unknown> }),
-    };
+      ...(ctx.meta !== undefined && { meta: ctx.meta as Record<string, unknown> })
+    }
 
     // All validate policies must pass
     for (const validate of validates) {
-      const result = await this.evaluatePolicy(validate.evaluate, evalCtx, validate.name);
+      const result = await this.evaluatePolicy(validate.evaluate, evalCtx, validate.name)
       if (!result) {
-        return false;
+        return false
       }
     }
 
-    return true;
+    return true
   }
 
   /**
@@ -210,90 +201,70 @@ export class MutationGuard<DB = unknown> {
     row?: Record<string, unknown>,
     data?: Record<string, unknown>
   ): Promise<void> {
-    const ctx = rlsContext.getContextOrNull();
+    const ctx = rlsContext.getContextOrNull()
     if (!ctx) {
-      throw new RLSPolicyViolation(
-        operation,
-        table,
-        'No RLS context available'
-      );
+      throw new RLSPolicyViolation(operation, table, 'No RLS context available')
     }
 
     // System users bypass all checks
     if (ctx.auth.isSystem) {
-      return;
+      return
     }
 
     // Check if user role should skip RLS
-    const skipFor = this.registry.getSkipFor(table);
+    const skipFor = this.registry.getSkipFor(table)
     if (skipFor.some(role => ctx.auth.roles.includes(role))) {
-      return;
+      return
     }
 
     // Evaluate deny policies first (they override allows)
-    const denies = this.registry.getDenies(table, operation);
+    const denies = this.registry.getDenies(table, operation)
     for (const deny of denies) {
-      const evalCtx = this.createEvalContext(ctx, table, operation, row, data);
-      const result = await this.evaluatePolicy(deny.evaluate, evalCtx, deny.name);
+      const evalCtx = this.createEvalContext(ctx, table, operation, row, data)
+      const result = await this.evaluatePolicy(deny.evaluate, evalCtx, deny.name)
 
       if (result) {
-        throw new RLSPolicyViolation(
-          operation,
-          table,
-          `Denied by policy: ${deny.name}`
-        );
+        throw new RLSPolicyViolation(operation, table, `Denied by policy: ${deny.name}`)
       }
     }
 
     // Evaluate validate policies (for CREATE/UPDATE)
     if ((operation === 'create' || operation === 'update') && data) {
-      const validates = this.registry.getValidates(table, operation);
+      const validates = this.registry.getValidates(table, operation)
       for (const validate of validates) {
-        const evalCtx = this.createEvalContext(ctx, table, operation, row, data);
-        const result = await this.evaluatePolicy(validate.evaluate, evalCtx, validate.name);
+        const evalCtx = this.createEvalContext(ctx, table, operation, row, data)
+        const result = await this.evaluatePolicy(validate.evaluate, evalCtx, validate.name)
 
         if (!result) {
-          throw new RLSPolicyViolation(
-            operation,
-            table,
-            `Validation failed: ${validate.name}`
-          );
+          throw new RLSPolicyViolation(operation, table, `Validation failed: ${validate.name}`)
         }
       }
     }
 
     // Evaluate allow policies
-    const allows = this.registry.getAllows(table, operation);
-    const defaultDeny = this.registry.hasDefaultDeny(table);
+    const allows = this.registry.getAllows(table, operation)
+    const defaultDeny = this.registry.hasDefaultDeny(table)
 
     if (defaultDeny && allows.length === 0) {
-      throw new RLSPolicyViolation(
-        operation,
-        table,
-        'No allow policies defined (default deny)'
-      );
+      throw new RLSPolicyViolation(operation, table, 'No allow policies defined (default deny)')
     }
 
     if (allows.length > 0) {
       // At least one allow policy must pass
-      let allowed = false;
+      let allowed = false
 
       for (const allow of allows) {
-        const evalCtx = this.createEvalContext(ctx, table, operation, row, data);
-        const result = await this.evaluatePolicy(allow.evaluate, evalCtx, allow.name);
+        const evalCtx = this.createEvalContext(ctx, table, operation, row, data)
+        const result = await this.evaluatePolicy(allow.evaluate, evalCtx, allow.name)
 
         if (result) {
-          allowed = true;
-          break;
+          allowed = true
+          break
         }
       }
 
       if (!allowed) {
-        throw new RLSPolicyViolation(
-          operation,
-          table,
-          'No allow policies matched'
-        );
+        throw new RLSPolicyViolation(operation, table, 'No allow policies matched')
       }
     }
   }
@@ -314,8 +285,8 @@ export class MutationGuard<DB = unknown> {
       data,
       table,
       operation,
-      ...(ctx.meta !== undefined && { meta: ctx.meta as Record<string, unknown> }),
-    };
+      ...(ctx.meta !== undefined && { meta: ctx.meta as Record<string, unknown> })
+    }
   }
 
   /**
@@ -333,19 +304,19 @@ export class MutationGuard<DB = unknown> {
     policyName?: string
   ): Promise<boolean> {
     try {
-      const result = condition(evalCtx);
-      return result instanceof Promise ? await result : result;
+      const result = condition(evalCtx)
+      return result instanceof Promise ? await result : result
     } catch (error) {
       // Distinguish between policy evaluation errors and policy violations
       // RLSPolicyEvaluationError indicates a bug in the policy, not a legitimate denial
-      const originalError = error instanceof Error ? error : undefined;
+      const originalError = error instanceof Error ? error : undefined
       throw new RLSPolicyEvaluationError(
         evalCtx.operation ?? 'unknown',
         evalCtx.table ?? 'unknown',
         error instanceof Error ? error.message : 'Unknown error',
         policyName,
         originalError
-      );
+      )
     }
   }
 
@@ -364,18 +335,15 @@ export class MutationGuard<DB = unknown> {
    * const accessiblePosts = await guard.filterRows('posts', allPosts);
    * ```
    */
-  async filterRows<T extends Record<string, unknown>>(
-    table: string,
-    rows: T[]
-  ): Promise<T[]> {
-    const results: T[] = [];
+  async filterRows<T extends Record<string, unknown>>(table: string, rows: T[]): Promise<T[]> {
+    const results: T[] = []
 
     for (const row of rows) {
       if (await this.checkRead(table, row)) {
-        results.push(row);
+        results.push(row)
       }
     }
 
-    return results;
+    return results
   }
 }

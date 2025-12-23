@@ -23,8 +23,8 @@ async function paginate<DB, TB, O>(
 
 ```typescript
 interface PaginationOptions {
-  page?: number   // Page number (default: 1)
-  limit?: number  // Items per page (default: 20)
+  page?: number // Page number (default: 1)
+  limit?: number // Items per page (default: 20)
 }
 ```
 
@@ -49,10 +49,10 @@ interface PaginatedResult<T> {
 ```typescript
 import { paginate } from '@kysera/core'
 
-const result = await paginate(
-  db.selectFrom('users').selectAll().where('status', '=', 'active'),
-  { page: 1, limit: 20 }
-)
+const result = await paginate(db.selectFrom('users').selectAll().where('status', '=', 'active'), {
+  page: 1,
+  limit: 20
+})
 
 console.log(result)
 // {
@@ -87,8 +87,8 @@ interface CursorOptions<O> {
     column: keyof O & string
     direction: 'asc' | 'desc'
   }>
-  limit?: number           // Default: 20
-  cursor?: string | null   // Cursor from previous page
+  limit?: number // Default: 20
+  cursor?: string | null // Cursor from previous page
 }
 ```
 
@@ -98,29 +98,23 @@ interface CursorOptions<O> {
 import { paginateCursor } from '@kysera/core'
 
 // First page
-const page1 = await paginateCursor(
-  db.selectFrom('posts').selectAll(),
-  {
-    orderBy: [
-      { column: 'created_at', direction: 'desc' },
-      { column: 'id', direction: 'desc' }  // Tie-breaker
-    ],
-    limit: 20
-  }
-)
+const page1 = await paginateCursor(db.selectFrom('posts').selectAll(), {
+  orderBy: [
+    { column: 'created_at', direction: 'desc' },
+    { column: 'id', direction: 'desc' } // Tie-breaker
+  ],
+  limit: 20
+})
 
 // Next page using cursor
-const page2 = await paginateCursor(
-  db.selectFrom('posts').selectAll(),
-  {
-    orderBy: [
-      { column: 'created_at', direction: 'desc' },
-      { column: 'id', direction: 'desc' }
-    ],
-    limit: 20,
-    cursor: page1.pagination.nextCursor
-  }
-)
+const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
+  orderBy: [
+    { column: 'created_at', direction: 'desc' },
+    { column: 'id', direction: 'desc' }
+  ],
+  limit: 20,
+  cursor: page1.pagination.nextCursor
+})
 ```
 
 ### Result
@@ -147,10 +141,10 @@ Cursors are base64-encoded:
 
 ## Performance Comparison
 
-| Method | Time Complexity | Use Case |
-|--------|-----------------|----------|
-| Offset | O(n) at high pages | Small datasets, page numbers needed |
-| Cursor | O(log n) with index | Large datasets, infinite scroll |
+| Method | Time Complexity     | Use Case                            |
+| ------ | ------------------- | ----------------------------------- |
+| Offset | O(n) at high pages  | Small datasets, page numbers needed |
+| Cursor | O(log n) with index | Large datasets, infinite scroll     |
 
 ### When to Use Offset
 
@@ -211,13 +205,17 @@ Uses default ordering by primary key.
 
 ```typescript
 // Good: Include unique column for consistent ordering
-{ orderBy: [
-  { column: 'created_at', direction: 'desc' },
-  { column: 'id', direction: 'desc' }  // Unique tie-breaker
-]}
+{
+  orderBy: [
+    { column: 'created_at', direction: 'desc' },
+    { column: 'id', direction: 'desc' } // Unique tie-breaker
+  ]
+}
 
 // Bad: May have inconsistent ordering
-{ orderBy: [{ column: 'created_at', direction: 'desc' }] }
+{
+  orderBy: [{ column: 'created_at', direction: 'desc' }]
+}
 ```
 
 ### 2. Create Appropriate Indexes
@@ -230,5 +228,5 @@ CREATE INDEX idx_posts_pagination ON posts (created_at DESC, id DESC);
 ### 3. Limit Maximum Page Size
 
 ```typescript
-const limit = Math.min(options.limit ?? 20, 100)  // Max 100
+const limit = Math.min(options.limit ?? 20, 100) // Max 100
 ```

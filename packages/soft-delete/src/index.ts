@@ -1,11 +1,11 @@
-import type { Plugin, QueryBuilderContext } from '@kysera/executor';
-import { getRawDb } from '@kysera/executor';
-import type { SelectQueryBuilder, Kysely } from 'kysely';
-import { sql } from 'kysely';
-import { NotFoundError, silentLogger } from '@kysera/core';
-import type { KyseraLogger } from '@kysera/core';
-import { z } from 'zod';
-import { VERSION } from './version.js';
+import type { Plugin, QueryBuilderContext } from '@kysera/executor'
+import { getRawDb } from '@kysera/executor'
+import type { SelectQueryBuilder, Kysely } from 'kysely'
+import { sql } from 'kysely'
+import { NotFoundError, silentLogger } from '@kysera/core'
+import type { KyseraLogger } from '@kysera/core'
+import { z } from 'zod'
+import { VERSION } from './version.js'
 
 /**
  * Configuration options for the soft delete plugin.
@@ -26,7 +26,7 @@ export interface SoftDeleteOptions {
    *
    * @default 'deleted_at'
    */
-  deletedAtColumn?: string;
+  deletedAtColumn?: string
 
   /**
    * Include deleted records by default in queries.
@@ -34,7 +34,7 @@ export interface SoftDeleteOptions {
    *
    * @default false
    */
-  includeDeleted?: boolean;
+  includeDeleted?: boolean
 
   /**
    * List of tables that support soft delete.
@@ -42,7 +42,7 @@ export interface SoftDeleteOptions {
    *
    * @example ['users', 'posts', 'comments']
    */
-  tables?: string[];
+  tables?: string[]
 
   /**
    * Primary key column name used for identifying records.
@@ -51,7 +51,7 @@ export interface SoftDeleteOptions {
    * @default 'id'
    * @example 'uuid', 'user_id', 'post_id'
    */
-  primaryKeyColumn?: string;
+  primaryKeyColumn?: string
 
   /**
    * Logger for plugin operations.
@@ -59,7 +59,7 @@ export interface SoftDeleteOptions {
    *
    * @default silentLogger (no output)
    */
-  logger?: KyseraLogger;
+  logger?: KyseraLogger
 }
 
 /**
@@ -70,36 +70,55 @@ export const SoftDeleteOptionsSchema = z.object({
   deletedAtColumn: z.string().optional(),
   includeDeleted: z.boolean().optional(),
   tables: z.array(z.string()).optional(),
-  primaryKeyColumn: z.string().optional(),
-});
+  primaryKeyColumn: z.string().optional()
+})
 
 /**
  * Methods added to repositories by the soft delete plugin
  */
 export interface SoftDeleteMethods<T> {
-  softDelete(id: number | string): Promise<T>;
-  restore(id: number | string): Promise<T>;
-  hardDelete(id: number | string): Promise<void>;
-  findWithDeleted(id: number | string): Promise<T | null>;
-  findAllWithDeleted(): Promise<T[]>;
-  findDeleted(): Promise<T[]>;
-  softDeleteMany(ids: (number | string)[]): Promise<T[]>;
-  restoreMany(ids: (number | string)[]): Promise<T[]>;
-  hardDeleteMany(ids: (number | string)[]): Promise<void>;
+  softDelete(id: number | string): Promise<T>
+  restore(id: number | string): Promise<T>
+  hardDelete(id: number | string): Promise<void>
+  findWithDeleted(id: number | string): Promise<T | null>
+  findAllWithDeleted(): Promise<T[]>
+  findDeleted(): Promise<T[]>
+  softDeleteMany(ids: (number | string)[]): Promise<T[]>
+  restoreMany(ids: (number | string)[]): Promise<T[]>
+  hardDeleteMany(ids: (number | string)[]): Promise<void>
 }
 
 /**
- * Repository extended with soft delete methods
- * Note: Repository type is from @kysera/repository
+ * Repository extended with soft delete methods.
+ * Uses a generic base repository type for flexibility across different repository implementations.
+ *
+ * @typeParam Entity - The entity type managed by the repository
+ * @typeParam BaseRepo - The base repository type to extend (defaults to Record<string, never>)
+ *
+ * @example
+ * ```typescript
+ * // Type-safe usage with base repository
+ * type User = { id: number; name: string; deleted_at: Date | null };
+ * type UserRepo = { findAll(): Promise<User[]>; findById(id: number): Promise<User> };
+ * type ExtendedUserRepo = SoftDeleteRepository<User, UserRepo>;
+ *
+ * // Now includes both UserRepo methods and soft delete methods
+ * const repo: ExtendedUserRepo = ...;
+ * await repo.findAll();        // From UserRepo
+ * await repo.softDelete(1);    // From SoftDeleteMethods
+ * ```
  */
-export type SoftDeleteRepository<Entity> = any & SoftDeleteMethods<Entity>;
+export type SoftDeleteRepository<
+  Entity,
+  BaseRepo extends object = Record<string, never>
+> = BaseRepo & SoftDeleteMethods<Entity>
 
 interface BaseRepository {
-  tableName: string;
-  executor: Kysely<Record<string, unknown>>;
-  findAll: () => Promise<unknown[]>;
-  findById: (id: number) => Promise<unknown>;
-  update: (id: number, data: Record<string, unknown>) => Promise<unknown>;
+  tableName: string
+  executor: Kysely<Record<string, unknown>>
+  findAll: () => Promise<unknown[]>
+  findById: (id: number) => Promise<unknown>
+  update: (id: number, data: Record<string, unknown>) => Promise<unknown>
 }
 
 /**
@@ -200,8 +219,8 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
     includeDeleted = false,
     tables,
     primaryKeyColumn = 'id',
-    logger = silentLogger,
-  } = options;
+    logger = silentLogger
+  } = options
 
   return {
     name: '@kysera/soft-delete',
@@ -222,7 +241,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
      */
     interceptQuery<QB>(qb: QB, context: QueryBuilderContext): QB {
       // Check if table supports soft delete
-      const supportsSoftDelete = !tables || tables.includes(context.table);
+      const supportsSoftDelete = !tables || tables.includes(context.table)
 
       // Only filter SELECT queries when not explicitly including deleted
       if (
@@ -231,21 +250,25 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         !context.metadata['includeDeleted'] &&
         !includeDeleted
       ) {
-        logger.debug(`Filtering soft-deleted records from ${context.table}`);
+        logger.debug(`Filtering soft-deleted records from ${context.table}`)
         // Add WHERE deleted_at IS NULL to the query builder
-        type GenericSelectQueryBuilder = SelectQueryBuilder<Record<string, unknown>, string, Record<string, unknown>>;
+        type GenericSelectQueryBuilder = SelectQueryBuilder<
+          Record<string, unknown>,
+          string,
+          Record<string, unknown>
+        >
         return (qb as unknown as GenericSelectQueryBuilder).where(
           `${context.table}.${deletedAtColumn}` as never,
           'is',
           null
-        ) as QB;
+        ) as QB
       }
 
       // Note: DELETE operations are NOT intercepted here
       // Use softDelete() method instead of delete() to perform soft deletes
       // This is by design - method override is simpler and more explicit
 
-      return qb;
+      return qb
     },
 
     /**
@@ -267,26 +290,26 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
      */
     extendRepository<T extends object>(repo: T): T {
       // Type assertion is safe here as we're checking for BaseRepository properties
-      const baseRepo = repo as unknown as BaseRepository;
+      const baseRepo = repo as unknown as BaseRepository
 
       // Check if it's actually a repository (has required properties)
       if (!('tableName' in baseRepo) || !('executor' in baseRepo)) {
-        return repo;
+        return repo
       }
 
       // Check if table supports soft delete
-      const supportsSoftDelete = !tables || tables.includes(baseRepo.tableName);
+      const supportsSoftDelete = !tables || tables.includes(baseRepo.tableName)
 
       // If table doesn't support soft delete, return unmodified repo
       if (!supportsSoftDelete) {
-        logger.debug(`Table ${baseRepo.tableName} does not support soft delete, skipping extension`);
-        return repo;
+        logger.debug(`Table ${baseRepo.tableName} does not support soft delete, skipping extension`)
+        return repo
       }
 
-      logger.debug(`Extending repository for table ${baseRepo.tableName} with soft delete methods`);
+      logger.debug(`Extending repository for table ${baseRepo.tableName} with soft delete methods`)
 
       // Get raw db for queries that need to bypass interceptors
-      const rawDb = getRawDb(baseRepo.executor);
+      const rawDb = getRawDb(baseRepo.executor)
 
       const extendedRepo = {
         ...baseRepo,
@@ -299,15 +322,12 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
               .selectFrom(baseRepo.tableName)
               .selectAll()
               .where(deletedAtColumn as never, 'is', null)
-              .execute();
-            return result as unknown[];
+              .execute()
+            return result as unknown[]
           }
           // Include deleted: return all records
-          const result = await rawDb
-            .selectFrom(baseRepo.tableName)
-            .selectAll()
-            .execute();
-          return result as unknown[];
+          const result = await rawDb.selectFrom(baseRepo.tableName).selectAll().execute()
+          return result as unknown[]
         },
 
         async findById(id: number): Promise<unknown> {
@@ -317,71 +337,71 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
               .selectAll()
               .where(primaryKeyColumn as never, '=', id as never)
               .where(deletedAtColumn as never, 'is', null)
-              .executeTakeFirst();
-            return result ?? null;
+              .executeTakeFirst()
+            return result ?? null
           }
           // Include deleted: find by id regardless of deleted status
           const result = await rawDb
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(primaryKeyColumn as never, '=', id as never)
-            .executeTakeFirst();
-          return result ?? null;
+            .executeTakeFirst()
+          return result ?? null
         },
 
         async softDelete(id: number): Promise<unknown> {
-          logger.info(`Soft deleting record ${id} from ${baseRepo.tableName}`);
+          logger.info(`Soft deleting record ${id} from ${baseRepo.tableName}`)
           // Use rawDb to bypass interceptors (UPDATE doesn't need filtering anyway)
           await rawDb
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: sql`CURRENT_TIMESTAMP` } as never)
             .where(primaryKeyColumn as never, '=', id as never)
-            .execute();
+            .execute()
 
           // Fetch the updated record - use rawDb to see the just-deleted record
           const record = await rawDb
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(primaryKeyColumn as never, '=', id as never)
-            .executeTakeFirst();
+            .executeTakeFirst()
 
           if (!record) {
-            logger.warn(`Record ${id} not found in ${baseRepo.tableName} for soft delete`);
-            throw new NotFoundError('Record', { id });
+            logger.warn(`Record ${id} not found in ${baseRepo.tableName} for soft delete`)
+            throw new NotFoundError('Record', { id })
           }
 
-          return record;
+          return record
         },
 
         async restore(id: number): Promise<unknown> {
-          logger.info(`Restoring soft-deleted record ${id} from ${baseRepo.tableName}`);
+          logger.info(`Restoring soft-deleted record ${id} from ${baseRepo.tableName}`)
           await rawDb
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: null } as never)
             .where(primaryKeyColumn as never, '=', id as never)
-            .execute();
+            .execute()
 
           // Fetch the restored record
           const record = await rawDb
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(primaryKeyColumn as never, '=', id as never)
-            .executeTakeFirst();
+            .executeTakeFirst()
 
           if (!record) {
-            logger.warn(`Record ${id} not found in ${baseRepo.tableName} for restore`);
-            throw new NotFoundError('Record', { id });
+            logger.warn(`Record ${id} not found in ${baseRepo.tableName} for restore`)
+            throw new NotFoundError('Record', { id })
           }
 
-          return record;
+          return record
         },
 
         async hardDelete(id: number): Promise<void> {
-          logger.info(`Hard deleting record ${id} from ${baseRepo.tableName}`);
+          logger.info(`Hard deleting record ${id} from ${baseRepo.tableName}`)
           await rawDb
             .deleteFrom(baseRepo.tableName)
             .where(primaryKeyColumn as never, '=', id as never)
-            .execute();
+            .execute()
         },
 
         async findWithDeleted(id: number): Promise<unknown> {
@@ -390,17 +410,14 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(primaryKeyColumn as never, '=', id as never)
-            .executeTakeFirst();
-          return result ?? null;
+            .executeTakeFirst()
+          return result ?? null
         },
 
         async findAllWithDeleted(): Promise<unknown[]> {
           // Use rawDb to bypass soft-delete filter and return ALL records
-          const result = await rawDb
-            .selectFrom(baseRepo.tableName)
-            .selectAll()
-            .execute();
-          return result as unknown[];
+          const result = await rawDb.selectFrom(baseRepo.tableName).selectAll().execute()
+          return result as unknown[]
         },
 
         async findDeleted(): Promise<unknown[]> {
@@ -409,77 +426,77 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(deletedAtColumn as never, 'is not', null)
-            .execute();
-          return result as unknown[];
+            .execute()
+          return result as unknown[]
         },
 
         async softDeleteMany(ids: (number | string)[]): Promise<unknown[]> {
           if (ids.length === 0) {
-            return [];
+            return []
           }
 
-          logger.info(`Soft deleting ${ids.length} records from ${baseRepo.tableName}`);
+          logger.info(`Soft deleting ${ids.length} records from ${baseRepo.tableName}`)
 
           await rawDb
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: sql`CURRENT_TIMESTAMP` } as never)
             .where(primaryKeyColumn as never, 'in', ids as never)
-            .execute();
+            .execute()
 
           // Use rawDb to see the just-deleted records
           const records = await rawDb
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(primaryKeyColumn as never, 'in', ids as never)
-            .execute();
+            .execute()
 
           if (records.length !== ids.length) {
-            const foundIds = records.map((r: any) => r[primaryKeyColumn]);
-            const missingIds = ids.filter((id) => !foundIds.includes(id));
-            logger.warn(`Some records not found for soft delete: ${missingIds.join(', ')}`);
-            throw new NotFoundError('Records', { ids: missingIds });
+            const foundIds = records.map((r: Record<string, unknown>) => r[primaryKeyColumn])
+            const missingIds = ids.filter(id => !foundIds.includes(id))
+            logger.warn(`Some records not found for soft delete: ${missingIds.join(', ')}`)
+            throw new NotFoundError('Records', { ids: missingIds })
           }
 
-          return records as unknown[];
+          return records as unknown[]
         },
 
         async restoreMany(ids: (number | string)[]): Promise<unknown[]> {
           if (ids.length === 0) {
-            return [];
+            return []
           }
 
-          logger.info(`Restoring ${ids.length} soft-deleted records from ${baseRepo.tableName}`);
+          logger.info(`Restoring ${ids.length} soft-deleted records from ${baseRepo.tableName}`)
 
           await rawDb
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: null } as never)
             .where(primaryKeyColumn as never, 'in', ids as never)
-            .execute();
+            .execute()
 
           const records = await rawDb
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(primaryKeyColumn as never, 'in', ids as never)
-            .execute();
+            .execute()
 
-          return records as unknown[];
+          return records as unknown[]
         },
 
         async hardDeleteMany(ids: (number | string)[]): Promise<void> {
           if (ids.length === 0) {
-            return;
+            return
           }
 
-          logger.info(`Hard deleting ${ids.length} records from ${baseRepo.tableName}`);
+          logger.info(`Hard deleting ${ids.length} records from ${baseRepo.tableName}`)
 
           await rawDb
             .deleteFrom(baseRepo.tableName)
             .where(primaryKeyColumn as never, 'in', ids as never)
-            .execute();
-        },
-      };
+            .execute()
+        }
+      }
 
-      return extendedRepo as T;
-    },
-  };
-};
+      return extendedRepo as T
+    }
+  }
+}

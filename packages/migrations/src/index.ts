@@ -1,8 +1,8 @@
-import type { Kysely } from 'kysely';
-import { sql } from 'kysely';
-import type { KyseraLogger } from '@kysera/core';
-import { DatabaseError, NotFoundError, BadRequestError, silentLogger } from '@kysera/core';
-import { VERSION } from './version.js';
+import type { Kysely } from 'kysely'
+import { sql } from 'kysely'
+import type { KyseraLogger } from '@kysera/core'
+import { DatabaseError, NotFoundError, BadRequestError, silentLogger } from '@kysera/core'
+import { VERSION } from './version.js'
 
 // ============================================================================
 // Schema Exports
@@ -34,10 +34,10 @@ export {
   parseMigrationRunnerOptions,
   safeParseMigrationRunnerOptions,
   parseMigrationDefinition,
-  safeParseMigrationDefinition,
-} from './schemas.js';
+  safeParseMigrationDefinition
+} from './schemas.js'
 
-import { MigrationRunnerOptionsSchema } from './schemas.js';
+import { MigrationRunnerOptionsSchema } from './schemas.js'
 
 // ============================================================================
 // Types and Interfaces
@@ -50,11 +50,11 @@ import { MigrationRunnerOptionsSchema } from './schemas.js';
  */
 export interface Migration<DB = unknown> {
   /** Unique migration name (e.g., '001_create_users') */
-  name: string;
+  name: string
   /** Migration up function - creates/modifies schema */
-  up: (db: Kysely<DB>) => Promise<void>;
+  up: (db: Kysely<DB>) => Promise<void>
   /** Optional migration down function - reverts changes */
-  down?: (db: Kysely<DB>) => Promise<void>;
+  down?: (db: Kysely<DB>) => Promise<void>
 }
 
 /**
@@ -64,13 +64,13 @@ export interface Migration<DB = unknown> {
  */
 export interface MigrationWithMeta<DB = unknown> extends Migration<DB> {
   /** Human-readable description shown during migration */
-  description?: string;
+  description?: string
   /** Whether this is a breaking change - shows warning before execution */
-  breaking?: boolean;
+  breaking?: boolean
   /** Estimated duration in milliseconds for progress indication */
-  estimatedDuration?: number;
+  estimatedDuration?: number
   /** Tags for categorization (e.g., ['schema', 'data', 'index']) */
-  tags?: string[];
+  tags?: string[]
 }
 
 /**
@@ -78,11 +78,11 @@ export interface MigrationWithMeta<DB = unknown> extends Migration<DB> {
  */
 export interface MigrationStatus {
   /** List of executed migration names */
-  executed: string[];
+  executed: string[]
   /** List of pending migration names */
-  pending: string[];
+  pending: string[]
   /** Total migration count */
-  total: number;
+  total: number
 }
 
 /**
@@ -90,20 +90,20 @@ export interface MigrationStatus {
  */
 export interface MigrationRunnerOptions {
   /** Enable dry run mode (preview only, no changes) */
-  dryRun?: boolean;
+  dryRun?: boolean
   /**
    * Logger for migration operations.
    * Uses KyseraLogger interface from @kysera/core.
    *
    * @default silentLogger (no output)
    */
-  logger?: KyseraLogger;
+  logger?: KyseraLogger
   /** Wrap each migration in a transaction (default: false) */
-  useTransactions?: boolean;
+  useTransactions?: boolean
   /** Stop on first error (default: true) */
-  stopOnError?: boolean;
+  stopOnError?: boolean
   /** Show detailed metadata in logs (default: true) */
-  verbose?: boolean;
+  verbose?: boolean
 }
 
 /**
@@ -112,12 +112,12 @@ export interface MigrationRunnerOptions {
  * defaults to unknown for maximum flexibility
  */
 export interface MigrationDefinition<DB = unknown> {
-  up: (db: Kysely<DB>) => Promise<void>;
-  down?: (db: Kysely<DB>) => Promise<void>;
-  description?: string;
-  breaking?: boolean;
-  estimatedDuration?: number;
-  tags?: string[];
+  up: (db: Kysely<DB>) => Promise<void>
+  down?: (db: Kysely<DB>) => Promise<void>
+  description?: string
+  breaking?: boolean
+  estimatedDuration?: number
+  tags?: string[]
 }
 
 /**
@@ -125,22 +125,22 @@ export interface MigrationDefinition<DB = unknown> {
  * Generic DB type allows type-safe migrations when schema is known,
  * defaults to unknown for maximum flexibility
  */
-export type MigrationDefinitions<DB = unknown> = Record<string, MigrationDefinition<DB>>;
+export type MigrationDefinitions<DB = unknown> = Record<string, MigrationDefinition<DB>>
 
 /**
  * Result of a migration run
  */
 export interface MigrationResult {
   /** Successfully executed migrations */
-  executed: string[];
+  executed: string[]
   /** Migrations that were skipped (already executed) */
-  skipped: string[];
+  skipped: string[]
   /** Migrations that failed */
-  failed: string[];
+  failed: string[]
   /** Total duration in milliseconds */
-  duration: number;
+  duration: number
   /** Whether the run was in dry-run mode */
-  dryRun: boolean;
+  dryRun: boolean
 }
 
 // ============================================================================
@@ -148,40 +148,39 @@ export interface MigrationResult {
 // ============================================================================
 
 /** Error codes for migration operations */
-export type MigrationErrorCode = 'MIGRATION_UP_FAILED' | 'MIGRATION_DOWN_FAILED' | 'MIGRATION_VALIDATION_FAILED';
+export type MigrationErrorCode =
+  | 'MIGRATION_UP_FAILED'
+  | 'MIGRATION_DOWN_FAILED'
+  | 'MIGRATION_VALIDATION_FAILED'
 
 /**
  * Migration-specific error extending DatabaseError from @kysera/core
  * Provides structured error information with code, migration context, and cause tracking
  */
 export class MigrationError extends DatabaseError {
-  public readonly migrationName: string;
-  public readonly operation: 'up' | 'down';
+  public readonly migrationName: string
+  public readonly operation: 'up' | 'down'
 
-  constructor(
-    message: string,
-    migrationName: string,
-    operation: 'up' | 'down',
-    cause?: Error
-  ) {
-    const code: MigrationErrorCode = operation === 'up' ? 'MIGRATION_UP_FAILED' : 'MIGRATION_DOWN_FAILED';
-    super(message, code, migrationName);
-    this.name = 'MigrationError';
-    this.migrationName = migrationName;
-    this.operation = operation;
+  constructor(message: string, migrationName: string, operation: 'up' | 'down', cause?: Error) {
+    const code: MigrationErrorCode =
+      operation === 'up' ? 'MIGRATION_UP_FAILED' : 'MIGRATION_DOWN_FAILED'
+    super(message, code, migrationName)
+    this.name = 'MigrationError'
+    this.migrationName = migrationName
+    this.operation = operation
     if (cause) {
-      this.cause = cause;
+      this.cause = cause
     }
   }
 
   override toJSON(): Record<string, unknown> {
-    const causeError = this.cause instanceof Error ? this.cause : undefined;
+    const causeError = this.cause instanceof Error ? this.cause : undefined
     return {
       ...super.toJSON(),
       migrationName: this.migrationName,
       operation: this.operation,
-      cause: causeError?.message,
-    };
+      cause: causeError?.message
+    }
   }
 }
 
@@ -198,9 +197,9 @@ export async function setupMigrations(db: Kysely<unknown>): Promise<void> {
   await db.schema
     .createTable('migrations')
     .ifNotExists()
-    .addColumn('name', 'varchar(255)', (col) => col.primaryKey())
-    .addColumn('executed_at', 'timestamp', (col) => col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`))
-    .execute();
+    .addColumn('name', 'varchar(255)', col => col.primaryKey())
+    .addColumn('executed_at', 'timestamp', col => col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`))
+    .execute()
 }
 
 // ============================================================================
@@ -212,7 +211,7 @@ export async function setupMigrations(db: Kysely<unknown>): Promise<void> {
  * Type guard to narrow Migration<DB> to MigrationWithMeta<DB>
  */
 function hasMeta<DB>(migration: Migration<DB>): migration is MigrationWithMeta<DB> {
-  return 'description' in migration || 'breaking' in migration || 'tags' in migration;
+  return 'description' in migration || 'breaking' in migration || 'tags' in migration
 }
 
 /**
@@ -220,9 +219,9 @@ function hasMeta<DB>(migration: Migration<DB>): migration is MigrationWithMeta<D
  */
 function formatError(error: unknown): string {
   if (error instanceof Error) {
-    return error.message;
+    return error.message
   }
-  return String(error);
+  return String(error)
 }
 
 /**
@@ -230,12 +229,12 @@ function formatError(error: unknown): string {
  * @throws {BadRequestError} When duplicate migration names are found
  */
 function validateMigrations<DB>(migrations: Migration<DB>[]): void {
-  const names = new Set<string>();
+  const names = new Set<string>()
   for (const migration of migrations) {
     if (names.has(migration.name)) {
-      throw new BadRequestError(`Duplicate migration name: ${migration.name}`);
+      throw new BadRequestError(`Duplicate migration name: ${migration.name}`)
     }
-    names.add(migration.name);
+    names.add(migration.name)
   }
 }
 
@@ -249,31 +248,33 @@ function validateMigrations<DB>(migrations: Migration<DB>[]): void {
  * defaults to unknown for maximum flexibility
  */
 export class MigrationRunner<DB = unknown> {
-  private logger: KyseraLogger;
-  private options: Required<Omit<MigrationRunnerOptions, 'logger'>> & { logger: KyseraLogger };
+  protected logger: KyseraLogger
+  protected runnerOptions: Required<Omit<MigrationRunnerOptions, 'logger'>> & {
+    logger: KyseraLogger
+  }
+  protected db: Kysely<DB>
+  protected migrations: Migration<DB>[]
 
-  constructor(
-    private db: Kysely<DB>,
-    private migrations: Migration<DB>[],
-    options: MigrationRunnerOptions = {}
-  ) {
+  constructor(db: Kysely<DB>, migrations: Migration<DB>[], options: MigrationRunnerOptions = {}) {
     // Validate and apply defaults using Zod schema
-    const parsed = MigrationRunnerOptionsSchema.safeParse(options);
+    const parsed = MigrationRunnerOptionsSchema.safeParse(options)
     if (!parsed.success) {
-      throw new BadRequestError(`Invalid migration runner options: ${parsed.error.message}`);
+      throw new BadRequestError(`Invalid migration runner options: ${parsed.error.message}`)
     }
 
-    this.logger = options.logger ?? silentLogger;
-    this.options = {
+    this.db = db
+    this.migrations = migrations
+    this.logger = options.logger ?? silentLogger
+    this.runnerOptions = {
       dryRun: parsed.data.dryRun,
       logger: this.logger,
       useTransactions: parsed.data.useTransactions,
       stopOnError: parsed.data.stopOnError,
-      verbose: parsed.data.verbose,
-    };
+      verbose: parsed.data.verbose
+    }
 
     // Validate migrations on construction
-    validateMigrations(migrations);
+    validateMigrations(migrations)
   }
 
   /**
@@ -283,17 +284,17 @@ export class MigrationRunner<DB = unknown> {
   async getExecutedMigrations(): Promise<string[]> {
     // Cast to any for migrations table operations - it's internal and not part of user schema
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any);
+    await setupMigrations(this.db as any)
 
     // The migrations table is internal and not part of the generic DB schema
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows = await (this.db as any)
+    const rows = (await (this.db as any)
       .selectFrom('migrations')
       .select('name')
       .orderBy('executed_at', 'asc')
-      .execute() as Array<{ name: string }>;
+      .execute()) as { name: string }[]
 
-    return rows.map((r) => r.name);
+    return rows.map(r => r.name)
   }
 
   /**
@@ -302,10 +303,7 @@ export class MigrationRunner<DB = unknown> {
    */
   async markAsExecuted(name: string): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (this.db as any)
-      .insertInto('migrations')
-      .values({ name })
-      .execute();
+    await (this.db as any).insertInto('migrations').values({ name }).execute()
   }
 
   /**
@@ -314,54 +312,51 @@ export class MigrationRunner<DB = unknown> {
    */
   async markAsRolledBack(name: string): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (this.db as any)
-      .deleteFrom('migrations')
-      .where('name', '=', name)
-      .execute();
+    await (this.db as any).deleteFrom('migrations').where('name', '=', name).execute()
   }
 
   /**
    * Log migration metadata if available
    */
-  private logMigrationMeta(migration: Migration<DB>): void {
-    if (!this.options.verbose || !hasMeta(migration)) return;
+  protected logMigrationMeta(migration: Migration<DB>): void {
+    if (!this.runnerOptions.verbose || !hasMeta(migration)) return
 
-    const meta = migration;
+    const meta = migration
 
     if (meta.description) {
-      this.logger.info(`  Description: ${meta.description}`);
+      this.logger.info(`  Description: ${meta.description}`)
     }
 
     if (meta.breaking) {
-      this.logger.warn(`  BREAKING CHANGE - Review carefully before proceeding`);
+      this.logger.warn(`  BREAKING CHANGE - Review carefully before proceeding`)
     }
 
     if (meta.tags && meta.tags.length > 0) {
-      this.logger.info(`  Tags: ${meta.tags.join(', ')}`);
+      this.logger.info(`  Tags: ${meta.tags.join(', ')}`)
     }
 
     if (meta.estimatedDuration) {
-      const seconds = (meta.estimatedDuration / 1000).toFixed(1);
-      this.logger.info(`  Estimated: ${seconds}s`);
+      const seconds = (meta.estimatedDuration / 1000).toFixed(1)
+      this.logger.info(`  Estimated: ${seconds}s`)
     }
   }
 
   /**
    * Execute a single migration with optional transaction wrapping
    */
-  private async executeMigration(
+  protected async executeMigration(
     migration: Migration<DB>,
     operation: 'up' | 'down'
   ): Promise<void> {
-    const fn = operation === 'up' ? migration.up : migration.down;
-    if (!fn) return;
+    const fn = operation === 'up' ? migration.up : migration.down
+    if (!fn) return
 
-    if (this.options.useTransactions) {
-      await this.db.transaction().execute(async (trx) => {
-        await fn(trx);
-      });
+    if (this.runnerOptions.useTransactions) {
+      await this.db.transaction().execute(async trx => {
+        await fn(trx)
+      })
     } else {
-      await fn(this.db);
+      await fn(this.db)
     }
   }
 
@@ -369,155 +364,155 @@ export class MigrationRunner<DB = unknown> {
    * Run all pending migrations
    */
   async up(): Promise<MigrationResult> {
-    const startTime = Date.now();
+    const startTime = Date.now()
     const result: MigrationResult = {
       executed: [],
       skipped: [],
       failed: [],
       duration: 0,
-      dryRun: this.options.dryRun,
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any);
-    const executed = await this.getExecutedMigrations();
-
-    const pending = this.migrations.filter((m) => !executed.includes(m.name));
-
-    if (pending.length === 0) {
-      this.logger.info('No pending migrations');
-      result.skipped = executed;
-      result.duration = Date.now() - startTime;
-      return result;
+      dryRun: this.runnerOptions.dryRun
     }
 
-    if (this.options.dryRun) {
-      this.logger.info('DRY RUN - No changes will be made');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await setupMigrations(this.db as any)
+    const executed = await this.getExecutedMigrations()
+
+    const pending = this.migrations.filter(m => !executed.includes(m.name))
+
+    if (pending.length === 0) {
+      this.logger.info('No pending migrations')
+      result.skipped = executed
+      result.duration = Date.now() - startTime
+      return result
+    }
+
+    if (this.runnerOptions.dryRun) {
+      this.logger.info('DRY RUN - No changes will be made')
     }
 
     for (const migration of this.migrations) {
       if (executed.includes(migration.name)) {
-        this.logger.info(`${migration.name} (already executed)`);
-        result.skipped.push(migration.name);
-        continue;
+        this.logger.info(`${migration.name} (already executed)`)
+        result.skipped.push(migration.name)
+        continue
       }
 
       try {
-        this.logger.info(`Running ${migration.name}...`);
-        this.logMigrationMeta(migration);
+        this.logger.info(`Running ${migration.name}...`)
+        this.logMigrationMeta(migration)
 
-        if (!this.options.dryRun) {
-          await this.executeMigration(migration, 'up');
-          await this.markAsExecuted(migration.name);
+        if (!this.runnerOptions.dryRun) {
+          await this.executeMigration(migration, 'up')
+          await this.markAsExecuted(migration.name)
         }
 
-        this.logger.info(`${migration.name} completed`);
-        result.executed.push(migration.name);
+        this.logger.info(`${migration.name} completed`)
+        result.executed.push(migration.name)
       } catch (error) {
-        const errorMsg = formatError(error);
-        this.logger.error(`${migration.name} failed: ${errorMsg}`);
-        result.failed.push(migration.name);
+        const errorMsg = formatError(error)
+        this.logger.error(`${migration.name} failed: ${errorMsg}`)
+        result.failed.push(migration.name)
 
-        if (this.options.stopOnError) {
+        if (this.runnerOptions.stopOnError) {
           throw new MigrationError(
             `Migration ${migration.name} failed: ${errorMsg}`,
             migration.name,
             'up',
             error instanceof Error ? error : undefined
-          );
+          )
         }
       }
     }
 
-    if (!this.options.dryRun) {
-      this.logger.info('All migrations completed successfully');
+    if (!this.runnerOptions.dryRun) {
+      this.logger.info('All migrations completed successfully')
     } else {
-      this.logger.info('Dry run completed - no changes made');
+      this.logger.info('Dry run completed - no changes made')
     }
 
-    result.duration = Date.now() - startTime;
-    return result;
+    result.duration = Date.now() - startTime
+    return result
   }
 
   /**
    * Rollback last N migrations
    */
   async down(steps = 1): Promise<MigrationResult> {
-    const startTime = Date.now();
+    const startTime = Date.now()
     const result: MigrationResult = {
       executed: [],
       skipped: [],
       failed: [],
       duration: 0,
-      dryRun: this.options.dryRun,
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any);
-    const executed = await this.getExecutedMigrations();
-
-    if (executed.length === 0) {
-      this.logger.warn('No executed migrations to rollback');
-      result.duration = Date.now() - startTime;
-      return result;
+      dryRun: this.runnerOptions.dryRun
     }
 
-    const toRollback = executed.slice(-steps).reverse();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await setupMigrations(this.db as any)
+    const executed = await this.getExecutedMigrations()
 
-    if (this.options.dryRun) {
-      this.logger.info('DRY RUN - No changes will be made');
+    if (executed.length === 0) {
+      this.logger.warn('No executed migrations to rollback')
+      result.duration = Date.now() - startTime
+      return result
+    }
+
+    const toRollback = executed.slice(-steps).reverse()
+
+    if (this.runnerOptions.dryRun) {
+      this.logger.info('DRY RUN - No changes will be made')
     }
 
     for (const name of toRollback) {
-      const migration = this.migrations.find((m) => m.name === name);
+      const migration = this.migrations.find(m => m.name === name)
 
       if (!migration) {
-        this.logger.warn(`Migration ${name} not found in codebase`);
-        result.skipped.push(name);
-        continue;
+        this.logger.warn(`Migration ${name} not found in codebase`)
+        result.skipped.push(name)
+        continue
       }
 
       if (!migration.down) {
-        this.logger.warn(`Migration ${name} has no down method - skipping`);
-        result.skipped.push(name);
-        continue;
+        this.logger.warn(`Migration ${name} has no down method - skipping`)
+        result.skipped.push(name)
+        continue
       }
 
       try {
-        this.logger.info(`Rolling back ${name}...`);
-        this.logMigrationMeta(migration);
+        this.logger.info(`Rolling back ${name}...`)
+        this.logMigrationMeta(migration)
 
-        if (!this.options.dryRun) {
-          await this.executeMigration(migration, 'down');
-          await this.markAsRolledBack(name);
+        if (!this.runnerOptions.dryRun) {
+          await this.executeMigration(migration, 'down')
+          await this.markAsRolledBack(name)
         }
 
-        this.logger.info(`${name} rolled back`);
-        result.executed.push(name);
+        this.logger.info(`${name} rolled back`)
+        result.executed.push(name)
       } catch (error) {
-        const errorMsg = formatError(error);
-        this.logger.error(`${name} rollback failed: ${errorMsg}`);
-        result.failed.push(name);
+        const errorMsg = formatError(error)
+        this.logger.error(`${name} rollback failed: ${errorMsg}`)
+        result.failed.push(name)
 
-        if (this.options.stopOnError) {
+        if (this.runnerOptions.stopOnError) {
           throw new MigrationError(
             `Rollback of ${name} failed: ${errorMsg}`,
             name,
             'down',
             error instanceof Error ? error : undefined
-          );
+          )
         }
       }
     }
 
-    if (!this.options.dryRun) {
-      this.logger.info('Rollback completed successfully');
+    if (!this.runnerOptions.dryRun) {
+      this.logger.info('Rollback completed successfully')
     } else {
-      this.logger.info('Dry run completed - no changes made');
+      this.logger.info('Dry run completed - no changes made')
     }
 
-    result.duration = Date.now() - startTime;
-    return result;
+    result.duration = Date.now() - startTime
+    return result
   }
 
   /**
@@ -525,43 +520,43 @@ export class MigrationRunner<DB = unknown> {
    */
   async status(): Promise<MigrationStatus> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any);
-    const executed = await this.getExecutedMigrations();
-    const pending = this.migrations.filter((m) => !executed.includes(m.name)).map((m) => m.name);
+    await setupMigrations(this.db as any)
+    const executed = await this.getExecutedMigrations()
+    const pending = this.migrations.filter(m => !executed.includes(m.name)).map(m => m.name)
 
-    this.logger.info('Migration Status:');
-    this.logger.info(`  Executed: ${executed.length}`);
-    this.logger.info(`  Pending: ${pending.length}`);
-    this.logger.info(`  Total: ${this.migrations.length}`);
+    this.logger.info('Migration Status:')
+    this.logger.info(`  Executed: ${executed.length}`)
+    this.logger.info(`  Pending: ${pending.length}`)
+    this.logger.info(`  Total: ${this.migrations.length}`)
 
     if (executed.length > 0) {
-      this.logger.info('Executed migrations:');
+      this.logger.info('Executed migrations:')
       for (const name of executed) {
-        const migration = this.migrations.find((m) => m.name === name);
+        const migration = this.migrations.find(m => m.name === name)
         if (migration && hasMeta(migration) && (migration as MigrationWithMeta).description) {
-          this.logger.info(`  ${name} - ${(migration as MigrationWithMeta).description}`);
+          this.logger.info(`  ${name} - ${(migration as MigrationWithMeta).description}`)
         } else {
-          this.logger.info(`  ${name}`);
+          this.logger.info(`  ${name}`)
         }
       }
     }
 
     if (pending.length > 0) {
-      this.logger.info('Pending migrations:');
+      this.logger.info('Pending migrations:')
       for (const name of pending) {
-        const migration = this.migrations.find((m) => m.name === name);
+        const migration = this.migrations.find(m => m.name === name)
         if (migration && hasMeta(migration)) {
-          const meta = migration as MigrationWithMeta;
-          const suffix = meta.breaking ? ' BREAKING' : '';
-          const desc = meta.description ? ` - ${meta.description}` : '';
-          this.logger.info(`  ${name}${desc}${suffix}`);
+          const meta = migration as MigrationWithMeta
+          const suffix = meta.breaking ? ' BREAKING' : ''
+          const desc = meta.description ? ` - ${meta.description}` : ''
+          this.logger.info(`  ${name}${desc}${suffix}`)
         } else {
-          this.logger.info(`  ${name}`);
+          this.logger.info(`  ${name}`)
         }
       }
     }
 
-    return { executed, pending, total: this.migrations.length };
+    return { executed, pending, total: this.migrations.length }
   }
 
   /**
@@ -569,118 +564,118 @@ export class MigrationRunner<DB = unknown> {
    * In dry run mode, shows what would be rolled back
    */
   async reset(): Promise<MigrationResult> {
-    const startTime = Date.now();
+    const startTime = Date.now()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any);
-    const executed = await this.getExecutedMigrations();
+    await setupMigrations(this.db as any)
+    const executed = await this.getExecutedMigrations()
 
     if (executed.length === 0) {
-      this.logger.warn('No migrations to reset');
+      this.logger.warn('No migrations to reset')
       return {
         executed: [],
         skipped: [],
         failed: [],
         duration: Date.now() - startTime,
-        dryRun: this.options.dryRun,
-      };
+        dryRun: this.runnerOptions.dryRun
+      }
     }
 
-    this.logger.warn(`Resetting ${executed.length} migrations...`);
+    this.logger.warn(`Resetting ${executed.length} migrations...`)
 
-    if (this.options.dryRun) {
-      this.logger.info('DRY RUN - Would rollback the following migrations:');
+    if (this.runnerOptions.dryRun) {
+      this.logger.info('DRY RUN - Would rollback the following migrations:')
       for (const name of [...executed].reverse()) {
-        const migration = this.migrations.find((m) => m.name === name);
+        const migration = this.migrations.find(m => m.name === name)
         if (!migration?.down) {
-          this.logger.warn(`  ${name} (no down method - would be skipped)`);
+          this.logger.warn(`  ${name} (no down method - would be skipped)`)
         } else {
-          this.logger.info(`  ${name}`);
+          this.logger.info(`  ${name}`)
         }
       }
-      this.logger.info('Dry run completed - no changes made');
+      this.logger.info('Dry run completed - no changes made')
       return {
         executed: [],
         skipped: executed,
         failed: [],
         duration: Date.now() - startTime,
-        dryRun: true,
-      };
+        dryRun: true
+      }
     }
 
-    const result = await this.down(executed.length);
-    this.logger.info('All migrations reset');
-    return result;
+    const result = await this.down(executed.length)
+    this.logger.info('All migrations reset')
+    return result
   }
 
   /**
    * Run migrations up to a specific migration (inclusive)
    */
   async upTo(targetName: string): Promise<MigrationResult> {
-    const startTime = Date.now();
+    const startTime = Date.now()
     const result: MigrationResult = {
       executed: [],
       skipped: [],
       failed: [],
       duration: 0,
-      dryRun: this.options.dryRun,
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any);
-    const executed = await this.getExecutedMigrations();
-
-    const targetIndex = this.migrations.findIndex((m) => m.name === targetName);
-    if (targetIndex === -1) {
-      throw new NotFoundError('Migration', { name: targetName });
+      dryRun: this.runnerOptions.dryRun
     }
 
-    const migrationsToRun = this.migrations.slice(0, targetIndex + 1);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await setupMigrations(this.db as any)
+    const executed = await this.getExecutedMigrations()
 
-    if (this.options.dryRun) {
-      this.logger.info('DRY RUN - No changes will be made');
+    const targetIndex = this.migrations.findIndex(m => m.name === targetName)
+    if (targetIndex === -1) {
+      throw new NotFoundError('Migration', { name: targetName })
+    }
+
+    const migrationsToRun = this.migrations.slice(0, targetIndex + 1)
+
+    if (this.runnerOptions.dryRun) {
+      this.logger.info('DRY RUN - No changes will be made')
     }
 
     for (const migration of migrationsToRun) {
       if (executed.includes(migration.name)) {
-        this.logger.info(`${migration.name} (already executed)`);
-        result.skipped.push(migration.name);
-        continue;
+        this.logger.info(`${migration.name} (already executed)`)
+        result.skipped.push(migration.name)
+        continue
       }
 
       try {
-        this.logger.info(`Running ${migration.name}...`);
-        this.logMigrationMeta(migration);
+        this.logger.info(`Running ${migration.name}...`)
+        this.logMigrationMeta(migration)
 
-        if (!this.options.dryRun) {
-          await this.executeMigration(migration, 'up');
-          await this.markAsExecuted(migration.name);
+        if (!this.runnerOptions.dryRun) {
+          await this.executeMigration(migration, 'up')
+          await this.markAsExecuted(migration.name)
         }
 
-        this.logger.info(`${migration.name} completed`);
-        result.executed.push(migration.name);
+        this.logger.info(`${migration.name} completed`)
+        result.executed.push(migration.name)
       } catch (error) {
-        const errorMsg = formatError(error);
-        this.logger.error(`${migration.name} failed: ${errorMsg}`);
-        result.failed.push(migration.name);
+        const errorMsg = formatError(error)
+        this.logger.error(`${migration.name} failed: ${errorMsg}`)
+        result.failed.push(migration.name)
 
         throw new MigrationError(
           `Migration ${migration.name} failed: ${errorMsg}`,
           migration.name,
           'up',
           error instanceof Error ? error : undefined
-        );
+        )
       }
     }
 
-    if (!this.options.dryRun) {
-      this.logger.info(`Migrated up to ${targetName}`);
+    if (!this.runnerOptions.dryRun) {
+      this.logger.info(`Migrated up to ${targetName}`)
     } else {
-      this.logger.info(`Dry run completed - would migrate up to ${targetName}`);
+      this.logger.info(`Dry run completed - would migrate up to ${targetName}`)
     }
 
-    result.duration = Date.now() - startTime;
-    return result;
+    result.duration = Date.now() - startTime
+    return result
   }
 }
 
@@ -699,7 +694,7 @@ export function createMigrationRunner<DB = unknown>(
   migrations: Migration<DB>[],
   options?: MigrationRunnerOptions
 ): MigrationRunner<DB> {
-  return new MigrationRunner(db, migrations, options);
+  return new MigrationRunner(db, migrations, options)
 }
 
 /**
@@ -712,11 +707,11 @@ export function createMigration<DB = unknown>(
   up: (db: Kysely<DB>) => Promise<void>,
   down?: (db: Kysely<DB>) => Promise<void>
 ): Migration<DB> {
-  const migration: Migration<DB> = { name, up };
+  const migration: Migration<DB> = { name, up }
   if (down !== undefined) {
-    migration.down = down;
+    migration.down = down
   }
-  return migration;
+  return migration
 }
 
 /**
@@ -727,34 +722,34 @@ export function createMigration<DB = unknown>(
 export function createMigrationWithMeta<DB = unknown>(
   name: string,
   options: {
-    up: (db: Kysely<DB>) => Promise<void>;
-    down?: (db: Kysely<DB>) => Promise<void>;
-    description?: string;
-    breaking?: boolean;
-    estimatedDuration?: number;
-    tags?: string[];
+    up: (db: Kysely<DB>) => Promise<void>
+    down?: (db: Kysely<DB>) => Promise<void>
+    description?: string
+    breaking?: boolean
+    estimatedDuration?: number
+    tags?: string[]
   }
 ): MigrationWithMeta<DB> {
   const migration: MigrationWithMeta<DB> = {
     name,
-    up: options.up,
-  };
+    up: options.up
+  }
   if (options.down !== undefined) {
-    migration.down = options.down;
+    migration.down = options.down
   }
   if (options.description !== undefined) {
-    migration.description = options.description;
+    migration.description = options.description
   }
   if (options.breaking !== undefined) {
-    migration.breaking = options.breaking;
+    migration.breaking = options.breaking
   }
   if (options.estimatedDuration !== undefined) {
-    migration.estimatedDuration = options.estimatedDuration;
+    migration.estimatedDuration = options.estimatedDuration
   }
   if (options.tags !== undefined) {
-    migration.tags = options.tags;
+    migration.tags = options.tags
   }
-  return migration;
+  return migration
 }
 
 // ============================================================================
@@ -766,29 +761,31 @@ export function createMigrationWithMeta<DB = unknown>(
  * Generic DB type allows type-safe migrations when schema is known,
  * defaults to unknown for maximum flexibility
  */
-export function defineMigrations<DB = unknown>(definitions: MigrationDefinitions<DB>): MigrationWithMeta<DB>[] {
+export function defineMigrations<DB = unknown>(
+  definitions: MigrationDefinitions<DB>
+): MigrationWithMeta<DB>[] {
   return Object.entries(definitions).map(([name, def]) => {
     const migration: MigrationWithMeta<DB> = {
       name,
-      up: def.up,
-    };
+      up: def.up
+    }
     if (def.down !== undefined) {
-      migration.down = def.down;
+      migration.down = def.down
     }
     if (def.description !== undefined) {
-      migration.description = def.description;
+      migration.description = def.description
     }
     if (def.breaking !== undefined) {
-      migration.breaking = def.breaking;
+      migration.breaking = def.breaking
     }
     if (def.estimatedDuration !== undefined) {
-      migration.estimatedDuration = def.estimatedDuration;
+      migration.estimatedDuration = def.estimatedDuration
     }
     if (def.tags !== undefined) {
-      migration.tags = def.tags;
+      migration.tags = def.tags
     }
-    return migration;
-  });
+    return migration
+  })
 }
 
 /**
@@ -801,8 +798,8 @@ export async function runMigrations<DB = unknown>(
   migrations: Migration<DB>[],
   options?: MigrationRunnerOptions
 ): Promise<MigrationResult> {
-  const runner = new MigrationRunner(db, migrations, options);
-  return runner.up();
+  const runner = new MigrationRunner(db, migrations, options)
+  return await runner.up()
 }
 
 /**
@@ -816,8 +813,8 @@ export async function rollbackMigrations<DB = unknown>(
   steps = 1,
   options?: MigrationRunnerOptions
 ): Promise<MigrationResult> {
-  const runner = new MigrationRunner(db, migrations, options);
-  return runner.down(steps);
+  const runner = new MigrationRunner(db, migrations, options)
+  return await runner.down(steps)
 }
 
 /**
@@ -830,8 +827,8 @@ export async function getMigrationStatus<DB = unknown>(
   migrations: Migration<DB>[],
   options?: Pick<MigrationRunnerOptions, 'logger' | 'verbose'>
 ): Promise<MigrationStatus> {
-  const runner = new MigrationRunner(db, migrations, options);
-  return runner.status();
+  const runner = new MigrationRunner(db, migrations, options)
+  return await runner.status()
 }
 
 // ============================================================================
@@ -846,17 +843,25 @@ export async function getMigrationStatus<DB = unknown>(
  */
 export interface MigrationPlugin<DB = unknown> {
   /** Plugin name */
-  name: string;
+  name: string
   /** Plugin version */
-  version: string;
+  version: string
   /** Called once when the runner is initialized (consistent with repository Plugin.onInit) */
-  onInit?(runner: MigrationRunner<DB>): Promise<void> | void;
+  onInit?(runner: MigrationRunner<DB>): Promise<void> | void
   /** Called before migration execution */
-  beforeMigration?(migration: Migration<DB>, operation: 'up' | 'down'): Promise<void> | void;
+  beforeMigration?(migration: Migration<DB>, operation: 'up' | 'down'): Promise<void> | void
   /** Called after successful migration execution */
-  afterMigration?(migration: Migration<DB>, operation: 'up' | 'down', duration: number): Promise<void> | void;
+  afterMigration?(
+    migration: Migration<DB>,
+    operation: 'up' | 'down',
+    duration: number
+  ): Promise<void> | void
   /** Called on migration error (unknown type for consistency with repository Plugin.onError) */
-  onMigrationError?(migration: Migration<DB>, operation: 'up' | 'down', error: unknown): Promise<void> | void;
+  onMigrationError?(
+    migration: Migration<DB>,
+    operation: 'up' | 'down',
+    error: unknown
+  ): Promise<void> | void
 }
 
 /**
@@ -866,7 +871,7 @@ export interface MigrationPlugin<DB = unknown> {
  */
 export interface MigrationRunnerWithPluginsOptions<DB = unknown> extends MigrationRunnerOptions {
   /** Plugins to apply */
-  plugins?: MigrationPlugin<DB>[];
+  plugins?: MigrationPlugin<DB>[]
 }
 
 /**
@@ -880,48 +885,54 @@ export async function createMigrationRunnerWithPlugins<DB = unknown>(
   migrations: Migration<DB>[],
   options?: MigrationRunnerWithPluginsOptions<DB>
 ): Promise<MigrationRunnerWithPlugins<DB>> {
-  const runner = new MigrationRunnerWithPlugins(db, migrations, options);
+  const runner = new MigrationRunnerWithPlugins(db, migrations, options)
 
   // Initialize plugins (consistent with repository Plugin.onInit pattern)
   if (options?.plugins) {
     for (const plugin of options.plugins) {
       if (plugin.onInit) {
-        const result = plugin.onInit(runner);
+        const result = plugin.onInit(runner)
         if (result instanceof Promise) {
-          await result;
+          await result
         }
       }
     }
   }
 
-  return runner;
+  return runner
 }
 
 /**
  * Extended migration runner with plugin support
  * Generic DB type allows type-safe migrations when schema is known,
  * defaults to unknown for maximum flexibility
+ *
+ * This class overrides up() and down() to call plugin lifecycle hooks
+ * (beforeMigration, afterMigration, onMigrationError) around each migration execution.
  */
 export class MigrationRunnerWithPlugins<DB = unknown> extends MigrationRunner<DB> {
-  private plugins: MigrationPlugin<DB>[];
+  private plugins: MigrationPlugin<DB>[]
 
   constructor(
     db: Kysely<DB>,
     migrations: Migration<DB>[],
     options: MigrationRunnerWithPluginsOptions<DB> = {}
   ) {
-    super(db, migrations, options);
-    this.plugins = options.plugins ?? [];
+    super(db, migrations, options)
+    this.plugins = options.plugins ?? []
   }
 
   /**
    * Execute plugin hooks before migration
    * Can be called by consumers extending this class
    */
-  protected async runBeforeHooks(migration: Migration<DB>, operation: 'up' | 'down'): Promise<void> {
+  protected async runBeforeHooks(
+    migration: Migration<DB>,
+    operation: 'up' | 'down'
+  ): Promise<void> {
     for (const plugin of this.plugins) {
       if (plugin.beforeMigration) {
-        await plugin.beforeMigration(migration, operation);
+        await plugin.beforeMigration(migration, operation)
       }
     }
   }
@@ -937,7 +948,7 @@ export class MigrationRunnerWithPlugins<DB = unknown> extends MigrationRunner<DB
   ): Promise<void> {
     for (const plugin of this.plugins) {
       if (plugin.afterMigration) {
-        await plugin.afterMigration(migration, operation, duration);
+        await plugin.afterMigration(migration, operation, duration)
       }
     }
   }
@@ -953,7 +964,7 @@ export class MigrationRunnerWithPlugins<DB = unknown> extends MigrationRunner<DB
   ): Promise<void> {
     for (const plugin of this.plugins) {
       if (plugin.onMigrationError) {
-        await plugin.onMigrationError(migration, operation, error);
+        await plugin.onMigrationError(migration, operation, error)
       }
     }
   }
@@ -962,7 +973,190 @@ export class MigrationRunnerWithPlugins<DB = unknown> extends MigrationRunner<DB
    * Get the list of registered plugins
    */
   getPlugins(): MigrationPlugin<DB>[] {
-    return [...this.plugins];
+    return [...this.plugins]
+  }
+
+  /**
+   * Run all pending migrations with plugin hooks
+   * Overrides parent to call beforeMigration/afterMigration/onMigrationError hooks
+   */
+  override async up(): Promise<MigrationResult> {
+    const startTime = Date.now()
+    const result: MigrationResult = {
+      executed: [],
+      skipped: [],
+      failed: [],
+      duration: 0,
+      dryRun: this.runnerOptions.dryRun
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await setupMigrations(this.db as any)
+    const executed = await this.getExecutedMigrations()
+
+    const pending = this.migrations.filter(m => !executed.includes(m.name))
+
+    if (pending.length === 0) {
+      this.logger.info('No pending migrations')
+      result.skipped = executed
+      result.duration = Date.now() - startTime
+      return result
+    }
+
+    if (this.runnerOptions.dryRun) {
+      this.logger.info('DRY RUN - No changes will be made')
+    }
+
+    for (const migration of this.migrations) {
+      if (executed.includes(migration.name)) {
+        this.logger.info(`${migration.name} (already executed)`)
+        result.skipped.push(migration.name)
+        continue
+      }
+
+      const migrationStartTime = Date.now()
+
+      try {
+        // Call beforeMigration hooks
+        await this.runBeforeHooks(migration, 'up')
+
+        this.logger.info(`Running ${migration.name}...`)
+        this.logMigrationMeta(migration)
+
+        if (!this.runnerOptions.dryRun) {
+          await this.executeMigration(migration, 'up')
+          await this.markAsExecuted(migration.name)
+        }
+
+        const migrationDuration = Date.now() - migrationStartTime
+
+        // Call afterMigration hooks
+        await this.runAfterHooks(migration, 'up', migrationDuration)
+
+        this.logger.info(`${migration.name} completed`)
+        result.executed.push(migration.name)
+      } catch (error) {
+        // Call onMigrationError hooks
+        await this.runErrorHooks(migration, 'up', error)
+
+        const errorMsg = formatError(error)
+        this.logger.error(`${migration.name} failed: ${errorMsg}`)
+        result.failed.push(migration.name)
+
+        if (this.runnerOptions.stopOnError) {
+          throw new MigrationError(
+            `Migration ${migration.name} failed: ${errorMsg}`,
+            migration.name,
+            'up',
+            error instanceof Error ? error : undefined
+          )
+        }
+      }
+    }
+
+    if (!this.runnerOptions.dryRun) {
+      this.logger.info('All migrations completed successfully')
+    } else {
+      this.logger.info('Dry run completed - no changes made')
+    }
+
+    result.duration = Date.now() - startTime
+    return result
+  }
+
+  /**
+   * Rollback last N migrations with plugin hooks
+   * Overrides parent to call beforeMigration/afterMigration/onMigrationError hooks
+   */
+  override async down(steps = 1): Promise<MigrationResult> {
+    const startTime = Date.now()
+    const result: MigrationResult = {
+      executed: [],
+      skipped: [],
+      failed: [],
+      duration: 0,
+      dryRun: this.runnerOptions.dryRun
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await setupMigrations(this.db as any)
+    const executed = await this.getExecutedMigrations()
+
+    if (executed.length === 0) {
+      this.logger.warn('No executed migrations to rollback')
+      result.duration = Date.now() - startTime
+      return result
+    }
+
+    const toRollback = executed.slice(-steps).reverse()
+
+    if (this.runnerOptions.dryRun) {
+      this.logger.info('DRY RUN - No changes will be made')
+    }
+
+    for (const name of toRollback) {
+      const migration = this.migrations.find(m => m.name === name)
+
+      if (!migration) {
+        this.logger.warn(`Migration ${name} not found in codebase`)
+        result.skipped.push(name)
+        continue
+      }
+
+      if (!migration.down) {
+        this.logger.warn(`Migration ${name} has no down method - skipping`)
+        result.skipped.push(name)
+        continue
+      }
+
+      const migrationStartTime = Date.now()
+
+      try {
+        // Call beforeMigration hooks
+        await this.runBeforeHooks(migration, 'down')
+
+        this.logger.info(`Rolling back ${name}...`)
+        this.logMigrationMeta(migration)
+
+        if (!this.runnerOptions.dryRun) {
+          await this.executeMigration(migration, 'down')
+          await this.markAsRolledBack(name)
+        }
+
+        const migrationDuration = Date.now() - migrationStartTime
+
+        // Call afterMigration hooks
+        await this.runAfterHooks(migration, 'down', migrationDuration)
+
+        this.logger.info(`${name} rolled back`)
+        result.executed.push(name)
+      } catch (error) {
+        // Call onMigrationError hooks
+        await this.runErrorHooks(migration, 'down', error)
+
+        const errorMsg = formatError(error)
+        this.logger.error(`${name} rollback failed: ${errorMsg}`)
+        result.failed.push(name)
+
+        if (this.runnerOptions.stopOnError) {
+          throw new MigrationError(
+            `Rollback of ${name} failed: ${errorMsg}`,
+            name,
+            'down',
+            error instanceof Error ? error : undefined
+          )
+        }
+      }
+    }
+
+    if (!this.runnerOptions.dryRun) {
+      this.logger.info('Rollback completed successfully')
+    } else {
+      this.logger.info('Dry run completed - no changes made')
+    }
+
+    result.duration = Date.now() - startTime
+    return result
   }
 }
 
@@ -981,16 +1175,16 @@ export function createLoggingPlugin<DB = unknown>(
     name: '@kysera/migrations/logging',
     version: VERSION,
     beforeMigration(migration, operation) {
-      logger.info(`Starting ${operation} for ${migration.name}`);
+      logger.info(`Starting ${operation} for ${migration.name}`)
     },
     afterMigration(migration, operation, duration) {
-      logger.info(`Completed ${operation} for ${migration.name} in ${duration}ms`);
+      logger.info(`Completed ${operation} for ${migration.name} in ${duration}ms`)
     },
     onMigrationError(migration, operation, error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(`Error during ${operation} for ${migration.name}: ${message}`);
-    },
-  };
+      const message = error instanceof Error ? error.message : String(error)
+      logger.error(`Error during ${operation} for ${migration.name}: ${message}`)
+    }
+  }
 }
 
 /**
@@ -998,28 +1192,30 @@ export function createLoggingPlugin<DB = unknown>(
  * Works with any DB type (generic plugin)
  */
 export function createMetricsPlugin<DB = unknown>(): MigrationPlugin<DB> & {
-  getMetrics(): { migrations: Array<{ name: string; operation: string; duration: number; success: boolean }> };
+  getMetrics(): {
+    migrations: { name: string; operation: string; duration: number; success: boolean }[]
+  }
 } {
-  const metrics: Array<{ name: string; operation: string; duration: number; success: boolean }> = [];
+  const metrics: { name: string; operation: string; duration: number; success: boolean }[] = []
 
   return {
     name: '@kysera/migrations/metrics',
     version: VERSION,
     afterMigration(migration, operation, duration) {
-      metrics.push({ name: migration.name, operation, duration, success: true });
+      metrics.push({ name: migration.name, operation, duration, success: true })
     },
     onMigrationError(migration, operation) {
-      metrics.push({ name: migration.name, operation, duration: 0, success: false });
+      metrics.push({ name: migration.name, operation, duration: 0, success: false })
     },
     getMetrics() {
-      return { migrations: [...metrics] };
-    },
-  };
+      return { migrations: [...metrics] }
+    }
+  }
 }
 
 // ============================================================================
 // Re-exports from @kysera/core for convenience
 // ============================================================================
 
-export { DatabaseError, NotFoundError, BadRequestError, silentLogger } from '@kysera/core';
-export type { KyseraLogger } from '@kysera/core';
+export { DatabaseError, NotFoundError, BadRequestError, silentLogger } from '@kysera/core'
+export type { KyseraLogger } from '@kysera/core'

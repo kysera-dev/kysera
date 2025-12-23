@@ -24,17 +24,17 @@ export const CartItemSchema = z.object({
   user_id: z.number(),
   product_id: z.number(),
   quantity: z.number().int().positive(),
-  created_at: z.date(),
+  created_at: z.date()
 })
 
 export const AddToCartSchema = z.object({
   user_id: z.number(),
   product_id: z.number(),
-  quantity: z.number().int().positive(),
+  quantity: z.number().int().positive()
 })
 
 export const UpdateCartItemSchema = z.object({
-  quantity: z.number().int().positive(),
+  quantity: z.number().int().positive()
 })
 
 // Mapper function
@@ -61,9 +61,7 @@ export function createCartRepository(executor: Executor<Database>) {
         .execute()
 
       const items = rows.map(mapCartItemRow)
-      return validateDbResults
-        ? items.map(i => CartItemSchema.parse(i))
-        : items
+      return validateDbResults ? items.map(i => CartItemSchema.parse(i)) : items
     },
 
     /**
@@ -139,17 +137,11 @@ export function createCartRepository(executor: Executor<Database>) {
     },
 
     async removeItem(itemId: number): Promise<void> {
-      await executor
-        .deleteFrom('cart_items')
-        .where('id', '=', itemId)
-        .execute()
+      await executor.deleteFrom('cart_items').where('id', '=', itemId).execute()
     },
 
     async clear(userId: number): Promise<void> {
-      await executor
-        .deleteFrom('cart_items')
-        .where('user_id', '=', userId)
-        .execute()
+      await executor.deleteFrom('cart_items').where('user_id', '=', userId).execute()
     },
 
     async getTotal(userId: number): Promise<number> {

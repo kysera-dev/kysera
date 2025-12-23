@@ -16,7 +16,7 @@ A complete e-commerce application demonstrating advanced Kysera patterns:
 Multi-table operations with ACID guarantees. The checkout process demonstrates a complete transaction that creates an order, decreases inventory, and clears the cart atomically:
 
 ```typescript
-const order = await db.transaction().execute(async (trx) => {
+const order = await db.transaction().execute(async trx => {
   const transactionalProductRepo = createProductRepository(trx)
   const transactionalCartRepo = createCartRepository(trx)
   const transactionalOrderRepo = createOrderRepository(trx)
@@ -199,7 +199,7 @@ interface Database {
     order_id: number
     product_id: number
     quantity: number
-    price: number  // Price at time of order
+    price: number // Price at time of order
     created_at: Generated<Date>
   }
 
@@ -234,6 +234,7 @@ pnpm start
 ```
 
 The example demonstrates:
+
 1. Creating products with initial stock
 2. Searching products by text query
 3. Adding items to cart with automatic quantity aggregation
@@ -272,6 +273,7 @@ async decreaseStock(productId: number, quantity: number): Promise<Product> {
 ```
 
 This approach:
+
 - Uses a WHERE clause to ensure stock doesn't go negative
 - Returns null if stock is insufficient, preventing overselling
 - Atomic operation - no race conditions between read and update
@@ -358,12 +360,15 @@ Track all stock changes for audit purposes:
 
 ```typescript
 // NOT IMPLEMENTED - Recommended pattern
-await trx.insertInto('inventory_movements').values({
-  product_id: item.product_id,
-  quantity_change: -item.quantity,
-  reason: 'order',
-  created_at: new Date()
-}).execute()
+await trx
+  .insertInto('inventory_movements')
+  .values({
+    product_id: item.product_id,
+    quantity_change: -item.quantity,
+    reason: 'order',
+    created_at: new Date()
+  })
+  .execute()
 ```
 
 ### Inventory Reconciliation
@@ -373,10 +378,7 @@ Verify stock levels match movement records:
 ```typescript
 // NOT IMPLEMENTED - Recommended pattern
 async function reconcileInventory() {
-  const products = await db
-    .selectFrom('products')
-    .select(['id', 'stock'])
-    .execute()
+  const products = await db.selectFrom('products').select(['id', 'stock']).execute()
 
   for (const product of products) {
     const movements = await db
@@ -411,7 +413,7 @@ interface CartItemsTable {
   id: Generated<number>
   user_id: number
   product_id: number
-  quantity: number        // Only store quantity
+  quantity: number // Only store quantity
   created_at: Generated<Date>
   // NO price field!
 }

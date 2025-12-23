@@ -20,11 +20,14 @@ class DatabaseError extends Error {
   detail?: string
   originalError?: unknown
 
-  constructor(message: string, options?: {
-    code?: string
-    detail?: string
-    originalError?: unknown
-  })
+  constructor(
+    message: string,
+    options?: {
+      code?: string
+      detail?: string
+      originalError?: unknown
+    }
+  )
 
   toJSON(): Record<string, unknown>
 }
@@ -36,9 +39,9 @@ Thrown when a UNIQUE constraint is violated.
 
 ```typescript
 class UniqueConstraintError extends DatabaseError {
-  constraint: string    // Constraint name
-  columns: string[]     // Affected columns
-  value?: unknown       // Duplicate value
+  constraint: string // Constraint name
+  columns: string[] // Affected columns
+  value?: unknown // Duplicate value
 
   constructor(constraint: string, columns?: string[], value?: unknown)
 }
@@ -113,19 +116,18 @@ class CheckConstraintError extends DatabaseError {
 Parse raw database errors into typed errors.
 
 ```typescript
-function parseDatabaseError(
-  error: unknown,
-  dialect: 'postgres' | 'mysql' | 'sqlite'
-): DatabaseError
+function parseDatabaseError(error: unknown, dialect: 'postgres' | 'mysql' | 'sqlite'): DatabaseError
 ```
 
 **Parameters:**
+
 - `error` - Raw error from database driver
 - `dialect` - Database dialect
 
 **Returns:** Typed `DatabaseError` or subclass
 
 **Example:**
+
 ```typescript
 try {
   await db.insertInto('users').values({ email: 'test@test.com' }).execute()
@@ -179,28 +181,28 @@ try {
 
 ### PostgreSQL
 
-| Code | Error Type |
-|------|------------|
+| Code  | Error Type            |
+| ----- | --------------------- |
 | 23505 | UniqueConstraintError |
-| 23503 | ForeignKeyError |
-| 23502 | NotNullError |
-| 23514 | CheckConstraintError |
+| 23503 | ForeignKeyError       |
+| 23502 | NotNullError          |
+| 23514 | CheckConstraintError  |
 
 ### MySQL
 
-| Code | Error Type |
-|------|------------|
-| ER_DUP_ENTRY | UniqueConstraintError |
-| ER_NO_REFERENCED_ROW | ForeignKeyError |
-| ER_BAD_NULL_ERROR | NotNullError |
+| Code                 | Error Type            |
+| -------------------- | --------------------- |
+| ER_DUP_ENTRY         | UniqueConstraintError |
+| ER_NO_REFERENCED_ROW | ForeignKeyError       |
+| ER_BAD_NULL_ERROR    | NotNullError          |
 
 ### SQLite
 
-| Message Contains | Error Type |
-|------------------|------------|
-| UNIQUE constraint | UniqueConstraintError |
-| FOREIGN KEY constraint | ForeignKeyError |
-| NOT NULL constraint | NotNullError |
+| Message Contains       | Error Type            |
+| ---------------------- | --------------------- |
+| UNIQUE constraint      | UniqueConstraintError |
+| FOREIGN KEY constraint | ForeignKeyError       |
+| NOT NULL constraint    | NotNullError          |
 
 ## JSON Serialization
 

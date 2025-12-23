@@ -53,14 +53,14 @@ Create consistent test data with factories:
 import { createFactory } from '@kysera/testing'
 
 const userFactory = createFactory({
-  email: (i) => `user${i}@example.com`,
-  name: (i) => `User ${i}`,
+  email: i => `user${i}@example.com`,
+  name: i => `User ${i}`,
   status: 'active'
 })
 
 // Generate unique users
-const user1 = userFactory()  // { email: 'user1@...', name: 'User 1', ... }
-const user2 = userFactory()  // { email: 'user2@...', name: 'User 2', ... }
+const user1 = userFactory() // { email: 'user1@...', name: 'User 1', ... }
+const user2 = userFactory() // { email: 'user2@...', name: 'User 2', ... }
 
 // Override specific fields
 const admin = userFactory({ status: 'admin' })
@@ -79,17 +79,14 @@ class UserService {
 
   async createUserWithProfile(data: CreateUserInput) {
     // Use repository's transaction method
-    return this.repos.users.transaction(async (trx) => {
+    return this.repos.users.transaction(async trx => {
       const user = await trx
         .insertInto('users')
         .values(data)
         .returningAll()
         .executeTakeFirstOrThrow()
 
-      await trx
-        .insertInto('profiles')
-        .values({ userId: user.id })
-        .execute()
+      await trx.insertInto('profiles').values({ userId: user.id }).execute()
 
       return user
     })
@@ -98,7 +95,7 @@ class UserService {
 
 describe('UserService', () => {
   it('should create user with profile', async () => {
-    await testInTransaction(db, async (trx) => {
+    await testInTransaction(db, async trx => {
       const service = new UserService(createRepos(trx))
 
       const user = await service.createUserWithProfile({
@@ -128,7 +125,7 @@ it('should rollback on error', async () => {
   const initialCount = await countRows(db, 'users')
 
   await expect(
-    db.transaction().execute(async (trx) => {
+    db.transaction().execute(async trx => {
       const repos = createRepos(trx)
       await repos.users.create({ email: 'test@test.com', name: 'Test' })
       throw new Error('Force rollback')
@@ -151,19 +148,19 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 
 describe('Soft Delete Plugin', () => {
   it('should soft delete user', async () => {
-    await testInTransaction(db, async (trx) => {
+    await testInTransaction(db, async trx => {
       // Create executor with soft delete plugin using createORM
       const orm = await createORM(trx, [softDeletePlugin()])
 
       // Create repository using orm's createRepository
-      const userRepo = orm.createRepository((executor) => {
+      const userRepo = orm.createRepository(executor => {
         const factory = createRepositoryFactory(executor)
         return factory.create({
           tableName: 'users',
-          mapRow: (row) => row,
+          mapRow: row => row,
           schemas: {
-            create: nativeAdapter(),
-          },
+            create: nativeAdapter()
+          }
         })
       })
 
@@ -192,7 +189,7 @@ describe('Soft Delete Plugin', () => {
 ### Transaction (Fastest)
 
 ```typescript
-await testInTransaction(db, async (trx) => {
+await testInTransaction(db, async trx => {
   // Test code - auto rollback
 })
 ```
@@ -223,12 +220,12 @@ import { seedDatabase, cleanDatabase } from '@kysera/testing'
 describe('Integration', () => {
   beforeAll(async () => {
     // seedDatabase takes a function, not raw data
-    await seedDatabase(db, async (trx) => {
+    await seedDatabase(db, async trx => {
       await trx
         .insertInto('users')
         .values([
           { email: 'alice@example.com', name: 'Alice', status: 'active' },
-          { email: 'bob@example.com', name: 'Bob', status: 'active' },
+          { email: 'bob@example.com', name: 'Bob', status: 'active' }
         ])
         .execute()
 
@@ -236,7 +233,7 @@ describe('Integration', () => {
         .insertInto('posts')
         .values([
           { user_id: 1, title: 'Post 1' },
-          { user_id: 2, title: 'Post 2' },
+          { user_id: 2, title: 'Post 2' }
         ])
         .execute()
     })
@@ -270,7 +267,7 @@ export default defineConfig({
   test: {
     globals: true,
     setupFiles: ['./tests/setup.ts'],
-    pool: 'forks',  // Isolated processes for DB tests
+    pool: 'forks' // Isolated processes for DB tests
   }
 })
 ```
@@ -302,8 +299,8 @@ await testInTransaction(db, async (trx) => { ... })
 
 ```typescript
 it('test 1', async () => {
-  await testInTransaction(db, async (trx) => {
-    const user = await createTestUser(trx)  // Fresh data
+  await testInTransaction(db, async trx => {
+    const user = await createTestUser(trx) // Fresh data
     // Test...
   })
 })
@@ -336,12 +333,10 @@ it('should handle duplicate', async () => {
 
 ```typescript
 it('should validate input', async () => {
-  await testInTransaction(db, async (trx) => {
+  await testInTransaction(db, async trx => {
     const repos = createRepos(trx)
 
-    await expect(
-      repos.users.create({ email: 'invalid', name: '' })
-    ).rejects.toThrow()
+    await expect(repos.users.create({ email: 'invalid', name: '' })).rejects.toThrow()
   })
 })
 ```

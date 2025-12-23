@@ -4,21 +4,21 @@
  * @module @kysera/infra/health
  */
 
-import type { Kysely } from 'kysely';
-import { consoleLogger, type KyseraLogger } from '@kysera/core';
-import type { MetricsPool } from '../pool/metrics.js';
-import type { HealthCheckResult, HealthStatus } from './types.js';
+import type { Kysely } from 'kysely'
+import { consoleLogger, type KyseraLogger } from '@kysera/core'
+import type { MetricsPool } from '../pool/metrics.js'
+import type { HealthCheckResult, HealthStatus } from './types.js'
 
 /**
  * Options for health check.
  */
 export interface HealthCheckOptions {
   /** Connection pool for metrics extraction */
-  pool?: MetricsPool;
+  pool?: MetricsPool
   /** Include verbose information */
-  verbose?: boolean;
+  verbose?: boolean
   /** Custom logger */
-  logger?: KyseraLogger;
+  logger?: KyseraLogger
 }
 
 /**
@@ -28,9 +28,9 @@ export interface HealthCheckOptions {
  * @returns Health status
  */
 function getStatusFromLatency(latencyMs: number): HealthStatus {
-  if (latencyMs < 100) return 'healthy';
-  if (latencyMs < 500) return 'degraded';
-  return 'unhealthy';
+  if (latencyMs < 100) return 'healthy'
+  if (latencyMs < 500) return 'degraded'
+  return 'unhealthy'
 }
 
 /**
@@ -68,14 +68,14 @@ export async function checkDatabaseHealth<DB>(
   db: Kysely<DB>,
   pool?: MetricsPool
 ): Promise<HealthCheckResult> {
-  const start = Date.now();
+  const start = Date.now()
 
   try {
     // Simple query to check connection
-    await db.selectNoFrom((eb) => eb.val(1).as('ping')).execute();
+    await db.selectNoFrom(eb => eb.val(1).as('ping')).execute()
 
-    const latency = Date.now() - start;
-    const status = getStatusFromLatency(latency);
+    const latency = Date.now() - start
+    const status = getStatusFromLatency(latency)
 
     const result: HealthCheckResult = {
       status,
@@ -83,29 +83,29 @@ export async function checkDatabaseHealth<DB>(
         {
           name: 'Database Connection',
           status: 'healthy',
-          message: `Connected successfully (${latency.toString()}ms)`,
-        },
+          message: `Connected successfully (${latency.toString()}ms)`
+        }
       ],
       metrics: {
-        checkLatency: latency,
+        checkLatency: latency
       },
-      timestamp: new Date(),
-    };
+      timestamp: new Date()
+    }
 
     // Add pool metrics if available
     if (pool?.getMetrics && result.metrics) {
-      const metrics = pool.getMetrics();
+      const metrics = pool.getMetrics()
       result.metrics.poolMetrics = {
         totalConnections: metrics.total,
         activeConnections: metrics.active,
         idleConnections: metrics.idle,
-        waitingRequests: metrics.waiting,
-      };
+        waitingRequests: metrics.waiting
+      }
     }
 
-    return result;
+    return result
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error)
 
     const result: HealthCheckResult = {
       status: 'unhealthy',
@@ -113,27 +113,27 @@ export async function checkDatabaseHealth<DB>(
         {
           name: 'Database Connection',
           status: 'unhealthy',
-          message: errorMessage,
-        },
+          message: errorMessage
+        }
       ],
       errors: [errorMessage],
-      timestamp: new Date(),
-    };
+      timestamp: new Date()
+    }
 
     // Add pool metrics if available (even on error)
     if (pool?.getMetrics) {
-      const metrics = pool.getMetrics();
+      const metrics = pool.getMetrics()
       result.metrics = {
         poolMetrics: {
           totalConnections: metrics.total,
           activeConnections: metrics.active,
           idleConnections: metrics.idle,
-          waitingRequests: metrics.waiting,
-        },
-      };
+          waitingRequests: metrics.waiting
+        }
+      }
     }
 
-    return result;
+    return result
   }
 }
 
@@ -162,23 +162,23 @@ export async function performHealthCheck<DB>(
   db: Kysely<DB>,
   options: HealthCheckOptions = {}
 ): Promise<HealthCheckResult> {
-  const { pool, verbose = false, logger = consoleLogger } = options;
+  const { pool, verbose = false, logger = consoleLogger } = options
 
-  const baseResult = await checkDatabaseHealth(db, pool);
+  const baseResult = await checkDatabaseHealth(db, pool)
 
   if (verbose) {
     // Add additional checks in verbose mode
     try {
       baseResult.metrics = {
         ...baseResult.metrics,
-        databaseVersion: 'Unknown', // Dialect-specific implementation needed
-      };
+        databaseVersion: 'Unknown' // Dialect-specific implementation needed
+      }
     } catch (error) {
       logger.debug('Version check failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+        error: error instanceof Error ? error.message : String(error)
+      })
     }
   }
 
-  return baseResult;
+  return baseResult
 }

@@ -11,24 +11,13 @@ import type {
   QueryResult,
   UnknownRow,
   KyselyPlugin,
-  RootOperationNode,
-} from 'kysely';
-import { DefaultQueryCompiler } from 'kysely';
-import { consoleLogger, type KyseraLogger } from '@kysera/core';
+  RootOperationNode
+} from 'kysely'
+import { DefaultQueryCompiler } from 'kysely'
+import { consoleLogger, type KyseraLogger, type QueryMetrics } from '@kysera/core'
 
-/**
- * Query metrics data.
- */
-export interface QueryMetrics {
-  /** SQL query string */
-  sql: string;
-  /** Query parameters */
-  params?: unknown[];
-  /** Query execution duration in milliseconds */
-  duration: number;
-  /** Timestamp when query was executed */
-  timestamp: number;
-}
+// Re-export QueryMetrics for backwards compatibility
+export type { QueryMetrics }
 
 /**
  * Options for debug plugin.
@@ -38,37 +27,37 @@ export interface DebugOptions {
    * Log query SQL.
    * @default true
    */
-  logQuery?: boolean;
+  logQuery?: boolean
 
   /**
    * Log query parameters.
    * @default false
    */
-  logParams?: boolean;
+  logParams?: boolean
 
   /**
    * Duration threshold (ms) to consider a query slow.
    * @default 100
    */
-  slowQueryThreshold?: number;
+  slowQueryThreshold?: number
 
   /**
    * Callback for slow queries.
    */
-  onSlowQuery?: (sql: string, duration: number) => void;
+  onSlowQuery?: (sql: string, duration: number) => void
 
   /**
    * Logger for debug messages.
    * @default consoleLogger
    */
-  logger?: KyseraLogger;
+  logger?: KyseraLogger
 
   /**
    * Maximum number of metrics to keep in memory.
    * When limit is reached, oldest metrics are removed (circular buffer).
    * @default 1000
    */
-  maxMetrics?: number;
+  maxMetrics?: number
 }
 
 /**
@@ -76,9 +65,9 @@ export interface DebugOptions {
  * @internal
  */
 interface QueryData {
-  startTime: number;
-  sql: string;
-  params: readonly unknown[];
+  startTime: number
+  sql: string
+  params: readonly unknown[]
 }
 
 /**
@@ -86,89 +75,101 @@ interface QueryData {
  * @internal
  */
 class DebugPlugin implements KyselyPlugin {
-  private metrics: QueryMetrics[] = [];
-  private queryData = new WeakMap<object, QueryData>();
-  private readonly maxMetrics: number;
-  private readonly logger: KyseraLogger;
-  private readonly options: Required<Pick<DebugOptions, 'logQuery' | 'logParams' | 'slowQueryThreshold'>>;
-  private readonly onSlowQuery: ((sql: string, duration: number) => void) | undefined;
+  private metrics: QueryMetrics[] = []
+  private metricsWriteIndex = 0
+  private queryData = new WeakMap<object, QueryData>()
+  private readonly maxMetrics: number
+  private readonly logger: KyseraLogger
+  private readonly options: Required<
+    Pick<DebugOptions, 'logQuery' | 'logParams' | 'slowQueryThreshold'>
+  >
+  private readonly onSlowQuery: ((sql: string, duration: number) => void) | undefined
 
   constructor(options: DebugOptions = {}) {
-    this.logger = options.logger ?? consoleLogger;
-    this.maxMetrics = options.maxMetrics ?? 1000;
-    this.onSlowQuery = options.onSlowQuery;
+    this.logger = options.logger ?? consoleLogger
+    this.maxMetrics = options.maxMetrics ?? 1000
+    this.onSlowQuery = options.onSlowQuery
     this.options = {
       logQuery: options.logQuery ?? true,
       logParams: options.logParams ?? false,
-      slowQueryThreshold: options.slowQueryThreshold ?? 100,
-    };
+      slowQueryThreshold: options.slowQueryThreshold ?? 100
+    }
   }
 
   transformQuery(args: PluginTransformQueryArgs): RootOperationNode {
-    const startTime = performance.now();
+    const startTime = performance.now()
 
     // Compile the query to get SQL and parameters
-    const compiler = new DefaultQueryCompiler();
-    const compiled = compiler.compileQuery(args.node, args.queryId);
+    const compiler = new DefaultQueryCompiler()
+    const compiled = compiler.compileQuery(args.node, args.queryId)
 
     // Store query data for later use in transformResult
     this.queryData.set(args.queryId, {
       startTime,
       sql: compiled.sql,
-      params: compiled.parameters,
-    });
+      params: compiled.parameters
+    })
 
-    return args.node;
+    return args.node
   }
 
   transformResult(args: PluginTransformResultArgs): Promise<QueryResult<UnknownRow>> {
-    const data = this.queryData.get(args.queryId);
+    const data = this.queryData.get(args.queryId)
 
     if (data) {
-      const endTime = performance.now();
-      const duration = endTime - data.startTime;
-      this.queryData.delete(args.queryId);
+      const endTime = performance.now()
+      const duration = endTime - data.startTime
+      this.queryData.delete(args.queryId)
 
       const metric: QueryMetrics = {
         sql: data.sql,
         params: [...data.params],
         duration,
-        timestamp: Date.now(),
-      };
-
-      // Circular buffer: keep only last N metrics
-      this.metrics.push(metric);
-      if (this.metrics.length > this.maxMetrics) {
-        this.metrics.shift();
+        timestamp: Date.now()
       }
+
+      // O(1) circular buffer: overwrite oldest entry when full
+      if (this.metrics.length < this.maxMetrics) {
+        this.metrics.push(metric)
+      } else {
+        this.metrics[this.metricsWriteIndex % this.maxMetrics] = metric
+      }
+      this.metricsWriteIndex++
 
       if (this.options.logQuery) {
         const message = this.options.logParams
-          ? `[SQL] ${data.sql}\n[Params] ${JSON.stringify(data.params)}`
-          : `[SQL] ${data.sql}`;
-        this.logger.debug(message);
-        this.logger.debug(`[Duration] ${duration.toFixed(2)}ms`);
+          ? '[SQL] ' + data.sql + '\n[Params] ' + JSON.stringify(data.params)
+          : '[SQL] ' + data.sql
+        this.logger.debug(message)
+        this.logger.debug('[Duration] ' + duration.toFixed(2) + 'ms')
       }
 
       // Check for slow query
       if (duration > this.options.slowQueryThreshold) {
         if (this.onSlowQuery) {
-          this.onSlowQuery(data.sql, duration);
+          this.onSlowQuery(data.sql, duration)
         } else {
-          this.logger.warn(`[SLOW QUERY] ${duration.toFixed(2)}ms: ${data.sql}`);
+          this.logger.warn('[SLOW QUERY] ' + duration.toFixed(2) + 'ms: ' + data.sql)
         }
       }
     }
 
-    return Promise.resolve(args.result);
+    return Promise.resolve(args.result)
   }
 
   getMetrics(): QueryMetrics[] {
-    return [...this.metrics];
+    // Return metrics in chronological order
+    if (this.metrics.length < this.maxMetrics) {
+      return [...this.metrics]
+    }
+    // Buffer is full, reconstruct chronological order
+    const start = this.metricsWriteIndex % this.maxMetrics
+    return [...this.metrics.slice(start), ...this.metrics.slice(0, start)]
   }
 
   clearMetrics(): void {
-    this.metrics = [];
+    this.metrics = []
+    this.metricsWriteIndex = 0
   }
 }
 
@@ -177,9 +178,9 @@ class DebugPlugin implements KyselyPlugin {
  */
 export interface DebugDatabase<DB> extends Kysely<DB> {
   /** Get all collected query metrics */
-  getMetrics(): QueryMetrics[];
+  getMetrics(): QueryMetrics[]
   /** Clear all collected metrics */
-  clearMetrics(): void;
+  clearMetrics(): void
 }
 
 /**
@@ -202,7 +203,7 @@ export interface DebugDatabase<DB> extends Kysely<DB> {
  *
  * // Get collected metrics
  * const metrics = debugDb.getMetrics();
- * console.log(`Total queries: ${metrics.length}`);
+ * console.log('Total queries: ' + metrics.length);
  * ```
  *
  * @example With custom options
@@ -215,23 +216,20 @@ export interface DebugDatabase<DB> extends Kysely<DB> {
  *   slowQueryThreshold: 50,
  *   maxMetrics: 500,
  *   onSlowQuery: (sql, duration) => {
- *     alertService.notify(`Slow query: ${duration}ms`);
+ *     alertService.notify('Slow query: ' + duration + 'ms');
  *   },
  * });
  * ```
  */
-export function withDebug<DB>(
-  db: Kysely<DB>,
-  options: DebugOptions = {}
-): DebugDatabase<DB> {
-  const plugin = new DebugPlugin(options);
-  const debugDb = db.withPlugin(plugin) as DebugDatabase<DB>;
+export function withDebug<DB>(db: Kysely<DB>, options: DebugOptions = {}): DebugDatabase<DB> {
+  const plugin = new DebugPlugin(options)
+  const debugDb = db.withPlugin(plugin) as DebugDatabase<DB>
 
   // Attach metrics methods
-  debugDb.getMetrics = (): QueryMetrics[] => plugin.getMetrics();
+  debugDb.getMetrics = (): QueryMetrics[] => plugin.getMetrics()
   debugDb.clearMetrics = (): void => {
-    plugin.clearMetrics();
-  };
+    plugin.clearMetrics()
+  }
 
-  return debugDb;
+  return debugDb
 }

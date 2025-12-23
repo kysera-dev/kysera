@@ -1,54 +1,54 @@
-import { Command } from 'commander';
-import { prism, select, confirm } from '@xec-sh/kit';
-import { spinner } from '../../utils/spinner.js';
-import { logger } from '../../utils/logger.js';
-import { CLIError, ValidationError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
-import { validateIdentifier, safeTruncate } from '../../utils/sql-sanitizer.js';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-import { faker } from '@faker-js/faker';
+import { Command } from 'commander'
+import { prism, select, confirm } from '@xec-sh/kit'
+import { spinner } from '../../utils/spinner.js'
+import { logger } from '../../utils/logger.js'
+import { CLIError, ValidationError } from '../../utils/errors.js'
+import { getDatabaseConnection } from '../../utils/database.js'
+import { loadConfig } from '../../config/loader.js'
+import { validateIdentifier, safeTruncate } from '../../utils/sql-sanitizer.js'
+import * as fs from 'node:fs/promises'
+import * as path from 'node:path'
+import { faker } from '@faker-js/faker'
 
 export interface TestSeedOptions {
-  tables?: string[];
-  count?: number;
-  clean?: boolean;
-  strategy?: 'faker' | 'realistic' | 'stress' | 'minimal';
-  relationships?: boolean;
-  locale?: string;
-  seed?: number;
-  custom?: string;
-  verbose?: boolean;
-  json?: boolean;
-  config?: string;
+  tables?: string[]
+  count?: number
+  clean?: boolean
+  strategy?: 'faker' | 'realistic' | 'stress' | 'minimal'
+  relationships?: boolean
+  locale?: string
+  seed?: number
+  custom?: string
+  verbose?: boolean
+  json?: boolean
+  config?: string
 }
 
 interface SeedResult {
   tables: Array<{
-    name: string;
-    recordsCreated: number;
-    relationships: string[];
-    duration: number;
-  }>;
-  strategy: string;
-  totalRecords: number;
-  totalDuration: number;
-  seed?: number;
+    name: string
+    recordsCreated: number
+    relationships: string[]
+    duration: number
+  }>
+  strategy: string
+  totalRecords: number
+  totalDuration: number
+  seed?: number
 }
 
 interface TableSchema {
-  name: string;
+  name: string
   columns: Array<{
-    name: string;
-    type: string;
-    nullable: boolean;
-    primaryKey: boolean;
+    name: string
+    type: string
+    nullable: boolean
+    primaryKey: boolean
     foreignKey?: {
-      table: string;
-      column: string;
-    };
-  }>;
+      table: string
+      column: string
+    }
+  }>
 }
 
 export function testSeedCommand(): Command {
@@ -67,97 +67,97 @@ export function testSeedCommand(): Command {
     .option('--config <path>', 'Path to configuration file')
     .action(async (options: TestSeedOptions) => {
       try {
-        await seedTestDatabase(options);
+        await seedTestDatabase(options)
       } catch (error) {
         if (error instanceof CLIError) {
-          throw error;
+          throw error
         }
         throw new CLIError(
           `Failed to seed test database: ${error instanceof Error ? error.message : String(error)}`,
           'TEST_SEED_ERROR'
-        );
+        )
       }
-    });
+    })
 
-  return cmd;
+  return cmd
 }
 
 async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
-  const startTime = Date.now();
+  const startTime = Date.now()
 
-  const config = await loadConfig(options.config);
+  const config = await loadConfig(options.config)
 
   if (!config?.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
       'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
+      'Or specify a config file with --config option'
+    ])
   }
 
   if (options.seed) {
-    faker.seed(options.seed);
+    faker.seed(options.seed)
   }
   // Note: Faker v8+ doesn't support runtime locale changes
   // Locale is set at import time (e.g., import { faker } from '@faker-js/faker/locale/en')
 
-  const seedSpinner = spinner();
-  seedSpinner.start('Connecting to database...');
+  const seedSpinner = spinner()
+  seedSpinner.start('Connecting to database...')
 
   const result: SeedResult = {
     tables: [],
     strategy: options.strategy || 'realistic',
     totalRecords: 0,
     totalDuration: 0,
-    seed: options.seed,
-  };
+    seed: options.seed
+  }
 
   try {
-    const db = await getDatabaseConnection(config.database);
+    const db = await getDatabaseConnection(config.database)
 
     if (!db) {
-      throw new CLIError('Failed to connect to database', 'DATABASE_ERROR');
+      throw new CLIError('Failed to connect to database', 'DATABASE_ERROR')
     }
 
     if (options.custom) {
-      seedSpinner.text = 'Running custom seeder...';
-      await runCustomSeeder(db, options.custom, options);
-      seedSpinner.succeed('Custom seeder executed');
-      await db.destroy();
-      return;
+      seedSpinner.text = 'Running custom seeder...'
+      await runCustomSeeder(db, options.custom, options)
+      seedSpinner.succeed('Custom seeder executed')
+      await db.destroy()
+      return
     }
 
-    seedSpinner.text = 'Analyzing database schema...';
-    const schemas = await getTableSchemas(db, options.tables);
+    seedSpinner.text = 'Analyzing database schema...'
+    const schemas = await getTableSchemas(db, options.tables)
 
     if (schemas.length === 0) {
-      seedSpinner.warn('No tables found to seed');
-      await db.destroy();
-      return;
+      seedSpinner.warn('No tables found to seed')
+      await db.destroy()
+      return
     }
 
-    seedSpinner.succeed(`Found ${schemas.length} table${schemas.length !== 1 ? 's' : ''} to seed`);
+    seedSpinner.succeed(`Found ${schemas.length} table${schemas.length !== 1 ? 's' : ''} to seed`)
 
     if (options.clean) {
-      const cleanSpinner = spinner();
-      cleanSpinner.start('Cleaning tables...');
+      const cleanSpinner = spinner()
+      cleanSpinner.start('Cleaning tables...')
 
       for (const schema of schemas) {
-        await cleanTable(db, schema.name);
+        await cleanTable(db, schema.name)
       }
 
-      cleanSpinner.succeed('Tables cleaned');
+      cleanSpinner.succeed('Tables cleaned')
     }
 
-    const sortedSchemas = sortTablesByDependencies(schemas);
+    const sortedSchemas = sortTablesByDependencies(schemas)
 
-    const count = parseInt(options.count as any) || 100;
+    const count = parseInt(options.count as any) || 100
     if (isNaN(count) || count <= 0) {
-      throw new CLIError('Invalid count value - must be a positive number');
+      throw new CLIError('Invalid count value - must be a positive number')
     }
 
     for (const schema of sortedSchemas) {
-      const tableStartTime = Date.now();
-      seedSpinner.start(`Seeding ${schema.name}...`);
+      const tableStartTime = Date.now()
+      seedSpinner.start(`Seeding ${schema.name}...`)
 
       const tableResult = await seedTable(
         db,
@@ -165,50 +165,50 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
         count,
         options.strategy || 'realistic',
         options.relationships !== false
-      );
+      )
 
-      const duration = Date.now() - tableStartTime;
+      const duration = Date.now() - tableStartTime
       result.tables.push({
         name: schema.name,
         recordsCreated: tableResult.recordsCreated,
         relationships: tableResult.relationships,
-        duration,
-      });
+        duration
+      })
 
-      result.totalRecords += tableResult.recordsCreated;
-      seedSpinner.succeed(`Seeded ${schema.name}: ${tableResult.recordsCreated} records`);
+      result.totalRecords += tableResult.recordsCreated
+      seedSpinner.succeed(`Seeded ${schema.name}: ${tableResult.recordsCreated} records`)
 
       if (options.verbose) {
-        console.log(prism.gray(`  Duration: ${duration}ms`));
+        console.log(prism.gray(`  Duration: ${duration}ms`))
         if (tableResult.relationships.length > 0) {
-          console.log(prism.gray(`  Relationships: ${tableResult.relationships.join(', ')}`));
+          console.log(prism.gray(`  Relationships: ${tableResult.relationships.join(', ')}`))
         }
       }
     }
 
-    result.totalDuration = Date.now() - startTime;
+    result.totalDuration = Date.now() - startTime
 
-    await db.destroy();
+    await db.destroy()
 
     if (options.json) {
-      console.log(JSON.stringify(result, null, 2));
+      console.log(JSON.stringify(result, null, 2))
     } else {
-      displaySeedResults(result, options);
+      displaySeedResults(result, options)
     }
   } catch (error) {
-    seedSpinner.fail('Seeding failed');
-    throw error;
+    seedSpinner.fail('Seeding failed')
+    throw error
   }
 }
 
 async function getTableSchemas(db: any, tables?: string[]): Promise<TableSchema[]> {
-  const schemas: TableSchema[] = [];
+  const schemas: TableSchema[] = []
 
   try {
-    let tableList: string[] = [];
+    let tableList: string[] = []
 
     if (tables && tables.length > 0) {
-      tableList = tables;
+      tableList = tables
     } else {
       if (db.dialectName === 'postgres') {
         const result = await db
@@ -216,42 +216,42 @@ async function getTableSchemas(db: any, tables?: string[]): Promise<TableSchema[
           .select('table_name')
           .where('table_schema', '=', 'public')
           .where('table_type', '=', 'BASE TABLE')
-          .execute();
+          .execute()
 
-        tableList = result.map((r: any) => r.table_name);
+        tableList = result.map((r: any) => r.table_name)
       } else if (db.dialectName === 'mysql') {
         const result = await db.raw(`
           SELECT table_name FROM information_schema.tables
           WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'
-        `);
+        `)
 
-        tableList = result[0].map((r: any) => r.TABLE_NAME || r.table_name);
+        tableList = result[0].map((r: any) => r.TABLE_NAME || r.table_name)
       } else if (db.dialectName === 'sqlite') {
         const result = await db.raw(`
           SELECT name FROM sqlite_master
           WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-        `);
+        `)
 
-        tableList = result.map((r: any) => r.name);
+        tableList = result.map((r: any) => r.name)
       }
     }
 
     for (const tableName of tableList) {
-      const columns = await getTableColumns(db, tableName);
-      schemas.push({ name: tableName, columns });
+      const columns = await getTableColumns(db, tableName)
+      schemas.push({ name: tableName, columns })
     }
   } catch (error) {
-    logger.debug(`Failed to get table schemas: ${error}`);
+    logger.debug(`Failed to get table schemas: ${error}`)
   }
 
-  return schemas;
+  return schemas
 }
 
 async function getTableColumns(db: any, tableName: string): Promise<TableSchema['columns']> {
-  const columns: TableSchema['columns'] = [];
+  const columns: TableSchema['columns'] = []
 
   // Validate table name before use
-  validateIdentifier(tableName, 'table');
+  validateIdentifier(tableName, 'table')
 
   try {
     if (db.dialectName === 'postgres') {
@@ -260,96 +260,109 @@ async function getTableColumns(db: any, tableName: string): Promise<TableSchema[
         .leftJoin('information_schema.key_column_usage as k', (join: any) =>
           join.on('c.table_name', '=', 'k.table_name').on('c.column_name', '=', 'k.column_name')
         )
-        .leftJoin('information_schema.table_constraints as tc', 'k.constraint_name', 'tc.constraint_name')
-        .select(['c.column_name', 'c.data_type', 'c.is_nullable', 'tc.constraint_type', 'k.constraint_name'])
+        .leftJoin(
+          'information_schema.table_constraints as tc',
+          'k.constraint_name',
+          'tc.constraint_name'
+        )
+        .select([
+          'c.column_name',
+          'c.data_type',
+          'c.is_nullable',
+          'tc.constraint_type',
+          'k.constraint_name'
+        ])
         .where('c.table_name', '=', tableName)
         .where('c.table_schema', '=', 'public')
-        .execute();
+        .execute()
 
       for (const col of result) {
         columns.push({
           name: col.column_name,
           type: col.data_type,
           nullable: col.is_nullable === 'YES',
-          primaryKey: col.constraint_type === 'PRIMARY KEY',
-        });
+          primaryKey: col.constraint_type === 'PRIMARY KEY'
+        })
       }
     } else if (db.dialectName === 'mysql') {
-      const result = await db.raw(`
+      const result = await db.raw(
+        `
         SELECT COLUMN_NAME as column_name, DATA_TYPE as data_type,
                IS_NULLABLE as is_nullable, COLUMN_KEY as column_key
         FROM information_schema.columns
         WHERE table_name = ? AND table_schema = DATABASE()
-      `, [tableName]);
+      `,
+        [tableName]
+      )
 
       for (const col of result[0]) {
         columns.push({
           name: col.column_name,
           type: col.data_type,
           nullable: col.is_nullable === 'YES',
-          primaryKey: col.column_key === 'PRI',
-        });
+          primaryKey: col.column_key === 'PRI'
+        })
       }
     } else if (db.dialectName === 'sqlite') {
       // Use parameterized approach for SQLite PRAGMA
-      const validTableName = validateIdentifier(tableName, 'table');
-      const result = await db.raw(`PRAGMA table_info('${validTableName}')`);
+      const validTableName = validateIdentifier(tableName, 'table')
+      const result = await db.raw(`PRAGMA table_info('${validTableName}')`)
 
       for (const col of result) {
         columns.push({
           name: col.name,
           type: col.type,
           nullable: col.notnull === 0,
-          primaryKey: col.pk === 1,
-        });
+          primaryKey: col.pk === 1
+        })
       }
     }
   } catch (error) {
-    logger.debug(`Failed to get columns for ${tableName}: ${error}`);
+    logger.debug(`Failed to get columns for ${tableName}: ${error}`)
   }
 
-  return columns;
+  return columns
 }
 
 function sortTablesByDependencies(schemas: TableSchema[]): TableSchema[] {
-  const sorted: TableSchema[] = [];
-  const visited = new Set<string>();
+  const sorted: TableSchema[] = []
+  const visited = new Set<string>()
 
   function visit(schema: TableSchema) {
-    if (visited.has(schema.name)) return;
-    visited.add(schema.name);
+    if (visited.has(schema.name)) return
+    visited.add(schema.name)
 
     for (const column of schema.columns) {
       if (column.foreignKey) {
-        const dependency = schemas.find((s) => s.name === column.foreignKey!.table);
+        const dependency = schemas.find(s => s.name === column.foreignKey!.table)
         if (dependency && !visited.has(dependency.name)) {
-          visit(dependency);
+          visit(dependency)
         }
       }
     }
 
-    sorted.push(schema);
+    sorted.push(schema)
   }
 
   for (const schema of schemas) {
-    visit(schema);
+    visit(schema)
   }
 
-  return sorted;
+  return sorted
 }
 
 async function cleanTable(db: any, tableName: string): Promise<void> {
   try {
     // Validate and use safe truncate
-    validateIdentifier(tableName, 'table');
+    validateIdentifier(tableName, 'table')
     if (db.dialectName === 'postgres' || db.dialectName === 'mysql') {
-      const dialect = db.dialectName === 'postgres' ? 'postgres' : 'mysql';
-      await db.raw(safeTruncate(tableName, dialect, true));
+      const dialect = db.dialectName === 'postgres' ? 'postgres' : 'mysql'
+      await db.raw(safeTruncate(tableName, dialect, true))
     } else {
-      await db.deleteFrom(tableName).execute();
+      await db.deleteFrom(tableName).execute()
     }
   } catch (error) {
-    logger.debug(`Failed to clean table ${tableName}: ${error}`);
+    logger.debug(`Failed to clean table ${tableName}: ${error}`)
   }
 }
 
@@ -360,39 +373,39 @@ async function seedTable(
   strategy: string,
   createRelationships: boolean
 ): Promise<{ recordsCreated: number; relationships: string[] }> {
-  const records: any[] = [];
-  const relationships: string[] = [];
+  const records: any[] = []
+  const relationships: string[] = []
 
-  let actualCount = count;
+  let actualCount = count
   if (strategy === 'minimal') {
-    actualCount = Math.min(10, count);
+    actualCount = Math.min(10, count)
   } else if (strategy === 'stress') {
-    actualCount = count * 10;
+    actualCount = count * 10
   }
 
   for (let i = 0; i < actualCount; i++) {
-    const record = await generateRecord(db, schema, strategy, createRelationships);
+    const record = await generateRecord(db, schema, strategy, createRelationships)
 
     if (record) {
-      records.push(record);
+      records.push(record)
 
       for (const column of schema.columns) {
         if (column.foreignKey && record[column.name]) {
           if (!relationships.includes(column.foreignKey.table)) {
-            relationships.push(column.foreignKey.table);
+            relationships.push(column.foreignKey.table)
           }
         }
       }
     }
   }
 
-  const batchSize = 100;
+  const batchSize = 100
   for (let i = 0; i < records.length; i += batchSize) {
-    const batch = records.slice(i, i + batchSize);
-    await db.insertInto(schema.name).values(batch).execute();
+    const batch = records.slice(i, i + batchSize)
+    await db.insertInto(schema.name).values(batch).execute()
   }
 
-  return { recordsCreated: records.length, relationships };
+  return { recordsCreated: records.length, relationships }
 }
 
 async function generateRecord(
@@ -401,134 +414,138 @@ async function generateRecord(
   strategy: string,
   createRelationships: boolean
 ): Promise<any> {
-  const record: any = {};
+  const record: any = {}
 
   for (const column of schema.columns) {
     if (column.primaryKey && column.type.includes('int')) {
-      continue;
+      continue
     }
 
     if (column.nullable && Math.random() > 0.8) {
-      continue;
+      continue
     }
 
     if (column.foreignKey && createRelationships) {
-      const foreignValue = await getRandomForeignKey(db, column.foreignKey.table, column.foreignKey.column);
+      const foreignValue = await getRandomForeignKey(
+        db,
+        column.foreignKey.table,
+        column.foreignKey.column
+      )
       if (foreignValue) {
-        record[column.name] = foreignValue;
+        record[column.name] = foreignValue
       }
-      continue;
+      continue
     }
 
-    const value = generateColumnValue(column, strategy);
+    const value = generateColumnValue(column, strategy)
     if (value !== undefined) {
-      record[column.name] = value;
+      record[column.name] = value
     }
   }
 
-  return record;
+  return record
 }
 
 function generateColumnValue(column: TableSchema['columns'][0], strategy: string): any {
-  const { name, type } = column;
+  const { name, type } = column
 
   if (name === 'email' || name.includes('email')) {
-    return faker.internet.email().toLowerCase();
+    return faker.internet.email().toLowerCase()
   }
   if (name === 'username' || name.includes('username')) {
-    return faker.internet.username();
+    return faker.internet.username()
   }
   if (name === 'password' || name.includes('password')) {
-    return faker.internet.password();
+    return faker.internet.password()
   }
   if (name === 'first_name' || name.includes('first_name')) {
-    return faker.person.firstName();
+    return faker.person.firstName()
   }
   if (name === 'last_name' || name.includes('last_name')) {
-    return faker.person.lastName();
+    return faker.person.lastName()
   }
   if (name === 'name' || name.includes('name')) {
-    return faker.person.fullName();
+    return faker.person.fullName()
   }
   if (name === 'phone' || name.includes('phone')) {
-    return faker.phone.number();
+    return faker.phone.number()
   }
   if (name === 'address' || name.includes('address')) {
-    return faker.location.streetAddress();
+    return faker.location.streetAddress()
   }
   if (name === 'city' || name.includes('city')) {
-    return faker.location.city();
+    return faker.location.city()
   }
   if (name === 'country' || name.includes('country')) {
-    return faker.location.country();
+    return faker.location.country()
   }
   if (name === 'zip' || name === 'postal_code' || name.includes('zip')) {
-    return faker.location.zipCode();
+    return faker.location.zipCode()
   }
   if (name === 'url' || name.includes('url')) {
-    return faker.internet.url();
+    return faker.internet.url()
   }
   if (name === 'avatar' || name.includes('avatar')) {
-    return faker.image.avatar();
+    return faker.image.avatar()
   }
   if (name === 'description' || name.includes('description')) {
-    return faker.lorem.paragraph();
+    return faker.lorem.paragraph()
   }
   if (name === 'title' || name.includes('title')) {
-    return faker.lorem.sentence();
+    return faker.lorem.sentence()
   }
   if (name === 'content' || name.includes('content')) {
-    return faker.lorem.paragraphs(3);
+    return faker.lorem.paragraphs(3)
   }
   if (name === 'status') {
-    return faker.helpers.arrayElement(['active', 'inactive', 'pending', 'completed']);
+    return faker.helpers.arrayElement(['active', 'inactive', 'pending', 'completed'])
   }
   if (name === 'created_at' || name === 'updated_at') {
-    return new Date();
+    return new Date()
   }
 
   if (type.includes('int') || type.includes('number')) {
     if (strategy === 'stress') {
-      return faker.number.int({ min: 1, max: 1000000 });
+      return faker.number.int({ min: 1, max: 1000000 })
     }
-    return faker.number.int({ min: 1, max: 1000 });
+    return faker.number.int({ min: 1, max: 1000 })
   }
 
   if (type.includes('decimal') || type.includes('float') || type.includes('double')) {
-    return faker.number.float({ min: 0, max: 1000, fractionDigits: 2 });
+    return faker.number.float({ min: 0, max: 1000, fractionDigits: 2 })
   }
 
   if (type.includes('bool')) {
-    return faker.datatype.boolean();
+    return faker.datatype.boolean()
   }
 
   if (type.includes('date') || type.includes('time')) {
-    return faker.date.recent();
+    return faker.date.recent()
   }
 
   if (type.includes('json')) {
-    return JSON.stringify({ id: faker.string.uuid(), data: faker.lorem.words(3) });
+    return JSON.stringify({ id: faker.string.uuid(), data: faker.lorem.words(3) })
   }
 
   if (type.includes('uuid')) {
-    return faker.string.uuid();
+    return faker.string.uuid()
   }
 
   if (type.includes('text')) {
     if (strategy === 'stress') {
-      return faker.lorem.paragraphs(10);
+      return faker.lorem.paragraphs(10)
     }
-    return faker.lorem.paragraph();
+    return faker.lorem.paragraph()
   }
 
   if (type.includes('varchar') || type.includes('char') || type.includes('string')) {
     if (strategy === 'stress') {
-      return faker.lorem.words(20);
+      return faker.lorem.words(20)
     }
-    return faker.lorem.words(3);
+    return faker.lorem.words(3)
   }
 
-  return faker.lorem.word();
+  return faker.lorem.word()
 }
 
 async function getRandomForeignKey(db: any, tableName: string, columnName: string): Promise<any> {
@@ -538,40 +555,47 @@ async function getRandomForeignKey(db: any, tableName: string, columnName: strin
       .select(columnName)
       .orderBy(db.fn('random'))
       .limit(1)
-      .executeTakeFirst();
+      .executeTakeFirst()
 
-    return result ? result[columnName] : null;
+    return result ? result[columnName] : null
   } catch {
-    return null;
+    return null
   }
 }
 
-async function runCustomSeeder(db: any, seederPath: string, options: TestSeedOptions): Promise<void> {
+async function runCustomSeeder(
+  db: any,
+  seederPath: string,
+  options: TestSeedOptions
+): Promise<void> {
   try {
-    const resolvedPath = path.resolve(seederPath);
-    const projectRoot = process.cwd();
+    const resolvedPath = path.resolve(seederPath)
+    const projectRoot = process.cwd()
 
     // Define allowed directories for seeder files
-    const config = await loadConfig(options.config);
+    const config = await loadConfig(options.config)
     const allowedDirs = [
       path.join(projectRoot, 'seeds'),
       path.join(projectRoot, 'src/seeds'),
-      path.join(projectRoot, 'tests/seeds'),
-    ];
+      path.join(projectRoot, 'tests/seeds')
+    ]
 
     // Add config seeds directory if specified
     if (config.testing?.seeds) {
-      const configSeedsDir = path.resolve(projectRoot, config.testing.seeds);
+      const configSeedsDir = path.resolve(projectRoot, config.testing.seeds)
       if (!allowedDirs.includes(configSeedsDir)) {
-        allowedDirs.push(configSeedsDir);
+        allowedDirs.push(configSeedsDir)
       }
     }
 
     // Validate that resolved path is within one of the allowed directories
-    const isWithinAllowedDir = allowedDirs.some((allowedDir) => {
-      const normalizedAllowedDir = path.resolve(allowedDir);
-      return resolvedPath.startsWith(normalizedAllowedDir + path.sep) || resolvedPath === normalizedAllowedDir;
-    });
+    const isWithinAllowedDir = allowedDirs.some(allowedDir => {
+      const normalizedAllowedDir = path.resolve(allowedDir)
+      return (
+        resolvedPath.startsWith(normalizedAllowedDir + path.sep) ||
+        resolvedPath === normalizedAllowedDir
+      )
+    })
 
     if (!isWithinAllowedDir) {
       throw new CLIError(
@@ -580,102 +604,100 @@ async function runCustomSeeder(db: any, seederPath: string, options: TestSeedOpt
         undefined,
         [
           'Place seeder files in one of the allowed directories',
-          'Update testing.seeds in kysera.config.ts to specify a custom seeds directory',
+          'Update testing.seeds in kysera.config.ts to specify a custom seeds directory'
         ]
-      );
+      )
     }
 
     // Validate file extension
-    const ext = path.extname(resolvedPath);
-    const allowedExtensions = ['.ts', '.js', '.mjs'];
+    const ext = path.extname(resolvedPath)
+    const allowedExtensions = ['.ts', '.js', '.mjs']
     if (!allowedExtensions.includes(ext)) {
       throw new CLIError(
         `Invalid seeder file extension: ${ext}. Allowed extensions: ${allowedExtensions.join(', ')}`,
         'INVALID_SEEDER_FILE',
         undefined,
         ['Use a .ts, .js, or .mjs file for your seeder']
-      );
+      )
     }
 
     // Check if file exists
-    const fileExists = await fs.stat(resolvedPath).catch(() => null);
+    const fileExists = await fs.stat(resolvedPath).catch(() => null)
     if (!fileExists) {
-      throw new CLIError(
-        `Seeder file not found: ${resolvedPath}`,
-        'SEEDER_NOT_FOUND',
-        undefined,
-        ['Check the path to your seeder file', 'Ensure the file exists']
-      );
+      throw new CLIError(`Seeder file not found: ${resolvedPath}`, 'SEEDER_NOT_FOUND', undefined, [
+        'Check the path to your seeder file',
+        'Ensure the file exists'
+      ])
     }
 
-    const seeder = await import(resolvedPath);
+    const seeder = await import(resolvedPath)
 
     if (seeder.seed) {
-      const seederCount = parseInt(options.count as any) || 100;
+      const seederCount = parseInt(options.count as any) || 100
       if (isNaN(seederCount) || seederCount <= 0) {
-        throw new CLIError('Invalid count value - must be a positive number');
+        throw new CLIError('Invalid count value - must be a positive number')
       }
       await seeder.seed(db, {
         faker,
         count: seederCount,
         locale: options.locale,
-        seed: options.seed,
-      });
+        seed: options.seed
+      })
     } else {
-      throw new ValidationError('Custom seeder must export a seed function');
+      throw new ValidationError('Custom seeder must export a seed function')
     }
   } catch (error) {
     if (error instanceof CLIError) {
-      throw error;
+      throw error
     }
-    throw new CLIError(`Failed to run custom seeder: ${error}`, 'SEEDER_ERROR');
+    throw new CLIError(`Failed to run custom seeder: ${error}`, 'SEEDER_ERROR')
   }
 }
 
 function displaySeedResults(result: SeedResult, options: TestSeedOptions): void {
-  console.log('');
-  console.log(prism.bold('Test Database Seeded'));
-  console.log(prism.gray('='.repeat(50)));
+  console.log('')
+  console.log(prism.bold('Test Database Seeded'))
+  console.log(prism.gray('='.repeat(50)))
 
-  console.log('');
-  console.log(prism.cyan('Summary:'));
-  console.log(`  Strategy: ${result.strategy}`);
-  console.log(`  Tables seeded: ${result.tables.length}`);
-  console.log(`  Total records: ${result.totalRecords}`);
-  console.log(`  Duration: ${result.totalDuration}ms`);
+  console.log('')
+  console.log(prism.cyan('Summary:'))
+  console.log(`  Strategy: ${result.strategy}`)
+  console.log(`  Tables seeded: ${result.tables.length}`)
+  console.log(`  Total records: ${result.totalRecords}`)
+  console.log(`  Duration: ${result.totalDuration}ms`)
 
   if (result.seed) {
-    console.log(`  Random seed: ${result.seed}`);
+    console.log(`  Random seed: ${result.seed}`)
   }
 
-  console.log('');
-  console.log(prism.cyan('Tables:'));
+  console.log('')
+  console.log(prism.cyan('Tables:'))
 
   for (const table of result.tables) {
-    console.log(`  ${table.name}: ${table.recordsCreated} records (${table.duration}ms)`);
+    console.log(`  ${table.name}: ${table.recordsCreated} records (${table.duration}ms)`)
     if (table.relationships.length > 0) {
-      console.log(prism.gray(`    -> Relationships: ${table.relationships.join(', ')}`));
+      console.log(prism.gray(`    -> Relationships: ${table.relationships.join(', ')}`))
     }
   }
 
-  console.log('');
-  console.log(prism.cyan('Tips:'));
+  console.log('')
+  console.log(prism.cyan('Tips:'))
 
   if (result.strategy === 'realistic') {
-    console.log('  - Realistic data generated for testing');
+    console.log('  - Realistic data generated for testing')
   } else if (result.strategy === 'minimal') {
-    console.log('  - Minimal dataset for quick testing');
+    console.log('  - Minimal dataset for quick testing')
   } else if (result.strategy === 'stress') {
-    console.log('  - Large dataset for stress testing');
-    console.log('  - Monitor performance during tests');
+    console.log('  - Large dataset for stress testing')
+    console.log('  - Monitor performance during tests')
   } else if (result.strategy === 'faker') {
-    console.log('  - Random data generated with Faker.js');
+    console.log('  - Random data generated with Faker.js')
   }
 
   if (result.seed) {
-    console.log(`  - Use --seed ${result.seed} to reproduce this dataset`);
+    console.log(`  - Use --seed ${result.seed} to reproduce this dataset`)
   }
 
-  console.log('  - Use --clean to truncate before seeding');
-  console.log('  - Use --custom to run custom seeders');
+  console.log('  - Use --clean to truncate before seeding')
+  console.log('  - Use --custom to run custom seeders')
 }

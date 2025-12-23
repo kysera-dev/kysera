@@ -83,13 +83,7 @@ async function getAllPackages(): Promise<Package[]> {
   // Use explicit patterns to avoid finding packages outside workspace
   const packagePaths = await glob('{packages,apps,examples}/*/package.json', {
     cwd: ROOT_DIR,
-    ignore: [
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/build/**',
-      '**/.test-*/**',
-      '**/test-*/**'
-    ]
+    ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.test-*/**', '**/test-*/**']
   })
 
   for (const pkgPath of packagePaths) {
@@ -163,19 +157,14 @@ async function listPackages(): Promise<void> {
  * Get current version from root package.json
  */
 async function getCurrentVersion(): Promise<string> {
-  const rootPkg = JSON.parse(
-    await fs.readFile(path.join(ROOT_DIR, 'package.json'), 'utf-8')
-  )
+  const rootPkg = JSON.parse(await fs.readFile(path.join(ROOT_DIR, 'package.json'), 'utf-8'))
   return rootPkg.version
 }
 
 /**
  * Update version in package.json
  */
-async function updatePackageVersion(
-  packagePath: string,
-  version: string
-): Promise<void> {
+async function updatePackageVersion(packagePath: string, version: string): Promise<void> {
   const pkgJsonPath = path.join(packagePath, 'package.json')
   const content = await fs.readFile(pkgJsonPath, 'utf-8')
   const pkg = JSON.parse(content)
@@ -198,10 +187,7 @@ async function updatePackageVersion(
     }
   }
 
-  await fs.writeFile(
-    pkgJsonPath,
-    JSON.stringify(pkg, null, 2) + '\n'
-  )
+  await fs.writeFile(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n')
 }
 
 /**
@@ -267,25 +253,25 @@ async function generateChangelog(version: string): Promise<string> {
 
   if (breaking.length > 0) {
     changelog += '### ⚠️ BREAKING CHANGES\n\n'
-    breaking.forEach(msg => changelog += `- ${msg}\n`)
+    breaking.forEach(msg => (changelog += `- ${msg}\n`))
     changelog += '\n'
   }
 
   if (features.length > 0) {
     changelog += '### ✨ Features\n\n'
-    features.forEach(msg => changelog += `- ${msg}\n`)
+    features.forEach(msg => (changelog += `- ${msg}\n`))
     changelog += '\n'
   }
 
   if (fixes.length > 0) {
     changelog += '### 🐛 Bug Fixes\n\n'
-    fixes.forEach(msg => changelog += `- ${msg}\n`)
+    fixes.forEach(msg => (changelog += `- ${msg}\n`))
     changelog += '\n'
   }
 
   if (other.length > 0) {
     changelog += '### 📝 Other Changes\n\n'
-    other.forEach(msg => changelog += `- ${msg}\n`)
+    other.forEach(msg => (changelog += `- ${msg}\n`))
     changelog += '\n'
   }
 
@@ -347,7 +333,7 @@ async function promptVersion(currentVersion: string): Promise<string> {
   if (versionType === 'custom') {
     const customVersion = await text({
       message: 'Enter custom version:',
-      validate: (value) => {
+      validate: value => {
         if (!semver.valid(value)) {
           return 'Invalid version format'
         }
@@ -533,7 +519,6 @@ async function main() {
     console.log(`  2. Use tag: v${newVersion}`)
     console.log('  3. Copy changelog entry for release notes')
     console.log('  4. Announce in Discord/Twitter')
-
   } catch (error: any) {
     console.error(prism.red('\n❌ Release failed:'))
     console.error(error.message)

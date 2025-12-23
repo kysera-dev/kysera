@@ -9,6 +9,7 @@
 ## Features
 
 ### Core Migration Management
+
 - **Simple API** - Intuitive migration creation and execution
 - **Type-safe** - Full TypeScript support with Kysely integration
 - **State tracking** - Automatic migration history in database
@@ -16,6 +17,7 @@
 - **Dry run mode** - Preview changes before execution
 
 ### Advanced Features
+
 - **Rollback support** - Roll back one or multiple migrations
 - **Partial migration** - Run up to specific migration
 - **Status reporting** - View executed and pending migrations
@@ -24,12 +26,14 @@
 - **Duplicate detection** - Validates unique migration names
 
 ### Developer Experience (v0.5.0+)
+
 - **`defineMigrations()`** - Object-based migration definition
 - **`runMigrations()`** - One-liner to run pending migrations
 - **`rollbackMigrations()`** - One-liner for rollbacks
 - **Migration metadata** - Description, breaking flag, tags, timing
 
 ### Plugin System (v0.5.0+)
+
 - **Plugin hooks** - Before/after migration events
 - **Built-in plugins** - Logging and metrics plugins
 - **Extensible** - Create custom plugins for your needs
@@ -62,7 +66,7 @@ import { createMigrationRunner, createMigration } from '@kysera/migrations'
 const migrations = [
   createMigration(
     '001_create_users',
-    async (db) => {
+    async db => {
       await db.schema
         .createTable('users')
         .addColumn('id', 'serial', col => col.primaryKey())
@@ -70,14 +74,14 @@ const migrations = [
         .addColumn('name', 'varchar(255)', col => col.notNull())
         .execute()
     },
-    async (db) => {
+    async db => {
       await db.schema.dropTable('users').execute()
     }
   ),
 
   createMigration(
     '002_create_posts',
-    async (db) => {
+    async db => {
       await db.schema
         .createTable('posts')
         .addColumn('id', 'serial', col => col.primaryKey())
@@ -87,14 +91,16 @@ const migrations = [
         .addColumn('title', 'varchar(255)', col => col.notNull())
         .execute()
     },
-    async (db) => {
+    async db => {
       await db.schema.dropTable('posts').execute()
     }
   )
 ]
 
 // Create migration runner
-const db = new Kysely<Database>({ /* ... */ })
+const db = new Kysely<Database>({
+  /* ... */
+})
 const runner = createMigrationRunner(db, migrations)
 
 // Run all pending migrations
@@ -117,30 +123,30 @@ import { defineMigrations, runMigrations } from '@kysera/migrations'
 const migrations = defineMigrations({
   '001_create_users': {
     description: 'Create users table with email and name',
-    up: async (db) => {
+    up: async db => {
       await db.schema
         .createTable('users')
         .addColumn('id', 'serial', col => col.primaryKey())
         .addColumn('email', 'varchar(255)', col => col.notNull().unique())
         .execute()
     },
-    down: async (db) => {
+    down: async db => {
       await db.schema.dropTable('users').execute()
-    },
+    }
   },
 
   '002_create_posts': {
     description: 'Create posts table',
     breaking: false,
     tags: ['schema'],
-    up: async (db) => {
+    up: async db => {
       await db.schema
         .createTable('posts')
         .addColumn('id', 'serial', col => col.primaryKey())
         .addColumn('title', 'varchar(255)', col => col.notNull())
         .execute()
-    },
-  },
+    }
+  }
 })
 
 // One-liner to run all migrations
@@ -178,10 +184,10 @@ interface Migration {
 
 ```typescript
 interface MigrationWithMeta extends Migration {
-  description?: string      // Shown in logs
-  breaking?: boolean        // Shows warning
+  description?: string // Shown in logs
+  breaking?: boolean // Shows warning
   estimatedDuration?: number // In milliseconds
-  tags?: string[]           // For categorization
+  tags?: string[] // For categorization
 }
 ```
 
@@ -199,11 +205,11 @@ interface MigrationStatus {
 
 ```typescript
 interface MigrationResult {
-  executed: string[]   // Successfully executed
-  skipped: string[]    // Already executed or no down()
-  failed: string[]     // Failed migrations
-  duration: number     // Total time in ms
-  dryRun: boolean      // Whether dry run mode
+  executed: string[] // Successfully executed
+  skipped: string[] // Already executed or no down()
+  failed: string[] // Failed migrations
+  duration: number // Total time in ms
+  dryRun: boolean // Whether dry run mode
 }
 ```
 
@@ -211,11 +217,11 @@ interface MigrationResult {
 
 ```typescript
 interface MigrationRunnerOptions {
-  dryRun?: boolean          // Preview only (default: false)
-  logger?: KyseraLogger     // Logger instance from @kysera/core (default: silentLogger)
+  dryRun?: boolean // Preview only (default: false)
+  logger?: KyseraLogger // Logger instance from @kysera/core (default: silentLogger)
   useTransactions?: boolean // Wrap in transactions (default: false)
-  stopOnError?: boolean     // Stop on first error (default: true)
-  verbose?: boolean         // Show metadata (default: true)
+  stopOnError?: boolean // Stop on first error (default: true)
+  verbose?: boolean // Show metadata (default: true)
 }
 ```
 
@@ -249,7 +255,10 @@ interface MigrationRunnerWithPluginsOptions extends MigrationRunnerOptions {
 #### `MigrationErrorCode`
 
 ```typescript
-type MigrationErrorCode = 'MIGRATION_UP_FAILED' | 'MIGRATION_DOWN_FAILED' | 'MIGRATION_VALIDATION_FAILED'
+type MigrationErrorCode =
+  | 'MIGRATION_UP_FAILED'
+  | 'MIGRATION_DOWN_FAILED'
+  | 'MIGRATION_VALIDATION_FAILED'
 ```
 
 ### Factory Functions
@@ -261,8 +270,12 @@ Create a simple migration:
 ```typescript
 const migration = createMigration(
   '001_create_users',
-  async (db) => { /* up */ },
-  async (db) => { /* down */ }
+  async db => {
+    /* up */
+  },
+  async db => {
+    /* down */
+  }
 )
 ```
 
@@ -276,8 +289,12 @@ const migration = createMigrationWithMeta('001_create_users', {
   breaking: true,
   tags: ['schema', 'users'],
   estimatedDuration: 5000,
-  up: async (db) => { /* ... */ },
-  down: async (db) => { /* ... */ },
+  up: async db => {
+    /* ... */
+  },
+  down: async db => {
+    /* ... */
+  }
 })
 ```
 
@@ -289,7 +306,7 @@ Create a MigrationRunner instance:
 const runner = createMigrationRunner(db, migrations, {
   dryRun: false,
   logger: console.log,
-  useTransactions: true,
+  useTransactions: true
 })
 ```
 
@@ -300,7 +317,7 @@ Create a MigrationRunner with plugin support (async factory):
 ```typescript
 const runner = await createMigrationRunnerWithPlugins(db, migrations, {
   plugins: [createLoggingPlugin(), createMetricsPlugin()],
-  useTransactions: true,
+  useTransactions: true
 })
 
 // Runner is ready with plugins initialized via onInit
@@ -317,9 +334,13 @@ Define migrations using object syntax:
 const migrations = defineMigrations({
   '001_users': {
     description: 'Create users',
-    up: async (db) => { /* ... */ },
-    down: async (db) => { /* ... */ },
-  },
+    up: async db => {
+      /* ... */
+    },
+    down: async db => {
+      /* ... */
+    }
+  }
 })
 ```
 
@@ -337,8 +358,8 @@ const result = await runMigrations(db, migrations, { dryRun: true })
 Rollback migrations:
 
 ```typescript
-await rollbackMigrations(db, migrations)        // Last 1
-await rollbackMigrations(db, migrations, 3)     // Last 3
+await rollbackMigrations(db, migrations) // Last 1
+await rollbackMigrations(db, migrations, 3) // Last 3
 await rollbackMigrations(db, migrations, 1, { dryRun: true })
 ```
 
@@ -368,8 +389,8 @@ console.log(`Executed: ${result.executed.length} migrations`)
 Rollback last N migrations:
 
 ```typescript
-await runner.down(1)   // Rollback last one
-await runner.down(3)   // Rollback last three
+await runner.down(1) // Rollback last one
+await runner.down(3) // Rollback last three
 ```
 
 #### `status(): Promise<MigrationStatus>`
@@ -386,7 +407,7 @@ const status = await runner.status()
 Rollback all migrations:
 
 ```typescript
-await runner.reset()  // Dangerous! Rolls back everything
+await runner.reset() // Dangerous! Rolls back everything
 ```
 
 #### `upTo(targetName): Promise<MigrationResult>`
@@ -448,9 +469,17 @@ interface MigrationPlugin {
   // Called once when runner is initialized (consistent with repository Plugin.onInit)
   onInit?(runner: MigrationRunner): Promise<void> | void
   beforeMigration?(migration: Migration, operation: 'up' | 'down'): Promise<void> | void
-  afterMigration?(migration: Migration, operation: 'up' | 'down', duration: number): Promise<void> | void
+  afterMigration?(
+    migration: Migration,
+    operation: 'up' | 'down',
+    duration: number
+  ): Promise<void> | void
   // Unknown error type for consistency with repository Plugin.onError
-  onMigrationError?(migration: Migration, operation: 'up' | 'down', error: unknown): Promise<void> | void
+  onMigrationError?(
+    migration: Migration,
+    operation: 'up' | 'down',
+    error: unknown
+  ): Promise<void> | void
 }
 ```
 
@@ -463,7 +492,7 @@ import { createLoggingPlugin } from '@kysera/migrations'
 
 const loggingPlugin = createLoggingPlugin(console.log)
 // or with custom logger
-const loggingPlugin = createLoggingPlugin((msg) => logger.info(msg))
+const loggingPlugin = createLoggingPlugin(msg => logger.info(msg))
 ```
 
 #### Metrics Plugin
@@ -503,7 +532,7 @@ const notificationPlugin: MigrationPlugin = {
     // Error is unknown type - handle appropriately
     const message = error instanceof Error ? error.message : String(error)
     await pagerduty.alert(`Migration failed: ${message}`)
-  },
+  }
 }
 ```
 
@@ -588,8 +617,12 @@ try {
 ```typescript
 createMigration(
   '001_create_users',
-  async (db) => { /* up */ },
-  async (db) => { /* down - always provide this! */ }
+  async db => {
+    /* up */
+  },
+  async db => {
+    /* down - always provide this! */
+  }
 )
 ```
 
@@ -598,9 +631,11 @@ createMigration(
 ```typescript
 createMigrationWithMeta('005_big_refactor', {
   description: 'Refactors user permissions system',
-  breaking: true,  // Will show warning
+  breaking: true, // Will show warning
   tags: ['breaking', 'permissions'],
-  up: async (db) => { /* ... */ },
+  up: async db => {
+    /* ... */
+  }
 })
 ```
 
@@ -618,7 +653,7 @@ await runMigrations(db, migrations)
 
 ```typescript
 const runner = createMigrationRunner(db, migrations, {
-  useTransactions: true,  // Each migration wrapped in transaction
+  useTransactions: true // Each migration wrapped in transaction
 })
 ```
 
@@ -628,7 +663,12 @@ const runner = createMigrationRunner(db, migrations, {
 // scripts/migrate.ts
 import { Kysely, PostgresDialect } from 'kysely'
 import { Pool } from 'pg'
-import { runMigrations, rollbackMigrations, getMigrationStatus, defineMigrations } from '@kysera/migrations'
+import {
+  runMigrations,
+  rollbackMigrations,
+  getMigrationStatus,
+  defineMigrations
+} from '@kysera/migrations'
 
 const migrations = defineMigrations({
   // ... your migrations
@@ -694,56 +734,37 @@ main()
 ### PostgreSQL
 
 ```typescript
-createMigration(
-  '001_create_users',
-  async (db) => {
-    await db.schema
-      .createTable('users')
-      .addColumn('id', 'serial', col => col.primaryKey())
-      .addColumn('created_at', 'timestamp', col =>
-        col.notNull().defaultTo(db.fn('now'))
-      )
-      .execute()
-  }
-)
+createMigration('001_create_users', async db => {
+  await db.schema
+    .createTable('users')
+    .addColumn('id', 'serial', col => col.primaryKey())
+    .addColumn('created_at', 'timestamp', col => col.notNull().defaultTo(db.fn('now')))
+    .execute()
+})
 ```
 
 ### MySQL
 
 ```typescript
-createMigration(
-  '001_create_users',
-  async (db) => {
-    await db.schema
-      .createTable('users')
-      .addColumn('id', 'integer', col =>
-        col.primaryKey().autoIncrement()
-      )
-      .addColumn('created_at', 'datetime', col =>
-        col.notNull().defaultTo(db.fn('now'))
-      )
-      .execute()
-  }
-)
+createMigration('001_create_users', async db => {
+  await db.schema
+    .createTable('users')
+    .addColumn('id', 'integer', col => col.primaryKey().autoIncrement())
+    .addColumn('created_at', 'datetime', col => col.notNull().defaultTo(db.fn('now')))
+    .execute()
+})
 ```
 
 ### SQLite
 
 ```typescript
-createMigration(
-  '001_create_users',
-  async (db) => {
-    await db.schema
-      .createTable('users')
-      .addColumn('id', 'integer', col =>
-        col.primaryKey().autoIncrement()
-      )
-      .addColumn('created_at', 'text', col =>
-        col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`)
-      )
-      .execute()
-  }
-)
+createMigration('001_create_users', async db => {
+  await db.schema
+    .createTable('users')
+    .addColumn('id', 'integer', col => col.primaryKey().autoIncrement())
+    .addColumn('created_at', 'text', col => col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`))
+    .execute()
+})
 ```
 
 ## Changelog

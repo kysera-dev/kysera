@@ -19,6 +19,7 @@ kysera health check
 ```
 
 **Options:**
+
 ```
 --json                    Output as JSON
 --watch                   Continuous monitoring mode
@@ -28,6 +29,7 @@ kysera health check
 ```
 
 **Output:**
+
 ```
 Database Health Check
 =====================
@@ -62,6 +64,7 @@ kysera health check --watch
 ```
 
 **Options:**
+
 ```
 --interval <ms>           Check interval in ms (default: 5000)
 --json                    Output as JSON
@@ -79,12 +82,14 @@ kysera health metrics
 ```
 
 **Options:**
+
 ```
 --json                    Output as JSON
 --period <duration>       Time period (1h, 24h, 7d)
 ```
 
 **Output:**
+
 ```
 Database Metrics (Last 24h)
 ===========================
@@ -112,10 +117,10 @@ Pool Usage
 
 ## Health Status
 
-| Status | Condition |
-|--------|-----------|
-| HEALTHY | Latency < 100ms |
-| DEGRADED | 100ms < Latency < 500ms |
+| Status    | Condition                 |
+| --------- | ------------------------- |
+| HEALTHY   | Latency < 100ms           |
+| DEGRADED  | 100ms < Latency < 500ms   |
 | UNHEALTHY | Latency > 500ms or errors |
 
 ## JSON Output

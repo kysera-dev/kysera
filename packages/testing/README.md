@@ -27,30 +27,26 @@ bun add -D @kysera/testing
 ## Quick Start
 
 ```typescript
-import { testInTransaction, createFactory } from '@kysera/testing';
+import { testInTransaction, createFactory } from '@kysera/testing'
 
 // Create a factory for test data
 const createUser = createFactory({
   email: () => `user-${Date.now()}@example.com`,
   name: 'Test User',
-  role: 'user',
-});
+  role: 'user'
+})
 
 // Test with automatic rollback
 it('creates user', async () => {
-  await testInTransaction(db, async (trx) => {
-    const userData = createUser({ name: 'Alice' });
+  await testInTransaction(db, async trx => {
+    const userData = createUser({ name: 'Alice' })
 
-    const user = await trx
-      .insertInto('users')
-      .values(userData)
-      .returningAll()
-      .executeTakeFirst();
+    const user = await trx.insertInto('users').values(userData).returningAll().executeTakeFirst()
 
-    expect(user?.name).toBe('Alice');
-  });
+    expect(user?.name).toBe('Alice')
+  })
   // Database automatically rolled back - no cleanup needed!
-});
+})
 ```
 
 ## API Documentation
@@ -62,31 +58,29 @@ it('creates user', async () => {
 Test in a transaction that automatically rolls back. This is the **fastest testing approach** - no cleanup needed!
 
 **Parameters:**
+
 - `db` - Kysely database instance
 - `fn` - Test function that receives a transaction
 
 **Example:**
 
 ```typescript
-import { testInTransaction } from '@kysera/testing';
+import { testInTransaction } from '@kysera/testing'
 
 it('creates and queries user', async () => {
-  await testInTransaction(db, async (trx) => {
-    await trx
-      .insertInto('users')
-      .values({ email: 'test@example.com', name: 'Test User' })
-      .execute();
+  await testInTransaction(db, async trx => {
+    await trx.insertInto('users').values({ email: 'test@example.com', name: 'Test User' }).execute()
 
     const user = await trx
       .selectFrom('users')
       .where('email', '=', 'test@example.com')
       .selectAll()
-      .executeTakeFirst();
+      .executeTakeFirst()
 
-    expect(user?.name).toBe('Test User');
-  });
+    expect(user?.name).toBe('Test User')
+  })
   // Transaction automatically rolled back - database is clean!
-});
+})
 ```
 
 #### `testWithSavepoints(db, fn)`
@@ -94,28 +88,26 @@ it('creates and queries user', async () => {
 Test with savepoints for nested transaction testing. Useful for testing complex business logic that uses nested transactions.
 
 **Parameters:**
+
 - `db` - Kysely database instance
 - `fn` - Test function that receives a transaction
 
 **Example:**
 
 ```typescript
-import { testWithSavepoints } from '@kysera/testing';
+import { testWithSavepoints } from '@kysera/testing'
 
 it('handles nested operations', async () => {
-  await testWithSavepoints(db, async (trx) => {
+  await testWithSavepoints(db, async trx => {
     // Test complex nested transaction logic
-    await createUserWithProfile(trx, userData);
+    await createUserWithProfile(trx, userData)
 
     // Verify results
-    const user = await trx
-      .selectFrom('users')
-      .selectAll()
-      .executeTakeFirst();
+    const user = await trx.selectFrom('users').selectAll().executeTakeFirst()
 
-    expect(user).toBeDefined();
-  });
-});
+    expect(user).toBeDefined()
+  })
+})
 ```
 
 #### `testWithIsolation(db, isolationLevel, fn)`
@@ -123,6 +115,7 @@ it('handles nested operations', async () => {
 Test with specific transaction isolation level. Useful for testing behavior under different isolation levels, such as testing for race conditions or phantom reads.
 
 **Parameters:**
+
 - `db` - Kysely database instance
 - `isolationLevel` - One of: `'read uncommitted'`, `'read committed'`, `'repeatable read'`, `'serializable'`
 - `fn` - Test function that receives a transaction
@@ -130,14 +123,14 @@ Test with specific transaction isolation level. Useful for testing behavior unde
 **Example:**
 
 ```typescript
-import { testWithIsolation } from '@kysera/testing';
+import { testWithIsolation } from '@kysera/testing'
 
 it('handles serializable isolation', async () => {
-  await testWithIsolation(db, 'serializable', async (trx) => {
+  await testWithIsolation(db, 'serializable', async trx => {
     // Test behavior under serializable isolation
     // Concurrent transactions will be serialized
-  });
-});
+  })
+})
 ```
 
 ### Database Cleanup
@@ -151,6 +144,7 @@ Clean database using specified strategy. Different strategies have different per
 - `'truncate'` - TRUNCATE TABLE (fastest bulk clean, handles FKs automatically)
 
 **Parameters:**
+
 - `db` - Kysely database instance
 - `strategy` - Cleanup strategy: `'transaction'`, `'delete'`, or `'truncate'`
 - `tables` - List of tables to clean (required for `'delete'` and `'truncate'` strategies)
@@ -158,23 +152,23 @@ Clean database using specified strategy. Different strategies have different per
 **Example with delete strategy:**
 
 ```typescript
-import { cleanDatabase } from '@kysera/testing';
+import { cleanDatabase } from '@kysera/testing'
 
 afterEach(async () => {
   // Tables in FK-safe order (children first)
-  await cleanDatabase(db, 'delete', ['order_items', 'orders', 'users']);
-});
+  await cleanDatabase(db, 'delete', ['order_items', 'orders', 'users'])
+})
 ```
 
 **Example with truncate strategy:**
 
 ```typescript
-import { cleanDatabase } from '@kysera/testing';
+import { cleanDatabase } from '@kysera/testing'
 
 afterEach(async () => {
   // Order doesn't matter - CASCADE handles FKs
-  await cleanDatabase(db, 'truncate', ['users', 'orders', 'order_items']);
-});
+  await cleanDatabase(db, 'truncate', ['users', 'orders', 'order_items'])
+})
 ```
 
 ### Test Data Factories
@@ -184,6 +178,7 @@ afterEach(async () => {
 Create a generic test data factory. Factories allow you to create test data with sensible defaults while still being able to override specific fields.
 
 **Parameters:**
+
 - `defaults` - Object with default values (values can be static or functions)
 
 **Returns:** Factory function that creates test data
@@ -191,37 +186,37 @@ Create a generic test data factory. Factories allow you to create test data with
 **Example - Basic factory:**
 
 ```typescript
-import { createFactory } from '@kysera/testing';
+import { createFactory } from '@kysera/testing'
 
 const createUser = createFactory({
   email: () => `user-${Date.now()}@example.com`,
   name: 'Test User',
-  role: 'user',
-});
+  role: 'user'
+})
 
 // Create with defaults
-const user1 = createUser();
+const user1 = createUser()
 // { email: 'user-1234567890@example.com', name: 'Test User', role: 'user' }
 
 // Create with overrides
-const admin = createUser({ role: 'admin', name: 'Admin User' });
+const admin = createUser({ role: 'admin', name: 'Admin User' })
 // { email: 'user-1234567891@example.com', name: 'Admin User', role: 'admin' }
 ```
 
 **Example - With sequential IDs:**
 
 ```typescript
-let userId = 0;
+let userId = 0
 const createUser = createFactory({
   id: () => ++userId,
   email: () => `user-${userId}@example.com`,
-  name: 'Test User',
-});
+  name: 'Test User'
+})
 
-const user1 = createUser();
+const user1 = createUser()
 // { id: 1, email: 'user-1@example.com', name: 'Test User' }
 
-const user2 = createUser();
+const user2 = createUser()
 // { id: 2, email: 'user-2@example.com', name: 'Test User' }
 ```
 
@@ -230,6 +225,7 @@ const user2 = createUser();
 Create multiple instances using a factory.
 
 **Parameters:**
+
 - `factory` - Factory function
 - `count` - Number of instances to create
 - `overridesFn` - Optional function to generate overrides for each instance
@@ -239,21 +235,21 @@ Create multiple instances using a factory.
 **Example:**
 
 ```typescript
-import { createFactory, createMany } from '@kysera/testing';
+import { createFactory, createMany } from '@kysera/testing'
 
 const createUser = createFactory({
   email: () => `user-${Date.now()}@example.com`,
-  name: 'Test User',
-});
+  name: 'Test User'
+})
 
 // Create 5 users with defaults
-const users = createMany(createUser, 5);
+const users = createMany(createUser, 5)
 
 // Create 3 users with custom overrides
-const admins = createMany(createUser, 3, (i) => ({
+const admins = createMany(createUser, 3, i => ({
   name: `Admin ${i + 1}`,
-  role: 'admin',
-}));
+  role: 'admin'
+}))
 ```
 
 #### `createSequenceFactory(defaults)`
@@ -261,6 +257,7 @@ const admins = createMany(createUser, 3, (i) => ({
 Create a factory with a built-in sequence counter that increments with each call.
 
 **Parameters:**
+
 - `defaults` - Function that receives sequence number and returns defaults object
 
 **Returns:** Factory function with sequence support
@@ -268,18 +265,18 @@ Create a factory with a built-in sequence counter that increments with each call
 **Example:**
 
 ```typescript
-import { createSequenceFactory } from '@kysera/testing';
+import { createSequenceFactory } from '@kysera/testing'
 
-const createUser = createSequenceFactory((seq) => ({
+const createUser = createSequenceFactory(seq => ({
   id: seq,
   email: `user-${seq}@example.com`,
-  name: `User ${seq}`,
-}));
+  name: `User ${seq}`
+}))
 
-const user1 = createUser();
+const user1 = createUser()
 // { id: 1, email: 'user-1@example.com', name: 'User 1' }
 
-const user2 = createUser();
+const user2 = createUser()
 // { id: 2, email: 'user-2@example.com', name: 'User 2' }
 ```
 
@@ -290,34 +287,33 @@ const user2 = createUser();
 Seed database with test data. Executes the seeding function within a transaction. If the seeding function throws, the transaction is rolled back.
 
 **Parameters:**
+
 - `db` - Kysely database instance
 - `fn` - Seeding function that receives a transaction
 
 **Example:**
 
 ```typescript
-import { seedDatabase } from '@kysera/testing';
+import { seedDatabase } from '@kysera/testing'
 
 beforeAll(async () => {
-  await seedDatabase(db, async (trx) => {
+  await seedDatabase(db, async trx => {
     // Insert test users
     await trx
       .insertInto('users')
       .values([
         { email: 'alice@example.com', name: 'Alice' },
-        { email: 'bob@example.com', name: 'Bob' },
+        { email: 'bob@example.com', name: 'Bob' }
       ])
-      .execute();
+      .execute()
 
     // Insert related data
     await trx
       .insertInto('posts')
-      .values([
-        { user_id: 1, title: 'First Post' },
-      ])
-      .execute();
-  });
-});
+      .values([{ user_id: 1, title: 'First Post' }])
+      .execute()
+  })
+})
 ```
 
 #### `composeSeeders(seeders)`
@@ -325,6 +321,7 @@ beforeAll(async () => {
 Create a composable seeder by combining multiple seed functions.
 
 **Parameters:**
+
 - `seeders` - Array of seed functions
 
 **Returns:** Combined seed function
@@ -332,33 +329,33 @@ Create a composable seeder by combining multiple seed functions.
 **Example:**
 
 ```typescript
-import { composeSeeders, seedDatabase, type SeedFunction } from '@kysera/testing';
+import { composeSeeders, seedDatabase, type SeedFunction } from '@kysera/testing'
 
-const seedUsers: SeedFunction<DB> = async (trx) => {
+const seedUsers: SeedFunction<DB> = async trx => {
   await trx
     .insertInto('users')
     .values([
       { email: 'alice@example.com', name: 'Alice' },
-      { email: 'bob@example.com', name: 'Bob' },
+      { email: 'bob@example.com', name: 'Bob' }
     ])
-    .execute();
-};
+    .execute()
+}
 
-const seedPosts: SeedFunction<DB> = async (trx) => {
+const seedPosts: SeedFunction<DB> = async trx => {
   await trx
     .insertInto('posts')
     .values([
       { user_id: 1, title: 'First Post' },
-      { user_id: 2, title: 'Second Post' },
+      { user_id: 2, title: 'Second Post' }
     ])
-    .execute();
-};
+    .execute()
+}
 
-const seedAll = composeSeeders([seedUsers, seedPosts]);
+const seedAll = composeSeeders([seedUsers, seedPosts])
 
 beforeAll(async () => {
-  await seedDatabase(db, seedAll);
-});
+  await seedDatabase(db, seedAll)
+})
 ```
 
 ### Test Helpers
@@ -368,6 +365,7 @@ beforeAll(async () => {
 Wait for a condition to be true. Useful for testing async operations like background jobs, event handlers, or eventual consistency scenarios.
 
 **Parameters:**
+
 - `condition` - Function that returns true when condition is met
 - `options` - Configuration options:
   - `timeout` - Maximum time to wait in milliseconds (default: 5000)
@@ -379,34 +377,34 @@ Wait for a condition to be true. Useful for testing async operations like backgr
 **Example - Basic usage:**
 
 ```typescript
-import { waitFor } from '@kysera/testing';
+import { waitFor } from '@kysera/testing'
 
 // Wait for user to appear in database
 await waitFor(async () => {
   const user = await db
     .selectFrom('users')
     .where('email', '=', 'test@example.com')
-    .executeTakeFirst();
-  return user !== undefined;
-});
+    .executeTakeFirst()
+  return user !== undefined
+})
 ```
 
 **Example - With custom options:**
 
 ```typescript
-import { waitFor } from '@kysera/testing';
+import { waitFor } from '@kysera/testing'
 
 await waitFor(
   async () => {
-    const count = await getProcessedCount();
-    return count >= 10;
+    const count = await getProcessedCount()
+    return count >= 10
   },
   {
     timeout: 10000,
     interval: 200,
-    timeoutMessage: 'Jobs did not complete in time',
+    timeoutMessage: 'Jobs did not complete in time'
   }
-);
+)
 ```
 
 #### `snapshotTable(db, table)`
@@ -414,6 +412,7 @@ await waitFor(
 Snapshot database table state for later comparison.
 
 **Parameters:**
+
 - `db` - Kysely database instance
 - `table` - Table name to snapshot
 
@@ -422,15 +421,15 @@ Snapshot database table state for later comparison.
 **Example:**
 
 ```typescript
-import { snapshotTable } from '@kysera/testing';
+import { snapshotTable } from '@kysera/testing'
 
-const before = await snapshotTable(db, 'users');
+const before = await snapshotTable(db, 'users')
 
 // Perform operations...
-await createUser(db, userData);
+await createUser(db, userData)
 
-const after = await snapshotTable(db, 'users');
-expect(after.length).toBe(before.length + 1);
+const after = await snapshotTable(db, 'users')
+expect(after.length).toBe(before.length + 1)
 ```
 
 #### `countRows(db, table)`
@@ -438,6 +437,7 @@ expect(after.length).toBe(before.length + 1);
 Count rows in a table.
 
 **Parameters:**
+
 - `db` - Kysely database instance
 - `table` - Table name
 
@@ -446,13 +446,13 @@ Count rows in a table.
 **Example:**
 
 ```typescript
-import { countRows } from '@kysera/testing';
+import { countRows } from '@kysera/testing'
 
-const initialCount = await countRows(db, 'users');
-await createUser(db, userData);
-const newCount = await countRows(db, 'users');
+const initialCount = await countRows(db, 'users')
+await createUser(db, userData)
+const newCount = await countRows(db, 'users')
 
-expect(newCount).toBe(initialCount + 1);
+expect(newCount).toBe(initialCount + 1)
 ```
 
 #### `assertRowExists(db, table, where)`
@@ -460,6 +460,7 @@ expect(newCount).toBe(initialCount + 1);
 Assert that a row exists in a table.
 
 **Parameters:**
+
 - `db` - Kysely database instance
 - `table` - Table name
 - `where` - Conditions to match (key-value pairs)
@@ -471,13 +472,13 @@ Assert that a row exists in a table.
 **Example:**
 
 ```typescript
-import { assertRowExists } from '@kysera/testing';
+import { assertRowExists } from '@kysera/testing'
 
 const user = await assertRowExists(db, 'users', {
-  email: 'test@example.com',
-});
+  email: 'test@example.com'
+})
 
-expect(user.name).toBe('Test User');
+expect(user.name).toBe('Test User')
 ```
 
 #### `assertRowNotExists(db, table, where)`
@@ -485,6 +486,7 @@ expect(user.name).toBe('Test User');
 Assert that no row exists matching the conditions.
 
 **Parameters:**
+
 - `db` - Kysely database instance
 - `table` - Table name
 - `where` - Conditions to match (key-value pairs)
@@ -494,11 +496,11 @@ Assert that no row exists matching the conditions.
 **Example:**
 
 ```typescript
-import { assertRowNotExists } from '@kysera/testing';
+import { assertRowNotExists } from '@kysera/testing'
 
-await deleteUser(db, userId);
+await deleteUser(db, userId)
 
-await assertRowNotExists(db, 'users', { id: userId });
+await assertRowNotExists(db, 'users', { id: userId })
 ```
 
 ## TypeScript Types
@@ -506,33 +508,29 @@ await assertRowNotExists(db, 'users', { id: userId });
 ### Core Types
 
 ```typescript
-import type { Kysely, Transaction } from 'kysely';
+import type { Kysely, Transaction } from 'kysely'
 
 // Transaction isolation levels
-type IsolationLevel =
-  | 'read uncommitted'
-  | 'read committed'
-  | 'repeatable read'
-  | 'serializable';
+type IsolationLevel = 'read uncommitted' | 'read committed' | 'repeatable read' | 'serializable'
 
 // Cleanup strategies
-type CleanupStrategy = 'truncate' | 'transaction' | 'delete';
+type CleanupStrategy = 'truncate' | 'transaction' | 'delete'
 
 // Factory types
-type FactoryFunction<T> = (overrides?: Partial<T>) => T;
+type FactoryFunction<T> = (overrides?: Partial<T>) => T
 
 type FactoryDefaults<T extends Record<string, unknown>> = {
-  [K in keyof T]: T[K] | (() => T[K]);
-};
+  [K in keyof T]: T[K] | (() => T[K])
+}
 
 // Seeding types
-type SeedFunction<DB> = (trx: Transaction<DB>) => Promise<void>;
+type SeedFunction<DB> = (trx: Transaction<DB>) => Promise<void>
 
 // Helper types
 interface WaitForOptions {
-  timeout?: number;
-  interval?: number;
-  timeoutMessage?: string;
+  timeout?: number
+  interval?: number
+  timeoutMessage?: string
 }
 ```
 
@@ -541,7 +539,7 @@ interface WaitForOptions {
 ### Complete Test Suite Example
 
 ```typescript
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach } from 'vitest'
 import {
   testInTransaction,
   createFactory,
@@ -551,132 +549,122 @@ import {
   waitFor,
   countRows,
   assertRowExists,
-  type SeedFunction,
-} from '@kysera/testing';
+  type SeedFunction
+} from '@kysera/testing'
 
 // Define factories
 const createUser = createFactory({
   email: () => `user-${Date.now()}@example.com`,
   name: 'Test User',
-  role: 'user',
-});
+  role: 'user'
+})
 
 const createPost = createFactory({
   title: () => `Post ${Date.now()}`,
   content: 'Test content',
-  published: false,
-});
+  published: false
+})
 
 // Define seeders
-const seedUsers: SeedFunction<DB> = async (trx) => {
+const seedUsers: SeedFunction<DB> = async trx => {
   await trx
     .insertInto('users')
     .values([
       { email: 'alice@example.com', name: 'Alice', role: 'admin' },
-      { email: 'bob@example.com', name: 'Bob', role: 'user' },
+      { email: 'bob@example.com', name: 'Bob', role: 'user' }
     ])
-    .execute();
-};
+    .execute()
+}
 
-const seedPosts: SeedFunction<DB> = async (trx) => {
+const seedPosts: SeedFunction<DB> = async trx => {
   await trx
     .insertInto('posts')
     .values([
       { user_id: 1, title: 'First Post', published: true },
-      { user_id: 2, title: 'Second Post', published: false },
+      { user_id: 2, title: 'Second Post', published: false }
     ])
-    .execute();
-};
+    .execute()
+}
 
 // Setup test data
 beforeAll(async () => {
-  const seedAll = composeSeeders([seedUsers, seedPosts]);
-  await seedDatabase(db, seedAll);
-});
+  const seedAll = composeSeeders([seedUsers, seedPosts])
+  await seedDatabase(db, seedAll)
+})
 
 describe('User operations', () => {
   it('creates user with transaction rollback', async () => {
-    await testInTransaction(db, async (trx) => {
-      const userData = createUser({ name: 'Charlie' });
+    await testInTransaction(db, async trx => {
+      const userData = createUser({ name: 'Charlie' })
 
-      await trx
-        .insertInto('users')
-        .values(userData)
-        .execute();
+      await trx.insertInto('users').values(userData).execute()
 
       const user = await assertRowExists(trx, 'users', {
-        email: userData.email,
-      });
+        email: userData.email
+      })
 
-      expect(user.name).toBe('Charlie');
-    });
+      expect(user.name).toBe('Charlie')
+    })
     // User is automatically rolled back
-  });
+  })
 
   it('creates multiple users', async () => {
-    await testInTransaction(db, async (trx) => {
-      const users = createMany(createUser, 3, (i) => ({
-        name: `User ${i + 1}`,
-      }));
+    await testInTransaction(db, async trx => {
+      const users = createMany(createUser, 3, i => ({
+        name: `User ${i + 1}`
+      }))
 
-      await trx
-        .insertInto('users')
-        .values(users)
-        .execute();
+      await trx.insertInto('users').values(users).execute()
 
-      const count = await countRows(trx, 'users');
-      expect(count).toBe(5); // 2 from seed + 3 new
-    });
-  });
+      const count = await countRows(trx, 'users')
+      expect(count).toBe(5) // 2 from seed + 3 new
+    })
+  })
 
   it('waits for async operation', async () => {
-    let processed = false;
+    let processed = false
 
     // Simulate async operation
     setTimeout(() => {
-      processed = true;
-    }, 500);
+      processed = true
+    }, 500)
 
     await waitFor(() => processed, {
       timeout: 1000,
-      interval: 50,
-    });
+      interval: 50
+    })
 
-    expect(processed).toBe(true);
-  });
-});
+    expect(processed).toBe(true)
+  })
+})
 ```
 
 ### Integration with Vitest
 
 ```typescript
-import { beforeEach, afterEach } from 'vitest';
-import { cleanDatabase } from '@kysera/testing';
+import { beforeEach, afterEach } from 'vitest'
+import { cleanDatabase } from '@kysera/testing'
 
 // Clean database after each test
 afterEach(async () => {
-  await cleanDatabase(db, 'truncate', [
-    'posts',
-    'comments',
-    'users',
-  ]);
-});
+  await cleanDatabase(db, 'truncate', ['posts', 'comments', 'users'])
+})
 ```
 
 ### Integration with Jest
 
 ```typescript
-import { beforeEach, afterEach } from '@jest/globals';
-import { cleanDatabase } from '@kysera/testing';
+import { beforeEach, afterEach } from '@jest/globals'
+import { cleanDatabase } from '@kysera/testing'
 
 // Clean database after each test
 afterEach(async () => {
   await cleanDatabase(db, 'delete', [
     'comments', // Child tables first
     'posts',
-    'users',
-  ]);
-});
+    'users'
+  ])
+})
 ```
 
 ## Best Practices
@@ -687,13 +675,13 @@ Transaction rollback is the fastest testing approach:
 
 ```typescript
 // ✅ Fast - automatic rollback
-await testInTransaction(db, async (trx) => {
+await testInTransaction(db, async trx => {
   // test code
-});
+})
 
 // ❌ Slower - manual cleanup
-await createUser(db, userData);
-await cleanDatabase(db, 'truncate', ['users']);
+await createUser(db, userData)
+await cleanDatabase(db, 'truncate', ['users'])
 ```
 
 ### 2. Define Factories Once, Use Everywhere
@@ -703,34 +691,34 @@ await cleanDatabase(db, 'truncate', ['users']);
 export const createUser = createFactory({
   email: () => `user-${Date.now()}@example.com`,
   name: 'Test User',
-  role: 'user',
-});
+  role: 'user'
+})
 
 export const createPost = createFactory({
   title: () => `Post ${Date.now()}`,
-  content: 'Test content',
-});
+  content: 'Test content'
+})
 
 // test file
-import { createUser, createPost } from './factories';
+import { createUser, createPost } from './factories'
 ```
 
 ### 3. Compose Seeders for Reusability
 
 ```typescript
 // seeders.ts
-export const seedUsers: SeedFunction<DB> = async (trx) => {
+export const seedUsers: SeedFunction<DB> = async trx => {
   // seed users
-};
+}
 
-export const seedPosts: SeedFunction<DB> = async (trx) => {
+export const seedPosts: SeedFunction<DB> = async trx => {
   // seed posts
-};
+}
 
-export const seedAll = composeSeeders([seedUsers, seedPosts]);
+export const seedAll = composeSeeders([seedUsers, seedPosts])
 
 // test file
-import { seedAll } from './seeders';
+import { seedAll } from './seeders'
 ```
 
 ### 4. Use Appropriate Cleanup Strategy
@@ -742,13 +730,13 @@ import { seedAll } from './seeders';
 ```typescript
 // Best for most cases
 afterEach(async () => {
-  await cleanDatabase(db, 'truncate', ['users', 'posts']);
-});
+  await cleanDatabase(db, 'truncate', ['users', 'posts'])
+})
 
 // When FK order matters
 afterEach(async () => {
-  await cleanDatabase(db, 'delete', ['comments', 'posts', 'users']);
-});
+  await cleanDatabase(db, 'delete', ['comments', 'posts', 'users'])
+})
 ```
 
 ## Requirements

@@ -10,12 +10,12 @@ Repository introspection and management tools for analyzing and validating your 
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `list` | List all repository classes in the project |
-| `inspect` | Inspect a repository in detail |
-| `validate` | Validate schemas against database |
-| `methods` | Show available repository methods |
+| Command    | Description                                |
+| ---------- | ------------------------------------------ |
+| `list`     | List all repository classes in the project |
+| `inspect`  | Inspect a repository in detail             |
+| `validate` | Validate schemas against database          |
+| `methods`  | Show available repository methods          |
 
 ## list
 
@@ -27,14 +27,14 @@ kysera repository list [options]
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `-d, --directory <path>` | Directory to scan (default: src) |
-| `-p, --pattern <glob>` | File pattern to match (default: **/*Repository.ts) |
-| `--show-methods` | Show repository methods |
-| `--show-schemas` | Show entity schemas |
-| `--json` | Output as JSON |
-| `--config <path>` | Path to configuration file |
+| Option                   | Description                                         |
+| ------------------------ | --------------------------------------------------- |
+| `-d, --directory <path>` | Directory to scan (default: src)                    |
+| `-p, --pattern <glob>`   | File pattern to match (default: \**/*Repository.ts) |
+| `--show-methods`         | Show repository methods                             |
+| `--show-schemas`         | Show entity schemas                                 |
+| `--json`                 | Output as JSON                                      |
+| `--config <path>`        | Path to configuration file                          |
 
 ### Examples
 
@@ -62,11 +62,12 @@ kysera repository list --json
 
 **Table View (default):**
 
-| Repository | Table | Path | Methods | Features |
-|------------|-------|------|---------|----------|
-| UserRepository | users | src/repos/UserRepository.ts | 12 | V P S |
+| Repository     | Table | Path                        | Methods | Features |
+| -------------- | ----- | --------------------------- | ------- | -------- |
+| UserRepository | users | src/repos/UserRepository.ts | 12      | V P S    |
 
 Feature indicators:
+
 - `V` - Has validation (Zod/Valibot)
 - `P` - Has pagination
 - `S` - Has soft delete
@@ -96,6 +97,7 @@ UserRepository
 ### Summary
 
 The command provides a summary showing:
+
 - Total repositories found
 - Percentage with validation
 - Percentage with pagination
@@ -111,17 +113,17 @@ kysera repository inspect <name> [options]
 
 ### Arguments
 
-| Argument | Description |
-|----------|-------------|
-| `name` | Repository class name (e.g., UserRepository) |
+| Argument | Description                                  |
+| -------- | -------------------------------------------- |
+| `name`   | Repository class name (e.g., UserRepository) |
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--show-source` | Show source code |
-| `--show-types` | Show TypeScript types |
-| `--json` | Output as JSON |
+| Option            | Description                |
+| ----------------- | -------------------------- |
+| `--show-source`   | Show source code           |
+| `--show-types`    | Show TypeScript types      |
+| `--json`          | Output as JSON             |
 | `--config <path>` | Path to configuration file |
 
 ### Examples
@@ -140,6 +142,7 @@ kysera repository inspect UserRepository --show-types
 ### Output
 
 Inspection provides:
+
 - File path and location
 - Table name
 - Entity type
@@ -158,13 +161,13 @@ kysera repository validate [options]
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--strict` | Strict validation (fail on warnings) |
-| `--fix` | Suggest fixes for mismatches |
-| `--table <name>` | Validate specific table only |
-| `--json` | Output as JSON |
-| `--config <path>` | Path to configuration file |
+| Option            | Description                          |
+| ----------------- | ------------------------------------ |
+| `--strict`        | Strict validation (fail on warnings) |
+| `--fix`           | Suggest fixes for mismatches         |
+| `--table <name>`  | Validate specific table only         |
+| `--json`          | Output as JSON                       |
+| `--config <path>` | Path to configuration file           |
 
 ### Examples
 
@@ -186,13 +189,13 @@ kysera repository validate --fix
 
 The validator checks:
 
-| Check | Description |
-|-------|-------------|
-| Column existence | Schema properties match database columns |
-| Type compatibility | TypeScript types match SQL types |
-| Nullable fields | Optional properties match NULL constraints |
-| Primary keys | ID fields match primary key definition |
-| Foreign keys | References match foreign key constraints |
+| Check              | Description                                |
+| ------------------ | ------------------------------------------ |
+| Column existence   | Schema properties match database columns   |
+| Type compatibility | TypeScript types match SQL types           |
+| Nullable fields    | Optional properties match NULL constraints |
+| Primary keys       | ID fields match primary key definition     |
+| Foreign keys       | References match foreign key constraints   |
 
 ### Output
 
@@ -226,13 +229,13 @@ kysera repository methods [options]
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--show-signatures` | Show full method signatures |
-| `--filter <pattern>` | Filter methods by name pattern |
-| `--group-by <type>` | Group by: repository, method-type |
-| `--json` | Output as JSON |
-| `--config <path>` | Path to configuration file |
+| Option               | Description                       |
+| -------------------- | --------------------------------- |
+| `--show-signatures`  | Show full method signatures       |
+| `--filter <pattern>` | Filter methods by name pattern    |
+| `--group-by <type>`  | Group by: repository, method-type |
+| `--json`             | Output as JSON                    |
+| `--config <path>`    | Path to configuration file        |
 
 ### Examples
 
@@ -253,6 +256,7 @@ kysera repository methods --group-by method-type
 ### Output
 
 **Default view:**
+
 ```
 Repository Methods
 
@@ -275,6 +279,7 @@ OrderRepository:
 ```
 
 **With signatures:**
+
 ```
 UserRepository:
   • findById(id: string): Promise<User | null>

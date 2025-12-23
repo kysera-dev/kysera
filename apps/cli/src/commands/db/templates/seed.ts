@@ -4,7 +4,7 @@
  * These templates provide starting points for creating database seeds.
  */
 
-import { ValidationError } from '../../../utils/errors.js';
+import { ValidationError } from '../../../utils/errors.js'
 
 export const SEED_TEMPLATES = {
   /**
@@ -330,28 +330,28 @@ export async function seed(db: Kysely<any>, context?: SeedContext): Promise<void
     logger.debug('Fresh seed completed successfully');
   }
 }
-`,
-};
+`
+}
 
 /**
  * Get a seed template by name
  */
 export function getSeedTemplate(name: keyof typeof SEED_TEMPLATES): string {
-  return SEED_TEMPLATES[name] || SEED_TEMPLATES.basic;
+  return SEED_TEMPLATES[name] || SEED_TEMPLATES.basic
 }
 
 /**
  * Get all available template names
  */
 export function getAvailableTemplates(): string[] {
-  return Object.keys(SEED_TEMPLATES);
+  return Object.keys(SEED_TEMPLATES)
 }
 
 /**
  * Generate a seed filename with timestamp
  */
 export function generateSeedFilename(name: string, order?: number): string {
-  const prefix = order !== undefined ? String(order).padStart(2, '0') : '';
-  const sanitizedName = name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-  return prefix ? `${prefix}_${sanitizedName}.ts` : `${sanitizedName}.ts`;
+  const prefix = order !== undefined ? String(order).padStart(2, '0') : ''
+  const sanitizedName = name.toLowerCase().replace(/[^a-z0-9]+/g, '_')
+  return prefix ? `${prefix}_${sanitizedName}.ts` : `${sanitizedName}.ts`
 }

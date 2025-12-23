@@ -4,22 +4,33 @@
  * @module @kysera/infra/shutdown
  */
 
-import type { Kysely } from 'kysely';
-import { consoleLogger, type KyseraLogger } from '@kysera/core';
+import type { Kysely } from 'kysely'
+import { consoleLogger, type KyseraLogger } from '@kysera/core'
 
 /**
- * Check if we're running in an environment with Node.js-like process object.
- * Supports Node.js, Bun, and environments with process polyfills.
+ * Type guard to check if a value has process-like signal handling.
  * @internal
  */
-function hasProcessSignals(): boolean {
-  return (
-    typeof globalThis !== 'undefined' &&
-    'process' in globalThis &&
-    typeof globalThis.process === 'object' &&
-    globalThis.process !== null &&
-    typeof (globalThis.process as NodeJS.Process).on === 'function'
-  );
+interface ProcessLike {
+  on: (signal: NodeJS.Signals, handler: () => void) => void
+  exit: (code: number) => void
+}
+
+/**
+ * Get the process object if it exists and has the required methods.
+ * Returns undefined in environments without process support.
+ * @internal
+ */
+function getProcess(): ProcessLike | undefined {
+  // Use type assertion to avoid ESLint complaints about globalThis checks
+  const g = globalThis as { process?: unknown }
+  if (g.process !== undefined && g.process !== null && typeof g.process === 'object') {
+    const p = g.process as Partial<ProcessLike>
+    if (typeof p.on === 'function' && typeof p.exit === 'function') {
+      return p as ProcessLike
+    }
+  }
+  return undefined
 }
 
 /**
@@ -27,14 +38,9 @@ function hasProcessSignals(): boolean {
  * @internal
  */
 function safeProcessExit(code: number): void {
-  if (
-    typeof globalThis !== 'undefined' &&
-    'process' in globalThis &&
-    typeof globalThis.process === 'object' &&
-    globalThis.process !== null &&
-    typeof (globalThis.process as NodeJS.Process).exit === 'function'
-  ) {
-    (globalThis.process as NodeJS.Process).exit(code);
+  const proc = getProcess()
+  if (proc !== undefined) {
+    proc.exit(code)
   }
 }
 
@@ -46,18 +52,18 @@ export interface ShutdownOptions {
    * Timeout in milliseconds before forced shutdown.
    * @default 30000
    */
-  timeout?: number;
+  timeout?: number
 
   /**
    * Custom shutdown handler called before database close.
    */
-  onShutdown?: () => void | Promise<void>;
+  onShutdown?: () => void | Promise<void>
 
   /**
    * Logger for shutdown messages.
    * @default consoleLogger
    */
-  logger?: KyseraLogger;
+  logger?: KyseraLogger
 }
 
 /**
@@ -68,7 +74,7 @@ export interface RegisterShutdownOptions extends ShutdownOptions {
    * Signals to listen for.
    * @default ['SIGTERM', 'SIGINT']
    */
-  signals?: NodeJS.Signals[];
+  signals?: NodeJS.Signals[]
 }
 
 /**
@@ -103,28 +109,35 @@ export async function gracefulShutdown<DB>(
   db: Kysely<DB>,
   options: ShutdownOptions = {}
 ): Promise<void> {
-  const { timeout = 30000, onShutdown, logger = consoleLogger } = options;
+  const { timeout = 30000, onShutdown, logger = consoleLogger } = options
 
   const shutdownPromise = async (): Promise<void> => {
     try {
       if (onShutdown) {
-        await onShutdown();
+        await onShutdown()
       }
-      await db.destroy();
+      await db.destroy()
     } catch (error) {
-      logger.error('Error during database shutdown:', error);
-      throw error;
+      logger.error('Error during database shutdown:', error)
+      throw error
     }
-  };
+  }
 
-  await Promise.race([
-    shutdownPromise(),
-    new Promise<void>((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(`Shutdown timeout after ${timeout.toString()}ms`));
-      }, timeout);
-    }),
-  ]);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      shutdownPromise(),
+      new Promise<void>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`Shutdown timeout after ${timeout.toString()}ms`))
+        }, timeout)
+      })
+    ])
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId)
+    }
+  }
 }
 
 /**
@@ -142,7 +155,7 @@ export async function gracefulShutdown<DB>(
  * ```
  */
 export async function shutdownDatabase<DB>(db: Kysely<DB>): Promise<void> {
-  await db.destroy();
+  await db.destroy()
 }
 
 /**
@@ -172,43 +185,39 @@ export function registerShutdownHandlers<DB>(
   db: Kysely<DB>,
   options: RegisterShutdownOptions = {}
 ): void {
-  const {
-    signals = ['SIGTERM', 'SIGINT'],
-    logger = consoleLogger,
-    ...shutdownOptions
-  } = options;
+  const { signals = ['SIGTERM', 'SIGINT'], logger = consoleLogger, ...shutdownOptions } = options
 
   // Check if signal handlers are supported in current runtime
-  if (!hasProcessSignals()) {
+  const proc = getProcess()
+  if (proc === undefined) {
     logger.warn(
       'Process signal handlers are not available in this runtime. ' +
         'Shutdown handlers will not be registered. ' +
         'Use createShutdownController().execute() for manual shutdown.'
-    );
-    return;
+    )
+    return
   }
 
-  let isShuttingDown = false;
+  let isShuttingDown = false
 
   const handleShutdown = async (signal: NodeJS.Signals): Promise<void> => {
-    if (isShuttingDown) return;
-    isShuttingDown = true;
+    if (isShuttingDown) return
+    isShuttingDown = true
 
-    logger.info(`Received ${signal}, starting graceful shutdown...`);
+    logger.info(`Received ${signal}, starting graceful shutdown...`)
 
     try {
-      await gracefulShutdown(db, { ...shutdownOptions, logger });
-      logger.info('Database connections closed successfully');
-      safeProcessExit(0);
+      await gracefulShutdown(db, { ...shutdownOptions, logger })
+      logger.info('Database connections closed successfully')
+      safeProcessExit(0)
     } catch (error) {
-      logger.error('Error during shutdown:', error);
-      safeProcessExit(1);
+      logger.error('Error during shutdown:', error)
+      safeProcessExit(1)
     }
-  };
+  }
 
-  const proc = globalThis.process as NodeJS.Process;
   for (const signal of signals) {
-    proc.on(signal, () => void handleShutdown(signal));
+    proc.on(signal, () => void handleShutdown(signal))
   }
 }
 
@@ -247,27 +256,31 @@ export function createShutdownController<DB>(
   db: Kysely<DB>,
   options: RegisterShutdownOptions = {}
 ): {
-  execute: () => Promise<void>;
-  registerSignals: () => void;
-  isShuttingDown: () => boolean;
+  execute: () => Promise<void>
+  registerSignals: () => void
+  isShuttingDown: () => boolean
 } {
-  let shuttingDown = false;
-  const { logger = consoleLogger, signals: _signals = ['SIGTERM', 'SIGINT'], ...shutdownOpts } = options;
+  let shuttingDown = false
+  const {
+    logger = consoleLogger,
+    signals: _signals = ['SIGTERM', 'SIGINT'],
+    ...shutdownOpts
+  } = options
 
   return {
     execute: async (): Promise<void> => {
-      if (shuttingDown) return;
-      shuttingDown = true;
+      if (shuttingDown) return
+      shuttingDown = true
 
-      logger.info('Starting graceful shutdown...');
-      await gracefulShutdown(db, { ...shutdownOpts, logger });
-      logger.info('Database connections closed successfully');
+      logger.info('Starting graceful shutdown...')
+      await gracefulShutdown(db, { ...shutdownOpts, logger })
+      logger.info('Database connections closed successfully')
     },
 
     registerSignals: (): void => {
-      registerShutdownHandlers(db, options);
+      registerShutdownHandlers(db, options)
     },
 
-    isShuttingDown: (): boolean => shuttingDown,
-  };
+    isShuttingDown: (): boolean => shuttingDown
+  }
 }

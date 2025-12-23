@@ -6,13 +6,7 @@
     "sourceType": "module",
     "project": ["./tsconfig.json", "./packages/*/tsconfig.json"]
   },
-  "plugins": [
-    "@typescript-eslint",
-    "import",
-    "promise",
-    "unicorn",
-    "sonarjs"
-  ],
+  "plugins": ["@typescript-eslint", "import", "promise", "unicorn", "sonarjs"],
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/recommended",
@@ -50,11 +44,14 @@
     "@typescript-eslint/no-inferrable-types": "off",
 
     // Import Rules
-    "import/order": ["error", {
-      "groups": ["builtin", "external", "internal", "parent", "sibling", "index"],
-      "newlines-between": "always",
-      "alphabetize": { "order": "asc", "caseInsensitive": true }
-    }],
+    "import/order": [
+      "error",
+      {
+        "groups": ["builtin", "external", "internal", "parent", "sibling", "index"],
+        "newlines-between": "always",
+        "alphabetize": { "order": "asc", "caseInsensitive": true }
+      }
+    ],
     "import/no-duplicates": "error",
     "import/no-unused-modules": "error",
     "import/no-cycle": "error",
@@ -77,20 +74,23 @@
     "max-params": ["error", 4],
 
     // Unicorn Rules (Adjusted for project)
-    "unicorn/prevent-abbreviations": ["error", {
-      "allowList": {
-        "env": true,
-        "args": true,
-        "db": true,
-        "req": true,
-        "res": true,
-        "err": true,
-        "ctx": true,
-        "props": true,
-        "ref": true,
-        "deps": true
+    "unicorn/prevent-abbreviations": [
+      "error",
+      {
+        "allowList": {
+          "env": true,
+          "args": true,
+          "db": true,
+          "req": true,
+          "res": true,
+          "err": true,
+          "ctx": true,
+          "props": true,
+          "ref": true,
+          "deps": true
+        }
       }
-    }],
+    ],
     "unicorn/filename-case": ["error", { "case": "kebabCase" }],
     "unicorn/no-null": "off",
     "unicorn/no-array-reduce": "off",
@@ -128,12 +128,5 @@
       }
     }
   ],
-  "ignorePatterns": [
-    "node_modules",
-    "dist",
-    "build",
-    "coverage",
-    "*.js",
-    "*.d.ts"
-  ]
+  "ignorePatterns": ["node_modules", "dist", "build", "coverage", "*.js", "*.d.ts"]
 }

@@ -1,5 +1,7 @@
 /**
  * Package version - injected at build time by tsup
+ * Falls back to development version if not replaced
  * @internal
  */
-export const VERSION = '__VERSION__';
+const RAW_VERSION = '__VERSION__'
+export const VERSION = RAW_VERSION.startsWith('__') ? '0.0.0-dev' : RAW_VERSION

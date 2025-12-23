@@ -1,6 +1,6 @@
 ---
 sidebar_position: 8
-title: "@kysera/soft-delete"
+title: '@kysera/soft-delete'
 description: Soft delete plugin API reference
 ---
 
@@ -16,12 +16,12 @@ npm install @kysera/soft-delete
 
 ## Overview
 
-| Metric | Value |
-|--------|-------|
-| **Version** | 0.7.0 |
-| **Bundle Size** | ~4 KB (minified) |
-| **Dependencies** | @kysera/core, @kysera/executor |
-| **Peer Dependencies** | kysely >=0.28.8 |
+| Metric                | Value                          |
+| --------------------- | ------------------------------ |
+| **Version**           | 0.7.0                          |
+| **Bundle Size**       | ~4 KB (minified)               |
+| **Dependencies**      | @kysera/core, @kysera/executor |
+| **Peer Dependencies** | kysely >=0.28.8                |
 
 ## Exports
 
@@ -30,11 +30,7 @@ npm install @kysera/soft-delete
 export { softDeletePlugin } from './index'
 
 // Types
-export type {
-  SoftDeleteOptions,
-  SoftDeleteMethods,
-  SoftDeleteRepository
-}
+export type { SoftDeleteOptions, SoftDeleteMethods, SoftDeleteRepository }
 
 // Zod schema (for kysera-cli)
 export { SoftDeleteOptionsSchema }
@@ -200,6 +196,7 @@ async softDelete(id: number | string): Promise<T>
 ```
 
 **Parameters:**
+
 - `id` - Primary key of the record
 
 **Returns:** The soft-deleted record with `deleted_at` set
@@ -207,6 +204,7 @@ async softDelete(id: number | string): Promise<T>
 **Throws:** `NotFoundError` if record doesn't exist
 
 **Example:**
+
 ```typescript
 const deletedUser = await userRepo.softDelete(userId)
 console.log(deletedUser.deleted_at) // Date timestamp
@@ -221,6 +219,7 @@ async restore(id: number | string): Promise<T>
 ```
 
 **Parameters:**
+
 - `id` - Primary key of the record
 
 **Returns:** The restored record with `deleted_at` set to null
@@ -228,6 +227,7 @@ async restore(id: number | string): Promise<T>
 **Throws:** `NotFoundError` if record doesn't exist
 
 **Example:**
+
 ```typescript
 const restoredUser = await userRepo.restore(userId)
 console.log(restoredUser.deleted_at) // null
@@ -242,9 +242,11 @@ async hardDelete(id: number | string): Promise<void>
 ```
 
 **Parameters:**
+
 - `id` - Primary key of the record
 
 **Example:**
+
 ```typescript
 await userRepo.hardDelete(userId)
 // Record is permanently removed from database
@@ -259,11 +261,13 @@ async findWithDeleted(id: number | string): Promise<T | null>
 ```
 
 **Parameters:**
+
 - `id` - Primary key of the record
 
 **Returns:** The record or `null` if not found
 
 **Example:**
+
 ```typescript
 // Regular findById excludes soft-deleted
 const user = await userRepo.findById(userId) // null if soft-deleted
@@ -283,6 +287,7 @@ async findAllWithDeleted(): Promise<T[]>
 **Returns:** Array of all records including soft-deleted
 
 **Example:**
+
 ```typescript
 // Regular findAll excludes soft-deleted
 const activeUsers = await userRepo.findAll()
@@ -302,6 +307,7 @@ async findDeleted(): Promise<T[]>
 **Returns:** Array of soft-deleted records only
 
 **Example:**
+
 ```typescript
 const deletedUsers = await userRepo.findDeleted()
 console.log(`${deletedUsers.length} users in trash`)
@@ -316,6 +322,7 @@ async softDeleteMany(ids: (number | string)[]): Promise<T[]>
 ```
 
 **Parameters:**
+
 - `ids` - Array of primary keys
 
 **Returns:** Array of soft-deleted records
@@ -323,6 +330,7 @@ async softDeleteMany(ids: (number | string)[]): Promise<T[]>
 **Throws:** `NotFoundError` if any record doesn't exist
 
 **Example:**
+
 ```typescript
 const deleted = await userRepo.softDeleteMany([1, 2, 3, 4, 5])
 console.log(`Soft-deleted ${deleted.length} users`)
@@ -337,11 +345,13 @@ async restoreMany(ids: (number | string)[]): Promise<T[]>
 ```
 
 **Parameters:**
+
 - `ids` - Array of primary keys
 
 **Returns:** Array of restored records
 
 **Example:**
+
 ```typescript
 const restored = await userRepo.restoreMany([1, 2, 3])
 console.log(`Restored ${restored.length} users`)
@@ -356,9 +366,11 @@ async hardDeleteMany(ids: (number | string)[]): Promise<void>
 ```
 
 **Parameters:**
+
 - `ids` - Array of primary keys
 
 **Example:**
+
 ```typescript
 await userRepo.hardDeleteMany([1, 2, 3])
 // Records are permanently removed from database
@@ -376,16 +388,11 @@ import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
 // Create executor with plugins
-const executor = await createExecutor(db, [
-  softDeletePlugin({ deletedAtColumn: 'deleted_at' })
-])
+const executor = await createExecutor(db, [softDeletePlugin({ deletedAtColumn: 'deleted_at' })])
 
 // DAL queries automatically get soft-delete filters
 const getUser = createQuery((ctx, id: string) =>
-  ctx.db.selectFrom('users')
-    .where('id', '=', id)
-    .selectAll()
-    .executeTakeFirst()
+  ctx.db.selectFrom('users').where('id', '=', id).selectAll().executeTakeFirst()
 )
 
 // Create context from executor
@@ -400,7 +407,7 @@ const user = await getUser(ctx, '1')
 Plugins are automatically propagated to transactions:
 
 ```typescript
-await withTransaction(executor, async (txCtx) => {
+await withTransaction(executor, async txCtx => {
   // All queries in transaction have soft-delete filter applied
   const user = await getUser(txCtx, userId)
   const posts = await getUserPosts(txCtx, userId)
@@ -416,14 +423,11 @@ To bypass soft-delete filters in DAL queries, use `getRawDb()`:
 ```typescript
 import { getRawDb } from '@kysera/executor'
 
-const getAllUsers = createQuery((ctx) => {
+const getAllUsers = createQuery(ctx => {
   const rawDb = getRawDb(ctx.db)
 
   // This query includes soft-deleted records
-  return rawDb
-    .selectFrom('users')
-    .selectAll()
-    .execute()
+  return rawDb.selectFrom('users').selectAll().execute()
 })
 ```
 
@@ -443,20 +447,17 @@ const userRepo = orm.createRepository(createUserRepository)
 
 // DAL for complex reads
 const getDashboardStats = createQuery((ctx, userId: string) =>
-  ctx.db.selectFrom('users')
+  ctx.db
+    .selectFrom('users')
     .leftJoin('posts', 'users.id', 'posts.user_id')
     .where('users.id', '=', userId)
-    .select([
-      'users.id',
-      'users.name',
-      sql<number>`count(posts.id)`.as('post_count')
-    ])
+    .select(['users.id', 'users.name', sql<number>`count(posts.id)`.as('post_count')])
     .groupBy('users.id')
     .executeTakeFirst()
 )
 
 // Use together in transaction (same plugins!)
-await orm.transaction(async (ctx) => {
+await orm.transaction(async ctx => {
   // Repository write
   const user = await userRepo.create({ name: 'Alice' })
 
@@ -510,6 +511,7 @@ The plugin uses `interceptQuery()` from the `@kysera/executor` Plugin interface:
 ```
 
 **How it works:**
+
 1. `createExecutor` wraps Kysely with a Proxy
 2. When `.selectFrom()` is called, the plugin's `interceptQuery()` hook is invoked
 3. The filter `WHERE deleted_at IS NULL` is applied to the query builder
@@ -545,7 +547,7 @@ Soft delete operations respect ACID properties and work correctly with transacti
 ### Repository Pattern Transactions
 
 ```typescript
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const txORM = createORM(trx, [softDeletePlugin()])
   const txRepo = txORM.createRepository(createUserRepository)
 
@@ -559,7 +561,7 @@ await db.transaction().execute(async (trx) => {
 ### DAL Pattern Transactions
 
 ```typescript
-await withTransaction(executor, async (txCtx) => {
+await withTransaction(executor, async txCtx => {
   // All queries in transaction have soft-delete filter applied
   const user = await getUser(txCtx, userId)
 
@@ -573,7 +575,7 @@ await withTransaction(executor, async (txCtx) => {
 For related entities, manually implement cascade soft delete:
 
 ```typescript
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const repos = createRepositories(trx)
   const userId = 123
 
@@ -598,15 +600,12 @@ const extendedRepo = {
   async findAllWithDeleted(): Promise<T[]> {
     // Use rawDb to bypass soft-delete filter
     const rawDb = getRawDb(baseRepo.executor)
-    return await rawDb
-      .selectFrom(baseRepo.tableName)
-      .selectAll()
-      .execute()
+    return await rawDb.selectFrom(baseRepo.tableName).selectAll().execute()
   }
 }
 
 // In DAL queries
-const getAllUsersIncludingDeleted = createQuery((ctx) => {
+const getAllUsersIncludingDeleted = createQuery(ctx => {
   const rawDb = getRawDb(ctx.db)
   return rawDb.selectFrom('users').selectAll().execute()
 })
@@ -645,7 +644,7 @@ interface UsersTable {
   id: Generated<number>
   email: string
   name: string
-  deleted_at: Date | null  // Must be nullable
+  deleted_at: Date | null // Must be nullable
 }
 ```
 
@@ -665,10 +664,10 @@ const plugin: Plugin = softDeletePlugin({
 Batch operations use efficient single queries:
 
 | Records | Loop Time | Batch Time | Speedup |
-|---------|-----------|------------|---------|
-| 10 | 200ms | 15ms | 13x |
-| 100 | 2000ms | 20ms | 100x |
-| 1000 | 20000ms | 50ms | 400x |
+| ------- | --------- | ---------- | ------- |
+| 10      | 200ms     | 15ms       | 13x     |
+| 100     | 2000ms    | 20ms       | 100x    |
+| 1000    | 20000ms   | 50ms       | 400x    |
 
 ### Partial Index (PostgreSQL)
 
@@ -695,14 +694,14 @@ SELECT * FROM users WHERE deleted_at IS NULL
 
 ```typescript
 interface UsersTable {
-  deleted_at: Date | null  // ✅ Must be nullable
+  deleted_at: Date | null // ✅ Must be nullable
 }
 ```
 
 ### 2. Handle Cascade Delete
 
 ```typescript
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   const repos = createRepos(trx)
 
   // Soft delete children first
@@ -721,19 +720,16 @@ await db.transaction().execute(async (trx) => {
 const cutoffDate = new Date()
 cutoffDate.setDate(cutoffDate.getDate() - 90)
 
-await db
-  .deleteFrom('users')
-  .where('deleted_at', '<', cutoffDate)
-  .execute()
+await db.deleteFrom('users').where('deleted_at', '<', cutoffDate).execute()
 ```
 
 ### 4. Combine with Other Plugins
 
 ```typescript
 const orm = await createORM(db, [
-  softDeletePlugin(),     // Soft delete
-  timestampsPlugin(),     // Automatic timestamps
-  auditPlugin()           // Audit logging
+  softDeletePlugin(), // Soft delete
+  timestampsPlugin(), // Automatic timestamps
+  auditPlugin() // Audit logging
 ])
 ```
 
@@ -773,15 +769,13 @@ import { createORM, createRepositoryFactory } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { z } from 'zod'
 
-const orm = await createORM(db, [
-  softDeletePlugin({ deletedAtColumn: 'deleted_at' })
-])
+const orm = await createORM(db, [softDeletePlugin({ deletedAtColumn: 'deleted_at' })])
 
-const userRepo = orm.createRepository((executor) => {
+const userRepo = orm.createRepository(executor => {
   const factory = createRepositoryFactory(executor)
   return factory.create({
     tableName: 'users',
-    mapRow: (row) => ({
+    mapRow: row => ({
       id: row.id,
       email: row.email,
       name: row.name,
@@ -817,18 +811,12 @@ import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
 // Create executor with plugin
-const executor = await createExecutor(db, [
-  softDeletePlugin({ deletedAtColumn: 'deleted_at' })
-])
+const executor = await createExecutor(db, [softDeletePlugin({ deletedAtColumn: 'deleted_at' })])
 
 // Define queries
-const getActiveUsers = createQuery((ctx) =>
-  ctx.db.selectFrom('users')
-    .selectAll()
-    .execute()
-)
+const getActiveUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
 
-const getAllUsers = createQuery((ctx) => {
+const getAllUsers = createQuery(ctx => {
   const rawDb = getRawDb(ctx.db)
   return rawDb.selectFrom('users').selectAll().execute()
 })
@@ -849,19 +837,16 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 const orm = await createORM(db, [softDeletePlugin()])
 
 const getDashboardStats = createQuery((ctx, userId: string) =>
-  ctx.db.selectFrom('users')
+  ctx.db
+    .selectFrom('users')
     .leftJoin('posts', 'users.id', 'posts.user_id')
     .where('users.id', '=', userId)
-    .select([
-      'users.id',
-      'users.name',
-      sql<number>`count(posts.id)`.as('post_count')
-    ])
+    .select(['users.id', 'users.name', sql<number>`count(posts.id)`.as('post_count')])
     .groupBy('users.id')
     .executeTakeFirst()
 )
 
-await orm.transaction(async (ctx) => {
+await orm.transaction(async ctx => {
   // Repository for writes
   const userRepo = orm.createRepository(createUserRepository)
   const user = await userRepo.create({ name: 'Alice' })

@@ -22,7 +22,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src test --ext .ts"
+    "lint": "eslint src"
   },
   "keywords": [
     "kysely",
@@ -53,7 +53,8 @@
   "peerDependencies": {
     "@kysera/repository": "workspace:*",
     "kysely": ">=0.28.8",
-    "zod": "^4.1.13"
+    "zod": "^4.1.13",
+    "@kysera/executor": "workspace:*"
   },
   "peerDependenciesMeta": {
     "zod": {

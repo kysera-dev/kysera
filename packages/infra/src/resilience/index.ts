@@ -5,12 +5,7 @@
  */
 
 // Retry
-export {
-  type RetryOptions,
-  isTransientError,
-  withRetry,
-  createRetryWrapper,
-} from './retry.js';
+export { type RetryOptions, isTransientError, withRetry, createRetryWrapper } from './retry.js'
 
 // Circuit Breaker
 export {
@@ -18,4 +13,5 @@ export {
   type CircuitBreakerState,
   type CircuitBreakerOptions,
   CircuitBreaker,
-} from './circuit-breaker.js';
+  CircuitBreakerError
+} from './circuit-breaker.js'

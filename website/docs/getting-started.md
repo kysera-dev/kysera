@@ -97,7 +97,7 @@ const factory = createRepositoryFactory(db)
 // Create repository
 const userRepo = factory.create({
   tableName: 'users' as const,
-  mapRow: (row) => row,
+  mapRow: row => row,
   schemas: {
     create: userSchema,
     update: userSchema.partial()
@@ -135,11 +135,15 @@ await userRepo.delete(user.id)
 ## Using Transactions
 
 ```typescript
-await db.transaction().execute(async (trx) => {
+await db.transaction().execute(async trx => {
   // Create repositories with transaction executor
   const txFactory = createRepositoryFactory(trx)
-  const txUserRepo = txFactory.create({ /* ... */ })
-  const txPostRepo = txFactory.create({ /* ... */ })
+  const txUserRepo = txFactory.create({
+    /* ... */
+  })
+  const txPostRepo = txFactory.create({
+    /* ... */
+  })
 
   // All operations are atomic
   const user = await txUserRepo.create({
@@ -167,13 +171,11 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 
 // Note: createORM creates a plugin container, not a traditional ORM
 // It has no entity mapping, Unit of Work, or Identity Map
-const orm = await createORM(db, [
-  softDeletePlugin({ deletedAtColumn: 'deleted_at' })
-])
+const orm = await createORM(db, [softDeletePlugin({ deletedAtColumn: 'deleted_at' })])
 
-const userRepo = orm.createRepository((executor) => {
+const userRepo = orm.createRepository(executor => {
   const factory = createRepositoryFactory(executor)
-  return factory.create({ tableName: 'users', /* ... */ })
+  return factory.create({ tableName: 'users' /* ... */ })
 })
 
 // Soft delete (sets deleted_at timestamp)
@@ -236,7 +238,9 @@ await postRepo.update(post.id, { title: 'Updated Title' })
 ```typescript
 import { checkDatabaseHealth, createMetricsPool } from '@kysera/infra'
 
-const pool = new Pool({ /* config */ })
+const pool = new Pool({
+  /* config */
+})
 const metricsPool = createMetricsPool(pool)
 
 const health = await checkDatabaseHealth(db, metricsPool)
@@ -283,29 +287,20 @@ try {
 import { paginate, paginateCursor } from '@kysera/core'
 
 // Offset-based pagination
-const page1 = await paginate(
-  db.selectFrom('users').selectAll(),
-  { page: 1, limit: 20 }
-)
+const page1 = await paginate(db.selectFrom('users').selectAll(), { page: 1, limit: 20 })
 
 // Cursor-based pagination (more efficient for large datasets)
-const result = await paginateCursor(
-  db.selectFrom('users').selectAll(),
-  {
-    orderBy: [{ column: 'created_at', direction: 'desc' }],
-    limit: 20
-  }
-)
+const result = await paginateCursor(db.selectFrom('users').selectAll(), {
+  orderBy: [{ column: 'created_at', direction: 'desc' }],
+  limit: 20
+})
 
 // Get next page using cursor
-const nextPage = await paginateCursor(
-  db.selectFrom('users').selectAll(),
-  {
-    orderBy: [{ column: 'created_at', direction: 'desc' }],
-    limit: 20,
-    cursor: result.pagination.nextCursor
-  }
-)
+const nextPage = await paginateCursor(db.selectFrom('users').selectAll(), {
+  orderBy: [{ column: 'created_at', direction: 'desc' }],
+  limit: 20,
+  cursor: result.pagination.nextCursor
+})
 ```
 
 ## Next Steps

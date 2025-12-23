@@ -36,20 +36,12 @@ const createUserRepository = (executor, applyPlugins) => ({
   executor,
 
   async findById(id) {
-    return executor
-      .selectFrom('users')
-      .selectAll()
-      .where('id', '=', id)
-      .executeTakeFirst()
+    return executor.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
   },
 
   async create(data) {
     const validated = CreateUserSchema.parse(data)
-    return executor
-      .insertInto('users')
-      .values(validated)
-      .returningAll()
-      .executeTakeFirstOrThrow()
+    return executor.insertInto('users').values(validated).returningAll().executeTakeFirstOrThrow()
   },
 
   async update(id, data) {
@@ -60,7 +52,7 @@ const createUserRepository = (executor, applyPlugins) => ({
       .where('id', '=', id)
       .returningAll()
       .executeTakeFirstOrThrow()
-  },
+  }
 
   // ... other methods
 })
@@ -90,7 +82,7 @@ const factory = createRepositoryFactory(db)
 // Create repository (no plugin support)
 const userRepo = factory.create({
   tableName: 'users',
-  mapRow: (row) => ({
+  mapRow: row => ({
     id: row.id,
     email: row.email,
     name: row.name,
@@ -108,13 +100,13 @@ const userRepo = factory.create({
 ```typescript
 interface RepositoryConfig<Table, Entity> {
   tableName: string
-  primaryKey?: string | string[]           // Default: 'id'
+  primaryKey?: string | string[] // Default: 'id'
   primaryKeyType?: 'number' | 'string' | 'uuid'
   mapRow: (row: Selectable<Table>) => Entity
   schemas: {
-    entity?: z.ZodType<Entity>             // Optional result validation
-    create: z.ZodType                      // Required
-    update?: z.ZodType                     // Optional
+    entity?: z.ZodType<Entity> // Optional result validation
+    create: z.ZodType // Required
+    update?: z.ZodType // Optional
   }
   // Validation controlled via KYSERA_VALIDATION_MODE environment variable
   // or NODE_ENV fallback - see Validation guide
@@ -282,14 +274,14 @@ Support for different primary key types:
 const postRepo = factory.create({
   tableName: 'posts',
   primaryKey: 'uuid',
-  primaryKeyType: 'uuid',
+  primaryKeyType: 'uuid'
   // ...
 })
 
 // Composite primary key
 const orderItemRepo = factory.create({
   tableName: 'order_items',
-  primaryKey: ['order_id', 'product_id'],
+  primaryKey: ['order_id', 'product_id']
   // ...
 })
 
@@ -297,7 +289,7 @@ const orderItemRepo = factory.create({
 const accountRepo = factory.create({
   tableName: 'accounts',
   primaryKey: 'account_number',
-  primaryKeyType: 'string',
+  primaryKeyType: 'string'
   // ...
 })
 ```
@@ -329,7 +321,7 @@ const userRepo = factory.create({
     email: row.email,
     fullName: `${row.first_name} ${row.last_name}`,
     createdAt: row.created_at
-  }),
+  })
   // ...
 })
 ```

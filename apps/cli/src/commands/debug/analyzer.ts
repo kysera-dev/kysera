@@ -1,51 +1,51 @@
-import { Command } from 'commander';
-import { prism } from '@xec-sh/kit';
-import { displayTable as table } from '../../utils/table-helper.js';
-import { spinner } from '../../utils/spinner.js';
-import { logger } from '../../utils/logger.js';
-import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { Command } from 'commander'
+import { prism } from '@xec-sh/kit'
+import { displayTable as table } from '../../utils/table-helper.js'
+import { spinner } from '../../utils/spinner.js'
+import { logger } from '../../utils/logger.js'
+import { CLIError } from '../../utils/errors.js'
+import { getDatabaseConnection } from '../../utils/database.js'
+import { loadConfig } from '../../config/loader.js'
 import type {
   DatabaseInstance,
   PostgresPlan,
   PostgresExplainOutput,
   MySQLPlan,
   SQLitePlan,
-  IndexInfo,
-} from '../../types/index.js';
+  IndexInfo
+} from '../../types/index.js'
 
 export interface AnalyzerOptions {
-  query?: string;
-  table?: string;
-  explain?: boolean;
-  suggestions?: boolean;
-  indexes?: boolean;
-  statistics?: boolean;
-  json?: boolean;
-  config?: string;
+  query?: string
+  table?: string
+  explain?: boolean
+  suggestions?: boolean
+  indexes?: boolean
+  statistics?: boolean
+  json?: boolean
+  config?: string
 }
 
 interface QueryAnalysis {
-  query: string;
-  executionPlan: Array<PostgresExplainOutput | MySQLPlan | SQLitePlan>;
-  estimatedCost?: number;
-  actualTime?: number;
-  rowsExamined?: number;
-  rowsReturned?: number;
-  indexesUsed: string[];
-  indexesMissing: string[];
-  suggestions: string[];
-  warnings: string[];
-  tableStats?: TableStatistics[];
+  query: string
+  executionPlan: Array<PostgresExplainOutput | MySQLPlan | SQLitePlan>
+  estimatedCost?: number
+  actualTime?: number
+  rowsExamined?: number
+  rowsReturned?: number
+  indexesUsed: string[]
+  indexesMissing: string[]
+  suggestions: string[]
+  warnings: string[]
+  tableStats?: TableStatistics[]
 }
 
 interface TableStatistics {
-  tableName: string;
-  rowCount: number;
-  dataSize: number;
-  indexSize: number;
-  indexes: IndexInfo[];
+  tableName: string
+  rowCount: number
+  dataSize: number
+  indexSize: number
+  indexes: IndexInfo[]
 }
 
 export function analyzerCommand(): Command {
@@ -61,74 +61,79 @@ export function analyzerCommand(): Command {
     .option('-c, --config <path>', 'Path to configuration file')
     .action(async (options: AnalyzerOptions) => {
       try {
-        await analyzeQuery(options);
+        await analyzeQuery(options)
       } catch (error) {
         if (error instanceof CLIError) {
-          throw error;
+          throw error
         }
         throw new CLIError(
           `Failed to analyze query: ${error instanceof Error ? error.message : String(error)}`,
           'ANALYZER_ERROR'
-        );
+        )
       }
-    });
+    })
 
-  return cmd;
+  return cmd
 }
 
 async function analyzeQuery(options: AnalyzerOptions): Promise<void> {
   // Load configuration
-  const config = await loadConfig(options.config);
+  const config = await loadConfig(options.config)
 
   if (!config?.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
       'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
+      'Or specify a config file with --config option'
+    ])
   }
 
   // Get database connection
-  const db = await getDatabaseConnection(config.database) as DatabaseInstance | null;
+  const db = (await getDatabaseConnection(config.database)) as DatabaseInstance | null
 
   if (!db) {
     throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
       'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
+      'Ensure the database server is running'
+    ])
   }
 
-  const analyzeSpinner = spinner();
-  analyzeSpinner.start('Analyzing query...');
+  const analyzeSpinner = spinner()
+  analyzeSpinner.start('Analyzing query...')
 
   try {
-    let queryToAnalyze: string;
+    let queryToAnalyze: string
 
     if (options.query) {
-      queryToAnalyze = options.query;
+      queryToAnalyze = options.query
     } else if (options.table) {
       // Generate a sample query for the table
-      queryToAnalyze = `SELECT * FROM ${options.table} LIMIT 100`;
+      queryToAnalyze = `SELECT * FROM ${options.table} LIMIT 100`
     } else {
       throw new CLIError('No query specified', 'MISSING_QUERY', [
         'Use --query to specify a SQL query',
-        'Or use --table to analyze a table',
-      ]);
+        'Or use --table to analyze a table'
+      ])
     }
 
     // Run analysis
-    const analysis = await performQueryAnalysis(db, queryToAnalyze, config.database.dialect, options);
+    const analysis = await performQueryAnalysis(
+      db,
+      queryToAnalyze,
+      config.database.dialect,
+      options
+    )
 
-    analyzeSpinner.succeed('Analysis complete');
+    analyzeSpinner.succeed('Analysis complete')
 
     // Display results
     if (options.json) {
-      console.log(JSON.stringify(analysis, null, 2));
+      console.log(JSON.stringify(analysis, null, 2))
     } else {
-      displayAnalysisResults(analysis, options);
+      displayAnalysisResults(analysis, options)
     }
   } finally {
     // Close database connection
-    await db.destroy();
+    await db.destroy()
   }
 }
 
@@ -144,31 +149,31 @@ async function performQueryAnalysis(
     indexesUsed: [],
     indexesMissing: [],
     suggestions: [],
-    warnings: [],
-  };
+    warnings: []
+  }
 
   // Get execution plan
   if (dialect === 'postgres') {
-    await analyzePostgresQuery(db, query, analysis, options);
+    await analyzePostgresQuery(db, query, analysis, options)
   } else if (dialect === 'mysql') {
-    await analyzeMysqlQuery(db, query, analysis, options);
+    await analyzeMysqlQuery(db, query, analysis, options)
   } else if (dialect === 'sqlite') {
-    await analyzeSqliteQuery(db, query, analysis, options);
+    await analyzeSqliteQuery(db, query, analysis, options)
   }
 
   // Analyze query structure
-  analyzeQueryStructure(query, analysis);
+  analyzeQueryStructure(query, analysis)
 
   // Get table statistics if requested
   if (options.statistics) {
-    const tables = extractTableNames(query);
-    analysis.tableStats = await getTableStatistics(db, tables, dialect);
+    const tables = extractTableNames(query)
+    analysis.tableStats = await getTableStatistics(db, tables, dialect)
   }
 
   // Generate optimization suggestions
-  generateOptimizationSuggestions(analysis);
+  generateOptimizationSuggestions(analysis)
 
-  return analysis;
+  return analysis
 }
 
 async function analyzePostgresQuery(
@@ -181,41 +186,45 @@ async function analyzePostgresQuery(
     // Get EXPLAIN ANALYZE output
     const explainQuery = options.explain
       ? `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query}`
-      : `EXPLAIN (FORMAT JSON) ${query}`;
+      : `EXPLAIN (FORMAT JSON) ${query}`
 
-    const result = await db.executeQuery(db.raw(explainQuery));
+    const result = await db.executeQuery(db.raw(explainQuery))
 
     if (result.rows && result.rows.length > 0) {
-      const plan = result.rows[0]['QUERY PLAN'];
+      const plan = result.rows[0]['QUERY PLAN']
       if (typeof plan === 'string') {
-        analysis.executionPlan = JSON.parse(plan);
+        analysis.executionPlan = JSON.parse(plan)
       } else {
-        analysis.executionPlan = plan;
+        analysis.executionPlan = plan
       }
 
       // Extract metrics from plan
       if (analysis.executionPlan && analysis.executionPlan[0]) {
-        const planData = analysis.executionPlan[0];
+        const planData = analysis.executionPlan[0]
 
         // Type guard for PostgresExplainOutput
         if ('Plan' in planData && planData.Plan) {
-          analysis.estimatedCost = planData.Plan['Total Cost'];
-          analysis.rowsReturned = planData.Plan['Plan Rows'];
+          analysis.estimatedCost = planData.Plan['Total Cost']
+          analysis.rowsReturned = planData.Plan['Plan Rows']
 
           if ('Execution Time' in planData && planData['Execution Time']) {
-            analysis.actualTime = planData['Execution Time'];
+            analysis.actualTime = planData['Execution Time']
           }
 
           // Extract index usage
-          extractPostgresIndexUsage(planData.Plan, analysis);
+          extractPostgresIndexUsage(planData.Plan, analysis)
         }
       }
     }
   } catch (error) {
     // Log with context for debugging but continue with partial results
-    logger.debug(`Failed to analyze PostgreSQL query: ${error instanceof Error ? error.message : String(error)}`);
-    logger.debug(`Query that failed: ${query.substring(0, 100)}...`);
-    analysis.warnings.push('Failed to generate execution plan - query may have syntax errors or require permissions');
+    logger.debug(
+      `Failed to analyze PostgreSQL query: ${error instanceof Error ? error.message : String(error)}`
+    )
+    logger.debug(`Query that failed: ${query.substring(0, 100)}...`)
+    analysis.warnings.push(
+      'Failed to generate execution plan - query may have syntax errors or require permissions'
+    )
   }
 }
 
@@ -227,41 +236,45 @@ async function analyzeMysqlQuery(
 ): Promise<void> {
   try {
     // Get EXPLAIN output
-    const explainResult = await db.executeQuery(db.raw(`EXPLAIN ${query}`));
+    const explainResult = await db.executeQuery(db.raw(`EXPLAIN ${query}`))
 
     if (explainResult.rows && explainResult.rows.length > 0) {
-      analysis.executionPlan = explainResult.rows as MySQLPlan[];
+      analysis.executionPlan = explainResult.rows as MySQLPlan[]
 
       // Extract metrics from plan
       for (const row of explainResult.rows) {
-        const mysqlRow = row as any; // MySQL EXPLAIN row structure
+        const mysqlRow = row as any // MySQL EXPLAIN row structure
         if (mysqlRow.key) {
-          analysis.indexesUsed.push(String(mysqlRow.key));
+          analysis.indexesUsed.push(String(mysqlRow.key))
         }
 
         if (mysqlRow.rows) {
-          analysis.rowsExamined = (analysis.rowsExamined || 0) + Number(mysqlRow.rows);
+          analysis.rowsExamined = (analysis.rowsExamined || 0) + Number(mysqlRow.rows)
         }
 
         // Check for warnings
         if (mysqlRow.Extra) {
           if (String(mysqlRow.Extra).includes('Using filesort')) {
-            analysis.warnings.push('Query uses filesort (consider adding index)');
+            analysis.warnings.push('Query uses filesort (consider adding index)')
           }
           if (String(mysqlRow.Extra).includes('Using temporary')) {
-            analysis.warnings.push('Query uses temporary table (may impact performance)');
+            analysis.warnings.push('Query uses temporary table (may impact performance)')
           }
           if (String(mysqlRow.Extra).includes('Using where')) {
-            analysis.warnings.push('Using WHERE without index');
+            analysis.warnings.push('Using WHERE without index')
           }
         }
       }
     }
   } catch (error) {
     // Log with context for debugging but continue with partial results
-    logger.debug(`Failed to analyze MySQL query: ${error instanceof Error ? error.message : String(error)}`);
-    logger.debug(`Query that failed: ${query.substring(0, 100)}...`);
-    analysis.warnings.push('Failed to generate execution plan - query may have syntax errors or require permissions');
+    logger.debug(
+      `Failed to analyze MySQL query: ${error instanceof Error ? error.message : String(error)}`
+    )
+    logger.debug(`Query that failed: ${query.substring(0, 100)}...`)
+    analysis.warnings.push(
+      'Failed to generate execution plan - query may have syntax errors or require permissions'
+    )
   }
 }
 
@@ -273,125 +286,133 @@ async function analyzeSqliteQuery(
 ): Promise<void> {
   try {
     // Get EXPLAIN QUERY PLAN output
-    const explainResult = await db.executeQuery(db.raw(`EXPLAIN QUERY PLAN ${query}`));
+    const explainResult = await db.executeQuery(db.raw(`EXPLAIN QUERY PLAN ${query}`))
 
     if (explainResult.rows && explainResult.rows.length > 0) {
-      analysis.executionPlan = explainResult.rows as SQLitePlan[];
+      analysis.executionPlan = explainResult.rows as SQLitePlan[]
 
       // Extract index usage from plan
       for (const row of explainResult.rows) {
-        const sqliteRow = row as any; // SQLite EXPLAIN row structure
-        const detail = String(sqliteRow.detail || '');
+        const sqliteRow = row as any // SQLite EXPLAIN row structure
+        const detail = String(sqliteRow.detail || '')
 
         if (detail.includes('USING INDEX')) {
-          const indexMatch = detail.match(/USING INDEX (\w+)/);
+          const indexMatch = detail.match(/USING INDEX (\w+)/)
           if (indexMatch) {
-            analysis.indexesUsed.push(indexMatch[1]);
+            analysis.indexesUsed.push(indexMatch[1])
           }
         }
 
         if (detail.includes('SCAN TABLE')) {
-          analysis.warnings.push(`Full table scan detected: ${detail}`);
+          analysis.warnings.push(`Full table scan detected: ${detail}`)
         }
       }
     }
   } catch (error) {
     // Log with context for debugging but continue with partial results
-    logger.debug(`Failed to analyze SQLite query: ${error instanceof Error ? error.message : String(error)}`);
-    logger.debug(`Query that failed: ${query.substring(0, 100)}...`);
-    analysis.warnings.push('Failed to generate execution plan - query may have syntax errors or require permissions');
+    logger.debug(
+      `Failed to analyze SQLite query: ${error instanceof Error ? error.message : String(error)}`
+    )
+    logger.debug(`Query that failed: ${query.substring(0, 100)}...`)
+    analysis.warnings.push(
+      'Failed to generate execution plan - query may have syntax errors or require permissions'
+    )
   }
 }
 
 function extractPostgresIndexUsage(plan: any, analysis: QueryAnalysis): void {
-  if (!plan) return;
+  if (!plan) return
 
   // Check node type for index usage
   if (plan['Node Type']) {
     if (plan['Node Type'].includes('Index')) {
       if (plan['Index Name']) {
-        analysis.indexesUsed.push(plan['Index Name']);
+        analysis.indexesUsed.push(plan['Index Name'])
       }
     }
 
     if (plan['Node Type'] === 'Seq Scan') {
-      analysis.warnings.push(`Sequential scan on table ${plan['Relation Name']}`);
+      analysis.warnings.push(`Sequential scan on table ${plan['Relation Name']}`)
     }
   }
 
   // Recursively check child plans
   if (plan.Plans && Array.isArray(plan.Plans)) {
     for (const childPlan of plan.Plans) {
-      extractPostgresIndexUsage(childPlan, analysis);
+      extractPostgresIndexUsage(childPlan, analysis)
     }
   }
 }
 
 function analyzeQueryStructure(query: string, analysis: QueryAnalysis): void {
-  const queryUpper = query.toUpperCase();
+  const queryUpper = query.toUpperCase()
 
   // Check for potential issues
   if (queryUpper.includes('SELECT *')) {
-    analysis.suggestions.push('Avoid SELECT * - specify only required columns');
+    analysis.suggestions.push('Avoid SELECT * - specify only required columns')
   }
 
   if (!queryUpper.includes('LIMIT') && queryUpper.startsWith('SELECT')) {
-    analysis.suggestions.push('Consider adding LIMIT clause to prevent fetching too many rows');
+    analysis.suggestions.push('Consider adding LIMIT clause to prevent fetching too many rows')
   }
 
   if (queryUpper.includes("LIKE '%")) {
-    analysis.warnings.push('Leading wildcard in LIKE pattern prevents index usage');
+    analysis.warnings.push('Leading wildcard in LIKE pattern prevents index usage')
   }
 
   if (queryUpper.includes('OR')) {
-    analysis.suggestions.push('OR conditions may prevent index usage - consider using UNION');
+    analysis.suggestions.push('OR conditions may prevent index usage - consider using UNION')
   }
 
   if (queryUpper.includes('NOT IN') || queryUpper.includes('NOT EXISTS')) {
-    analysis.suggestions.push('NOT IN/NOT EXISTS can be slow - consider using LEFT JOIN');
+    analysis.suggestions.push('NOT IN/NOT EXISTS can be slow - consider using LEFT JOIN')
   }
 
   if (queryUpper.includes('DISTINCT')) {
-    analysis.suggestions.push("DISTINCT can be expensive - ensure it's necessary");
+    analysis.suggestions.push("DISTINCT can be expensive - ensure it's necessary")
   }
 
   // Check for missing JOIN conditions
-  const joinCount = (queryUpper.match(/JOIN/g) || []).length;
-  const onCount = (queryUpper.match(/\bON\b/g) || []).length;
+  const joinCount = (queryUpper.match(/JOIN/g) || []).length
+  const onCount = (queryUpper.match(/\bON\b/g) || []).length
   if (joinCount > onCount) {
-    analysis.warnings.push('Possible missing JOIN condition');
+    analysis.warnings.push('Possible missing JOIN condition')
   }
 }
 
 function extractTableNames(query: string): string[] {
-  const tables: string[] = [];
+  const tables: string[] = []
 
   // Simple regex to extract table names (this is a basic implementation)
-  const fromMatch = query.match(/FROM\s+([^\s,]+)/gi);
+  const fromMatch = query.match(/FROM\s+([^\s,]+)/gi)
   if (fromMatch) {
     for (const match of fromMatch) {
-      const tableName = match.replace(/FROM\s+/i, '').trim();
+      const tableName = match.replace(/FROM\s+/i, '').trim()
       if (tableName && !tableName.startsWith('(')) {
-        tables.push(tableName);
+        tables.push(tableName)
       }
     }
   }
 
-  const joinMatch = query.match(/JOIN\s+([^\s]+)/gi);
+  const joinMatch = query.match(/JOIN\s+([^\s]+)/gi)
   if (joinMatch) {
     for (const match of joinMatch) {
-      const tableName = match.replace(/JOIN\s+/i, '').trim();
+      const tableName = match.replace(/JOIN\s+/i, '').trim()
       if (tableName && !tables.includes(tableName)) {
-        tables.push(tableName);
+        tables.push(tableName)
       }
     }
   }
 
-  return tables;
+  return tables
 }
 
-async function getTableStatistics(db: DatabaseInstance, tables: string[], dialect: string): Promise<TableStatistics[]> {
-  const stats: TableStatistics[] = [];
+async function getTableStatistics(
+  db: DatabaseInstance,
+  tables: string[],
+  dialect: string
+): Promise<TableStatistics[]> {
+  const stats: TableStatistics[] = []
 
   for (const tableName of tables) {
     try {
@@ -400,12 +421,15 @@ async function getTableStatistics(db: DatabaseInstance, tables: string[], dialec
         rowCount: 0,
         dataSize: 0,
         indexSize: 0,
-        indexes: [],
-      };
+        indexes: []
+      }
 
       // Get row count
-      const countResult = await db.selectFrom(tableName).select(db.fn.countAll().as('count')).executeTakeFirst();
-      tableStats.rowCount = Number(countResult?.count || 0);
+      const countResult = await db
+        .selectFrom(tableName)
+        .select(db.fn.countAll().as('count'))
+        .executeTakeFirst()
+      tableStats.rowCount = Number(countResult?.count || 0)
 
       // Get indexes
       if (dialect === 'postgres') {
@@ -415,215 +439,218 @@ async function getTableStatistics(db: DatabaseInstance, tables: string[], dialec
           FROM pg_indexes
           WHERE tablename = '${tableName}'
         `)
-        );
+        )
 
         for (const idx of indexResult.rows) {
-          const pgIdx = idx as any; // PostgreSQL index row
+          const pgIdx = idx as any // PostgreSQL index row
           tableStats.indexes.push({
             name: String(pgIdx.indexname),
             columns: extractColumnsFromIndexDef(String(pgIdx.indexdef)),
             isUnique: String(pgIdx.indexdef).includes('UNIQUE'),
-            isPrimary: String(pgIdx.indexname).endsWith('_pkey') || String(pgIdx.indexdef).includes('PRIMARY KEY'),
-          });
+            isPrimary:
+              String(pgIdx.indexname).endsWith('_pkey') ||
+              String(pgIdx.indexdef).includes('PRIMARY KEY')
+          })
         }
       }
 
-      stats.push(tableStats);
+      stats.push(tableStats)
     } catch (error) {
       // Log error with context but continue processing other tables
       logger.debug(
         `Failed to get statistics for table ${tableName}: ${error instanceof Error ? error.message : String(error)}`
-      );
-      logger.debug(`Skipping statistics for table: ${tableName}`);
+      )
+      logger.debug(`Skipping statistics for table: ${tableName}`)
     }
   }
 
-  return stats;
+  return stats
 }
 
 function extractColumnsFromIndexDef(indexDef: string): string[] {
-  const match = indexDef.match(/\(([^)]+)\)/);
+  const match = indexDef.match(/\(([^)]+)\)/)
   if (match) {
-    return match[1].split(',').map((c) => c.trim());
+    return match[1].split(',').map(c => c.trim())
   }
-  return [];
+  return []
 }
 
 function generateOptimizationSuggestions(analysis: QueryAnalysis): void {
   // Check for missing indexes
-  if (analysis.warnings.some((w) => w.includes('Sequential scan') || w.includes('SCAN TABLE'))) {
-    analysis.suggestions.push('Consider adding indexes on filtered/joined columns');
+  if (analysis.warnings.some(w => w.includes('Sequential scan') || w.includes('SCAN TABLE'))) {
+    analysis.suggestions.push('Consider adding indexes on filtered/joined columns')
   }
 
   // Check for too many rows examined
   if (analysis.rowsExamined && analysis.rowsReturned) {
-    const efficiency = analysis.rowsReturned / analysis.rowsExamined;
+    const efficiency = analysis.rowsReturned / analysis.rowsExamined
     if (efficiency < 0.1) {
       analysis.suggestions.push(
-        `Low query efficiency (${(efficiency * 100).toFixed(1)}%) - ` + 'consider adding more selective indexes'
-      );
+        `Low query efficiency (${(efficiency * 100).toFixed(1)}%) - ` +
+          'consider adding more selective indexes'
+      )
     }
   }
 
   // Check execution time
   if (analysis.actualTime && analysis.actualTime > 1000) {
-    analysis.suggestions.push('Query takes >1s - consider optimization');
+    analysis.suggestions.push('Query takes >1s - consider optimization')
   }
 
   // Check for index usage
   if (analysis.indexesUsed.length === 0 && analysis.executionPlan.length > 0) {
-    analysis.suggestions.push('No indexes used - query may benefit from indexing');
+    analysis.suggestions.push('No indexes used - query may benefit from indexing')
   }
 }
 
 function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzerOptions): void {
-  console.log('');
-  console.log(prism.bold('🔍 Query Analysis'));
-  console.log(prism.gray('─'.repeat(60)));
+  console.log('')
+  console.log(prism.bold('🔍 Query Analysis'))
+  console.log(prism.gray('─'.repeat(60)))
 
   // Display query
-  console.log('');
-  console.log(prism.cyan('Query:'));
-  console.log(`  ${highlightSql(analysis.query)}`);
+  console.log('')
+  console.log(prism.cyan('Query:'))
+  console.log(`  ${highlightSql(analysis.query)}`)
 
   // Display execution plan if requested
   if (options.explain && analysis.executionPlan.length > 0) {
-    console.log('');
-    console.log(prism.cyan('Execution Plan:'));
+    console.log('')
+    console.log(prism.cyan('Execution Plan:'))
 
     if (typeof analysis.executionPlan[0] === 'object' && 'Plan' in analysis.executionPlan[0]) {
       // PostgreSQL JSON format
-      displayPostgresPlan(analysis.executionPlan[0].Plan);
+      displayPostgresPlan(analysis.executionPlan[0].Plan)
     } else {
       // Table format
-      console.log(table(analysis.executionPlan));
+      console.log(table(analysis.executionPlan))
     }
   }
 
   // Display metrics
   if (analysis.estimatedCost || analysis.actualTime || analysis.rowsExamined) {
-    console.log('');
-    console.log(prism.cyan('Metrics:'));
+    console.log('')
+    console.log(prism.cyan('Metrics:'))
 
     if (analysis.estimatedCost) {
-      console.log(`  Estimated Cost: ${analysis.estimatedCost}`);
+      console.log(`  Estimated Cost: ${analysis.estimatedCost}`)
     }
     if (analysis.actualTime) {
-      console.log(`  Actual Time: ${analysis.actualTime.toFixed(2)}ms`);
+      console.log(`  Actual Time: ${analysis.actualTime.toFixed(2)}ms`)
     }
     if (analysis.rowsExamined) {
-      console.log(`  Rows Examined: ${analysis.rowsExamined.toLocaleString()}`);
+      console.log(`  Rows Examined: ${analysis.rowsExamined.toLocaleString()}`)
     }
     if (analysis.rowsReturned) {
-      console.log(`  Rows Returned: ${analysis.rowsReturned.toLocaleString()}`);
+      console.log(`  Rows Returned: ${analysis.rowsReturned.toLocaleString()}`)
     }
 
     if (analysis.rowsExamined && analysis.rowsReturned) {
-      const efficiency = ((analysis.rowsReturned / analysis.rowsExamined) * 100).toFixed(1);
-      console.log(`  Query Efficiency: ${efficiency}%`);
+      const efficiency = ((analysis.rowsReturned / analysis.rowsExamined) * 100).toFixed(1)
+      console.log(`  Query Efficiency: ${efficiency}%`)
     }
   }
 
   // Display index usage
   if (options.indexes || analysis.indexesUsed.length > 0) {
-    console.log('');
-    console.log(prism.cyan('Index Usage:'));
+    console.log('')
+    console.log(prism.cyan('Index Usage:'))
 
     if (analysis.indexesUsed.length > 0) {
       for (const index of analysis.indexesUsed) {
-        console.log(`  ✅ ${index}`);
+        console.log(`  ✅ ${index}`)
       }
     } else {
-      console.log(prism.yellow('  ⚠ No indexes used'));
+      console.log(prism.yellow('  ⚠ No indexes used'))
     }
 
     if (analysis.indexesMissing.length > 0) {
-      console.log('');
-      console.log(prism.cyan('Missing Indexes:'));
+      console.log('')
+      console.log(prism.cyan('Missing Indexes:'))
       for (const index of analysis.indexesMissing) {
-        console.log(`  ❌ ${index}`);
+        console.log(`  ❌ ${index}`)
       }
     }
   }
 
   // Display warnings
   if (analysis.warnings.length > 0) {
-    console.log('');
-    console.log(prism.cyan('Warnings:'));
+    console.log('')
+    console.log(prism.cyan('Warnings:'))
     for (const warning of analysis.warnings) {
-      console.log(`  ${prism.yellow('⚠')} ${warning}`);
+      console.log(`  ${prism.yellow('⚠')} ${warning}`)
     }
   }
 
   // Display suggestions
   if (options.suggestions !== false && analysis.suggestions.length > 0) {
-    console.log('');
-    console.log(prism.cyan('Optimization Suggestions:'));
+    console.log('')
+    console.log(prism.cyan('Optimization Suggestions:'))
     for (let i = 0; i < analysis.suggestions.length; i++) {
-      console.log(`  ${i + 1}. ${analysis.suggestions[i]}`);
+      console.log(`  ${i + 1}. ${analysis.suggestions[i]}`)
     }
   }
 
   // Display table statistics
   if (options.statistics && analysis.tableStats) {
-    console.log('');
-    console.log(prism.cyan('Table Statistics:'));
+    console.log('')
+    console.log(prism.cyan('Table Statistics:'))
 
     for (const stats of analysis.tableStats) {
-      console.log('');
-      console.log(`  ${prism.bold(stats.tableName)}:`);
-      console.log(`    Rows: ${stats.rowCount.toLocaleString()}`);
+      console.log('')
+      console.log(`  ${prism.bold(stats.tableName)}:`)
+      console.log(`    Rows: ${stats.rowCount.toLocaleString()}`)
 
       if (stats.indexes.length > 0) {
-        console.log(`    Indexes (${stats.indexes.length}):`);
+        console.log(`    Indexes (${stats.indexes.length}):`)
         for (const idx of stats.indexes) {
-          const uniqueLabel = idx.isUnique ? ' (unique)' : '';
-          console.log(`      - ${idx.name}${uniqueLabel}: ${idx.columns.join(', ')}`);
+          const uniqueLabel = idx.isUnique ? ' (unique)' : ''
+          console.log(`      - ${idx.name}${uniqueLabel}: ${idx.columns.join(', ')}`)
         }
       }
     }
   }
 
   // Overall assessment
-  console.log('');
-  console.log(prism.gray('─'.repeat(60)));
-  console.log(prism.gray('Assessment:'));
+  console.log('')
+  console.log(prism.gray('─'.repeat(60)))
+  console.log(prism.gray('Assessment:'))
 
-  const hasIssues = analysis.warnings.length > 0 || analysis.suggestions.length > 0;
+  const hasIssues = analysis.warnings.length > 0 || analysis.suggestions.length > 0
 
   if (!hasIssues) {
-    console.log(prism.green('  ✅ Query appears to be well-optimized'));
+    console.log(prism.green('  ✅ Query appears to be well-optimized'))
   } else {
-    const issueCount = analysis.warnings.length + analysis.suggestions.length;
-    console.log(prism.yellow(`  ⚠ Found ${issueCount} potential issue(s)`));
-    console.log('  Review the warnings and suggestions above');
+    const issueCount = analysis.warnings.length + analysis.suggestions.length
+    console.log(prism.yellow(`  ⚠ Found ${issueCount} potential issue(s)`))
+    console.log('  Review the warnings and suggestions above')
   }
 }
 
 function displayPostgresPlan(plan: any, indent: number = 0): void {
-  const prefix = '  ' + '  '.repeat(indent);
+  const prefix = '  ' + '  '.repeat(indent)
 
-  console.log(`${prefix}${plan['Node Type']}`);
+  console.log(`${prefix}${plan['Node Type']}`)
 
   if (plan['Relation Name']) {
-    console.log(`${prefix}  Table: ${plan['Relation Name']}`);
+    console.log(`${prefix}  Table: ${plan['Relation Name']}`)
   }
 
   if (plan['Index Name']) {
-    console.log(`${prefix}  Index: ${plan['Index Name']}`);
+    console.log(`${prefix}  Index: ${plan['Index Name']}`)
   }
 
   if (plan['Total Cost']) {
-    console.log(`${prefix}  Cost: ${plan['Total Cost']}`);
+    console.log(`${prefix}  Cost: ${plan['Total Cost']}`)
   }
 
   if (plan['Actual Total Time']) {
-    console.log(`${prefix}  Time: ${plan['Actual Total Time']}ms`);
+    console.log(`${prefix}  Time: ${plan['Actual Total Time']}ms`)
   }
 
   if (plan.Plans && Array.isArray(plan.Plans)) {
     for (const childPlan of plan.Plans) {
-      displayPostgresPlan(childPlan, indent + 1);
+      displayPostgresPlan(childPlan, indent + 1)
     }
   }
 }
@@ -656,15 +683,15 @@ function highlightSql(sql: string): string {
     'EXISTS',
     'BETWEEN',
     'LIKE',
-    'AS',
-  ];
+    'AS'
+  ]
 
-  let highlighted = sql;
+  let highlighted = sql
 
-  keywords.forEach((keyword) => {
-    const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
-    highlighted = highlighted.replace(regex, prism.cyan(keyword));
-  });
+  keywords.forEach(keyword => {
+    const regex = new RegExp(`\\b${keyword}\\b`, 'gi')
+    highlighted = highlighted.replace(regex, prism.cyan(keyword))
+  })
 
-  return highlighted;
+  return highlighted
 }

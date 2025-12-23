@@ -15,10 +15,10 @@ npm install --save-dev @kysera/testing
 
 ```typescript
 // Before (deprecated)
-import { testInTransaction, createFactory, cleanDatabase } from '@kysera/core';
+import { testInTransaction, createFactory, cleanDatabase } from '@kysera/core'
 
 // After
-import { testInTransaction, createFactory, cleanDatabase } from '@kysera/testing';
+import { testInTransaction, createFactory, cleanDatabase } from '@kysera/testing'
 ```
 
 See the full documentation at **[@kysera/testing](/docs/api/testing)**.
@@ -52,7 +52,7 @@ import { testInTransaction } from '@kysera/core'
 
 describe('User Repository', () => {
   it('should create user', async () => {
-    await testInTransaction(db, async (trx) => {
+    await testInTransaction(db, async trx => {
       const repos = createRepositories(trx)
 
       const user = await repos.users.create({
@@ -94,11 +94,11 @@ async function cleanDatabase<DB>(
 
 ### Strategies
 
-| Strategy | Speed | Sequences | Use Case |
-|----------|-------|-----------|----------|
-| `truncate` | Slowest | Reset | Full cleanup between test suites |
-| `delete` | Medium | Preserved | Cleanup preserving auto-increment |
-| `transaction` | Fastest | Preserved | Per-test cleanup (via rollback) |
+| Strategy      | Speed   | Sequences | Use Case                          |
+| ------------- | ------- | --------- | --------------------------------- |
+| `truncate`    | Slowest | Reset     | Full cleanup between test suites  |
+| `delete`      | Medium  | Preserved | Cleanup preserving auto-increment |
+| `transaction` | Fastest | Preserved | Per-test cleanup (via rollback)   |
 
 ### Example
 
@@ -128,15 +128,15 @@ function createFactory<T>(defaults: {
 import { createFactory } from '@kysera/core'
 
 const createUser = createFactory({
-  email: (i) => `user${i}@example.com`,
-  name: (i) => `User ${i}`,
+  email: i => `user${i}@example.com`,
+  name: i => `User ${i}`,
   status: 'active'
 })
 
 // Generate test data
-const user1 = createUser()           // { email: 'user1@...', name: 'User 1', status: 'active' }
-const user2 = createUser()           // { email: 'user2@...', name: 'User 2', status: 'active' }
-const admin = createUser({ status: 'admin' })  // Override status
+const user1 = createUser() // { email: 'user1@...', name: 'User 1', status: 'active' }
+const user2 = createUser() // { email: 'user2@...', name: 'User 2', status: 'active' }
+const admin = createUser({ status: 'admin' }) // Override status
 
 // Create multiple
 const users = Array.from({ length: 10 }, () => createUser())
@@ -150,8 +150,8 @@ Wait for a condition to be true.
 async function waitFor(
   condition: () => Promise<boolean> | boolean,
   options?: {
-    timeout?: number       // Default: 5000
-    interval?: number      // Default: 100
+    timeout?: number // Default: 5000
+    interval?: number // Default: 100
     timeoutMessage?: string
   }
 ): Promise<void>
@@ -184,15 +184,19 @@ async function seedDatabase<DB>(
 ### Example
 
 ```typescript
-await seedDatabase(db, async (trx) => {
-  await trx.insertInto('users').values([
-    { email: 'admin@example.com', name: 'Admin', role: 'admin' },
-    { email: 'user@example.com', name: 'User', role: 'user' }
-  ]).execute()
+await seedDatabase(db, async trx => {
+  await trx
+    .insertInto('users')
+    .values([
+      { email: 'admin@example.com', name: 'Admin', role: 'admin' },
+      { email: 'user@example.com', name: 'User', role: 'user' }
+    ])
+    .execute()
 
-  await trx.insertInto('posts').values([
-    { title: 'First Post', user_id: 1 }
-  ]).execute()
+  await trx
+    .insertInto('posts')
+    .values([{ title: 'First Post', user_id: 1 }])
+    .execute()
 })
 ```
 
@@ -212,7 +216,7 @@ async function testWithIsolation<DB, T>(
 
 ```typescript
 it('should handle concurrent updates', async () => {
-  await testWithIsolation(db, 'serializable', async (trx) => {
+  await testWithIsolation(db, 'serializable', async trx => {
     // Test concurrent access scenarios
   })
 })
@@ -223,10 +227,7 @@ it('should handle concurrent updates', async () => {
 Take a snapshot of table data for comparison.
 
 ```typescript
-async function snapshotTable<DB>(
-  db: Kysely<DB>,
-  table: string
-): Promise<any[]>
+async function snapshotTable<DB>(db: Kysely<DB>, table: string): Promise<any[]>
 ```
 
 ## countRows
@@ -234,17 +235,14 @@ async function snapshotTable<DB>(
 Count rows in a table.
 
 ```typescript
-async function countRows<DB>(
-  db: Kysely<DB>,
-  table: string
-): Promise<number>
+async function countRows<DB>(db: Kysely<DB>, table: string): Promise<number>
 ```
 
 ### Example
 
 ```typescript
 it('should delete user', async () => {
-  await testInTransaction(db, async (trx) => {
+  await testInTransaction(db, async trx => {
     const before = await countRows(trx, 'users')
 
     await userRepo.delete(userId)
@@ -261,7 +259,7 @@ it('should delete user', async () => {
 
 ```typescript
 // Fast: No actual cleanup needed
-await testInTransaction(db, async (trx) => {
+await testInTransaction(db, async trx => {
   const repos = createRepositories(trx)
   // Test code
 })
@@ -271,8 +269,8 @@ await testInTransaction(db, async (trx) => {
 
 ```typescript
 const userFactory = createFactory({
-  email: (i) => `test${i}@example.com`,
-  name: (i) => `Test User ${i}`
+  email: i => `test${i}@example.com`,
+  name: i => `Test User ${i}`
 })
 
 const users = Array.from({ length: 100 }, () => userFactory())

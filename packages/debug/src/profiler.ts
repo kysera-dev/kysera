@@ -4,24 +4,24 @@
  * @module @kysera/debug
  */
 
-import type { QueryMetrics } from './plugin.js';
+import type { QueryMetrics } from '@kysera/core'
 
 /**
  * Query profiler summary.
  */
 export interface ProfilerSummary {
   /** Total number of recorded queries */
-  totalQueries: number;
+  totalQueries: number
   /** Sum of all query durations */
-  totalDuration: number;
+  totalDuration: number
   /** Average query duration */
-  averageDuration: number;
+  averageDuration: number
   /** Slowest recorded query */
-  slowestQuery: QueryMetrics | null;
+  slowestQuery: QueryMetrics | null
   /** Fastest recorded query */
-  fastestQuery: QueryMetrics | null;
+  fastestQuery: QueryMetrics | null
   /** All recorded queries */
-  queries: QueryMetrics[];
+  queries: QueryMetrics[]
 }
 
 /**
@@ -32,7 +32,7 @@ export interface ProfilerOptions {
    * Maximum number of queries to keep in memory.
    * @default 1000
    */
-  maxQueries?: number;
+  maxQueries?: number
 }
 
 /**
@@ -56,16 +56,17 @@ export interface ProfilerOptions {
  *
  * // Get summary
  * const summary = profiler.getSummary();
- * console.log(`Total queries: ${summary.totalQueries}`);
- * console.log(`Average duration: ${summary.averageDuration.toFixed(2)}ms`);
+ * console.log('Total queries: ' + summary.totalQueries);
+ * console.log('Average duration: ' + summary.averageDuration.toFixed(2) + 'ms');
  *
  * // Clear recorded queries
  * profiler.clear();
  * ```
  */
 export class QueryProfiler {
-  private queries: QueryMetrics[] = [];
-  private readonly maxQueries: number;
+  private queries: QueryMetrics[] = []
+  private queriesWriteIndex = 0
+  private readonly maxQueries: number
 
   /**
    * Create a new query profiler.
@@ -73,20 +74,25 @@ export class QueryProfiler {
    * @param options - Profiler options
    */
   constructor(options: ProfilerOptions = {}) {
-    this.maxQueries = options.maxQueries ?? 1000;
+    this.maxQueries = options.maxQueries ?? 1000
   }
 
   /**
    * Record a query metric.
    *
+   * Uses O(1) circular buffer to maintain bounded memory usage.
+   * When the buffer is full, oldest entries are overwritten.
+   *
    * @param metric - Query metrics to record
    */
   record(metric: QueryMetrics): void {
-    this.queries.push(metric);
-    // Circular buffer: keep only last N queries
-    if (this.queries.length > this.maxQueries) {
-      this.queries.shift();
+    // O(1) circular buffer: overwrite oldest entry when full
+    if (this.queries.length < this.maxQueries) {
+      this.queries.push(metric)
+    } else {
+      this.queries[this.queriesWriteIndex % this.maxQueries] = metric
     }
+    this.queriesWriteIndex++
   }
 
   /**
@@ -95,28 +101,30 @@ export class QueryProfiler {
    * @returns Summary of all recorded queries
    */
   getSummary(): ProfilerSummary {
-    if (this.queries.length === 0) {
+    const orderedQueries = this.getOrderedQueries()
+
+    if (orderedQueries.length === 0) {
       return {
         totalQueries: 0,
         totalDuration: 0,
         averageDuration: 0,
         slowestQuery: null,
         fastestQuery: null,
-        queries: [],
-      };
+        queries: []
+      }
     }
 
-    const totalDuration = this.queries.reduce((sum, q) => sum + q.duration, 0);
-    const sorted = [...this.queries].sort((a, b) => b.duration - a.duration);
+    const totalDuration = orderedQueries.reduce((sum, q) => sum + q.duration, 0)
+    const sorted = [...orderedQueries].sort((a, b) => b.duration - a.duration)
 
     return {
-      totalQueries: this.queries.length,
+      totalQueries: orderedQueries.length,
       totalDuration,
-      averageDuration: totalDuration / this.queries.length,
+      averageDuration: totalDuration / orderedQueries.length,
       slowestQuery: sorted[0] ?? null,
       fastestQuery: sorted[sorted.length - 1] ?? null,
-      queries: [...this.queries],
-    };
+      queries: orderedQueries
+    }
   }
 
   /**
@@ -126,9 +134,7 @@ export class QueryProfiler {
    * @returns Array of slowest queries
    */
   getSlowestQueries(count: number): QueryMetrics[] {
-    return [...this.queries]
-      .sort((a, b) => b.duration - a.duration)
-      .slice(0, count);
+    return [...this.getOrderedQueries()].sort((a, b) => b.duration - a.duration).slice(0, count)
   }
 
   /**
@@ -138,20 +144,36 @@ export class QueryProfiler {
    * @returns Array of slow queries
    */
   getSlowQueries(thresholdMs: number): QueryMetrics[] {
-    return this.queries.filter((q) => q.duration > thresholdMs);
+    return this.getOrderedQueries().filter(q => q.duration > thresholdMs)
   }
 
   /**
    * Clear all recorded queries.
    */
   clear(): void {
-    this.queries = [];
+    this.queries = []
+    this.queriesWriteIndex = 0
   }
 
   /**
    * Get the number of recorded queries.
    */
   get count(): number {
-    return this.queries.length;
+    return this.queries.length
+  }
+
+  /**
+   * Get queries in chronological order.
+   * Handles circular buffer wrap-around correctly.
+   *
+   * @returns Array of queries in chronological order
+   */
+  private getOrderedQueries(): QueryMetrics[] {
+    if (this.queries.length < this.maxQueries) {
+      return [...this.queries]
+    }
+    // Buffer is full, reconstruct chronological order
+    const start = this.queriesWriteIndex % this.maxQueries
+    return [...this.queries.slice(start), ...this.queries.slice(0, start)]
   }
 }

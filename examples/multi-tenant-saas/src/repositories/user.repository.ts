@@ -15,13 +15,13 @@ export const UserSchema = z.object({
   name: z.string().min(1).max(100),
   role: z.enum(['owner', 'admin', 'member']),
   created_at: z.date(),
-  updated_at: z.date(),
+  updated_at: z.date()
 })
 
 export const CreateUserSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(100),
-  role: z.enum(['owner', 'admin', 'member']).optional(),
+  role: z.enum(['owner', 'admin', 'member']).optional()
 })
 
 export const UpdateUserSchema = CreateUserSchema.partial()
@@ -45,10 +45,7 @@ function mapUserRow(row: Selectable<TenantUser>): User {
  * All queries are automatically filtered by tenant_id from the context.
  * This ensures complete tenant isolation.
  */
-export function createUserRepository(
-  executor: Executor<Database>,
-  tenantContext: TenantContext
-) {
+export function createUserRepository(executor: Executor<Database>, tenantContext: TenantContext) {
   const validateDbResults = process.env['NODE_ENV'] === 'development'
   const getTenantId = () => tenantContext.getTenantId()
 
@@ -90,9 +87,7 @@ export function createUserRepository(
         .execute()
 
       const users = rows.map(mapUserRow)
-      return validateDbResults
-        ? users.map(u => UserSchema.parse(u))
-        : users
+      return validateDbResults ? users.map(u => UserSchema.parse(u)) : users
     },
 
     async create(input: unknown): Promise<User> {
@@ -103,7 +98,7 @@ export function createUserRepository(
         .values({
           ...validated,
           tenant_id: getTenantId(), // Auto-inject tenant_id
-          role: validated.role || 'member',
+          role: validated.role || 'member'
         })
         .returningAll()
         .executeTakeFirstOrThrow()

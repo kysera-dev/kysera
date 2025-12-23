@@ -13,19 +13,19 @@ import type {
   PolicyDefinition,
   PolicyCondition,
   FilterCondition,
-  PolicyHints,
-} from './types.js';
+  PolicyHints
+} from './types.js'
 
 /**
  * Options for policy definitions
  */
 export interface PolicyOptions {
   /** Policy name for debugging and identification */
-  name?: string;
+  name?: string
   /** Priority (higher runs first, deny policies default to 100) */
-  priority?: number;
+  priority?: number
   /** Performance optimization hints */
-  hints?: PolicyHints;
+  hints?: PolicyHints
 }
 
 /**
@@ -58,19 +58,19 @@ export function allow(
   const policy: PolicyDefinition = {
     type: 'allow',
     operation,
-    condition: condition as PolicyCondition,
-    priority: options?.priority ?? 0,
-  };
+    condition: condition,
+    priority: options?.priority ?? 0
+  }
 
   if (options?.name !== undefined) {
-    policy.name = options.name;
+    policy.name = options.name
   }
 
   if (options?.hints !== undefined) {
-    policy.hints = options.hints;
+    policy.hints = options.hints
   }
 
-  return policy;
+  return policy
 }
 
 /**
@@ -104,19 +104,19 @@ export function deny(
   const policy: PolicyDefinition = {
     type: 'deny',
     operation,
-    condition: (condition ?? (() => true)) as PolicyCondition,
-    priority: options?.priority ?? 100, // Deny policies run first by default
-  };
+    condition: condition ?? (() => true),
+    priority: options?.priority ?? 100 // Deny policies run first by default
+  }
 
   if (options?.name !== undefined) {
-    policy.name = options.name;
+    policy.name = options.name
   }
 
   if (options?.hints !== undefined) {
-    policy.hints = options.hints;
+    policy.hints = options.hints
   }
 
-  return policy;
+  return policy
 }
 
 /**
@@ -149,18 +149,18 @@ export function filter(
     type: 'filter',
     operation: operation === 'all' ? 'read' : operation,
     condition: condition as unknown as PolicyCondition,
-    priority: options?.priority ?? 0,
-  };
+    priority: options?.priority ?? 0
+  }
 
   if (options?.name !== undefined) {
-    policy.name = options.name;
+    policy.name = options.name
   }
 
   if (options?.hints !== undefined) {
-    policy.hints = options.hints;
+    policy.hints = options.hints
   }
 
-  return policy;
+  return policy
 }
 
 /**
@@ -192,24 +192,22 @@ export function validate(
   condition: PolicyCondition,
   options?: PolicyOptions
 ): PolicyDefinition {
-  const ops: Operation[] = operation === 'all'
-    ? ['create', 'update']
-    : [operation];
+  const ops: Operation[] = operation === 'all' ? ['create', 'update'] : [operation]
 
   const policy: PolicyDefinition = {
     type: 'validate',
     operation: ops,
-    condition: condition as PolicyCondition,
-    priority: options?.priority ?? 0,
-  };
+    condition: condition,
+    priority: options?.priority ?? 0
+  }
 
   if (options?.name !== undefined) {
-    policy.name = options.name;
+    policy.name = options.name
   }
 
   if (options?.hints !== undefined) {
-    policy.hints = options.hints;
+    policy.hints = options.hints
   }
 
-  return policy;
+  return policy
 }

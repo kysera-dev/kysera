@@ -1,10 +1,10 @@
-import { Command } from 'commander';
+import { Command } from 'commander'
 
 // Import query commands
-import { byTimestampCommand } from './by-timestamp.js';
-import { softDeletedCommand } from './soft-deleted.js';
-import { analyzeCommand } from './analyze.js';
-import { explainCommand } from './explain.js';
+import { byTimestampCommand } from './by-timestamp.js'
+import { softDeletedCommand } from './soft-deleted.js'
+import { analyzeCommand } from './analyze.js'
+import { explainCommand } from './explain.js'
 
 export function queryCommand(): Command {
   const cmd = new Command('query').description('Database query utilities and tools').addHelpText(
@@ -27,13 +27,13 @@ Subcommands:
 For more information on a subcommand, run:
   kysera query <subcommand> --help
 `
-  );
+  )
 
   // Add subcommands
-  cmd.addCommand(byTimestampCommand());
-  cmd.addCommand(softDeletedCommand());
-  cmd.addCommand(analyzeCommand());
-  cmd.addCommand(explainCommand());
+  cmd.addCommand(byTimestampCommand())
+  cmd.addCommand(softDeletedCommand())
+  cmd.addCommand(analyzeCommand())
+  cmd.addCommand(explainCommand())
 
-  return cmd;
+  return cmd
 }

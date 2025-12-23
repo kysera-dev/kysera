@@ -43,10 +43,7 @@ async function testPostgreSQL(): Promise<TestResult> {
     })
 
     // Test connection
-    await db.selectFrom('information_schema.tables')
-      .select('table_name')
-      .limit(1)
-      .execute()
+    await db.selectFrom('information_schema.tables').select('table_name').limit(1).execute()
 
     // Create test table
     await db.schema
@@ -69,16 +66,10 @@ async function testPostgreSQL(): Promise<TestResult> {
       .execute()
 
     // Query test data
-    const users = await db
-      .selectFrom('test_users')
-      .selectAll()
-      .execute()
+    const users = await db.selectFrom('test_users').selectAll().execute()
 
     // Clean up
-    await db.schema
-      .dropTable('test_users')
-      .ifExists()
-      .execute()
+    await db.schema.dropTable('test_users').ifExists().execute()
 
     await db.destroy()
 
@@ -108,10 +99,7 @@ async function testMySQL(): Promise<TestResult> {
     })
 
     // Test connection
-    await db.selectFrom('information_schema.tables')
-      .select('table_name')
-      .limit(1)
-      .execute()
+    await db.selectFrom('information_schema.tables').select('table_name').limit(1).execute()
 
     // Create test table (MySQL doesn't support CURRENT_TIMESTAMP as default in all versions)
     await db.schema
@@ -134,16 +122,10 @@ async function testMySQL(): Promise<TestResult> {
       .execute()
 
     // Query test data
-    const users = await db
-      .selectFrom('test_users')
-      .selectAll()
-      .execute()
+    const users = await db.selectFrom('test_users').selectAll().execute()
 
     // Clean up
-    await db.schema
-      .dropTable('test_users')
-      .ifExists()
-      .execute()
+    await db.schema.dropTable('test_users').ifExists().execute()
 
     await db.destroy()
 

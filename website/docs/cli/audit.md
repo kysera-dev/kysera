@@ -10,15 +10,15 @@ Audit logging and history tracking commands for viewing, managing, and analyzing
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `logs` | Query audit logs with filters |
-| `history` | Show entity history timeline |
-| `restore` | Restore entity from audit log |
-| `stats` | Audit log statistics |
-| `cleanup` | Clean up old audit logs |
-| `compare` | Compare entity versions |
-| `diff` | Show differences between versions |
+| Command   | Description                       |
+| --------- | --------------------------------- |
+| `logs`    | Query audit logs with filters     |
+| `history` | Show entity history timeline      |
+| `restore` | Restore entity from audit log     |
+| `stats`   | Audit log statistics              |
+| `cleanup` | Clean up old audit logs           |
+| `compare` | Compare entity versions           |
+| `diff`    | Show differences between versions |
 
 ## logs
 
@@ -30,18 +30,18 @@ kysera audit logs [options]
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `-t, --table <name>` | Filter by table name |
-| `-u, --user <id>` | Filter by user ID |
-| `-a, --action <type>` | Filter by action: INSERT, UPDATE, DELETE |
-| `-l, --limit <n>` | Limit number of results (default: 50) |
-| `-s, --since <datetime>` | Show logs since datetime (ISO 8601) |
-| `--until <datetime>` | Show logs until datetime (ISO 8601) |
-| `-e, --entity-id <id>` | Filter by entity ID |
-| `--json` | Output as JSON |
-| `-v, --verbose` | Show detailed information including changes |
-| `-c, --config <path>` | Path to configuration file |
+| Option                   | Description                                 |
+| ------------------------ | ------------------------------------------- |
+| `-t, --table <name>`     | Filter by table name                        |
+| `-u, --user <id>`        | Filter by user ID                           |
+| `-a, --action <type>`    | Filter by action: INSERT, UPDATE, DELETE    |
+| `-l, --limit <n>`        | Limit number of results (default: 50)       |
+| `-s, --since <datetime>` | Show logs since datetime (ISO 8601)         |
+| `--until <datetime>`     | Show logs until datetime (ISO 8601)         |
+| `-e, --entity-id <id>`   | Filter by entity ID                         |
+| `--json`                 | Output as JSON                              |
+| `-v, --verbose`          | Show detailed information including changes |
+| `-c, --config <path>`    | Path to configuration file                  |
 
 ### Examples
 
@@ -75,12 +75,13 @@ kysera audit logs --json
 
 **Table View (default):**
 
-| ID | Time | Table | Action | Entity | User | Changes |
-|----|------|-------|--------|--------|------|---------|
-| 123 | 2025-01-15 10:00 | users | ~ | user-1 | admin | 3 |
-| 122 | 2025-01-15 09:45 | orders | + | order-5 | system | - |
+| ID  | Time             | Table  | Action | Entity  | User   | Changes |
+| --- | ---------------- | ------ | ------ | ------- | ------ | ------- |
+| 123 | 2025-01-15 10:00 | users  | ~      | user-1  | admin  | 3       |
+| 122 | 2025-01-15 09:45 | orders | +      | order-5 | system | -       |
 
 Action symbols:
+
 - `+` INSERT (green)
 - `~` UPDATE (yellow)
 - `-` DELETE (red)
@@ -113,19 +114,19 @@ kysera audit history <table> <id> [options]
 ### Arguments
 
 | Argument | Description |
-|----------|-------------|
-| `table` | Table name |
-| `id` | Entity ID |
+| -------- | ----------- |
+| `table`  | Table name  |
+| `id`     | Entity ID   |
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `-l, --limit <n>` | Limit number of results (default: 20) |
-| `--show-values` | Show changed values |
-| `--json` | Output as JSON |
-| `--reverse` | Show oldest first (default: newest first) |
-| `-c, --config <path>` | Path to configuration file |
+| Option                | Description                               |
+| --------------------- | ----------------------------------------- |
+| `-l, --limit <n>`     | Limit number of results (default: 20)     |
+| `--show-values`       | Show changed values                       |
+| `--json`              | Output as JSON                            |
+| `--reverse`           | Show oldest first (default: newest first) |
+| `-c, --config <path>` | Path to configuration file                |
 
 ### Examples
 
@@ -186,18 +187,18 @@ kysera audit restore <audit-id> [options]
 
 ### Arguments
 
-| Argument | Description |
-|----------|-------------|
+| Argument   | Description                  |
+| ---------- | ---------------------------- |
 | `audit-id` | Audit log ID to restore from |
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--dry-run` | Preview restore without executing |
-| `--force` | Skip confirmation prompt |
-| `--json` | Output as JSON |
-| `-c, --config <path>` | Path to configuration file |
+| Option                | Description                       |
+| --------------------- | --------------------------------- |
+| `--dry-run`           | Preview restore without executing |
+| `--force`             | Skip confirmation prompt          |
+| `--json`              | Output as JSON                    |
+| `-c, --config <path>` | Path to configuration file        |
 
 ### Examples
 
@@ -238,13 +239,13 @@ kysera audit stats [options]
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `-t, --table <name>` | Filter statistics by table name |
-| `-u, --user <id>` | Filter statistics by user ID |
-| `-p, --period <duration>` | Time period: 1h, 1d, 1w, 1m (default: 1d) |
-| `-f, --format <type>` | Output format: table, json, chart (default: table) |
-| `-c, --config <path>` | Path to configuration file |
+| Option                    | Description                                        |
+| ------------------------- | -------------------------------------------------- |
+| `-t, --table <name>`      | Filter statistics by table name                    |
+| `-u, --user <id>`         | Filter statistics by user ID                       |
+| `-p, --period <duration>` | Time period: 1h, 1d, 1w, 1m (default: 1d)          |
+| `-f, --format <type>`     | Output format: table, json, chart (default: table) |
+| `-c, --config <path>`     | Path to configuration file                         |
 
 ### Examples
 
@@ -312,14 +313,14 @@ kysera audit cleanup [options]
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
+| Option                    | Description                                   |
+| ------------------------- | --------------------------------------------- |
 | `--older-than <duration>` | Delete logs older than duration (30d, 3m, 1y) |
-| `-t, --table <name>` | Clean specific table only |
-| `--dry-run` | Preview cleanup without deleting |
-| `--force` | Skip confirmation prompt |
-| `--batch-size <n>` | Delete in batches (default: 1000) |
-| `-c, --config <path>` | Path to configuration file |
+| `-t, --table <name>`      | Clean specific table only                     |
+| `--dry-run`               | Preview cleanup without deleting              |
+| `--force`                 | Skip confirmation prompt                      |
+| `--batch-size <n>`        | Delete in batches (default: 1000)             |
+| `-c, --config <path>`     | Path to configuration file                    |
 
 ### Examples
 
@@ -369,17 +370,17 @@ kysera audit compare <id1> <id2> [options]
 
 ### Arguments
 
-| Argument | Description |
-|----------|-------------|
-| `id1` | First audit log ID |
-| `id2` | Second audit log ID |
+| Argument | Description         |
+| -------- | ------------------- |
+| `id1`    | First audit log ID  |
+| `id2`    | Second audit log ID |
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--json` | Output as JSON |
-| `--show-values` | Show full field values |
+| Option                | Description                |
+| --------------------- | -------------------------- |
+| `--json`              | Output as JSON             |
+| `--show-values`       | Show full field values     |
 | `-c, --config <path>` | Path to configuration file |
 
 ### Examples
@@ -405,20 +406,20 @@ kysera audit diff <table> <id> [from] [to] [options]
 
 ### Arguments
 
-| Argument | Description |
-|----------|-------------|
-| `table` | Table name |
-| `id` | Entity ID |
-| `from` | From audit log ID or timestamp (optional) |
-| `to` | To audit log ID or timestamp (optional, default: current) |
+| Argument | Description                                               |
+| -------- | --------------------------------------------------------- |
+| `table`  | Table name                                                |
+| `id`     | Entity ID                                                 |
+| `from`   | From audit log ID or timestamp (optional)                 |
+| `to`     | To audit log ID or timestamp (optional, default: current) |
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--json` | Output as JSON |
-| `-u, --unified` | Show unified diff format |
-| `--no-color` | Disable colored output |
+| Option                | Description                |
+| --------------------- | -------------------------- |
+| `--json`              | Output as JSON             |
+| `-u, --unified`       | Show unified diff format   |
+| `--no-color`          | Disable colored output     |
 | `-c, --config <path>` | Path to configuration file |
 
 ### Examples

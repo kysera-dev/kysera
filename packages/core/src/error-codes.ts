@@ -39,8 +39,8 @@ export const DatabaseErrorCodes = {
   /** Database pool exhausted */
   DB_POOL_EXHAUSTED: 'DB_POOL_EXHAUSTED',
   /** Unknown database error */
-  DB_UNKNOWN: 'DB_UNKNOWN',
-} as const;
+  DB_UNKNOWN: 'DB_UNKNOWN'
+} as const
 
 // ============================================================================
 // Validation Error Codes
@@ -63,8 +63,8 @@ export const ValidationErrorCodes = {
   /** Required field missing */
   VALIDATION_REQUIRED_FIELD: 'VALIDATION_REQUIRED_FIELD',
   /** Invalid type */
-  VALIDATION_INVALID_TYPE: 'VALIDATION_INVALID_TYPE',
-} as const;
+  VALIDATION_INVALID_TYPE: 'VALIDATION_INVALID_TYPE'
+} as const
 
 // ============================================================================
 // Resource Error Codes
@@ -81,8 +81,8 @@ export const ResourceErrorCodes = {
   /** Resource conflict */
   RESOURCE_CONFLICT: 'RESOURCE_CONFLICT',
   /** Bad request */
-  RESOURCE_BAD_REQUEST: 'RESOURCE_BAD_REQUEST',
-} as const;
+  RESOURCE_BAD_REQUEST: 'RESOURCE_BAD_REQUEST'
+} as const
 
 // ============================================================================
 // Migration Error Codes
@@ -105,8 +105,8 @@ export const MigrationErrorCodes = {
   /** Migration lock acquisition failed */
   MIGRATION_LOCK_FAILED: 'MIGRATION_LOCK_FAILED',
   /** Migration already executed */
-  MIGRATION_ALREADY_EXECUTED: 'MIGRATION_ALREADY_EXECUTED',
-} as const;
+  MIGRATION_ALREADY_EXECUTED: 'MIGRATION_ALREADY_EXECUTED'
+} as const
 
 // ============================================================================
 // Plugin Error Codes
@@ -127,8 +127,8 @@ export const PluginErrorCodes = {
   /** Duplicate plugin */
   PLUGIN_DUPLICATE: 'PLUGIN_DUPLICATE',
   /** Plugin not found */
-  PLUGIN_NOT_FOUND: 'PLUGIN_NOT_FOUND',
-} as const;
+  PLUGIN_NOT_FOUND: 'PLUGIN_NOT_FOUND'
+} as const
 
 // ============================================================================
 // Audit Error Codes
@@ -145,8 +145,8 @@ export const AuditErrorCodes = {
   /** Old values not captured */
   AUDIT_OLD_VALUES_MISSING: 'AUDIT_OLD_VALUES_MISSING',
   /** Audit table creation failed */
-  AUDIT_TABLE_CREATION_FAILED: 'AUDIT_TABLE_CREATION_FAILED',
-} as const;
+  AUDIT_TABLE_CREATION_FAILED: 'AUDIT_TABLE_CREATION_FAILED'
+} as const
 
 // ============================================================================
 // Configuration Error Codes
@@ -165,8 +165,8 @@ export const ConfigErrorCodes = {
   /** Missing required configuration */
   CONFIG_REQUIRED_MISSING: 'CONFIG_REQUIRED_MISSING',
   /** Invalid configuration value */
-  CONFIG_INVALID_VALUE: 'CONFIG_INVALID_VALUE',
-} as const;
+  CONFIG_INVALID_VALUE: 'CONFIG_INVALID_VALUE'
+} as const
 
 // ============================================================================
 // File System Error Codes
@@ -187,8 +187,8 @@ export const FileSystemErrorCodes = {
   /** Write operation failed */
   FS_WRITE_FAILED: 'FS_WRITE_FAILED',
   /** Read operation failed */
-  FS_READ_FAILED: 'FS_READ_FAILED',
-} as const;
+  FS_READ_FAILED: 'FS_READ_FAILED'
+} as const
 
 // ============================================================================
 // Network Error Codes
@@ -205,8 +205,8 @@ export const NetworkErrorCodes = {
   /** DNS resolution failed */
   NETWORK_DNS_FAILED: 'NETWORK_DNS_FAILED',
   /** SSL/TLS error */
-  NETWORK_SSL_ERROR: 'NETWORK_SSL_ERROR',
-} as const;
+  NETWORK_SSL_ERROR: 'NETWORK_SSL_ERROR'
+} as const
 
 // ============================================================================
 // Combined Error Codes
@@ -224,19 +224,19 @@ export const ErrorCodes = {
   ...AuditErrorCodes,
   ...ConfigErrorCodes,
   ...FileSystemErrorCodes,
-  ...NetworkErrorCodes,
-} as const;
+  ...NetworkErrorCodes
+} as const
 
 /**
  * Type for all error codes
  */
-export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
+export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes]
 
 /**
  * Type guard to check if a string is a valid error code
  */
 export function isValidErrorCode(code: string): code is ErrorCode {
-  return Object.values(ErrorCodes).includes(code as ErrorCode);
+  return Object.values(ErrorCodes).includes(code as ErrorCode)
 }
 
 /**
@@ -245,9 +245,9 @@ export function isValidErrorCode(code: string): code is ErrorCode {
  * @returns The category prefix (e.g., 'DB', 'VALIDATION', 'MIGRATION')
  */
 export function getErrorCategory(code: string): string {
-  const categoryRegex = /^([A-Z]+)_/;
-  const match = categoryRegex.exec(code);
-  return match?.[1] ?? 'UNKNOWN';
+  const categoryRegex = /^([A-Z]+)_/
+  const match = categoryRegex.exec(code)
+  return match?.[1] ?? 'UNKNOWN'
 }
 
 // ============================================================================
@@ -291,8 +291,8 @@ export const LegacyCodeMapping: Record<string, ErrorCode> = {
   // Migration legacy codes
   MIGRATION_UP_FAILED: ErrorCodes.MIGRATION_UP_FAILED,
   MIGRATION_DOWN_FAILED: ErrorCodes.MIGRATION_DOWN_FAILED,
-  MIGRATION_VALIDATION_FAILED: ErrorCodes.MIGRATION_VALIDATION_FAILED,
-};
+  MIGRATION_VALIDATION_FAILED: ErrorCodes.MIGRATION_VALIDATION_FAILED
+}
 
 /**
  * Convert legacy error code to unified error code
@@ -300,5 +300,5 @@ export const LegacyCodeMapping: Record<string, ErrorCode> = {
  * @returns The unified error code, or the original code if no mapping exists
  */
 export function mapLegacyCode(legacyCode: string): string {
-  return LegacyCodeMapping[legacyCode] ?? legacyCode;
+  return LegacyCodeMapping[legacyCode] ?? legacyCode
 }

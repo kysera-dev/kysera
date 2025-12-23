@@ -12,24 +12,29 @@ A complete blog application demonstrating Kysera's core features:
 ## Features Demonstrated
 
 ### 1. Repository Pattern
+
 - User repository with Zod validation
 - Type-safe CRUD operations
 - Custom query methods
 
 ### 2. Manual Soft Delete Implementation
+
 - Soft delete users without permanent removal (sets `deleted_at` timestamp)
 - Restore deleted users (clears `deleted_at` timestamp)
 - Manual filtering of deleted records with `.where('deleted_at', 'is', null)`
 
 ### 3. Pagination
+
 - Offset-based pagination for user lists
 - Cursor-based pagination for infinite scroll
 
 ### 4. Health Checks
+
 - Database connection health monitoring
 - Pool status tracking
 
 ### 5. Error Handling
+
 - Typed database errors
 - Unique constraint violations
 - Not found errors
@@ -95,6 +100,7 @@ pnpm start
 ```
 
 This will:
+
 1. Check database health
 2. Create a user
 3. Find user by email
@@ -119,7 +125,7 @@ const basePool = new Pool({
   connectionString: process.env['DATABASE_URL'],
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 2000
 })
 
 // Create pool with metrics (for health checks)
@@ -128,9 +134,7 @@ export const pool = createMetricsPool(basePool)
 // Create Kysely instance
 const baseDb = new Kysely<Database>({
   dialect: new PostgresDialect({ pool: basePool }),
-  log: process.env['NODE_ENV'] === 'development'
-    ? ['query', 'error']
-    : ['error']
+  log: process.env['NODE_ENV'] === 'development' ? ['query', 'error'] : ['error']
 })
 
 // Add debug wrapper in development
@@ -172,12 +176,12 @@ export const UserSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(100),
   created_at: z.date(),
-  deleted_at: z.date().nullable(),
+  deleted_at: z.date().nullable()
 })
 
 export const CreateUserSchema = z.object({
   email: z.string().email(),
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(100)
 })
 
 export const UpdateUserSchema = CreateUserSchema.partial()
@@ -192,7 +196,7 @@ export function createUserRepository(executor: Executor<Database>) {
         .selectFrom('users')
         .selectAll()
         .where('id', '=', id)
-        .where('deleted_at', 'is', null)  // Manual soft-delete filtering
+        .where('deleted_at', 'is', null) // Manual soft-delete filtering
         .executeTakeFirst()
 
       if (!row) return null
@@ -208,7 +212,7 @@ export function createUserRepository(executor: Executor<Database>) {
         .insertInto('users')
         .values({
           ...validated,
-          deleted_at: null,
+          deleted_at: null
         })
         .returningAll()
         .executeTakeFirstOrThrow()
@@ -226,11 +230,7 @@ export function createUserRepository(executor: Executor<Database>) {
     },
 
     async restore(id: number): Promise<void> {
-      await executor
-        .updateTable('users')
-        .set({ deleted_at: null })
-        .where('id', '=', id)
-        .execute()
+      await executor.updateTable('users').set({ deleted_at: null }).where('id', '=', id).execute()
     }
   }
 }

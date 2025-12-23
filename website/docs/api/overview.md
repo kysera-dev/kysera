@@ -47,41 +47,41 @@ Kysera follows a layered architecture with `@kysera/executor` as the foundation:
 
 ### Core Packages
 
-| Package | Description | Bundle Size |
-|---------|-------------|-------------|
-| [@kysera/core](/docs/api/core) | Core utilities - errors, pagination, logger, types | ~8 KB |
-| [@kysera/executor](/docs/api/executor) | **Foundation**: Unified plugin execution layer | ~8 KB |
-| [@kysera/repository](/docs/api/repository) | Repository pattern with validation | ~12 KB |
-| [@kysera/dal](/docs/api/dal) | Functional Data Access Layer | ~7 KB |
+| Package                                    | Description                                        | Bundle Size |
+| ------------------------------------------ | -------------------------------------------------- | ----------- |
+| [@kysera/core](/docs/api/core)             | Core utilities - errors, pagination, logger, types | ~8 KB       |
+| [@kysera/executor](/docs/api/executor)     | **Foundation**: Unified plugin execution layer     | ~8 KB       |
+| [@kysera/repository](/docs/api/repository) | Repository pattern with validation                 | ~12 KB      |
+| [@kysera/dal](/docs/api/dal)               | Functional Data Access Layer                       | ~7 KB       |
 
 ### Infrastructure Packages
 
-| Package | Description | Bundle Size |
-|---------|-------------|-------------|
-| [@kysera/infra](/docs/api/infra) | Health checks, retry, circuit breaker, shutdown | ~12 KB |
-| [@kysera/dialects](/docs/api/dialects) | Dialect-specific utilities - PostgreSQL, MySQL, SQLite | ~5 KB |
-| [@kysera/debug](/docs/api/debug) | Query logging, profiling, SQL formatting | ~5 KB |
-| [@kysera/testing](/docs/api/testing) | Testing utilities and factories | ~6 KB |
-| [@kysera/migrations](/docs/api/migrations) | Database migration system | ~12 KB |
+| Package                                    | Description                                            | Bundle Size |
+| ------------------------------------------ | ------------------------------------------------------ | ----------- |
+| [@kysera/infra](/docs/api/infra)           | Health checks, retry, circuit breaker, shutdown        | ~12 KB      |
+| [@kysera/dialects](/docs/api/dialects)     | Dialect-specific utilities - PostgreSQL, MySQL, SQLite | ~5 KB       |
+| [@kysera/debug](/docs/api/debug)           | Query logging, profiling, SQL formatting               | ~5 KB       |
+| [@kysera/testing](/docs/api/testing)       | Testing utilities and factories                        | ~6 KB       |
+| [@kysera/migrations](/docs/api/migrations) | Database migration system                              | ~12 KB      |
 
 ### Plugin Packages
 
-| Package | Description | Bundle Size |
-|---------|-------------|-------------|
-| [@kysera/soft-delete](/docs/api/soft-delete) | Soft delete functionality | ~4 KB |
-| [@kysera/timestamps](/docs/api/timestamps) | Automatic timestamp management | ~4 KB |
-| [@kysera/audit](/docs/api/audit) | Comprehensive audit logging | ~8 KB |
-| [@kysera/rls](/docs/api/rls) | Row-Level Security for multi-tenancy | ~10 KB |
+| Package                                      | Description                          | Bundle Size |
+| -------------------------------------------- | ------------------------------------ | ----------- |
+| [@kysera/soft-delete](/docs/api/soft-delete) | Soft delete functionality            | ~4 KB       |
+| [@kysera/timestamps](/docs/api/timestamps)   | Automatic timestamp management       | ~4 KB       |
+| [@kysera/audit](/docs/api/audit)             | Comprehensive audit logging          | ~8 KB       |
+| [@kysera/rls](/docs/api/rls)                 | Row-Level Security for multi-tenancy | ~10 KB      |
 
 ## @kysera/core
 
 Core utilities including error handling, pagination, and logging.
 
-| Module | Description |
-|--------|-------------|
-| [Errors](/docs/api/core/errors) | Multi-database error parsing |
-| [Pagination](/docs/api/core/pagination) | Offset and cursor pagination |
-| [Logger](/docs/api/core/logger) | Configurable logging interface |
+| Module                                  | Description                    |
+| --------------------------------------- | ------------------------------ |
+| [Errors](/docs/api/core/errors)         | Multi-database error parsing   |
+| [Pagination](/docs/api/core/pagination) | Offset and cursor pagination   |
+| [Logger](/docs/api/core/logger)         | Configurable logging interface |
 
 ```typescript
 import { parseDatabaseError, paginate, consoleLogger } from '@kysera/core'
@@ -115,12 +115,13 @@ Understanding the dependency hierarchy helps you choose the right packages:
 
 **Plugin Capabilities:**
 
-| Plugin Feature | Works with Repository | Works with DAL |
-|----------------|----------------------|----------------|
-| Query Interceptors (`interceptQuery`) | ✅ Yes | ✅ Yes (via executor) |
-| Repository Extensions (`extendRepository`) | ✅ Yes | ❌ No |
+| Plugin Feature                             | Works with Repository | Works with DAL        |
+| ------------------------------------------ | --------------------- | --------------------- |
+| Query Interceptors (`interceptQuery`)      | ✅ Yes                | ✅ Yes (via executor) |
+| Repository Extensions (`extendRepository`) | ✅ Yes                | ❌ No                 |
 
 **Examples:**
+
 - `@kysera/soft-delete`: Automatic filtering works in both; `repo.softDelete()` method only in Repository
 - `@kysera/rls`: RLS policies work in both; validation methods only in Repository
 - `@kysera/timestamps`: Repository only (no query interception needed)
@@ -137,6 +138,7 @@ import { createExecutor, isKyseraExecutor, getPlugins, getRawDb } from '@kysera/
 **Core Concept:** Wraps Kysely instances with plugin interception, allowing automatic query modification (filtering, policies) before execution while maintaining full type safety.
 
 **Key Features:**
+
 - Zero overhead when no interceptor plugins are registered
 - Automatic plugin validation (conflicts, dependencies, circular deps)
 - Transaction propagation - plugins automatically work in transactions
@@ -144,6 +146,7 @@ import { createExecutor, isKyseraExecutor, getPlugins, getRawDb } from '@kysera/
 - `getRawDb()` for bypassing interceptors when needed
 
 **Quick Example:**
+
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -154,7 +157,7 @@ const executor = await createExecutor(db, [softDeletePlugin()])
 const users = await executor.selectFrom('users').selectAll().execute()
 
 // Works in transactions
-await executor.transaction().execute(async (trx) => {
+await executor.transaction().execute(async trx => {
   // Plugins automatically applied
   const user = await trx.selectFrom('users').where('id', '=', 1).executeTakeFirst()
 })
@@ -164,11 +167,11 @@ await executor.transaction().execute(async (trx) => {
 
 Type-safe repository pattern implementation with full plugin support. [Full Documentation →](/docs/api/repository)
 
-| Module | Description |
-|--------|-------------|
-| [Factory](/docs/api/repository/factory) | Repository factory functions |
-| [Validation](/docs/api/repository/validation) | Validation utilities |
-| [Types](/docs/api/repository/types) | Type definitions |
+| Module                                        | Description                  |
+| --------------------------------------------- | ---------------------------- |
+| [Factory](/docs/api/repository/factory)       | Repository factory functions |
+| [Validation](/docs/api/repository/validation) | Validation utilities         |
+| [Types](/docs/api/repository/types)           | Type definitions             |
 
 ```typescript
 import { createRepositoryFactory, createORM, withPlugins } from '@kysera/repository'
@@ -204,6 +207,7 @@ import {
 **Core Concept:** Provides a unified adapter interface for dialect-specific operations, enabling portable code that works across PostgreSQL, MySQL, and SQLite.
 
 **Key Features:**
+
 - Unified adapter interface for all supported dialects
 - Connection URL parsing and building
 - Database introspection (tableExists, getTableColumns, getTables)
@@ -212,6 +216,7 @@ import {
 - Testing utilities (truncateAllTables, getDatabaseSize)
 
 **Quick Example:**
+
 ```typescript
 import { getAdapter, parseConnectionUrl } from '@kysera/dialects'
 
@@ -261,12 +266,7 @@ import { withDebug, QueryProfiler, formatSQL, highlightSQL } from '@kysera/debug
 Testing utilities for Kysera applications.
 
 ```typescript
-import {
-  testInTransaction,
-  createFactory,
-  cleanDatabase,
-  seedDatabase
-} from '@kysera/testing'
+import { testInTransaction, createFactory, cleanDatabase, seedDatabase } from '@kysera/testing'
 ```
 
 ## @kysera/migrations
@@ -291,9 +291,7 @@ Mark records as deleted without removing them.
 ```typescript
 import { softDeletePlugin } from '@kysera/soft-delete'
 
-const orm = await createORM(db, [
-  softDeletePlugin({ deletedAtColumn: 'deleted_at' })
-])
+const orm = await createORM(db, [softDeletePlugin({ deletedAtColumn: 'deleted_at' })])
 
 // Methods added: softDelete, restore, hardDelete, findWithDeleted, etc.
 ```
@@ -306,7 +304,7 @@ Automatic timestamp management.
 import { timestampsPlugin } from '@kysera/timestamps'
 
 const orm = await createORM(db, [
-  timestampsPlugin()  // Zero config!
+  timestampsPlugin() // Zero config!
 ])
 
 // created_at and updated_at are set automatically
@@ -350,7 +348,7 @@ const orm = await createORM(db, [rlsPlugin({ schema: rlsSchema })])
 
 // All queries automatically filtered by tenant
 await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: [] } }, async () => {
-  const posts = await postRepo.findAll()  // Filtered by tenant_id = 'acme'
+  const posts = await postRepo.findAll() // Filtered by tenant_id = 'acme'
 })
 ```
 
@@ -366,7 +364,7 @@ const factory = createRepositoryFactory(db)
 
 const userRepo = factory.create({
   tableName: 'users' as const,
-  mapRow: (row) => ({
+  mapRow: row => ({
     id: row.id,
     email: row.email,
     name: row.name,
@@ -395,29 +393,29 @@ import { rlsPlugin } from '@kysera/rls'
 
 // Create executor with query interceptor plugins
 const executor = await createExecutor(db, [
-  rlsPlugin({ schema: rlsSchema }),    // RLS policies (query interceptor)
-  softDeletePlugin()                    // Soft-delete filter (query interceptor)
+  rlsPlugin({ schema: rlsSchema }), // RLS policies (query interceptor)
+  softDeletePlugin() // Soft-delete filter (query interceptor)
 ])
 
 // createORM creates a plugin container (repository manager), not a traditional ORM
 // It gets both query interceptors + extension methods
 const orm = await createORM(executor, [
-  timestampsPlugin(),                   // Repository extension only
-  auditPlugin({                         // Repository extension only
+  timestampsPlugin(), // Repository extension only
+  auditPlugin({
+    // Repository extension only
     getUserId: () => currentUser?.id
   })
 ])
 
 // DAL pattern: Gets query interceptors only
 import { createQuery } from '@kysera/dal'
-const getUsers = createQuery((ctx) =>
-  ctx.db.selectFrom('users').selectAll().execute()
-)
+const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
 // RLS and soft-delete filters automatically applied!
 const users = await getUsers(executor)
 ```
 
 **Key Points:**
+
 - **Query interceptor plugins** (soft-delete, RLS) → Add to executor
 - **Repository extension plugins** (timestamps, audit) → Add to `createORM` (plugin container)
 - Both patterns share the same query interceptors for consistent behavior
@@ -450,11 +448,11 @@ import { checkDatabaseHealth, HealthMonitor } from '@kysera/infra'
 
 // One-time check
 const health = await checkDatabaseHealth(db)
-console.log(health.status)  // 'healthy' | 'degraded' | 'unhealthy'
+console.log(health.status) // 'healthy' | 'degraded' | 'unhealthy'
 
 // Continuous monitoring
 const monitor = new HealthMonitor(db, { intervalMs: 30000 })
-monitor.start((result) => {
+monitor.start(result => {
   if (result.status !== 'healthy') {
     alerting.send('Database health issue', result)
   }
@@ -467,21 +465,15 @@ monitor.start((result) => {
 import { paginate, paginateCursor } from '@kysera/core'
 
 // Offset pagination
-const page = await paginate(
-  db.selectFrom('posts').selectAll(),
-  { page: 1, limit: 20 }
-)
+const page = await paginate(db.selectFrom('posts').selectAll(), { page: 1, limit: 20 })
 // { items: [...], total: 100, page: 1, limit: 20, totalPages: 5 }
 
 // Cursor pagination
-const result = await paginateCursor(
-  db.selectFrom('posts').selectAll(),
-  {
-    orderBy: [{ column: 'created_at', direction: 'desc' }],
-    limit: 20,
-    cursor: previousCursor
-  }
-)
+const result = await paginateCursor(db.selectFrom('posts').selectAll(), {
+  orderBy: [{ column: 'created_at', direction: 'desc' }],
+  limit: 20,
+  cursor: previousCursor
+})
 // { items: [...], nextCursor: {...}, hasMore: true }
 ```
 
@@ -500,7 +492,7 @@ const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Repository pattern - plugins in transactions
 const orm = await createORM(executor, [])
-await orm.transaction(async (ctx) => {
+await orm.transaction(async ctx => {
   const userRepo = orm.createRepository(createUserRepository)
   const user = await userRepo.create({ email: 'new@example.com', name: 'New User' })
   // Soft-delete filter applied within transaction
@@ -508,11 +500,9 @@ await orm.transaction(async (ctx) => {
 })
 
 // DAL pattern - plugins in transactions
-const getUsers = createQuery((ctx) =>
-  ctx.db.selectFrom('users').selectAll().execute()
-)
+const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
 
-await withTransaction(executor, async (ctx) => {
+await withTransaction(executor, async ctx => {
   // Soft-delete filter automatically applied
   const users = await getUsers(ctx)
   // Both operations commit or roll back together
@@ -522,11 +512,11 @@ await withTransaction(executor, async (ctx) => {
 import { createRepositoriesFactory } from '@kysera/repository'
 
 const createRepos = createRepositoriesFactory({
-  users: (executor) => createUserRepository(executor),
-  posts: (executor) => createPostRepository(executor)
+  users: executor => createUserRepository(executor),
+  posts: executor => createPostRepository(executor)
 })
 
-await executor.transaction().execute(async (trx) => {
+await executor.transaction().execute(async trx => {
   const repos = createRepos(trx)
   // All queries inherit plugins from executor
   const user = await repos.users.create({ email: 'new@example.com', name: 'New User' })
@@ -536,28 +526,28 @@ await executor.transaction().execute(async (trx) => {
 
 ## Version Compatibility
 
-| Package | Version | Kysely | Node.js | Bun | Deno |
-|---------|---------|--------|---------|-----|------|
-| @kysera/core | 0.7.3 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/executor | 0.7.3 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/repository | 0.7.3 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/dal | 0.7.3 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/dialects | 0.7.3 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/infra | 0.7.3 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/debug | 0.7.3 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/testing | 0.7.3 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/migrations | 0.7.3 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/soft-delete | 0.7.3 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/timestamps | 0.7.3 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/audit | 0.7.3 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
-| @kysera/rls | 0.7.3 | >=0.28.8 | >=20 | >=1.0 | >=1.40 |
+| Package             | Version | Kysely   | Node.js | Bun   | Deno   |
+| ------------------- | ------- | -------- | ------- | ----- | ------ |
+| @kysera/core        | 0.7.3   | >=0.28.8 | >=20    | >=1.0 | >=1.40 |
+| @kysera/executor    | 0.7.3   | >=0.28.8 | >=20    | >=1.0 | >=1.40 |
+| @kysera/repository  | 0.7.3   | >=0.28.8 | >=20    | >=1.0 | >=1.40 |
+| @kysera/dal         | 0.7.3   | >=0.28.8 | >=20    | >=1.0 | >=1.40 |
+| @kysera/dialects    | 0.7.3   | >=0.28.8 | >=20    | >=1.0 | >=1.40 |
+| @kysera/infra       | 0.7.3   | >=0.28.8 | >=20    | >=1.0 | >=1.40 |
+| @kysera/debug       | 0.7.3   | >=0.28.8 | >=20    | >=1.0 | >=1.40 |
+| @kysera/testing     | 0.7.3   | >=0.28.8 | >=20    | >=1.0 | >=1.40 |
+| @kysera/migrations  | 0.7.3   | >=0.28.8 | >=20    | >=1.0 | >=1.40 |
+| @kysera/soft-delete | 0.7.3   | >=0.28.8 | >=20    | >=1.0 | >=1.40 |
+| @kysera/timestamps  | 0.7.3   | >=0.28.8 | >=20    | >=1.0 | >=1.40 |
+| @kysera/audit       | 0.7.3   | >=0.28.8 | >=20    | >=1.0 | >=1.40 |
+| @kysera/rls         | 0.7.3   | >=0.28.8 | >=20    | >=1.0 | >=1.40 |
 
 ## Database Support
 
-| Feature | PostgreSQL | MySQL | SQLite |
-|---------|------------|-------|--------|
-| RETURNING clause | Native | Emulated | Native |
-| JSONB columns | Native | JSON type | TEXT |
-| Partial indexes | Supported | Limited | Supported |
+| Feature            | PostgreSQL   | MySQL     | SQLite    |
+| ------------------ | ------------ | --------- | --------- |
+| RETURNING clause   | Native       | Emulated  | Native    |
+| JSONB columns      | Native       | JSON type | TEXT      |
+| Partial indexes    | Supported    | Limited   | Supported |
 | Row-level security | Native + App | App-level | App-level |
-| Boolean type | true/false | 1/0 | 1/0 |
+| Boolean type       | true/false   | 1/0       | 1/0       |

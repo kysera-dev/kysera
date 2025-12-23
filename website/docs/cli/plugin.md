@@ -10,12 +10,12 @@ Plugin management and configuration tools for discovering, enabling, and configu
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `list` | List available and installed plugins |
-| `enable` | Enable a plugin |
-| `disable` | Disable a plugin |
-| `config` | Configure plugin settings |
+| Command   | Description                          |
+| --------- | ------------------------------------ |
+| `list`    | List available and installed plugins |
+| `enable`  | Enable a plugin                      |
+| `disable` | Disable a plugin                     |
+| `config`  | Configure plugin settings            |
 
 ## list
 
@@ -27,28 +27,28 @@ kysera plugin list [options]
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--installed` | Show only installed plugins |
-| `--available` | Show available plugins from registry |
-| `--enabled` | Show only enabled plugins |
-| `--disabled` | Show only disabled plugins |
-| `-c, --category <type>` | Filter by category |
-| `-s, --search <query>` | Search plugins by name or description |
-| `--show-details` | Show detailed plugin information |
-| `--json` | Output as JSON |
-| `--config <path>` | Path to configuration file |
+| Option                  | Description                           |
+| ----------------------- | ------------------------------------- |
+| `--installed`           | Show only installed plugins           |
+| `--available`           | Show available plugins from registry  |
+| `--enabled`             | Show only enabled plugins             |
+| `--disabled`            | Show only disabled plugins            |
+| `-c, --category <type>` | Filter by category                    |
+| `-s, --search <query>`  | Search plugins by name or description |
+| `--show-details`        | Show detailed plugin information      |
+| `--json`                | Output as JSON                        |
+| `--config <path>`       | Path to configuration file            |
 
 ### Plugin Categories
 
-| Category | Description |
-|----------|-------------|
-| `database` | Database-level plugins |
-| `schema` | Schema modification plugins |
-| `query` | Query enhancement plugins |
-| `audit` | Audit and logging plugins |
-| `cache` | Caching plugins |
-| `validation` | Validation plugins |
+| Category     | Description                 |
+| ------------ | --------------------------- |
+| `database`   | Database-level plugins      |
+| `schema`     | Schema modification plugins |
+| `query`      | Query enhancement plugins   |
+| `audit`      | Audit and logging plugins   |
+| `cache`      | Caching plugins             |
+| `validation` | Validation plugins          |
 
 ### Examples
 
@@ -78,6 +78,7 @@ kysera plugin list --enabled
 ### Output
 
 **Default view:**
+
 ```
 Kysera Plugins
 ────────────────────────────────────────────────────────────────────────────────
@@ -115,6 +116,7 @@ Summary:
 **Detailed view (with `--show-details`):**
 
 Shows additional information:
+
 - Author
 - Homepage URL
 - Hooks used (e.g., beforeInsert, afterUpdate)
@@ -124,12 +126,12 @@ Shows additional information:
 
 ### Plugin Status
 
-| Status | Indicator | Description |
-|--------|-----------|-------------|
-| Enabled | ● | Plugin is active and running |
-| Disabled | ● | Plugin is installed but not active |
-| Installed | ● | Plugin is installed, status unknown |
-| Available | ◯ | Plugin can be installed |
+| Status    | Indicator | Description                         |
+| --------- | --------- | ----------------------------------- |
+| Enabled   | ●         | Plugin is active and running        |
+| Disabled  | ●         | Plugin is installed but not active  |
+| Installed | ●         | Plugin is installed, status unknown |
+| Available | ◯         | Plugin can be installed             |
 
 ## enable
 
@@ -141,14 +143,14 @@ kysera plugin enable <name> [options]
 
 ### Arguments
 
-| Argument | Description |
-|----------|-------------|
-| `name` | Plugin name (e.g., @kysera/audit) |
+| Argument | Description                       |
+| -------- | --------------------------------- |
+| `name`   | Plugin name (e.g., @kysera/audit) |
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
+| Option            | Description                |
+| ----------------- | -------------------------- |
 | `--config <path>` | Path to configuration file |
 
 ### Examples
@@ -164,6 +166,7 @@ kysera plugin enable @kysera/audit
 ### Effect
 
 Enabling a plugin:
+
 1. Updates `kysera.config.ts` to include the plugin
 2. Validates plugin compatibility
 3. Runs any plugin initialization hooks
@@ -178,15 +181,15 @@ kysera plugin disable <name> [options]
 
 ### Arguments
 
-| Argument | Description |
-|----------|-------------|
-| `name` | Plugin name (e.g., @kysera/audit) |
+| Argument | Description                       |
+| -------- | --------------------------------- |
+| `name`   | Plugin name (e.g., @kysera/audit) |
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--all` | Disable all plugins |
+| Option            | Description                |
+| ----------------- | -------------------------- |
+| `--all`           | Disable all plugins        |
 | `--config <path>` | Path to configuration file |
 
 ### Examples
@@ -202,6 +205,7 @@ kysera plugin disable --all
 ### Effect
 
 Disabling a plugin:
+
 1. Updates `kysera.config.ts` to set `enabled: false`
 2. Plugin hooks are no longer called
 3. Plugin remains installed for quick re-enabling
@@ -216,20 +220,20 @@ kysera plugin config <name> [options]
 
 ### Arguments
 
-| Argument | Description |
-|----------|-------------|
-| `name` | Plugin name (e.g., @kysera/cache) |
+| Argument | Description                       |
+| -------- | --------------------------------- |
+| `name`   | Plugin name (e.g., @kysera/cache) |
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--set <key=value>` | Set a configuration value |
-| `--get <key>` | Get a configuration value |
-| `--reset` | Reset to default configuration |
-| `--show` | Show current configuration |
-| `--json` | Output as JSON |
-| `--config <path>` | Path to configuration file |
+| Option              | Description                    |
+| ------------------- | ------------------------------ |
+| `--set <key=value>` | Set a configuration value      |
+| `--get <key>`       | Get a configuration value      |
+| `--reset`           | Reset to default configuration |
+| `--show`            | Show current configuration     |
+| `--json`            | Output as JSON                 |
+| `--config <path>`   | Path to configuration file     |
 
 ### Examples
 

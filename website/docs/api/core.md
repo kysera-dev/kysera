@@ -1,6 +1,6 @@
 ---
 sidebar_position: 2
-title: "@kysera/core"
+title: '@kysera/core'
 description: Core utilities package API reference
 ---
 
@@ -43,7 +43,7 @@ The following modules have been moved to dedicated packages for better tree-shak
 - **Debug utilities** → [`@kysera/debug`](/docs/api/debug)
 - **Health checks, retry, circuit breaker, shutdown** → [`@kysera/infra`](/docs/api/infra)
 - **Testing utilities** → [`@kysera/testing`](/docs/api/testing)
-:::
+  :::
 
 ## Modules
 
@@ -56,7 +56,7 @@ import { parseDatabaseError, UniqueConstraintError } from '@kysera/core'
 
 const error = parseDatabaseError(rawError, 'postgres')
 if (error instanceof UniqueConstraintError) {
-  console.log(error.columns)  // ['email']
+  console.log(error.columns) // ['email']
 }
 ```
 
@@ -85,25 +85,23 @@ Lightweight utility functions for common query patterns.
 import { applyOffset, applyDateRange } from '@kysera/core'
 
 // Lightweight offset pagination (without COUNT(*))
-const users = await applyOffset(
-  db.selectFrom('users').selectAll().orderBy('id'),
-  { limit: 20, offset: 0 }
-).execute()
+const users = await applyOffset(db.selectFrom('users').selectAll().orderBy('id'), {
+  limit: 20,
+  offset: 0
+}).execute()
 
 // Date range filtering
-const posts = await applyDateRange(
-  db.selectFrom('posts').selectAll(),
-  'created_at',
-  { from: new Date('2024-01-01'), to: new Date('2024-12-31') }
-).execute()
+const posts = await applyDateRange(db.selectFrom('posts').selectAll(), 'created_at', {
+  from: new Date('2024-01-01'),
+  to: new Date('2024-12-31')
+}).execute()
 
 // Combine helpers for paginated date-filtered results
 const analytics = await applyOffset(
-  applyDateRange(
-    db.selectFrom('events').selectAll().orderBy('created_at', 'desc'),
-    'created_at',
-    { from: startDate, to: endDate }
-  ),
+  applyDateRange(db.selectFrom('events').selectAll().orderBy('created_at', 'desc'), 'created_at', {
+    from: startDate,
+    to: endDate
+  }),
   { limit: 100, offset: 0 }
 ).execute()
 ```
@@ -187,7 +185,8 @@ function applyOffset<DB, TB, O>(
 ```
 
 **Features:**
-- No COUNT(*) query (~50% faster than paginate on large tables)
+
+- No COUNT(\*) query (~50% faster than paginate on large tables)
 - Limit bounds: 1-100 (prevents accidental large queries)
 - Offset must be non-negative
 - SQLite compatible (auto-adds LIMIT when OFFSET is used)
@@ -207,6 +206,7 @@ function applyDateRange<DB, TB, O>(
 ```
 
 **Features:**
+
 - Both boundaries inclusive (`>=` and `<=`)
 - Handles Date objects (converts to ISO string)
 - Returns unchanged query if neither from nor to provided
@@ -222,13 +222,12 @@ async function executeCount<DB, TB extends keyof DB, O>(
 ```
 
 **Example:**
+
 ```typescript
 import { executeCount } from '@kysera/core'
 
 // Count all active users
-const count = await executeCount(
-  db.selectFrom('users').where('status', '=', 'active')
-)
+const count = await executeCount(db.selectFrom('users').where('status', '=', 'active'))
 console.log(`Active users: ${count}`)
 ```
 
@@ -244,14 +243,12 @@ async function executeGroupedCount<DB, TB extends keyof DB, O>(
 ```
 
 **Example:**
+
 ```typescript
 import { executeGroupedCount } from '@kysera/core'
 
 // Count users by status
-const countsByStatus = await executeGroupedCount(
-  db.selectFrom('users'),
-  'status'
-)
+const countsByStatus = await executeGroupedCount(db.selectFrom('users'), 'status')
 // { active: 150, inactive: 23, pending: 12 }
 ```
 
@@ -267,13 +264,15 @@ async function paginateCursorSimple<DB, TB extends keyof DB, O>(
 ```
 
 **Example:**
+
 ```typescript
 import { paginateCursorSimple } from '@kysera/core'
 
-const result = await paginateCursorSimple(
-  db.selectFrom('posts').selectAll(),
-  { limit: 20, cursor: lastCursor, cursorColumn: 'id' }
-)
+const result = await paginateCursorSimple(db.selectFrom('posts').selectAll(), {
+  limit: 20,
+  cursor: lastCursor,
+  cursorColumn: 'id'
+})
 // { items: [...], nextCursor: '...', hasMore: true }
 ```
 

@@ -25,8 +25,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@kysera/core": "workspace:*",
-    "@kysera/executor": "workspace:*"
+    "@kysera/core": "workspace:*"
   },
   "devDependencies": {
     "@kysera/dal": "workspace:*",

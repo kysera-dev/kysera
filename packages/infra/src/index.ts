@@ -55,8 +55,8 @@ export {
   type GetMetricsOptions,
   type MetricsResult,
   getMetrics,
-  hasDatabaseMetrics,
-} from './health/index.js';
+  hasDatabaseMetrics
+} from './health/index.js'
 
 // Resilience module
 export {
@@ -69,8 +69,8 @@ export {
   type CircuitState,
   type CircuitBreakerState,
   type CircuitBreakerOptions,
-  CircuitBreaker,
-} from './resilience/index.js';
+  CircuitBreaker
+} from './resilience/index.js'
 
 // Pool module
 export {
@@ -78,8 +78,8 @@ export {
   type DatabasePool,
   type MetricsPool,
   createMetricsPool,
-  isMetricsPool,
-} from './pool/index.js';
+  isMetricsPool
+} from './pool/index.js'
 
 // Shutdown module
 export {
@@ -88,5 +88,5 @@ export {
   gracefulShutdown,
   shutdownDatabase,
   registerShutdownHandlers,
-  createShutdownController,
-} from './shutdown.js';
+  createShutdownController
+} from './shutdown.js'

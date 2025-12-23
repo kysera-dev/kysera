@@ -46,10 +46,7 @@ interface Plugin {
   onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
 
   // Query builder interceptors (limited scope)
-  interceptQuery?<QB extends AnyQueryBuilder>(
-    qb: QB,
-    context: QueryBuilderContext
-  ): QB
+  interceptQuery?<QB extends AnyQueryBuilder>(qb: QB, context: QueryBuilderContext): QB
 
   // Result interceptors
   afterQuery?(context: QueryContext, result: unknown): Promise<unknown> | unknown
@@ -77,6 +74,7 @@ interface QueryBuilderContext {
 Add new methods to repositories and override existing ones.
 
 **Use Cases:**
+
 - Soft delete
 - Audit logging
 - Custom validation
@@ -120,6 +118,7 @@ export const softDeletePlugin = (): Plugin => ({
 Automatically filter SELECT queries using `interceptQuery`.
 
 **Use Cases:**
+
 - Soft delete filtering
 - Multi-tenancy
 - Row-level security
@@ -133,8 +132,7 @@ export const tenantPlugin = (tenantId: string): Plugin => ({
 
   interceptQuery<QB>(qb: QB, context): QB {
     if (context.operation === 'select' && !context.metadata['skipTenant']) {
-      return (qb as any)
-        .where(`${context.table}.tenant_id`, '=', tenantId)
+      return (qb as any).where(`${context.table}.tenant_id`, '=', tenantId)
     }
     return qb
   }
@@ -146,6 +144,7 @@ export const tenantPlugin = (tenantId: string): Plugin => ({
 Transform query results after execution.
 
 **Use Cases:**
+
 - Data masking
 - Field formatting
 - Computed properties
@@ -174,6 +173,7 @@ export const maskingPlugin = (): Plugin => ({
 Log all database operations.
 
 **Use Cases:**
+
 - Compliance
 - Debugging
 - Analytics
@@ -217,7 +217,7 @@ export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
 
   return {
     name: '@company/my-plugin',
-    version: '1.0.0',
+    version: '1.0.0'
 
     // Implementation...
   }
@@ -380,14 +380,14 @@ extendRepository(repo) {
 ```typescript
 export const myPlugin = (): Plugin => ({
   name: '@company/my-plugin',
-  version: '1.0.0', // Follow semver
+  version: '1.0.0' // Follow semver
   // ...
 })
 ```
 
 ### 7. ✅ DO: Add Comprehensive JSDoc
 
-```typescript
+````typescript
 /**
  * MyPlugin - Brief description
  *
@@ -408,7 +408,7 @@ export const myPlugin = (): Plugin => ({
 export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
   // ...
 }
-```
+````
 
 ## Examples
 
@@ -417,6 +417,7 @@ export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
 See [`packages/soft-delete/src/index.ts`](packages/soft-delete/src/index.ts) for a complete, production-ready example.
 
 Key features:
+
 - Configurable deleted_at column
 - Table-specific soft delete support
 - Multiple find methods (with/without deleted)

@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
@@ -9,15 +9,15 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.d.ts', 'src/**/index.ts'],
+      exclude: ['src/**/*.d.ts', 'src/**/index.ts']
     },
     testTimeout: 30000, // Increased for integration tests
     // Pool configuration for better test isolation
     pool: 'forks',
     poolOptions: {
       forks: {
-        singleFork: true,
-      },
-    },
-  },
-});
+        singleFork: true
+      }
+    }
+  }
+})

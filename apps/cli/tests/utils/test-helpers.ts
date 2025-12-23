@@ -1,15 +1,15 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect } from 'kysely';
-import { Pool } from 'pg';
-import { createPool } from 'mysql2';
-import Database from 'better-sqlite3';
-import { validateIdentifier, SqlSanitizationError } from '../../src/utils/sql-sanitizer.js';
+import { spawn, type ChildProcess } from 'node:child_process'
+import * as fs from 'node:fs/promises'
+import * as path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect } from 'kysely'
+import { Pool } from 'pg'
+import { createPool } from 'mysql2'
+import Database from 'better-sqlite3'
+import { validateIdentifier, SqlSanitizationError } from '../../src/utils/sql-sanitizer.js'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CLI_PATH = path.join(__dirname, '../../dist/index.js');
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const CLI_PATH = path.join(__dirname, '../../dist/index.js')
 
 /**
  * Test CLI command execution
@@ -17,15 +17,15 @@ const CLI_PATH = path.join(__dirname, '../../dist/index.js');
 export async function runCLI(
   args: string[],
   options: {
-    cwd?: string;
-    env?: Record<string, string>;
-    input?: string;
-    timeout?: number;
+    cwd?: string
+    env?: Record<string, string>
+    input?: string
+    timeout?: number
   } = {}
 ): Promise<{
-  code: number | null;
-  stdout: string;
-  stderr: string;
+  code: number | null
+  stdout: string
+  stderr: string
 }> {
   return new Promise((resolve, reject) => {
     // Use process.execPath to get the current Node.js executable
@@ -34,66 +34,71 @@ export async function runCLI(
       env: {
         ...process.env,
         NODE_ENV: 'test', // Always set NODE_ENV to test for CLI tests
-        ...options.env,
+        ...options.env
       },
-      stdio: 'pipe',
-    });
+      stdio: 'pipe'
+    })
 
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
+    let stdout = ''
+    let stderr = ''
+    let timedOut = false
 
     // Set a timeout if specified (default 30 seconds for tests)
-    const timeoutMs = options.timeout || 30000;
+    const timeoutMs = options.timeout || 30000
     const timeoutId = setTimeout(() => {
-      timedOut = true;
-      child.kill('SIGTERM');
+      timedOut = true
+      child.kill('SIGTERM')
       // Force kill after 1 second if still running
       setTimeout(() => {
         if (!child.killed) {
-          child.kill('SIGKILL');
+          child.kill('SIGKILL')
         }
-      }, 1000);
-    }, timeoutMs);
+      }, 1000)
+    }, timeoutMs)
 
-    child.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
+    child.stdout.on('data', data => {
+      stdout += data.toString()
+    })
 
-    child.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
+    child.stderr.on('data', data => {
+      stderr += data.toString()
+    })
 
     if (options.input) {
-      child.stdin.write(options.input);
-      child.stdin.end();
+      child.stdin.write(options.input)
+      child.stdin.end()
     } else {
       // Close stdin if no input to prevent hanging on input prompts
-      child.stdin.end();
+      child.stdin.end()
     }
 
-    child.on('close', (code) => {
-      clearTimeout(timeoutId);
+    child.on('close', code => {
+      clearTimeout(timeoutId)
       if (timedOut) {
-        reject(new Error(`Command timed out after ${timeoutMs}ms\nstdout: ${stdout}\nstderr: ${stderr}`));
+        reject(
+          new Error(`Command timed out after ${timeoutMs}ms\nstdout: ${stdout}\nstderr: ${stderr}`)
+        )
       } else {
-        resolve({ code, stdout, stderr });
+        resolve({ code, stdout, stderr })
       }
-    });
+    })
 
-    child.on('error', (error) => {
-      clearTimeout(timeoutId);
-      reject(error);
-    });
-  });
+    child.on('error', error => {
+      clearTimeout(timeoutId)
+      reject(error)
+    })
+  })
 }
 
 /**
  * Create a test database
  */
-export async function createTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlite', name: string): Promise<Kysely<any>> {
+export async function createTestDatabase(
+  dialect: 'postgres' | 'mysql' | 'sqlite',
+  name: string
+): Promise<Kysely<any>> {
   // Validate database name to prevent SQL injection
-  const validDbName = validateIdentifier(name, 'database');
+  const validDbName = validateIdentifier(name, 'database')
 
   switch (dialect) {
     case 'postgres': {
@@ -102,14 +107,14 @@ export async function createTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlite
         port: parseInt(process.env['DB_PORT'] || '5432'),
         user: process.env['DB_USER'] || 'postgres',
         password: process.env['DB_PASSWORD'] || 'postgres',
-        database: 'postgres',
-      });
+        database: 'postgres'
+      })
 
       // Drop if exists and create - use parameterized queries where possible
       // For DDL statements, use validated identifier with proper escaping
-      await pool.query(`DROP DATABASE IF EXISTS "${validDbName}"`);
-      await pool.query(`CREATE DATABASE "${validDbName}"`);
-      await pool.end();
+      await pool.query(`DROP DATABASE IF EXISTS "${validDbName}"`)
+      await pool.query(`CREATE DATABASE "${validDbName}"`)
+      await pool.end()
 
       return new Kysely({
         dialect: new PostgresDialect({
@@ -118,10 +123,10 @@ export async function createTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlite
             port: parseInt(process.env['DB_PORT'] || '5432'),
             user: process.env['DB_USER'] || 'postgres',
             password: process.env['DB_PASSWORD'] || 'postgres',
-            database: validDbName,
-          }),
-        }),
-      });
+            database: validDbName
+          })
+        })
+      })
     }
 
     case 'mysql': {
@@ -129,14 +134,14 @@ export async function createTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlite
         host: process.env['DB_HOST'] || 'localhost',
         port: parseInt(process.env['DB_PORT'] || '3306'),
         user: process.env['DB_USER'] || 'root',
-        password: process.env['DB_PASSWORD'] || 'root',
-      });
+        password: process.env['DB_PASSWORD'] || 'root'
+      })
 
-      const connection = pool.promise();
+      const connection = pool.promise()
       // Use validated identifier with MySQL backtick escaping
-      await connection.query(`DROP DATABASE IF EXISTS \`${validDbName}\``);
-      await connection.query(`CREATE DATABASE \`${validDbName}\``);
-      await pool.end();
+      await connection.query(`DROP DATABASE IF EXISTS \`${validDbName}\``)
+      await connection.query(`CREATE DATABASE \`${validDbName}\``)
+      await pool.end()
 
       return new Kysely({
         dialect: new MysqlDialect({
@@ -145,37 +150,40 @@ export async function createTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlite
             port: parseInt(process.env['DB_PORT'] || '3306'),
             user: process.env['DB_USER'] || 'root',
             password: process.env['DB_PASSWORD'] || 'root',
-            database: validDbName,
-          }),
-        }),
-      });
+            database: validDbName
+          })
+        })
+      })
     }
 
     case 'sqlite': {
-      const dbPath = path.join(__dirname, '../../.test-db', `${validDbName}.db`);
-      await fs.mkdir(path.dirname(dbPath), { recursive: true });
+      const dbPath = path.join(__dirname, '../../.test-db', `${validDbName}.db`)
+      await fs.mkdir(path.dirname(dbPath), { recursive: true })
 
       // Remove if exists
       try {
-        await fs.unlink(dbPath);
+        await fs.unlink(dbPath)
       } catch {
         // Ignore if doesn't exist
       }
 
       return new Kysely({
         dialect: new SqliteDialect({
-          database: new Database(dbPath),
-        }),
-      });
+          database: new Database(dbPath)
+        })
+      })
     }
   }
 }
 /**
  * Clean up test database
  */
-export async function cleanupTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlite', name: string): Promise<void> {
+export async function cleanupTestDatabase(
+  dialect: 'postgres' | 'mysql' | 'sqlite',
+  name: string
+): Promise<void> {
   // Validate database name to prevent SQL injection
-  const validDbName = validateIdentifier(name, 'database');
+  const validDbName = validateIdentifier(name, 'database')
 
   switch (dialect) {
     case 'postgres': {
@@ -184,13 +192,13 @@ export async function cleanupTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlit
         port: parseInt(process.env['DB_PORT'] || '5432'),
         user: process.env['DB_USER'] || 'postgres',
         password: process.env['DB_PASSWORD'] || 'postgres',
-        database: 'postgres',
-      });
+        database: 'postgres'
+      })
 
       // Use validated identifier with proper escaping
-      await pool.query(`DROP DATABASE IF EXISTS "${validDbName}"`);
-      await pool.end();
-      break;
+      await pool.query(`DROP DATABASE IF EXISTS "${validDbName}"`)
+      await pool.end()
+      break
     }
 
     case 'mysql': {
@@ -198,24 +206,24 @@ export async function cleanupTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlit
         host: process.env['DB_HOST'] || 'localhost',
         port: parseInt(process.env['DB_PORT'] || '3306'),
         user: process.env['DB_USER'] || 'root',
-        password: process.env['DB_PASSWORD'] || 'root',
-      });
+        password: process.env['DB_PASSWORD'] || 'root'
+      })
 
-      const connection = pool.promise();
+      const connection = pool.promise()
       // Use validated identifier with MySQL backtick escaping
-      await connection.query(`DROP DATABASE IF EXISTS \`${validDbName}\``);
-      await pool.end();
-      break;
+      await connection.query(`DROP DATABASE IF EXISTS \`${validDbName}\``)
+      await pool.end()
+      break
     }
 
     case 'sqlite': {
-      const dbPath = path.join(__dirname, '../../.test-db', `${validDbName}.db`);
+      const dbPath = path.join(__dirname, '../../.test-db', `${validDbName}.db`)
       try {
-        await fs.unlink(dbPath);
+        await fs.unlink(dbPath)
       } catch {
         // Ignore
       }
-      break;
+      break
     }
   }
 }
@@ -224,17 +232,17 @@ export async function cleanupTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlit
  * Create a test configuration file
  */
 export async function createTestConfig(dir: string, config: any): Promise<string> {
-  const configPath = path.join(dir, 'kysera.config.json');
-  await fs.writeFile(configPath, JSON.stringify(config, null, 2));
-  return configPath;
+  const configPath = path.join(dir, 'kysera.config.json')
+  await fs.writeFile(configPath, JSON.stringify(config, null, 2))
+  return configPath
 }
 
 /**
  * Create test migrations
  */
 export async function createTestMigrations(dir: string): Promise<void> {
-  const migrationsDir = path.join(dir, 'migrations');
-  await fs.mkdir(migrationsDir, { recursive: true });
+  const migrationsDir = path.join(dir, 'migrations')
+  await fs.mkdir(migrationsDir, { recursive: true })
 
   // Create a simple migration (no Kysely import needed as db is passed)
   const migration = `
@@ -261,9 +269,9 @@ export async function down(db) {
   await db.schema.dropTable('posts').execute()
   await db.schema.dropTable('users').execute()
 }
-`;
+`
 
-  await fs.writeFile(path.join(migrationsDir, '001_initial.ts'), migration.trim());
+  await fs.writeFile(path.join(migrationsDir, '001_initial.ts'), migration.trim())
 }
 
 /**
@@ -272,16 +280,16 @@ export async function down(db) {
 export async function createTestProject(
   name: string,
   options: {
-    dialect?: 'postgres' | 'mysql' | 'sqlite';
-    withMigrations?: boolean;
-    withConfig?: boolean;
+    dialect?: 'postgres' | 'mysql' | 'sqlite'
+    withMigrations?: boolean
+    withConfig?: boolean
   } = {}
 ): Promise<{
-  dir: string;
-  cleanup: () => Promise<void>;
+  dir: string
+  cleanup: () => Promise<void>
 }> {
-  const tempDir = path.join(__dirname, '../../.test-projects', name);
-  await fs.mkdir(tempDir, { recursive: true });
+  const tempDir = path.join(__dirname, '../../.test-projects', name)
+  await fs.mkdir(tempDir, { recursive: true })
 
   if (options.withConfig) {
     await createTestConfig(tempDir, {
@@ -290,21 +298,21 @@ export async function createTestProject(
         database: name,
         host: 'localhost',
         user: 'test',
-        password: 'test',
-      },
-    });
+        password: 'test'
+      }
+    })
   }
 
   if (options.withMigrations) {
-    await createTestMigrations(tempDir);
+    await createTestMigrations(tempDir)
   }
 
   return {
     dir: tempDir,
     cleanup: async () => {
-      await fs.rm(tempDir, { recursive: true, force: true });
-    },
-  };
+      await fs.rm(tempDir, { recursive: true, force: true })
+    }
+  }
 }
 
 /**
@@ -315,42 +323,42 @@ export async function waitFor(
   timeout = 5000,
   interval = 100
 ): Promise<void> {
-  const startTime = Date.now();
+  const startTime = Date.now()
 
   while (Date.now() - startTime < timeout) {
     if (await condition()) {
-      return;
+      return
     }
-    await new Promise((resolve) => setTimeout(resolve, interval));
+    await new Promise(resolve => setTimeout(resolve, interval))
   }
 
-  throw new Error(`Timeout waiting for condition after ${timeout}ms`);
+  throw new Error(`Timeout waiting for condition after ${timeout}ms`)
 }
 
 /**
  * Mock user input for interactive prompts
  */
 export class InputMocker {
-  private inputs: string[] = [];
-  private currentIndex = 0;
+  private inputs: string[] = []
+  private currentIndex = 0
 
   constructor(inputs: string[]) {
-    this.inputs = inputs;
+    this.inputs = inputs
   }
 
   getNext(): string {
     if (this.currentIndex >= this.inputs.length) {
-      throw new Error('No more mocked inputs available');
+      throw new Error('No more mocked inputs available')
     }
-    return this.inputs[this.currentIndex++];
+    return this.inputs[this.currentIndex++]
   }
 
   reset(): void {
-    this.currentIndex = 0;
+    this.currentIndex = 0
   }
 
   hasMore(): boolean {
-    return this.currentIndex < this.inputs.length;
+    return this.currentIndex < this.inputs.length
   }
 }
 
@@ -358,51 +366,51 @@ export class InputMocker {
  * Capture console output
  */
 export function captureConsole(): {
-  getOutput: () => string[];
-  getErrors: () => string[];
-  restore: () => void;
+  getOutput: () => string[]
+  getErrors: () => string[]
+  restore: () => void
 } {
-  const originalLog = console.log;
-  const originalError = console.error;
+  const originalLog = console.log
+  const originalError = console.error
 
-  const output: string[] = [];
-  const errors: string[] = [];
+  const output: string[] = []
+  const errors: string[] = []
 
   console.log = (...args: any[]) => {
-    output.push(args.map(String).join(' '));
-  };
+    output.push(args.map(String).join(' '))
+  }
 
   console.error = (...args: any[]) => {
-    errors.push(args.map(String).join(' '));
-  };
+    errors.push(args.map(String).join(' '))
+  }
 
   return {
     getOutput: () => [...output],
     getErrors: () => [...errors],
     restore: () => {
-      console.log = originalLog;
-      console.error = originalError;
-    },
-  };
+      console.log = originalLog
+      console.error = originalError
+    }
+  }
 }
 
 /**
  * Test fixtures helper
  */
 export async function loadTestFixture(name: string): Promise<any> {
-  const fixturePath = path.join(__dirname, '../fixtures', name);
-  const content = await fs.readFile(fixturePath, 'utf-8');
+  const fixturePath = path.join(__dirname, '../fixtures', name)
+  const content = await fs.readFile(fixturePath, 'utf-8')
 
   if (name.endsWith('.json')) {
-    return JSON.parse(content);
+    return JSON.parse(content)
   } else if (name.endsWith('.sql')) {
-    return content;
+    return content
   } else if (name.endsWith('.yaml') || name.endsWith('.yml')) {
-    const yaml = await import('js-yaml');
-    return yaml.load(content);
+    const yaml = await import('js-yaml')
+    return yaml.load(content)
   }
 
-  return content;
+  return content
 }
 
 /**
@@ -410,39 +418,42 @@ export async function loadTestFixture(name: string): Promise<any> {
  */
 export function compareObjects(actual: any, expected: any, ignoreFields: string[] = []): boolean {
   const clean = (obj: any): any => {
-    if (obj === null || obj === undefined) return obj;
-    if (typeof obj !== 'object') return obj;
-    if (Array.isArray(obj)) return obj.map(clean);
+    if (obj === null || obj === undefined) return obj
+    if (typeof obj !== 'object') return obj
+    if (Array.isArray(obj)) return obj.map(clean)
 
-    const cleaned = { ...obj };
+    const cleaned = { ...obj }
     for (const field of ignoreFields) {
-      delete cleaned[field];
+      delete cleaned[field]
     }
 
     return Object.keys(cleaned).reduce((acc, key) => {
-      acc[key] = clean(cleaned[key]);
-      return acc;
-    }, {} as any);
-  };
+      acc[key] = clean(cleaned[key])
+      return acc
+    }, {} as any)
+  }
 
-  const cleanedActual = clean(actual);
-  const cleanedExpected = clean(expected);
+  const cleanedActual = clean(actual)
+  const cleanedExpected = clean(expected)
 
-  return JSON.stringify(cleanedActual) === JSON.stringify(cleanedExpected);
+  return JSON.stringify(cleanedActual) === JSON.stringify(cleanedExpected)
 }
 
 /**
  * Get test database connection string
  */
-export function getTestDatabaseUrl(dialect: 'postgres' | 'mysql' | 'sqlite', dbName: string): string {
+export function getTestDatabaseUrl(
+  dialect: 'postgres' | 'mysql' | 'sqlite',
+  dbName: string
+): string {
   switch (dialect) {
     case 'postgres':
-      return `postgres://postgres:postgres@localhost:5432/${dbName}`;
+      return `postgres://postgres:postgres@localhost:5432/${dbName}`
     case 'mysql':
-      return `mysql://root:root@localhost:3306/${dbName}`;
+      return `mysql://root:root@localhost:3306/${dbName}`
     case 'sqlite':
-      return `sqlite://.test-db/${dbName}.db`;
+      return `sqlite://.test-db/${dbName}.db`
     default:
-      throw new Error(`Unsupported dialect: ${dialect}`);
+      throw new Error(`Unsupported dialect: ${dialect}`)
   }
 }

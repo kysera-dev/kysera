@@ -10,15 +10,15 @@ Database management utilities.
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `seed` | Run database seeders |
-| `reset` | Truncate all tables |
-| `tables` | List database tables |
-| `dump` | Export database schema and data |
-| `restore` | Restore database from dump |
-| `introspect` | Analyze database schema |
-| `console` | Interactive database console |
+| Command      | Description                     |
+| ------------ | ------------------------------- |
+| `seed`       | Run database seeders            |
+| `reset`      | Truncate all tables             |
+| `tables`     | List database tables            |
+| `dump`       | Export database schema and data |
+| `restore`    | Restore database from dump      |
+| `introspect` | Analyze database schema         |
+| `console`    | Interactive database console    |
 
 ### seed
 
@@ -29,6 +29,7 @@ kysera db seed
 ```
 
 **Options:**
+
 ```
 -f, --file <path>         Specific seed file to run
 -d, --directory <path>    Seed directory (default: ./seeds)
@@ -39,6 +40,7 @@ kysera db seed
 ```
 
 **Examples:**
+
 ```bash
 # Run all seeds
 kysera db seed
@@ -62,6 +64,7 @@ kysera db reset
 ```
 
 **Options:**
+
 ```
 --force                   Skip confirmation
 --exclude <tables>        Tables to exclude
@@ -76,12 +79,14 @@ kysera db tables
 ```
 
 **Options:**
+
 ```
 --json                    Output as JSON
 -v, --verbose             Show column details
 ```
 
 **Output:**
+
 ```
 Database Tables
 ===============
@@ -111,6 +116,7 @@ kysera db dump
 ```
 
 **Options:**
+
 ```
 -o, --output <path>       Output file path
 --schema-only             Export schema only
@@ -120,6 +126,7 @@ kysera db dump
 ```
 
 **Examples:**
+
 ```bash
 # Full dump
 kysera db dump -o backup.sql
@@ -140,12 +147,14 @@ kysera db restore <file>
 ```
 
 **Options:**
+
 ```
 --force                   Skip confirmation prompt
 -c, --config <path>       Path to configuration file
 ```
 
 **Examples:**
+
 ```bash
 # Restore from SQL dump
 kysera db restore backup.sql
@@ -166,6 +175,7 @@ kysera db introspect [table]
 ```
 
 **Options:**
+
 ```
 --json                    Output as JSON
 --detailed                Show detailed information with TypeScript types
@@ -173,6 +183,7 @@ kysera db introspect [table]
 ```
 
 **Examples:**
+
 ```bash
 # List all tables with summary
 kysera db introspect
@@ -196,12 +207,14 @@ kysera db console
 ```
 
 **Options:**
+
 ```
 -q, --query <sql>         Execute SQL query and exit
 -c, --config <path>       Path to configuration file
 ```
 
 **Console Commands:**
+
 ```
 .help, .h                 Show help
 .exit, .quit, .q          Exit the console
@@ -213,6 +226,7 @@ kysera db console
 ```
 
 **Examples:**
+
 ```bash
 # Open interactive console
 kysera db console
@@ -228,7 +242,8 @@ kysera db console -q "SELECT * FROM users LIMIT 5"
 import { Kysely } from 'kysely'
 
 export async function seed(db: Kysely<any>): Promise<void> {
-  await db.insertInto('users')
+  await db
+    .insertInto('users')
     .values([
       { email: 'admin@example.com', name: 'Admin' },
       { email: 'user@example.com', name: 'User' }

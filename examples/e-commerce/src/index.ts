@@ -86,7 +86,7 @@ async function main() {
   console.log('\n💳 Checkout Process')
 
   try {
-    const order = await db.transaction().execute(async (trx) => {
+    const order = await db.transaction().execute(async trx => {
       const transactionalProductRepo = createProductRepository(trx)
       const transactionalCartRepo = createCartRepository(trx)
       const transactionalOrderRepo = createOrderRepository(trx)
@@ -149,7 +149,6 @@ async function main() {
     } catch (error) {
       console.log(`✓ Correctly rejected invalid transition: ${(error as Error).message}`)
     }
-
   } catch (error) {
     console.error('Checkout failed:', error)
   }

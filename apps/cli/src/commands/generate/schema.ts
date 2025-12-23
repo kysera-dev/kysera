@@ -1,20 +1,20 @@
-import { Command } from 'commander';
-import { prism } from '@xec-sh/kit';
-import { spinner } from '../../utils/spinner.js';
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { logger } from '../../utils/logger.js';
-import { CLIError } from '../../utils/errors.js';
-import { withDatabase } from '../../utils/with-database.js';
-import { DatabaseIntrospector, type TableInfo } from './introspector.js';
-import { toCamelCase, toPascalCase, toKebabCase } from '../../utils/templates.js';
+import { Command } from 'commander'
+import { prism } from '@xec-sh/kit'
+import { spinner } from '../../utils/spinner.js'
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { logger } from '../../utils/logger.js'
+import { CLIError } from '../../utils/errors.js'
+import { withDatabase } from '../../utils/with-database.js'
+import { DatabaseIntrospector, type TableInfo } from './introspector.js'
+import { toCamelCase, toPascalCase, toKebabCase } from '../../utils/templates.js'
 
 export interface SchemaOptions {
-  table?: string;
-  output?: string;
-  overwrite?: boolean;
-  config?: string;
-  strict?: boolean;
+  table?: string
+  output?: string
+  overwrite?: boolean
+  config?: string
+  strict?: boolean
 }
 
 export function schemaCommand(): Command {
@@ -28,150 +28,156 @@ export function schemaCommand(): Command {
     .option('--no-strict', 'Allow unknown keys in validation')
     .action(async (table: string | undefined, options: SchemaOptions) => {
       try {
-        await generateSchema(table, options);
+        await generateSchema(table, options)
       } catch (error) {
         if (error instanceof CLIError) {
-          throw error;
+          throw error
         }
         throw new CLIError(
           `Failed to generate schema: ${error instanceof Error ? error.message : String(error)}`,
           'GENERATE_SCHEMA_ERROR'
-        );
+        )
       }
-    });
+    })
 
-  return cmd;
+  return cmd
 }
 
-async function generateSchema(tableName: string | undefined, options: SchemaOptions): Promise<void> {
+async function generateSchema(
+  tableName: string | undefined,
+  options: SchemaOptions
+): Promise<void> {
   await withDatabase({ config: options.config }, async (db, config) => {
-    const generateSpinner = spinner();
-    generateSpinner.start('Introspecting database...');
+    const generateSpinner = spinner()
+    generateSpinner.start('Introspecting database...')
 
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any);
+    const introspector = new DatabaseIntrospector(db, config.database.dialect as any)
 
-    let tables: TableInfo[] = [];
+    let tables: TableInfo[] = []
 
     if (tableName) {
-      const tableInfo = await introspector.getTableInfo(tableName);
-      tables = [tableInfo];
+      const tableInfo = await introspector.getTableInfo(tableName)
+      tables = [tableInfo]
     } else {
-      tables = await introspector.introspect();
+      tables = await introspector.introspect()
     }
 
-    generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`);
+    generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
 
-    const outputDir = options.output || './src/schemas';
+    const outputDir = options.output || './src/schemas'
 
     if (!existsSync(outputDir)) {
-      mkdirSync(outputDir, { recursive: true });
-      logger.debug(`Created output directory: ${outputDir}`);
+      mkdirSync(outputDir, { recursive: true })
+      logger.debug(`Created output directory: ${outputDir}`)
     }
 
-    let generated = 0;
+    let generated = 0
 
     for (const table of tables) {
-      const fileName = `${toKebabCase(table.name)}.schema.ts`;
-      const filePath = join(outputDir, fileName);
+      const fileName = `${toKebabCase(table.name)}.schema.ts`
+      const filePath = join(outputDir, fileName)
 
       if (existsSync(filePath) && !options.overwrite) {
-        logger.warn(`Skipping ${fileName} (file exists, use --overwrite to replace)`);
-        continue;
+        logger.warn(`Skipping ${fileName} (file exists, use --overwrite to replace)`)
+        continue
       }
 
       const schemaCode = generateSchemaCode(table, {
-        strict: options.strict !== false,
-      });
+        strict: options.strict !== false
+      })
 
-      writeFileSync(filePath, schemaCode, 'utf-8');
-      logger.info(`${prism.green('OK')} Generated ${prism.cyan(fileName)}`);
-      generated++;
+      writeFileSync(filePath, schemaCode, 'utf-8')
+      logger.info(`${prism.green('OK')} Generated ${prism.cyan(fileName)}`)
+      generated++
     }
 
     if (generated === 0) {
-      logger.warn('No schemas were generated');
+      logger.warn('No schemas were generated')
     } else {
-      logger.info('');
-      logger.info(prism.green(`Generated ${generated} schema${generated !== 1 ? 's' : ''} successfully`));
+      logger.info('')
+      logger.info(
+        prism.green(`Generated ${generated} schema${generated !== 1 ? 's' : ''} successfully`)
+      )
     }
-  });
+  })
 }
 
 function generateSchemaCode(table: TableInfo, options: { strict: boolean }): string {
-  const entityName = toPascalCase(table.name);
-  const primaryKey = table.primaryKey?.[0] || 'id';
+  const entityName = toPascalCase(table.name)
+  const primaryKey = table.primaryKey?.[0] || 'id'
 
-  let baseSchemaFields: string[] = [];
+  let baseSchemaFields: string[] = []
 
   for (const column of table.columns) {
-    const fieldName = toCamelCase(column.name);
-    let zodType = DatabaseIntrospector.mapDataTypeToZod(column.dataType, column.isNullable);
+    const fieldName = toCamelCase(column.name)
+    let zodType = DatabaseIntrospector.mapDataTypeToZod(column.dataType, column.isNullable)
 
     if (column.maxLength && column.dataType.includes('char')) {
-      zodType = zodType.replace('z.string()', `z.string().max(${column.maxLength})`);
+      zodType = zodType.replace('z.string()', `z.string().max(${column.maxLength})`)
     }
 
     if (column.name.includes('email')) {
-      zodType = 'z.string().email()';
-      if (column.isNullable) zodType += '.nullable()';
+      zodType = 'z.string().email()'
+      if (column.isNullable) zodType += '.nullable()'
     }
 
     if (column.name.includes('url') || column.name.includes('website')) {
-      zodType = 'z.string().url()';
-      if (column.isNullable) zodType += '.nullable()';
+      zodType = 'z.string().url()'
+      if (column.isNullable) zodType += '.nullable()'
     }
 
     if (column.dataType.includes('uuid') || column.name.includes('uuid')) {
-      zodType = 'z.string().uuid()';
-      if (column.isNullable) zodType += '.nullable()';
+      zodType = 'z.string().uuid()'
+      if (column.isNullable) zodType += '.nullable()'
     }
 
     if (column.dataType.includes('date') || column.dataType.includes('time')) {
-      zodType = 'z.coerce.date()';
-      if (column.isNullable) zodType += '.nullable()';
+      zodType = 'z.coerce.date()'
+      if (column.isNullable) zodType += '.nullable()'
     }
 
-    baseSchemaFields.push(`  ${fieldName}: ${zodType}`);
+    baseSchemaFields.push(`  ${fieldName}: ${zodType}`)
   }
 
-  let newSchemaFields: string[] = [];
+  let newSchemaFields: string[] = []
 
   for (const column of table.columns) {
-    const fieldName = toCamelCase(column.name);
+    const fieldName = toCamelCase(column.name)
 
-    if (column.isPrimaryKey && column.defaultValue) continue;
-    if (column.defaultValue && column.defaultValue.toLowerCase().includes('current_timestamp')) continue;
-    if (column.name === 'created_at' || column.name === 'updated_at') continue;
+    if (column.isPrimaryKey && column.defaultValue) continue
+    if (column.defaultValue && column.defaultValue.toLowerCase().includes('current_timestamp'))
+      continue
+    if (column.name === 'created_at' || column.name === 'updated_at') continue
 
-    let zodType = DatabaseIntrospector.mapDataTypeToZod(column.dataType, column.isNullable);
+    let zodType = DatabaseIntrospector.mapDataTypeToZod(column.dataType, column.isNullable)
 
     if (column.name.includes('email')) {
-      zodType = 'z.string().email()';
-      if (column.isNullable) zodType += '.nullable()';
+      zodType = 'z.string().email()'
+      if (column.isNullable) zodType += '.nullable()'
     }
 
     if (column.isNullable || column.defaultValue) {
-      zodType += '.optional()';
+      zodType += '.optional()'
     }
 
-    newSchemaFields.push(`  ${fieldName}: ${zodType}`);
+    newSchemaFields.push(`  ${fieldName}: ${zodType}`)
   }
 
-  let updateSchemaFields: string[] = [];
+  let updateSchemaFields: string[] = []
 
   for (const column of table.columns) {
-    const fieldName = toCamelCase(column.name);
+    const fieldName = toCamelCase(column.name)
 
-    if (column.isPrimaryKey) continue;
-    if (['created_at', 'updated_at', 'deleted_at'].includes(column.name)) continue;
+    if (column.isPrimaryKey) continue
+    if (['created_at', 'updated_at', 'deleted_at'].includes(column.name)) continue
 
-    let zodType = DatabaseIntrospector.mapDataTypeToZod(column.dataType, column.isNullable);
-    zodType += '.optional()';
+    let zodType = DatabaseIntrospector.mapDataTypeToZod(column.dataType, column.isNullable)
+    zodType += '.optional()'
 
-    updateSchemaFields.push(`  ${fieldName}: ${zodType}`);
+    updateSchemaFields.push(`  ${fieldName}: ${zodType}`)
   }
 
-  const strictSuffix = options.strict ? '.strict()' : '';
+  const strictSuffix = options.strict ? '.strict()' : ''
 
   const code = `import { z } from 'zod'
 
@@ -212,7 +218,7 @@ export const safeParse${entityName} = (data: unknown) => ${entityName}Schema.saf
 export const safeParseNew${entityName} = (data: unknown) => New${entityName}Schema.safeParse(data)
 export const safeParseUpdate${entityName} = (data: unknown) => Update${entityName}Schema.safeParse(data)
 export const safeParse${entityName}Filter = (data: unknown) => ${entityName}FilterSchema.safeParse(data)
-`;
+`
 
-  return code;
+  return code
 }

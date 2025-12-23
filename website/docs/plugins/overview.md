@@ -10,12 +10,12 @@ Kysera's plugin system allows you to extend repository functionality without mod
 
 ## Available Plugins
 
-| Plugin | Package | Description |
-|--------|---------|-------------|
+| Plugin                                   | Package               | Description                              |
+| ---------------------------------------- | --------------------- | ---------------------------------------- |
 | [Soft Delete](/docs/plugins/soft-delete) | `@kysera/soft-delete` | Mark records as deleted without removing |
-| [Audit](/docs/plugins/audit) | `@kysera/audit` | Track all database changes with history |
-| [Timestamps](/docs/plugins/timestamps) | `@kysera/timestamps` | Automatic created_at/updated_at |
-| [RLS](/docs/plugins/rls) | `@kysera/rls` | Row-level security for multi-tenant apps |
+| [Audit](/docs/plugins/audit)             | `@kysera/audit`       | Track all database changes with history  |
+| [Timestamps](/docs/plugins/timestamps)   | `@kysera/timestamps`  | Automatic created_at/updated_at          |
+| [RLS](/docs/plugins/rls)                 | `@kysera/rls`         | Row-level security for multi-tenant apps |
 
 ## Using Plugins
 
@@ -33,19 +33,19 @@ const orm = await createORM(db, [
   timestampsPlugin()
 ])
 
-const userRepo = orm.createRepository((executor) => {
+const userRepo = orm.createRepository(executor => {
   const factory = createRepositoryFactory(executor)
   return factory.create({
     tableName: 'users',
-    mapRow: (row) => row,
+    mapRow: row => row,
     schemas: { create: CreateUserSchema }
   })
 })
 
 // Repository now has all plugin methods
-await userRepo.softDelete(userId)           // From soft-delete
-await userRepo.getAuditHistory(userId)      // From audit
-await userRepo.findRecentlyCreated()        // From timestamps
+await userRepo.softDelete(userId) // From soft-delete
+await userRepo.getAuditHistory(userId) // From audit
+await userRepo.findRecentlyCreated() // From timestamps
 ```
 
 ## Plugin Architecture
@@ -67,6 +67,7 @@ interceptQuery(qb, context) {
 ```
 
 **Intercepted operations:**
+
 - `selectFrom` → `'select'`
 - `insertInto` → `'insert'`
 - `updateTable` → `'update'`
@@ -157,10 +158,10 @@ Plugin order is determined by the `resolvePluginOrder` algorithm:
 ```typescript
 // Plugins are automatically sorted
 const orm = await createORM(db, [
-  auditPlugin(),                    // priority: 0
-  softDeletePlugin(),               // priority: 0
-  rlsPlugin({ schema }),            // priority: 50 (runs first!)
-  timestampsPlugin()                // priority: 0
+  auditPlugin(), // priority: 0
+  softDeletePlugin(), // priority: 0
+  rlsPlugin({ schema }), // priority: 50 (runs first!)
+  timestampsPlugin() // priority: 0
 ])
 
 // Actual execution order:
@@ -169,17 +170,19 @@ const orm = await createORM(db, [
 ```
 
 :::tip Priority Guidelines
+
 - **50**: Security plugins (RLS) - must filter before other plugins see data
 - **10**: Validation plugins - validate early
 - **0**: Standard plugins (default)
 - **-10**: Logging/audit plugins - capture final state
-:::
+  :::
 
 ## Plugin Validation
 
 The **@kysera/executor** package validates plugins during initialization to ensure correctness:
 
 **Validation checks:**
+
 - ✅ No duplicate plugin names
 - ✅ All dependencies are present
 - ✅ No circular dependencies (detected via DFS)
@@ -192,13 +195,14 @@ try {
   validatePlugins([pluginA, pluginB])
 } catch (error) {
   if (error instanceof PluginValidationError) {
-    console.log(error.type)    // 'DUPLICATE_NAME' | 'MISSING_DEPENDENCY' | 'CIRCULAR_DEPENDENCY' | 'CONFLICT'
+    console.log(error.type) // 'DUPLICATE_NAME' | 'MISSING_DEPENDENCY' | 'CIRCULAR_DEPENDENCY' | 'CONFLICT'
     console.log(error.details) // { pluginName, missingDependency?, conflictingPlugin?, cycle? }
   }
 }
 ```
 
 **Validation happens automatically:**
+
 - When calling `createORM(db, plugins)` (via `createExecutor`)
 - When calling `createExecutor(db, plugins)` directly
 

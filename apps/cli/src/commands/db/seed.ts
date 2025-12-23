@@ -1,23 +1,23 @@
-import { Command } from 'commander';
-import { prism } from '@xec-sh/kit';
-import { spinner } from '../../utils/spinner.js';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
-import { logger } from '../../utils/logger.js';
-import { SeedRunner, type SeedRunnerOptions, type SeedHooks } from './seed-runner.js';
-import { sql } from 'kysely';
+import { Command } from 'commander'
+import { prism } from '@xec-sh/kit'
+import { spinner } from '../../utils/spinner.js'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { CLIError } from '../../utils/errors.js'
+import { getDatabaseConnection } from '../../utils/database.js'
+import { loadConfig } from '../../config/loader.js'
+import { logger } from '../../utils/logger.js'
+import { SeedRunner, type SeedRunnerOptions, type SeedHooks } from './seed-runner.js'
+import { sql } from 'kysely'
 
 export interface SeedOptions {
-  file?: string;
-  directory?: string;
-  fresh?: boolean;
-  dryRun?: boolean;
-  transaction?: boolean;
-  config?: string;
-  verbose?: boolean;
+  file?: string
+  directory?: string
+  fresh?: boolean
+  dryRun?: boolean
+  transaction?: boolean
+  config?: string
+  verbose?: boolean
 }
 
 export function seedCommand(): Command {
@@ -32,55 +32,55 @@ export function seedCommand(): Command {
     .option('-v, --verbose', 'Show detailed output')
     .action(async (options: SeedOptions) => {
       try {
-        await runSeeds(options);
+        await runSeeds(options)
       } catch (error) {
         if (error instanceof CLIError) {
-          throw error;
+          throw error
         }
         throw new CLIError(
           `Failed to run seeds: ${error instanceof Error ? error.message : String(error)}`,
           'SEED_ERROR'
-        );
+        )
       }
-    });
+    })
 
-  return cmd;
+  return cmd
 }
 
 async function runSeeds(options: SeedOptions): Promise<void> {
   // Load configuration
-  const config = await loadConfig(options.config);
+  const config = await loadConfig(options.config)
 
   if (!config?.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
+      'Or specify a config file with --config option'
+    ])
   }
 
   // Get database connection
-  const db = await getDatabaseConnection(config.database);
+  const db = await getDatabaseConnection(config.database)
 
   if (!db) {
     throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
       'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
+      'Ensure the database server is running'
+    ])
   }
 
-  const seedSpinner = spinner() as any;
+  const seedSpinner = spinner() as any
 
   try {
     // Determine seeds directory
-    const seedDir = options.directory || config.testing?.seeds || './seeds';
+    const seedDir = options.directory || config.testing?.seeds || './seeds'
 
     // Fresh option - truncate tables
     if (options.fresh && !options.dryRun) {
-      seedSpinner.start('Truncating tables...');
+      seedSpinner.start('Truncating tables...')
 
       try {
         // Get all tables
-        let tables: string[] = [];
+        let tables: string[] = []
 
         if (config.database.dialect === 'postgres') {
           const result = (await db
@@ -88,15 +88,15 @@ async function runSeeds(options: SeedOptions): Promise<void> {
             .select('table_name')
             .where('table_schema', '=', 'public')
             .where('table_type', '=', 'BASE TABLE')
-            .execute()) as any[];
-          tables = result.map((r) => r.table_name);
+            .execute()) as any[]
+          tables = result.map(r => r.table_name)
         } else if (config.database.dialect === 'mysql') {
           const result = (await db
             .selectFrom('information_schema.tables')
             .select('table_name')
             .where('table_schema', '=', db.fn('DATABASE'))
-            .execute()) as any[];
-          tables = result.map((r) => r.table_name || r.TABLE_NAME);
+            .execute()) as any[]
+          tables = result.map(r => r.table_name || r.TABLE_NAME)
         } else if (config.database.dialect === 'sqlite') {
           const result = (await db
             .selectFrom('sqlite_master')
@@ -104,48 +104,48 @@ async function runSeeds(options: SeedOptions): Promise<void> {
             .where('type', '=', 'table')
             .where('name', 'not like', 'sqlite_%')
             .where('name', 'not like', 'kysera_%') // Skip migration tables
-            .execute()) as any[];
-          tables = result.map((r) => r.name);
+            .execute()) as any[]
+          tables = result.map(r => r.name)
         }
 
         // Truncate each table
         for (const table of tables) {
           if (options.verbose) {
-            logger.debug(`Truncating table: ${table}`);
+            logger.debug(`Truncating table: ${table}`)
           }
 
           if (config.database.dialect === 'sqlite') {
-            await db.deleteFrom(table).execute();
+            await db.deleteFrom(table).execute()
           } else {
-            await sql`TRUNCATE TABLE ${sql.id(table)} CASCADE`.execute(db);
+            await sql`TRUNCATE TABLE ${sql.id(table)} CASCADE`.execute(db)
           }
         }
 
-        seedSpinner.succeed(`Truncated ${tables.length} table${tables.length !== 1 ? 's' : ''}`);
+        seedSpinner.succeed(`Truncated ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
       } catch (error) {
-        seedSpinner.fail('Failed to truncate tables');
-        throw error;
+        seedSpinner.fail('Failed to truncate tables')
+        throw error
       }
     } else if (options.fresh && options.dryRun) {
-      logger.info('[DRY RUN] Would truncate all tables before seeding');
+      logger.info('[DRY RUN] Would truncate all tables before seeding')
     }
 
     // Create seed hooks for logging
     const hooks: SeedHooks = {
       beforeAll: async () => {
         if (options.verbose) {
-          logger.debug('Starting seed execution...');
+          logger.debug('Starting seed execution...')
         }
       },
       afterAll: async (_, result) => {
         if (options.verbose && result.executed.length > 0) {
-          logger.debug(`Seeds completed: ${result.executed.join(', ')}`);
+          logger.debug(`Seeds completed: ${result.executed.join(', ')}`)
         }
-      },
-    };
+      }
+    }
 
     // Create seed runner
-    const seedRunner = new SeedRunner(db, seedDir, hooks);
+    const seedRunner = new SeedRunner(db, seedDir, hooks)
 
     // Prepare runner options
     const runnerOptions: SeedRunnerOptions = {
@@ -154,43 +154,50 @@ async function runSeeds(options: SeedOptions): Promise<void> {
       dryRun: options.dryRun,
       verbose: options.verbose,
       transaction: options.transaction,
-      fresh: options.fresh,
-    };
+      fresh: options.fresh
+    }
 
     // Run seeds
-    seedSpinner.start('Running seeds...');
-    const result = await seedRunner.run(runnerOptions);
+    seedSpinner.start('Running seeds...')
+    const result = await seedRunner.run(runnerOptions)
 
     // Display results
     if (result.executed.length > 0 || result.skipped.length > 0) {
-      seedSpinner.succeed(`Seeding completed (${result.duration}ms)`);
+      seedSpinner.succeed(`Seeding completed (${result.duration}ms)`)
     } else if (result.failed.length > 0) {
-      seedSpinner.fail('Seeding completed with errors');
+      seedSpinner.fail('Seeding completed with errors')
     } else {
-      seedSpinner.warn('No seed files found');
+      seedSpinner.warn('No seed files found')
     }
 
     // Summary
-    logger.info('');
+    logger.info('')
 
     if (result.executed.length > 0) {
-      logger.info(prism.green(`Executed ${result.executed.length} seed${result.executed.length !== 1 ? 's' : ''} successfully`));
+      logger.info(
+        prism.green(
+          `Executed ${result.executed.length} seed${result.executed.length !== 1 ? 's' : ''} successfully`
+        )
+      )
     }
 
     if (result.skipped.length > 0) {
-      logger.info(prism.yellow(`Skipped ${result.skipped.length} seed${result.skipped.length !== 1 ? 's' : ''} (dry-run)`));
+      logger.info(
+        prism.yellow(
+          `Skipped ${result.skipped.length} seed${result.skipped.length !== 1 ? 's' : ''} (dry-run)`
+        )
+      )
     }
 
     if (result.failed.length > 0) {
-      logger.warn(`Failed ${result.failed.length} seed${result.failed.length !== 1 ? 's' : ''}:`);
+      logger.warn(`Failed ${result.failed.length} seed${result.failed.length !== 1 ? 's' : ''}:`)
       for (const failed of result.failed) {
-        logger.error(`  - ${failed.name}: ${failed.error}`);
+        logger.error(`  - ${failed.name}: ${failed.error}`)
       }
     }
-
   } finally {
     // Close database connection
-    await db.destroy();
+    await db.destroy()
   }
 }
 

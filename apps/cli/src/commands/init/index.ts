@@ -1,111 +1,126 @@
-import { Command } from 'commander';
-import { prism, text, select, confirm, multiselect, box, group, isCancel } from '@xec-sh/kit';
-import { spinner } from '../../utils/spinner.js';
-import { join, resolve, dirname } from 'node:path';
-import { existsSync, mkdirSync, readdirSync } from 'node:fs';
-import { logger } from '../../utils/logger.js';
-import { CLIError } from '../../utils/errors.js';
-import { writeFileSync } from 'node:fs';
-import { execa } from 'execa';
+import { Command } from 'commander'
+import { prism, text, select, confirm, multiselect, box, group, isCancel } from '@xec-sh/kit'
+import { spinner } from '../../utils/spinner.js'
+import { join, resolve, dirname } from 'node:path'
+import { existsSync, mkdirSync, readdirSync } from 'node:fs'
+import { logger } from '../../utils/logger.js'
+import { CLIError } from '../../utils/errors.js'
+import { writeFileSync } from 'node:fs'
+import { execa } from 'execa'
 
 // Simple template rendering helper
 function renderTemplate(templateName: string, data: any, outputPath: string): void {
   // Ensure directory exists
-  mkdirSync(dirname(outputPath), { recursive: true });
+  mkdirSync(dirname(outputPath), { recursive: true })
 
-  let content: string;
+  let content: string
   if (typeof data === 'object' && !Buffer.isBuffer(data)) {
     // For JSON files
     if (outputPath.endsWith('.json')) {
-      content = JSON.stringify(data, null, 2);
+      content = JSON.stringify(data, null, 2)
     } else {
       // For other files, data is the content itself
-      content = data;
+      content = data
     }
   } else {
-    content = String(data);
+    content = String(data)
   }
 
-  writeFileSync(outputPath, content, 'utf-8');
+  writeFileSync(outputPath, content, 'utf-8')
 }
 
 export interface InitOptions {
-  template?: string;
-  database?: string;
-  plugins?: string;
-  packageManager?: string;
-  typescript?: boolean;
-  git?: boolean;
-  install?: boolean;
+  template?: string
+  database?: string
+  plugins?: string
+  packageManager?: string
+  typescript?: boolean
+  git?: boolean
+  install?: boolean
 }
 
 const TEMPLATES = {
   basic: {
     name: 'basic',
     description: 'Basic project setup',
-    dependencies: ['kysely', '@kysera/core', '@kysera/repository'],
+    dependencies: ['kysely', '@kysera/core', '@kysera/repository']
   },
   api: {
     name: 'api',
     description: 'REST API with Express',
-    dependencies: ['kysely', '@kysera/core', '@kysera/repository', 'express', 'cors', 'helmet', 'compression'],
-    devDependencies: ['@types/express', '@types/cors', '@types/compression'],
+    dependencies: [
+      'kysely',
+      '@kysera/core',
+      '@kysera/repository',
+      'express',
+      'cors',
+      'helmet',
+      'compression'
+    ],
+    devDependencies: ['@types/express', '@types/cors', '@types/compression']
   },
   graphql: {
     name: 'graphql',
     description: 'GraphQL API with Apollo',
-    dependencies: ['kysely', '@kysera/core', '@kysera/repository', '@apollo/server', 'graphql', 'dataloader'],
-    devDependencies: ['@types/node'],
+    dependencies: [
+      'kysely',
+      '@kysera/core',
+      '@kysera/repository',
+      '@apollo/server',
+      'graphql',
+      'dataloader'
+    ],
+    devDependencies: ['@types/node']
   },
   monorepo: {
     name: 'monorepo',
     description: 'Monorepo setup',
     dependencies: [],
-    devDependencies: ['turbo', 'eslint', 'prettier', 'typescript'],
-  },
-};
+    devDependencies: ['turbo', 'eslint', 'prettier', 'typescript']
+  }
+}
 
 const DATABASES = {
   postgres: {
     name: 'PostgreSQL',
     driver: 'pg',
     dependencies: ['pg'],
-    devDependencies: ['@types/pg'],
+    devDependencies: ['@types/pg']
   },
   mysql: {
     name: 'MySQL',
     driver: 'mysql2',
-    dependencies: ['mysql2'],
+    dependencies: ['mysql2']
   },
   sqlite: {
     name: 'SQLite',
     driver: 'better-sqlite3',
-    dependencies: ['better-sqlite3'],
-  },
-};
+    dependencies: ['better-sqlite3']
+  }
+}
 
 const PLUGINS = {
   timestamps: {
     name: 'Timestamps',
     package: '@kysera/timestamps',
-    description: 'Automatic created/updated timestamps',
+    description: 'Automatic created/updated timestamps'
   },
   'soft-delete': {
     name: 'Soft Delete',
     package: '@kysera/soft-delete',
-    description: 'Soft delete functionality',
+    description: 'Soft delete functionality'
   },
   audit: {
     name: 'Audit Logging',
     package: '@kysera/audit',
-    description: 'Comprehensive audit logging',
+    description: 'Comprehensive audit logging'
   },
   rls: {
     name: 'Row-Level Security',
     package: '@kysera/rls',
-    description: 'Declarative row-level security policies for multi-tenant applications',
-  },
-};
+    description: 'Declarative row-level security policies for multi-tenant applications'
+  }
+}
 
 export function initCommand(): Command {
   const cmd = new Command('init')
@@ -123,31 +138,34 @@ export function initCommand(): Command {
     .option('--no-install', 'Skip dependency installation')
     .action(async (projectName: string | undefined, options: InitOptions) => {
       try {
-        await initProject(projectName, options);
+        await initProject(projectName, options)
       } catch (error) {
         if (error instanceof CLIError) {
-          throw error;
+          throw error
         }
         throw new CLIError(
           `Failed to initialize project: ${error instanceof Error ? error.message : String(error)}`,
           'INIT_ERROR'
-        );
+        )
       }
-    });
+    })
 
-  return cmd;
+  return cmd
 }
 
 async function initProject(projectName: string | undefined, options: InitOptions): Promise<void> {
   // Check if we're in a non-interactive environment
-  const isNonInteractive = process.env['NODE_ENV'] === 'test' || !process.stdin.isTTY || process.env['CI'];
+  const isNonInteractive =
+    process.env['NODE_ENV'] === 'test' || !process.stdin.isTTY || process.env['CI']
 
   // Interactive mode if no project name provided (and we're in an interactive environment)
   if (!projectName) {
     if (isNonInteractive) {
-      throw new CLIError('Project name is required in non-interactive mode', 'PROJECT_NAME_REQUIRED', [
-        'Provide project name as argument: kysera init <project-name>',
-      ]);
+      throw new CLIError(
+        'Project name is required in non-interactive mode',
+        'PROJECT_NAME_REQUIRED',
+        ['Provide project name as argument: kysera init <project-name>']
+      )
     }
 
     const answers = await group({
@@ -155,31 +173,31 @@ async function initProject(projectName: string | undefined, options: InitOptions
         text({
           message: 'Project name',
           placeholder: 'my-kysera-app',
-          validate: (value) => {
+          validate: value => {
             if (!value || value.trim() === '') {
-              return 'Project name is required';
+              return 'Project name is required'
             }
             if (!/^[a-z0-9-_.]+$/i.test(value)) {
-              return 'Project name can only contain letters, numbers, hyphens, underscores, and dots';
+              return 'Project name can only contain letters, numbers, hyphens, underscores, and dots'
             }
-            return undefined;
-          },
+            return undefined
+          }
         }),
       template: () =>
         select({
           message: 'Select template',
           options: Object.entries(TEMPLATES).map(([key, template]) => ({
             label: `${template.name} - ${template.description}`,
-            value: key,
-          })),
+            value: key
+          }))
         }),
       database: () =>
         select({
           message: 'Select database',
           options: Object.entries(DATABASES).map(([key, db]) => ({
             label: db.name,
-            value: key,
-          })),
+            value: key
+          }))
         }),
       plugins: () =>
         multiselect({
@@ -187,9 +205,9 @@ async function initProject(projectName: string | undefined, options: InitOptions
           options: Object.entries(PLUGINS).map(([key, plugin]) => ({
             label: plugin.name,
             value: key,
-            hint: plugin.description,
+            hint: plugin.description
           })),
-          initialValues: ['timestamps', 'soft-delete'],
+          initialValues: ['timestamps', 'soft-delete']
         }),
       packageManager: () =>
         select({
@@ -198,28 +216,28 @@ async function initProject(projectName: string | undefined, options: InitOptions
             { label: 'pnpm', value: 'pnpm' },
             { label: 'npm', value: 'npm' },
             { label: 'yarn', value: 'yarn' },
-            { label: 'bun', value: 'bun' },
+            { label: 'bun', value: 'bun' }
           ],
-          initialValue: detectPackageManager(),
+          initialValue: detectPackageManager()
         }),
       git: () =>
         confirm({
           message: 'Initialize git repository?',
-          initialValue: true,
+          initialValue: true
         }),
       install: () =>
         confirm({
           message: 'Install dependencies?',
-          initialValue: true,
-        }),
-    });
+          initialValue: true
+        })
+    })
 
     // Check if user cancelled
     if (isCancel(answers.projectName)) {
-      throw new CLIError('Project initialization cancelled', 'CANCELLED');
+      throw new CLIError('Project initialization cancelled', 'CANCELLED')
     }
 
-    projectName = answers.projectName as string;
+    projectName = answers.projectName as string
     options = {
       template: answers.template as string,
       database: answers.database as string,
@@ -227,68 +245,68 @@ async function initProject(projectName: string | undefined, options: InitOptions
       packageManager: answers.packageManager as string,
       typescript: true, // Always use TypeScript for now
       git: answers.git as boolean,
-      install: answers.install as boolean,
-    };
-  }
-
-  // Validate options
-  const template = options.template || 'basic';
-  if (!TEMPLATES[template as keyof typeof TEMPLATES]) {
-    throw new CLIError(`Invalid template: ${template}`, 'INVALID_TEMPLATE', [
-      'Available templates: basic, api, graphql, monorepo',
-    ]);
-  }
-
-  const database = options.database || 'postgres';
-  if (!DATABASES[database as keyof typeof DATABASES]) {
-    throw new CLIError(`Invalid database: ${database}`, 'INVALID_DATABASE', [
-      'Available databases: postgres, mysql, sqlite',
-    ]);
-  }
-
-  const plugins = options.plugins?.split(',').filter(Boolean) || ['timestamps', 'soft-delete'];
-  for (const plugin of plugins) {
-    if (!PLUGINS[plugin as keyof typeof PLUGINS]) {
-      throw new CLIError(`Invalid plugin: ${plugin}`, 'INVALID_PLUGIN', [
-        `Available plugins: ${Object.keys(PLUGINS).join(', ')}`,
-      ]);
+      install: answers.install as boolean
     }
   }
 
-  const packageManager = options.packageManager || detectPackageManager();
+  // Validate options
+  const template = options.template || 'basic'
+  if (!TEMPLATES[template as keyof typeof TEMPLATES]) {
+    throw new CLIError(`Invalid template: ${template}`, 'INVALID_TEMPLATE', [
+      'Available templates: basic, api, graphql, monorepo'
+    ])
+  }
+
+  const database = options.database || 'postgres'
+  if (!DATABASES[database as keyof typeof DATABASES]) {
+    throw new CLIError(`Invalid database: ${database}`, 'INVALID_DATABASE', [
+      'Available databases: postgres, mysql, sqlite'
+    ])
+  }
+
+  const plugins = options.plugins?.split(',').filter(Boolean) || ['timestamps', 'soft-delete']
+  for (const plugin of plugins) {
+    if (!PLUGINS[plugin as keyof typeof PLUGINS]) {
+      throw new CLIError(`Invalid plugin: ${plugin}`, 'INVALID_PLUGIN', [
+        `Available plugins: ${Object.keys(PLUGINS).join(', ')}`
+      ])
+    }
+  }
+
+  const packageManager = options.packageManager || detectPackageManager()
 
   // Resolve project path
-  const projectPath = projectName === '.' ? process.cwd() : resolve(process.cwd(), projectName);
-  const projectDir = projectName === '.' ? '.' : projectName;
+  const projectPath = projectName === '.' ? process.cwd() : resolve(process.cwd(), projectName)
+  const projectDir = projectName === '.' ? '.' : projectName
 
   // Check if directory exists
   if (projectDir !== '.' && existsSync(projectPath)) {
-    const files = readdirSync(projectPath);
+    const files = readdirSync(projectPath)
     if (files.length > 0) {
-      throw new CLIError(`Directory ${projectName} already exists and is not empty`, 'DIRECTORY_EXISTS', [
-        'Choose a different project name',
-        'Use an empty directory',
-        'Delete existing files first',
-      ]);
+      throw new CLIError(
+        `Directory ${projectName} already exists and is not empty`,
+        'DIRECTORY_EXISTS',
+        ['Choose a different project name', 'Use an empty directory', 'Delete existing files first']
+      )
     }
   }
 
   // Show creation message
-  console.log('');
+  console.log('')
 
   // Use the previously defined isNonInteractive variable
-  let createSpinner: any = null;
+  let createSpinner: any = null
   if (!isNonInteractive) {
-    createSpinner = spinner();
-    createSpinner.start(`Creating project ${prism.cyan(projectName)}`);
+    createSpinner = spinner()
+    createSpinner.start(`Creating project ${prism.cyan(projectName)}`)
   } else {
-    console.log(`Creating project ${projectName}...`);
+    console.log(`Creating project ${projectName}...`)
   }
 
   try {
     // Create project directory
     if (projectDir !== '.') {
-      mkdirSync(projectPath, { recursive: true });
+      mkdirSync(projectPath, { recursive: true })
     }
 
     // Generate project files based on template
@@ -298,98 +316,103 @@ async function initProject(projectName: string | undefined, options: InitOptions
       database,
       plugins,
       packageManager,
-      typescript: options.typescript !== false,
-    });
+      typescript: options.typescript !== false
+    })
 
     if (createSpinner) {
-      createSpinner.succeed('Project initialized successfully');
+      createSpinner.succeed('Project initialized successfully')
     } else {
-      console.log('✓ Project initialized successfully');
+      console.log('✓ Project initialized successfully')
     }
 
     // Initialize git if requested
     if (options.git !== false) {
-      let gitSpinner: any = null;
+      let gitSpinner: any = null
       if (!isNonInteractive) {
-        gitSpinner = spinner();
-        gitSpinner.start('Initializing git repository');
+        gitSpinner = spinner()
+        gitSpinner.start('Initializing git repository')
       } else {
-        console.log('Initializing git repository...');
+        console.log('Initializing git repository...')
       }
 
       try {
-        await execa('git', ['init'], { cwd: projectPath, stdio: 'ignore' });
-        await execa('git', ['add', '.'], { cwd: projectPath, stdio: 'ignore' });
-        await execa('git', ['commit', '-m', 'Initial commit'], { cwd: projectPath, stdio: 'ignore' });
+        await execa('git', ['init'], { cwd: projectPath, stdio: 'ignore' })
+        await execa('git', ['add', '.'], { cwd: projectPath, stdio: 'ignore' })
+        await execa('git', ['commit', '-m', 'Initial commit'], {
+          cwd: projectPath,
+          stdio: 'ignore'
+        })
         if (gitSpinner) {
-          gitSpinner.succeed('Git repository initialized');
+          gitSpinner.succeed('Git repository initialized')
         } else {
-          console.log('✓ Git repository initialized');
+          console.log('✓ Git repository initialized')
         }
       } catch (error) {
         if (gitSpinner) {
-          gitSpinner.warn('Failed to initialize git repository');
+          gitSpinner.warn('Failed to initialize git repository')
         } else {
-          console.log('⚠ Failed to initialize git repository');
+          console.log('⚠ Failed to initialize git repository')
         }
-        logger.debug(`Git error: ${error}`);
+        logger.debug(`Git error: ${error}`)
       }
     }
 
     // Install dependencies if requested
     if (options.install !== false) {
-      let installSpinner: any = null;
+      let installSpinner: any = null
       if (!isNonInteractive) {
-        installSpinner = spinner();
-        installSpinner.start('Installing dependencies');
+        installSpinner = spinner()
+        installSpinner.start('Installing dependencies')
       } else {
-        console.log('Installing dependencies...');
+        console.log('Installing dependencies...')
       }
 
       try {
-        await execa(packageManager, ['install'], { cwd: projectPath, stdio: 'ignore' });
+        await execa(packageManager, ['install'], { cwd: projectPath, stdio: 'ignore' })
         if (installSpinner) {
-          installSpinner.succeed('Dependencies installed');
+          installSpinner.succeed('Dependencies installed')
         } else {
-          console.log('✓ Dependencies installed');
+          console.log('✓ Dependencies installed')
         }
       } catch (error) {
         if (installSpinner) {
-          installSpinner.warn('Failed to install dependencies');
+          installSpinner.warn('Failed to install dependencies')
         } else {
-          console.log('⚠ Failed to install dependencies');
+          console.log('⚠ Failed to install dependencies')
         }
-        logger.debug(`Install error: ${error}`);
-        const installCmd = getInstallCommand(packageManager);
-        console.log(prism.yellow(`\nRun ${prism.cyan(installCmd)} to install dependencies manually`));
+        logger.debug(`Install error: ${error}`)
+        const installCmd = getInstallCommand(packageManager)
+        console.log(
+          prism.yellow(`\nRun ${prism.cyan(installCmd)} to install dependencies manually`)
+        )
       }
     }
 
     // Success message
-    console.log('');
+    console.log('')
 
     // Display security warning for database configurations with authentication
     if (database === 'postgres' || database === 'mysql') {
-      console.log(prism.yellow('⚠️  SECURITY WARNING'));
-      console.log(prism.yellow('   Your project uses an empty database password by default.'));
-      console.log(prism.yellow('   See SECURITY.md for important security guidelines.'));
-      console.log('');
+      console.log(prism.yellow('⚠️  SECURITY WARNING'))
+      console.log(prism.yellow('   Your project uses an empty database password by default.'))
+      console.log(prism.yellow('   See SECURITY.md for important security guidelines.'))
+      console.log('')
     }
 
-    const nextSteps = ['Next steps:'];
-    let stepNumber = 1;
+    const nextSteps = ['Next steps:']
+    let stepNumber = 1
 
     if (projectDir !== '.') {
-      nextSteps.push(`  ${prism.gray(`${stepNumber}.`)} cd ${projectName}`);
-      stepNumber++;
+      nextSteps.push(`  ${prism.gray(`${stepNumber}.`)} cd ${projectName}`)
+      stepNumber++
     }
 
     if (database === 'postgres' || database === 'mysql') {
-      nextSteps.push(`  ${prism.gray(`${stepNumber}.`)} Set DB_PASSWORD in .env file`);
-      stepNumber++;
+      nextSteps.push(`  ${prism.gray(`${stepNumber}.`)} Set DB_PASSWORD in .env file`)
+      stepNumber++
     }
 
-    nextSteps.push(`  ${prism.gray(`${stepNumber}.`)} ${packageManager} run dev`);
+    nextSteps.push(`  ${prism.gray(`${stepNumber}.`)} ${packageManager} run dev`)
 
     const successMessage = [
       `Project: ${prism.cyan(projectName)}`,
@@ -400,52 +423,52 @@ async function initProject(projectName: string | undefined, options: InitOptions
       ...nextSteps,
       '',
       `Documentation: ${prism.blue('https://kysera.dev/docs')}`,
-      `GitHub: ${prism.blue('https://github.com/kysera/kysera')}`,
+      `GitHub: ${prism.blue('https://github.com/kysera/kysera')}`
     ]
       .filter(Boolean)
-      .join('\n');
+      .join('\n')
 
     // In non-interactive mode, just print the message
     if (isNonInteractive) {
-      console.log('✨ Project created successfully!');
-      console.log('');
-      console.log(successMessage);
+      console.log('✨ Project created successfully!')
+      console.log('')
+      console.log(successMessage)
     } else {
       // Use box in interactive mode
-      box(successMessage, '✨ Project created successfully!');
+      box(successMessage, '✨ Project created successfully!')
     }
   } catch (error) {
     if (createSpinner) {
-      createSpinner.fail('Failed to create project');
+      createSpinner.fail('Failed to create project')
     } else {
-      console.log('✗ Failed to create project');
+      console.log('✗ Failed to create project')
     }
-    throw error;
+    throw error
   }
 }
 
 async function generateProjectFiles(
   projectPath: string,
   config: {
-    name: string;
-    template: string;
-    database: string;
-    plugins: string[];
-    packageManager: string;
-    typescript: boolean;
+    name: string
+    template: string
+    database: string
+    plugins: string[]
+    packageManager: string
+    typescript: boolean
   }
 ): Promise<void> {
-  const template = TEMPLATES[config.template as keyof typeof TEMPLATES];
-  const database = DATABASES[config.database as keyof typeof DATABASES];
+  const template = TEMPLATES[config.template as keyof typeof TEMPLATES]
+  const database = DATABASES[config.database as keyof typeof DATABASES]
 
   // Collect all dependencies
-  const dependencies = new Set([...template.dependencies, ...database.dependencies]);
+  const dependencies = new Set([...template.dependencies, ...database.dependencies])
 
   // Add plugin dependencies
   for (const plugin of config.plugins) {
-    const pluginConfig = PLUGINS[plugin as keyof typeof PLUGINS];
+    const pluginConfig = PLUGINS[plugin as keyof typeof PLUGINS]
     if (pluginConfig) {
-      dependencies.add(pluginConfig.package);
+      dependencies.add(pluginConfig.package)
     }
   }
 
@@ -458,8 +481,8 @@ async function generateProjectFiles(
     'vitest',
     '@vitest/coverage-v8',
     'eslint',
-    'prettier',
-  ]);
+    'prettier'
+  ])
 
   // Create package.json
   const packageJson = {
@@ -478,25 +501,25 @@ async function generateProjectFiles(
       format: 'prettier --write "src/**/*.ts"',
       'migrate:up': 'kysera migrate up',
       'migrate:down': 'kysera migrate down',
-      'migrate:create': 'kysera migrate create',
+      'migrate:create': 'kysera migrate create'
     },
-    dependencies: Object.fromEntries(Array.from(dependencies).map((dep) => [dep, 'latest'])),
-    devDependencies: Object.fromEntries(Array.from(devDependencies).map((dep) => [dep, 'latest'])),
+    dependencies: Object.fromEntries(Array.from(dependencies).map(dep => [dep, 'latest'])),
+    devDependencies: Object.fromEntries(Array.from(devDependencies).map(dep => [dep, 'latest'])),
     engines: {
-      node: '>=20.0.0',
-    },
-  };
+      node: '>=20.0.0'
+    }
+  }
 
   // Generate files based on template
-  await renderTemplate('init/package.json', packageJson, join(projectPath, 'package.json'));
+  await renderTemplate('init/package.json', packageJson, join(projectPath, 'package.json'))
 
   // Create basic project structure
-  const dirs = ['src', 'src/repositories', 'migrations', 'tests'];
+  const dirs = ['src', 'src/repositories', 'migrations', 'tests']
 
   if (config.template === 'api') {
-    dirs.push('src/services', 'src/controllers', 'src/middleware', 'src/routes');
+    dirs.push('src/services', 'src/controllers', 'src/middleware', 'src/routes')
   } else if (config.template === 'graphql') {
-    dirs.push('src/resolvers', 'src/schema', 'src/dataloaders');
+    dirs.push('src/resolvers', 'src/schema', 'src/dataloaders')
   } else if (config.template === 'monorepo') {
     dirs.push(
       'apps',
@@ -506,28 +529,28 @@ async function generateProjectFiles(
       'packages/database',
       'packages/repositories',
       'packages/schemas'
-    );
+    )
   }
 
   for (const dir of dirs) {
-    mkdirSync(join(projectPath, dir), { recursive: true });
+    mkdirSync(join(projectPath, dir), { recursive: true })
   }
 
   // Generate configuration files
-  await generateConfigFiles(projectPath, config);
+  await generateConfigFiles(projectPath, config)
 
   // Generate source files based on template
-  await generateSourceFiles(projectPath, config);
+  await generateSourceFiles(projectPath, config)
 }
 
 async function generateConfigFiles(projectPath: string, config: any): Promise<void> {
   // Generate kysera.config.ts
-  let databaseConfig = '';
+  let databaseConfig = ''
   if (config.database === 'sqlite') {
     databaseConfig = `  database: {
     dialect: 'sqlite',
     database: process.env.DB_FILE || './database.sqlite'
-  },`;
+  },`
   } else if (config.database === 'postgres') {
     // SECURITY: Default password is empty string instead of a hardcoded value
     // Users MUST set DB_PASSWORD in their .env file for secure deployments
@@ -538,7 +561,7 @@ async function generateConfigFiles(projectPath: string, config: any): Promise<vo
     database: process.env.DB_NAME || '${config.name}',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || ''
-  },`;
+  },`
   } else if (config.database === 'mysql') {
     databaseConfig = `  database: {
     dialect: 'mysql',
@@ -547,7 +570,7 @@ async function generateConfigFiles(projectPath: string, config: any): Promise<vo
     database: process.env.DB_NAME || '${config.name}',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || ''
-  },`;
+  },`
   }
 
   const kyseraConfig = `export default {
@@ -560,9 +583,9 @@ ${databaseConfig}
     ${config.plugins.map((plugin: string) => `'${plugin}': { enabled: true }`).join(',\n    ')}
   }
 }
-`;
+`
 
-  await renderTemplate('init/kysera.config.ts', kyseraConfig, join(projectPath, 'kysera.config.ts'));
+  await renderTemplate('init/kysera.config.ts', kyseraConfig, join(projectPath, 'kysera.config.ts'))
 
   // Generate tsconfig.json
   const tsConfig = {
@@ -584,13 +607,13 @@ ${databaseConfig}
       noUnusedLocals: true,
       noUnusedParameters: true,
       noImplicitReturns: true,
-      noFallthroughCasesInSwitch: true,
+      noFallthroughCasesInSwitch: true
     },
     include: ['src/**/*'],
-    exclude: ['node_modules', 'dist', 'tests'],
-  };
+    exclude: ['node_modules', 'dist', 'tests']
+  }
 
-  await renderTemplate('init/tsconfig.json', tsConfig, join(projectPath, 'tsconfig.json'));
+  await renderTemplate('init/tsconfig.json', tsConfig, join(projectPath, 'tsconfig.json'))
 
   // Generate .gitignore
   const gitignore = `# Dependencies
@@ -630,9 +653,9 @@ coverage/
 *.sqlite
 *.sqlite3
 *.db
-`;
+`
 
-  await renderTemplate('init/.gitignore', gitignore, join(projectPath, '.gitignore'));
+  await renderTemplate('init/.gitignore', gitignore, join(projectPath, '.gitignore'))
 
   // Generate .env.example
   const envExample = `# Database Configuration
@@ -659,9 +682,9 @@ ${config.database === 'sqlite' ? `DB_FILE=./database.sqlite` : ''}
 # Application
 NODE_ENV=development
 PORT=3000
-`;
+`
 
-  await renderTemplate('init/.env.example', envExample, join(projectPath, '.env.example'));
+  await renderTemplate('init/.env.example', envExample, join(projectPath, '.env.example'))
 
   // Generate security warning if using database with authentication
   if (config.database === 'postgres' || config.database === 'mysql') {
@@ -682,10 +705,10 @@ Example secure setup:
 
 For PostgreSQL, you can generate a secure password with:
   openssl rand -base64 32
-`;
+`
 
-    const securityFilePath = join(projectPath, 'SECURITY.md');
-    await renderTemplate('init/SECURITY.md', securityWarning, securityFilePath);
+    const securityFilePath = join(projectPath, 'SECURITY.md')
+    await renderTemplate('init/SECURITY.md', securityWarning, securityFilePath)
   }
 }
 
@@ -731,12 +754,12 @@ export const db = new Kysely<Database>({
   })`
   }
 })
-`;
+`
 
-  await renderTemplate('init/database.ts', databaseFile, join(projectPath, 'src', 'database.ts'));
+  await renderTemplate('init/database.ts', databaseFile, join(projectPath, 'src', 'database.ts'))
 
   // Generate index.ts based on template
-  let indexFile = '';
+  let indexFile = ''
 
   if (config.template === 'basic') {
     indexFile = `import { db } from './database.js'
@@ -768,7 +791,7 @@ async function main() {
 }
 
 main()
-`;
+`
   } else if (config.template === 'api') {
     indexFile = `import express from 'express'
 import cors from 'cors'
@@ -812,7 +835,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(\`🚀 Server running on http://localhost:\${PORT}\`)
 })
-`;
+`
   } else if (config.template === 'graphql') {
     indexFile = `import { ApolloServer } from '@apollo/server'
 import { startStandaloneServer } from '@apollo/server/standalone'
@@ -868,10 +891,10 @@ const { url } = await startStandaloneServer(server, {
 })
 
 console.log(\`🚀 GraphQL server ready at \${url}\`)
-`;
+`
   }
 
-  await renderTemplate('init/index.ts', indexFile, join(projectPath, 'src', 'index.ts'));
+  await renderTemplate('init/index.ts', indexFile, join(projectPath, 'src', 'index.ts'))
 
   // Create README.md
   const readme = `# ${config.name}
@@ -934,37 +957,37 @@ kysera migrate down
 ## License
 
 MIT
-`;
+`
 
-  await renderTemplate('init/README.md', readme, join(projectPath, 'README.md'));
+  await renderTemplate('init/README.md', readme, join(projectPath, 'README.md'))
 }
 
 function detectPackageManager(): string {
   // Check for lock files
-  if (existsSync('pnpm-lock.yaml')) return 'pnpm';
-  if (existsSync('yarn.lock')) return 'yarn';
-  if (existsSync('package-lock.json')) return 'npm';
-  if (existsSync('bun.lockb')) return 'bun';
+  if (existsSync('pnpm-lock.yaml')) return 'pnpm'
+  if (existsSync('yarn.lock')) return 'yarn'
+  if (existsSync('package-lock.json')) return 'npm'
+  if (existsSync('bun.lockb')) return 'bun'
 
   // Check npm_config_user_agent
-  const userAgent = process.env.npm_config_user_agent || '';
-  if (userAgent.includes('pnpm')) return 'pnpm';
-  if (userAgent.includes('yarn')) return 'yarn';
-  if (userAgent.includes('bun')) return 'bun';
+  const userAgent = process.env.npm_config_user_agent || ''
+  if (userAgent.includes('pnpm')) return 'pnpm'
+  if (userAgent.includes('yarn')) return 'yarn'
+  if (userAgent.includes('bun')) return 'bun'
 
   // Default to pnpm as it's preferred
-  return 'pnpm';
+  return 'pnpm'
 }
 
 function getInstallCommand(packageManager: string): string {
   switch (packageManager) {
     case 'pnpm':
-      return 'pnpm install';
+      return 'pnpm install'
     case 'yarn':
-      return 'yarn install';
+      return 'yarn install'
     case 'bun':
-      return 'bun install';
+      return 'bun install'
     default:
-      return 'npm install';
+      return 'npm install'
   }
 }

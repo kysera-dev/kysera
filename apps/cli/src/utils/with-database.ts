@@ -1,18 +1,18 @@
-import { Kysely } from 'kysely';
-import { loadConfig } from '../config/loader.js';
-import { getDatabaseConnection, type Database } from './database.js';
-import { CLIError } from './errors.js';
-import type { KyseraConfig } from '../config/schema.js';
-import type { DatabaseInstance } from '../types/index.js';
+import { Kysely } from 'kysely'
+import { loadConfig } from '../config/loader.js'
+import { getDatabaseConnection, type Database } from './database.js'
+import { CLIError } from './errors.js'
+import type { KyseraConfig } from '../config/schema.js'
+import type { DatabaseInstance } from '../types/index.js'
 
 /**
  * Options for the withDatabase helper
  */
 export interface WithDatabaseOptions {
   /** Path to configuration file */
-  config?: string;
+  config?: string
   /** Enable verbose output */
-  verbose?: boolean;
+  verbose?: boolean
 }
 
 /**
@@ -42,29 +42,29 @@ export async function withDatabase<T>(
   options: WithDatabaseOptions,
   handler: (db: DatabaseInstance, config: KyseraConfig) => Promise<T>
 ): Promise<T> {
-  const config = await loadConfig(options.config);
+  const config = await loadConfig(options.config)
 
   if (!config?.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create kysera.config.ts with database configuration',
-      'Or specify config path with --config option',
-    ]);
+      'Or specify config path with --config option'
+    ])
   }
 
-  const db = await getDatabaseConnection(config.database);
+  const db = await getDatabaseConnection(config.database)
 
   if (!db) {
     throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
       'Check database connection settings',
-      'Ensure database server is running',
-    ]);
+      'Ensure database server is running'
+    ])
   }
 
   try {
     // Cast to DatabaseInstance - the db has these methods at runtime
-    return await handler(db as DatabaseInstance, config);
+    return await handler(db as DatabaseInstance, config)
   } finally {
-    await db.destroy();
+    await db.destroy()
   }
 }
 
@@ -94,24 +94,24 @@ export async function withDatabaseOptional<T>(
   options: WithDatabaseOptions,
   handler: (db: DatabaseInstance | null, config: KyseraConfig | null) => Promise<T>
 ): Promise<T> {
-  let config: KyseraConfig | null = null;
-  let db: DatabaseInstance | null = null;
+  let config: KyseraConfig | null = null
+  let db: DatabaseInstance | null = null
 
   try {
-    config = await loadConfig(options.config);
+    config = await loadConfig(options.config)
   } catch {
     // Config loading failed, continue with null
   }
 
   if (config?.database) {
-    db = await getDatabaseConnection(config.database) as DatabaseInstance | null;
+    db = (await getDatabaseConnection(config.database)) as DatabaseInstance | null
   }
 
   try {
-    return await handler(db, config);
+    return await handler(db, config)
   } finally {
     if (db) {
-      await db.destroy();
+      await db.destroy()
     }
   }
 }

@@ -9,7 +9,7 @@
  * @internal
  */
 function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 /**
@@ -41,8 +41,27 @@ const SQL_KEYWORDS = [
   'ON',
   'AND',
   'OR',
-  'RETURNING',
-];
+  'RETURNING'
+]
+
+/**
+ * Pre-compiled regex patterns for SQL formatting.
+ * Cached at module load time for O(1) lookup.
+ * @internal
+ */
+const FORMAT_PATTERNS: RegExp[] = SQL_KEYWORDS.map(
+  keyword => new RegExp(`(\\s+)(${escapeRegex(keyword)})\\s+`, 'gi')
+)
+
+/**
+ * Pre-compiled regex patterns for SQL highlighting.
+ * Cached at module load time for O(1) lookup.
+ * @internal
+ */
+const HIGHLIGHT_PATTERNS: { regex: RegExp; keyword: string }[] = SQL_KEYWORDS.map(keyword => ({
+  regex: new RegExp(`\\b(${escapeRegex(keyword)})\\b`, 'gi'),
+  keyword
+}))
 
 /**
  * Format SQL for better readability.
@@ -66,15 +85,16 @@ const SQL_KEYWORDS = [
  * ```
  */
 export function formatSQL(sql: string): string {
-  let formatted = sql;
+  let formatted = sql
 
-  // Add newlines before SQL keywords
-  for (const keyword of SQL_KEYWORDS) {
-    const regex = new RegExp(`(\\s+)(${escapeRegex(keyword)})\\s+`, 'gi');
-    formatted = formatted.replace(regex, `\n$2 `);
+  // Add newlines before SQL keywords using pre-compiled patterns
+  for (const pattern of FORMAT_PATTERNS) {
+    // Reset lastIndex for global regexes to ensure consistent behavior
+    pattern.lastIndex = 0
+    formatted = formatted.replace(pattern, '\n$2 ')
   }
 
-  return formatted.trim();
+  return formatted.trim()
 }
 
 /**
@@ -96,25 +116,25 @@ export function formatSQL(sql: string): string {
  * ```
  */
 export function formatSQLPretty(sql: string, indentSize = 2): string {
-  let formatted = formatSQL(sql);
-  const indent = ' '.repeat(indentSize);
-  let level = 0;
+  let formatted = formatSQL(sql)
+  const indent = ' '.repeat(indentSize)
+  let level = 0
 
   // Handle parentheses for subqueries
   formatted = formatted.replace(/\(/g, () => {
-    level++;
-    return '(\n' + indent.repeat(level);
-  });
+    level++
+    return '(\n' + indent.repeat(level)
+  })
 
   formatted = formatted.replace(/\)/g, () => {
-    level = Math.max(0, level - 1);
-    return '\n' + indent.repeat(level) + ')';
-  });
+    level = Math.max(0, level - 1)
+    return '\n' + indent.repeat(level) + ')'
+  })
 
   // Clean up excessive newlines
-  formatted = formatted.replace(/\n\s*\n/g, '\n');
+  formatted = formatted.replace(/\n\s*\n/g, '\n')
 
-  return formatted.trim();
+  return formatted.trim()
 }
 
 /**
@@ -142,7 +162,7 @@ export function minifySQL(sql: string): string {
     .replace(/\s*,\s*/g, ', ') // Normalize commas
     .replace(/\s*\(\s*/g, ' (') // Normalize opening parens
     .replace(/\s*\)\s*/g, ') ') // Normalize closing parens
-    .trim();
+    .trim()
 }
 
 /**
@@ -162,15 +182,16 @@ export function minifySQL(sql: string): string {
  * ```
  */
 export function highlightSQL(sql: string): string {
-  const BLUE = '\x1b[34m';
-  const RESET = '\x1b[0m';
+  const BLUE = '\x1b[34m'
+  const RESET = '\x1b[0m'
 
-  let highlighted = sql;
+  let highlighted = sql
 
-  for (const keyword of SQL_KEYWORDS) {
-    const regex = new RegExp(`\\b(${escapeRegex(keyword)})\\b`, 'gi');
-    highlighted = highlighted.replace(regex, `${BLUE}$1${RESET}`);
+  for (const { regex } of HIGHLIGHT_PATTERNS) {
+    // Reset lastIndex for global regexes to ensure consistent behavior
+    regex.lastIndex = 0
+    highlighted = highlighted.replace(regex, BLUE + '$1' + RESET)
   }
 
-  return highlighted;
+  return highlighted
 }

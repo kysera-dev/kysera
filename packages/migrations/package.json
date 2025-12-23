@@ -51,11 +51,6 @@
     "kysely": ">=0.28.8",
     "zod": "^4.1.13"
   },
-  "peerDependenciesMeta": {
-    "zod": {
-      "optional": true
-    }
-  },
   "sideEffects": false,
   "engines": {
     "node": ">=20.0.0",

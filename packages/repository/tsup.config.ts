@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsup';
+import { defineConfig } from 'tsup'
 
 export default defineConfig({
   entry: ['src/index.ts'],
@@ -12,5 +12,5 @@ export default defineConfig({
   external: ['kysely', 'zod', '@kysera/core'],
   target: 'esnext', // Latest JavaScript for Bun/Deno
   platform: 'neutral', // Platform-agnostic
-  tsconfig: './tsconfig.build.json',
-});
+  tsconfig: './tsconfig.build.json'
+})
