@@ -6,11 +6,13 @@ import type { DatabaseDialect, DialectAdapter } from './types.js'
 import { PostgresAdapter, postgresAdapter } from './adapters/postgres.js'
 import { MySQLAdapter, mysqlAdapter } from './adapters/mysql.js'
 import { SQLiteAdapter, sqliteAdapter } from './adapters/sqlite.js'
+import { MSSQLAdapter, mssqlAdapter } from './adapters/mssql.js'
 
 const adapters: Record<DatabaseDialect, DialectAdapter> = {
   postgres: postgresAdapter,
   mysql: mysqlAdapter,
-  sqlite: sqliteAdapter
+  sqlite: sqliteAdapter,
+  mssql: mssqlAdapter
 }
 
 /**
@@ -23,7 +25,7 @@ const adapters: Record<DatabaseDialect, DialectAdapter> = {
 export function getAdapter(dialect: DatabaseDialect): DialectAdapter {
   const adapter = adapters[dialect]
   if (!adapter) {
-    throw new Error(`Unknown dialect: ${dialect}. Supported: postgres, mysql, sqlite`)
+    throw new Error(`Unknown dialect: ${dialect}. Supported: postgres, mysql, sqlite, mssql`)
   }
   return adapter
 }
@@ -42,8 +44,10 @@ export function createDialectAdapter(dialect: DatabaseDialect): DialectAdapter {
       return new MySQLAdapter()
     case 'sqlite':
       return new SQLiteAdapter()
+    case 'mssql':
+      return new MSSQLAdapter()
     default:
-      throw new Error(`Unknown dialect: ${dialect}. Supported: postgres, mysql, sqlite`)
+      throw new Error(`Unknown dialect: ${dialect}. Supported: postgres, mysql, sqlite, mssql`)
   }
 }
 

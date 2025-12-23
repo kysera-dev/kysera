@@ -9,7 +9,7 @@ import type { Kysely } from 'kysely'
 /**
  * Supported database dialects
  */
-export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite'
+export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql'
 
 /**
  * Database connection configuration
