@@ -66,6 +66,12 @@ export interface Database {
     user_id: number | null
     created_at: Generated<Date>
   }
+
+  // Migrations tracking (internal)
+  migrations: {
+    name: string
+    executed_at: Generated<Date>
+  }
 }
 
 export type Tenant = Database['tenants']

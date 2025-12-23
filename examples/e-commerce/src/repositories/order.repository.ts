@@ -15,11 +15,12 @@ export class InvalidStatusTransitionError extends Error {
 }
 
 // Validation schemas
+// Note: PostgreSQL returns decimal/numeric types as strings, so we use z.coerce
 export const OrderSchema = z.object({
   id: z.number(),
   user_id: z.number(),
   status: z.enum(['pending', 'processing', 'shipped', 'delivered', 'cancelled']),
-  total_amount: z.number().positive(),
+  total_amount: z.coerce.number().positive(), // Coerce string to number (PostgreSQL decimal)
   created_at: z.date(),
   updated_at: z.date().nullable()
 })

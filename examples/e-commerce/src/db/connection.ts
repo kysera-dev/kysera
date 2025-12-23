@@ -3,6 +3,7 @@ import { Pool } from 'pg'
 import { gracefulShutdown, createMetricsPool } from '@kysera/infra'
 import { withDebug } from '@kysera/debug'
 import type { Database } from './schema.js'
+import 'dotenv/config'
 
 // Create base pool
 const basePool = new Pool({

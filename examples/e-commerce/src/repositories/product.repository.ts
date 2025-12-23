@@ -16,12 +16,13 @@ export class InsufficientStockError extends Error {
 }
 
 // Validation schemas
+// Note: PostgreSQL returns decimal/numeric types as strings, so we use z.coerce
 export const ProductSchema = z.object({
   id: z.number(),
   category_id: z.number(),
   name: z.string(),
   description: z.string(),
-  price: z.number().positive(),
+  price: z.coerce.number().positive(), // Coerce string to number (PostgreSQL decimal)
   stock: z.number().int().min(0),
   is_active: z.boolean(),
   created_at: z.date(),
