@@ -574,3 +574,83 @@ describe('Helper Functions', () => {
     })
   })
 })
+
+// ============================================================================
+// Validation Functions Tests
+// ============================================================================
+
+import { validateIdentifier, assertValidIdentifier, getDatabaseSize } from '../src/index.js'
+
+describe('Validation Functions', () => {
+  describe('validateIdentifier', () => {
+    it('should return true for valid identifiers', () => {
+      expect(validateIdentifier('users')).toBe(true)
+      expect(validateIdentifier('user_profiles')).toBe(true)
+      expect(validateIdentifier('_private')).toBe(true)
+      expect(validateIdentifier('public.users')).toBe(true)
+      expect(validateIdentifier('schema_v2.table_name')).toBe(true)
+    })
+
+    it('should return false for empty identifier', () => {
+      expect(validateIdentifier('')).toBe(false)
+    })
+
+    it('should return false for identifier that is too long', () => {
+      const longName = 'a'.repeat(129)
+      expect(validateIdentifier(longName)).toBe(false)
+    })
+
+    it('should return false for identifier starting with number', () => {
+      expect(validateIdentifier('123table')).toBe(false)
+    })
+
+    it('should return false for identifier with invalid characters', () => {
+      expect(validateIdentifier('table-name')).toBe(false)
+      expect(validateIdentifier('table name')).toBe(false)
+      expect(validateIdentifier("users'; DROP TABLE users;--")).toBe(false)
+      expect(validateIdentifier('table@name')).toBe(false)
+    })
+  })
+
+  describe('assertValidIdentifier', () => {
+    it('should not throw for valid identifiers', () => {
+      expect(() => assertValidIdentifier('users')).not.toThrow()
+      expect(() => assertValidIdentifier('_table', 'table name')).not.toThrow()
+    })
+
+    it('should throw for invalid identifiers', () => {
+      expect(() => assertValidIdentifier('')).toThrow('Invalid identifier')
+      expect(() => assertValidIdentifier('123bad')).toThrow('Invalid identifier')
+    })
+
+    it('should include context in error message', () => {
+      expect(() => assertValidIdentifier('bad-name', 'table name')).toThrow(
+        'Invalid table name: bad-name'
+      )
+      expect(() => assertValidIdentifier('123column', 'column name')).toThrow(
+        'Invalid column name: 123column'
+      )
+    })
+  })
+
+  describe('getDatabaseSize', () => {
+    let db: Kysely<TestDB>
+
+    beforeEach(async () => {
+      const database = new Database(':memory:')
+      db = new Kysely<TestDB>({
+        dialect: new SqliteDialect({ database })
+      })
+    })
+
+    afterEach(async () => {
+      await db.destroy()
+    })
+
+    it('should return database size for sqlite', async () => {
+      const size = await getDatabaseSize(db, 'sqlite')
+      expect(typeof size).toBe('number')
+      expect(size).toBeGreaterThanOrEqual(0)
+    })
+  })
+})
