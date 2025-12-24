@@ -41,6 +41,7 @@ import { validateConditions } from './column-validation.js'
  */
 function castResults<T>(results: unknown): T {
   // Development mode: runtime validation
+  // eslint-disable-next-line @typescript-eslint/dot-notation
   if (process.env['NODE_ENV'] === 'development') {
     // Validate non-null results are objects or arrays
     if (results !== null && results !== undefined) {
@@ -384,15 +385,6 @@ function buildOrderByAndPaginate<DB, TableName extends keyof DB>(
 }
 
 /**
- * Extract primary key value from a row
- * @deprecated Use extractPrimaryKey from primary-key-utils.ts instead
- * @internal Kept for backward compatibility
- */
-function extractPrimaryKeyFromRow<T>(row: T, pkConfig: PrimaryKeyConfig): PrimaryKeyInput {
-  return extractPrimaryKey(row, pkConfig)
-}
-
-/**
  * Create table operations for a specific table
  * This handles all the Kysely-specific type complexity
  *
@@ -499,7 +491,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
           lookupKey = Number(insertResult.insertId)
         } else {
           // For non-auto-increment keys, the key should be in the input data
-          lookupKey = extractPrimaryKeyFromRow(data, pkConfig)
+          lookupKey = extractPrimaryKey(data, pkConfig)
         }
 
         // Fetch the inserted record
@@ -555,7 +547,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
           ) {
             lookupKey = Number(insertResult.insertId)
           } else {
-            lookupKey = extractPrimaryKeyFromRow(item, pkConfig)
+            lookupKey = extractPrimaryKey(item, pkConfig)
           }
 
           // Fetch the inserted record

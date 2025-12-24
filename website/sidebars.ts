@@ -46,11 +46,16 @@ const sidebars: SidebarsConfig = {
         'guides/best-practices',
         'guides/testing',
         'guides/migrations',
-        'guides/migration-v07',
-        'guides/multi-database',
         'guides/pagination',
+        'guides/multi-database',
         'guides/dal-vs-repository',
-        'guides/troubleshooting'
+        'guides/troubleshooting',
+        {
+          type: 'category',
+          label: 'Migration Guides',
+          collapsed: true,
+          items: ['guides/migration-v07', 'guides/migration-v08']
+        }
       ]
     },
     {

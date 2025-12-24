@@ -773,6 +773,9 @@ importers:
         specifier: workspace:*
         version: link:../core
     devDependencies:
+      '@kysera/executor':
+        specifier: workspace:*
+        version: link:../executor
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13

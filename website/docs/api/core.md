@@ -44,6 +44,9 @@ export * from './cursor-crypto'
 // Dialect Detection
 export * from './dialect-detection'
 
+// Plugin Base Utilities
+export * from './plugin-base'
+
 // Version
 export * from './version'
 ```
@@ -357,6 +360,155 @@ const result = await paginateCursorSimple(db.selectFrom('posts').selectAll(), {
   cursorColumn: 'id'
 })
 // { items: [...], nextCursor: '...', hasMore: true }
+```
+
+## Plugin Base Utilities
+
+Core provides base abstractions for creating Kysera plugins, reducing boilerplate and ensuring consistent behavior across the plugin ecosystem.
+
+### BasePluginOptions
+
+Common options shared by all Kysera plugins.
+
+```typescript
+import type { BasePluginOptions, BasePluginOptionsWithPrimaryKey } from '@kysera/core'
+
+// Define plugin-specific options by extending base options
+interface MyPluginOptions extends BasePluginOptions {
+  customOption: string
+  anotherOption?: number
+}
+
+// With primary key support
+interface AuditPluginOptions extends BasePluginOptionsWithPrimaryKey {
+  auditTable?: string
+  captureOldValues?: boolean
+}
+```
+
+**BasePluginOptions Interface:**
+
+```typescript
+interface BasePluginOptions extends TableFilterConfig {
+  /** Logger for plugin operations. @default silentLogger */
+  logger?: KyseraLogger
+  /** Tables to apply plugin to (whitelist) */
+  tables?: string[]
+  /** Tables to exclude from plugin processing */
+  excludeTables?: string[]
+}
+
+interface BasePluginOptionsWithPrimaryKey extends BasePluginOptions {
+  /** Primary key column name. @default 'id' */
+  primaryKeyColumn?: string
+}
+```
+
+### createPluginConfig()
+
+Creates a resolved plugin configuration with defaults applied.
+
+```typescript
+import { createPluginConfig, type BasePluginOptionsWithPrimaryKey } from '@kysera/core'
+
+interface SoftDeleteOptions extends BasePluginOptionsWithPrimaryKey {
+  deletedAtColumn?: string
+}
+
+export function softDeletePlugin(options: SoftDeleteOptions = {}): Plugin {
+  const config = createPluginConfig('soft-delete', options)
+
+  // Access resolved configuration
+  config.logger.debug('Initializing soft-delete plugin')
+  console.log(config.primaryKeyColumn) // 'id' (default)
+  console.log(config.excludeTables)    // [] (default)
+
+  // Use config.tables and config.excludeTables to filter tables
+  // (implement your own shouldApplyToTable logic as needed)
+}
+```
+
+**Returns:**
+
+```typescript
+interface ResolvedPluginConfig {
+  readonly name: string
+  readonly logger: KyseraLogger
+  readonly tables: string[] | undefined
+  readonly excludeTables: string[]
+  readonly primaryKeyColumn: string
+}
+```
+
+### createPluginMetadata()
+
+Creates plugin metadata with optional defaults.
+
+```typescript
+import { createPluginMetadata, PLUGIN_PRIORITIES } from '@kysera/core'
+
+const metadata = createPluginMetadata('soft-delete', '0.8.0', {
+  priority: PLUGIN_PRIORITIES.FILTER,
+  conflictsWith: ['hard-delete-only'],
+  dependencies: ['timestamps']
+})
+```
+
+**Returns:**
+
+```typescript
+interface PluginMetadata {
+  name: string
+  version: string
+  dependencies?: readonly string[]
+  priority?: number
+  conflictsWith?: readonly string[]
+}
+```
+
+### PLUGIN_PRIORITIES
+
+Recommended priority values for different plugin types. Higher priority = runs first.
+
+```typescript
+import { PLUGIN_PRIORITIES, type PluginPriority } from '@kysera/core'
+
+const priorities = {
+  SECURITY: 1000,  // RLS, auth filters - run first
+  FILTER: 500,     // Soft delete, tenant isolation
+  TRANSFORM: 100,  // Timestamps, data transformation
+  AUDIT: 50,       // Audit logging, change tracking
+  DEFAULT: 0,      // Default priority
+  DEBUG: -100      // Query logging, profiling - run last
+}
+
+// Type for priority values
+type PluginPriority = 1000 | 500 | 100 | 50 | 0 | -100
+```
+
+**Execution Order:**
+
+1. **SECURITY (1000)** - RLS, authentication filters
+2. **FILTER (500)** - Soft delete, tenant isolation
+3. **TRANSFORM (100)** - Timestamps, data transformation
+4. **AUDIT (50)** - Audit logging, change tracking
+5. **DEFAULT (0)** - Plugins without explicit priority
+6. **DEBUG (-100)** - Query logging, profiling
+
+**Example:**
+
+```typescript
+import { PLUGIN_PRIORITIES, createPluginMetadata } from '@kysera/core'
+
+// Security plugin - runs first
+const rlsMetadata = createPluginMetadata('rls', '1.0.0', {
+  priority: PLUGIN_PRIORITIES.SECURITY
+})
+
+// Audit plugin - runs after transforms
+const auditMetadata = createPluginMetadata('audit', '1.0.0', {
+  priority: PLUGIN_PRIORITIES.AUDIT
+})
 ```
 
 ## Migration Guide

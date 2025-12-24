@@ -6,30 +6,31 @@ description: Multi-tenant architecture patterns
 
 # Multi-Tenant SaaS
 
-Enterprise multi-tenant architecture demonstrating manual tenant isolation patterns.
+Enterprise multi-tenant architecture demonstrating automatic tenant isolation using the RLS plugin.
 
-> **Note**: This is a CLI demonstration example showing the foundational pattern of tenant isolation using manual filtering. It implements:
+> **Note**: This is a CLI demonstration example showing automatic tenant isolation using the `@kysera/rls` plugin. It implements:
 >
-> - ✅ TenantContext for storing current tenant ID
-> - ✅ Manual tenant filtering in user repository (`.where('tenant_id', '=', getTenantId())`)
-> - ✅ Complete CRUD operations with tenant isolation
-> - ❌ Does NOT use @kysera/rls plugin (shown as alternative pattern below)
+> - ✅ RLS plugin for automatic tenant filtering (no manual WHERE clauses needed)
+> - ✅ RLS context management with `rlsContext.runAsync()`
+> - ✅ Complete CRUD operations with automatic tenant isolation
+> - ✅ System context support for cross-tenant operations
 > - ❌ Does NOT implement audit logging (schema only)
 > - ❌ Only users repository implemented (projects/tasks are schema-only)
 >
-> The Express middleware examples shown below are recommended patterns for integrating this into web applications.
+> **Note**: While a `TenantContext` class exists in the codebase, it is NOT used by the actual implementation. The example uses `rlsContext` from `@kysera/rls` instead.
 
 ## What This Example Demonstrates
 
-This example shows the **foundational pattern** for tenant isolation:
+This example shows the **production-ready pattern** for tenant isolation using the RLS plugin:
 
 - **Discriminator Column Pattern** - Using `tenant_id` column for row-level isolation
-- **Manual Tenant Filtering** - Explicit `.where('tenant_id', '=', getTenantId())` in all queries
-- **TenantContext Management** - Simple class for storing current tenant ID
-- **Cross-Tenant Protection** - Preventing access to other tenants' data
+- **Automatic Tenant Filtering** - RLS plugin automatically adds `WHERE tenant_id = ctx.auth.tenantId` to all queries
+- **RLS Context Management** - Using `rlsContext.runAsync()` to set tenant scope
+- **Cross-Tenant Protection** - Complete isolation between tenants, verified with tests
+- **System Context Support** - Ability to bypass RLS for admin/system operations
 - **Type-Safe Repositories** - Full TypeScript support with Kysely
 
-This is the most transparent and educational approach. For production applications, consider using the `@kysera/rls` plugin (shown below) which automates the filtering.
+This is the recommended approach for production applications as it eliminates the risk of forgetting to add tenant filters manually.
 
 ## Database Schema
 
@@ -98,51 +99,64 @@ interface Database {
 - ✅ Users repository - Fully implemented with tenant isolation
 - 📋 Projects, tasks, audit_logs - Schema defined but repositories not yet implemented
 
-## Tenant Context
+## RLS Context Management
 
-### Context Manager
+### Context Setup with rlsContext
 
-The actual implementation (see `src/middleware/tenant-context.ts`):
+The actual implementation uses RLS context from `@kysera/rls` (see `src/index.ts`):
 
 ```typescript
-export class TenantContext {
-  private tenantId: number | null = null
+import { rlsContext, rlsPlugin, defineRLSSchema, filter } from '@kysera/rls'
+import { createExecutor } from '@kysera/executor'
 
-  setTenantId(tenantId: number): void {
-    this.tenantId = tenantId
+// Define RLS schema with automatic tenant filtering
+const rlsSchema = defineRLSSchema<Database>({
+  users: {
+    policies: [
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
+    ],
+    defaultDeny: false
   }
+})
 
-  getTenantId(): number {
-    if (this.tenantId === null) {
-      throw new Error('Tenant context not set. Call setTenantId() first.')
-    }
-    return this.tenantId
+// Create executor with RLS plugin
+const executor = await createExecutor(db, [
+  rlsPlugin({
+    schema: rlsSchema,
+    requireContext: true,
+    allowUnfilteredQueries: false
+  })
+])
+
+// Usage in CLI example - wrap operations in rlsContext.runAsync():
+await rlsContext.runAsync(
+  {
+    auth: {
+      userId: 1,
+      roles: ['admin'],
+      tenantId: 1, // Acme Corporation
+      isSystem: false
+    },
+    timestamp: new Date()
+  },
+  async () => {
+    const userRepo = createUserRepository(executor)
+
+    // All queries automatically filtered by tenant_id = 1
+    const users = await userRepo.findAll()
+    // SELECT * FROM users WHERE tenant_id = 1 (automatic!)
   }
-
-  hasTenant(): boolean {
-    return this.tenantId !== null
-  }
-
-  clear(): void {
-    this.tenantId = null
-  }
-}
-
-// Usage in CLI example:
-const tenant1Context = new TenantContext()
-tenant1Context.setTenantId(1)
-
-const tenant2Context = new TenantContext()
-tenant2Context.setTenantId(2)
+)
 ```
 
 ### Request Middleware (Recommended for Web Apps)
 
-> **Note**: The actual example is a CLI application. The following Express middleware is a recommended pattern for production web applications.
+> **Note**: The actual example is a CLI application. The following Express middleware is a recommended pattern for production web applications using the RLS plugin.
 
 ```typescript
 // Recommended pattern for Express applications
 import { Request, Response, NextFunction } from 'express'
+import { rlsContext } from '@kysera/rls'
 
 export async function tenantMiddleware(req: Request, res: Response, next: NextFunction) {
   // Extract tenant from subdomain
@@ -155,7 +169,7 @@ export async function tenantMiddleware(req: Request, res: Response, next: NextFu
   // Look up tenant
   const tenant = await db
     .selectFrom('tenants')
-    .where('slug', '=', subdomain) // Note: uses 'slug', not 'subdomain'
+    .where('slug', '=', subdomain)
     .selectAll()
     .executeTakeFirst()
 
@@ -163,12 +177,19 @@ export async function tenantMiddleware(req: Request, res: Response, next: NextFu
     return res.status(404).json({ error: 'Tenant not found' })
   }
 
-  // Create tenant context for this request
-  req.tenantContext = new TenantContext()
-  req.tenantContext.setTenantId(tenant.id)
-  req.tenant = tenant
-
-  next()
+  // Set RLS context for this request
+  await rlsContext.runAsync(
+    {
+      auth: {
+        userId: req.user?.id || 0,
+        tenantId: tenant.id,
+        roles: req.user?.roles || [],
+        isSystem: false
+      },
+      timestamp: new Date()
+    },
+    next
+  )
 }
 
 function extractSubdomain(hostname: string): string | null {
@@ -181,22 +202,24 @@ function extractSubdomain(hostname: string): string | null {
 }
 ```
 
-## Tenant-Scoped Repository
+## Tenant-Scoped Repository with RLS Plugin
 
-The actual implementation (see `src/repositories/user.repository.ts`):
+The actual implementation (see `src/repositories/user.repository.ts`) uses the RLS plugin for automatic tenant filtering:
 
 ```typescript
-export function createUserRepository(executor: Executor<Database>, tenantContext: TenantContext) {
+import { rlsContext } from '@kysera/rls'
+import type { Executor } from '@kysera/core'
+
+export function createUserRepository(executor: Executor<Database>) {
   const validateDbResults = process.env['NODE_ENV'] === 'development'
-  const getTenantId = () => tenantContext.getTenantId()
 
   return {
     async findById(id: number): Promise<User | null> {
+      // RLS plugin automatically adds: WHERE tenant_id = ctx.auth.tenantId
       const row = await executor
         .selectFrom('users')
         .selectAll()
         .where('id', '=', id)
-        .where('tenant_id', '=', getTenantId()) // Tenant filter
         .executeTakeFirst()
 
       if (!row) return null
@@ -206,11 +229,11 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
     },
 
     async findByEmail(email: string): Promise<User | null> {
+      // RLS plugin automatically adds: WHERE tenant_id = ctx.auth.tenantId
       const row = await executor
         .selectFrom('users')
         .selectAll()
         .where('email', '=', email)
-        .where('tenant_id', '=', getTenantId()) // Tenant filter
         .executeTakeFirst()
 
       if (!row) return null
@@ -220,10 +243,10 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
     },
 
     async findAll(): Promise<User[]> {
+      // RLS plugin automatically adds: WHERE tenant_id = ctx.auth.tenantId
       const rows = await executor
         .selectFrom('users')
         .selectAll()
-        .where('tenant_id', '=', getTenantId()) // Tenant filter
         .orderBy('created_at', 'desc')
         .execute()
 
@@ -234,11 +257,17 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
     async create(input: unknown): Promise<User> {
       const validated = CreateUserSchema.parse(input)
 
+      // Get tenant_id from RLS context
+      const ctx = rlsContext.getContextOrNull()
+      if (!ctx?.auth?.tenantId) {
+        throw new Error('RLS context with tenantId is required for create operations')
+      }
+
       const row = await executor
         .insertInto('users')
         .values({
           ...validated,
-          tenant_id: getTenantId(), // Auto-inject tenant_id
+          tenant_id: ctx.auth.tenantId as number, // Explicit tenant_id from context
           role: validated.role || 'member'
         })
         .returningAll()
@@ -251,6 +280,7 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
     async update(id: number, input: unknown): Promise<User> {
       const validated = UpdateUserSchema.parse(input)
 
+      // RLS plugin automatically adds: WHERE tenant_id = ctx.auth.tenantId
       const row = await executor
         .updateTable('users')
         .set({
@@ -258,7 +288,6 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
           updated_at: new Date()
         })
         .where('id', '=', id)
-        .where('tenant_id', '=', getTenantId()) // Security!
         .returningAll()
         .executeTakeFirstOrThrow()
 
@@ -267,10 +296,10 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
     },
 
     async delete(id: number): Promise<void> {
+      // RLS plugin automatically adds: WHERE tenant_id = ctx.auth.tenantId
       await executor
         .deleteFrom('users')
         .where('id', '=', id)
-        .where('tenant_id', '=', getTenantId()) // Security!
         .execute()
     }
   }
@@ -279,17 +308,87 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
 
 **Key Points**:
 
-- Takes `TenantContext` instance, not a function
-- All queries include `WHERE tenant_id = getTenantId()`
-- Creates automatically inject `tenant_id`
-- Updates/deletes verify `tenant_id` for security
-- Validation is optional based on environment
+- **No manual tenant filtering needed** - RLS plugin automatically adds `WHERE tenant_id = ctx.auth.tenantId`
+- **Takes only `Executor`** - No need to pass `TenantContext` or tenant ID
+- **Automatic security** - All SELECT, UPDATE, and DELETE queries are filtered by tenant
+- **Explicit INSERT** - `tenant_id` must be explicitly set from `rlsContext` for INSERT operations
+- **Validation is optional** - Based on environment variable
+- **Eliminates security bugs** - No risk of forgetting to add tenant filters
 
-## Alternative Pattern: Using @kysera/rls Plugin
+## Alternative Pattern: Manual Tenant Filtering (Not Used in Example)
 
-> **Important**: The actual example implementation in `examples/multi-tenant-saas` does NOT use the `@kysera/rls` plugin. It demonstrates the foundational pattern using manual tenant filtering in repositories (as shown above). This section shows an alternative approach using the RLS plugin with unified executor, which is recommended for production applications as it provides automatic filtering and reduces the risk of accidentally omitting tenant filters.
+> **Important**: The actual example implementation in `examples/multi-tenant-saas` DOES use the `@kysera/rls` plugin as shown above. However, you can also implement tenant isolation using manual filtering if you prefer more explicit control. This section shows the manual approach for educational purposes, though it's more error-prone since you can accidentally forget to add tenant filters.
 
-### With Repository Pattern
+### Manual Filtering with TenantContext
+
+While a `TenantContext` class exists in the codebase at `src/middleware/tenant-context.ts`, it is NOT used by the actual implementation. Here's how you would use it for manual filtering:
+
+```typescript
+import { TenantContext } from './middleware/tenant-context.js'
+
+export function createUserRepository(executor: Executor<Database>, tenantContext: TenantContext) {
+  const getTenantId = () => tenantContext.getTenantId()
+
+  return {
+    async findById(id: number): Promise<User | null> {
+      const row = await executor
+        .selectFrom('users')
+        .selectAll()
+        .where('id', '=', id)
+        .where('tenant_id', '=', getTenantId()) // Manual filter - easy to forget!
+        .executeTakeFirst()
+
+      return row ? mapUserRow(row) : null
+    },
+
+    async create(input: unknown): Promise<User> {
+      const validated = CreateUserSchema.parse(input)
+
+      const row = await executor
+        .insertInto('users')
+        .values({
+          ...validated,
+          tenant_id: getTenantId(), // Manual injection
+          role: validated.role || 'member'
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow()
+
+      return mapUserRow(row)
+    },
+
+    async update(id: number, input: unknown): Promise<User> {
+      const validated = UpdateUserSchema.parse(input)
+
+      const row = await executor
+        .updateTable('users')
+        .set({ ...validated, updated_at: new Date() })
+        .where('id', '=', id)
+        .where('tenant_id', '=', getTenantId()) // Critical for security!
+        .returningAll()
+        .executeTakeFirstOrThrow()
+
+      return mapUserRow(row)
+    }
+  }
+}
+```
+
+**Drawbacks of Manual Filtering**:
+
+- **Error-prone** - Easy to forget `.where('tenant_id', '=', getTenantId())`
+- **Verbose** - Must add the filter to every query
+- **Security risk** - A single forgotten filter can leak data across tenants
+- **Hard to audit** - Need to verify every query manually
+
+**Benefits of RLS Plugin (Used in Example)**:
+
+- **Automatic** - Filters applied automatically to all queries
+- **Safer** - Impossible to forget tenant filters
+- **Cleaner code** - No repetitive WHERE clauses
+- **System context** - Easy to bypass for admin operations when needed
+
+### With ORM Pattern (Alternative to Current Implementation)
 
 ```typescript
 import { createORM } from '@kysera/repository'
@@ -429,23 +528,59 @@ const orm = await createORM(db, [audit])
 ## Key Patterns
 
 1. **Discriminator Column** - `tenant_id` on every tenant-scoped table
-2. **Manual Filtering** - Explicit `WHERE tenant_id = getTenantId()` in repositories
-3. **Automatic Injection** - `tenant_id` added to inserts via `getTenantId()`
-4. **Context Management** - `TenantContext` class for storing current tenant
-5. **No Cross-Tenant Access** - WHERE clause enforced in all repository methods
-6. **Type Safety** - Full TypeScript support with Kysely
+2. **Automatic RLS Filtering** - RLS plugin automatically adds `WHERE tenant_id = ctx.auth.tenantId` to all queries
+3. **RLS Context Management** - Using `rlsContext.runAsync()` to set tenant scope for each request/operation
+4. **Explicit INSERT tenant_id** - For INSERT operations, `tenant_id` is explicitly pulled from `rlsContext.get().auth.tenantId`
+5. **System Context Support** - Use `isSystem: true` in RLS context to bypass tenant filters for admin operations
+6. **Complete Isolation** - Impossible to access other tenants' data without changing context
+7. **Type Safety** - Full TypeScript support with Kysely
 
 ## Security Considerations
 
 ```typescript
-// Always include tenant filter in updates/deletes
-await executor
-  .updateTable('users')
-  .set(data)
-  .where('id', '=', id)
-  .where('tenant_id', '=', getTenantId()) // CRITICAL!
-  .execute()
+// With RLS plugin, tenant filtering is automatic and enforced
+await rlsContext.runAsync(
+  {
+    auth: {
+      userId: req.user.id,
+      tenantId: req.tenant.id, // From server-side tenant resolution, NEVER from client
+      roles: req.user.roles,
+      isSystem: false
+    },
+    timestamp: new Date()
+  },
+  async () => {
+    // All queries automatically filtered - no way to forget!
+    await executor
+      .updateTable('users')
+      .set(data)
+      .where('id', '=', id)
+      .execute()
+    // WHERE tenant_id = req.tenant.id is added automatically by RLS plugin
+  }
+)
 
-// Never trust client tenant ID
-const tenantId = getTenantId() // From server context, not request
+// CRITICAL: Never trust client-provided tenant ID
+// Always resolve tenant server-side from:
+// - Subdomain (acme.app.com → tenant lookup)
+// - Verified JWT token
+// - Session data
+// - Database lookup
+
+// For admin/system operations that need cross-tenant access
+await rlsContext.runAsync(
+  {
+    auth: {
+      userId: adminUserId,
+      tenantId: 0,
+      roles: ['system'],
+      isSystem: true // Bypasses RLS filters
+    },
+    timestamp: new Date()
+  },
+  async () => {
+    // Can access all tenants' data
+    const allUsers = await executor.selectFrom('users').selectAll().execute()
+  }
+)
 ```

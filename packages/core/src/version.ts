@@ -2,6 +2,7 @@
  * Raw version string injected at build time
  * @internal
  */
+// eslint-disable-next-line @typescript-eslint/naming-convention
 declare const __VERSION__: string
 
 const RAW_VERSION = typeof __VERSION__ !== 'undefined' ? __VERSION__ : '__VERSION__'

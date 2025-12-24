@@ -137,7 +137,7 @@ const executor = await createExecutor(db, [
 ### 4. Option A: Repository Pattern
 
 ```typescript
-import { createORM, createRepositoryFactory } from '@kysera/repository'
+import { createORM, createRepositoryFactory, zodAdapter } from '@kysera/repository'
 import { z } from 'zod'
 
 // Define validation schemas
@@ -156,8 +156,8 @@ const userRepo = orm.createRepository(exec => {
     tableName: 'users' as const,
     mapRow: row => row,
     schemas: {
-      create: userSchema,
-      update: userSchema.partial()
+      create: zodAdapter(userSchema),
+      update: zodAdapter(userSchema.partial())
     }
   })
 })

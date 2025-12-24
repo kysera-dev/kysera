@@ -165,6 +165,7 @@ type BaseRepository = BaseRepositoryLike<Record<string, unknown>>
  * @param options - Plugin configuration options
  * @returns Kysera plugin instance
  */
+// eslint-disable-next-line max-lines-per-function
 export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
   const {
     schema,
@@ -219,10 +220,11 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     /**
      * Cleanup resources when executor is destroyed
      */
-    async onDestroy(): Promise<void> {
+    onDestroy(): Promise<void> {
       // Clear registry to free up memory
       registry.clear()
       logger.info?.('[RLS] RLS plugin destroyed, cleared policy registry')
+      return Promise.resolve()
     },
 
     /**

@@ -28,9 +28,20 @@
     "@kysera/core": "workspace:*"
   },
   "peerDependencies": {
-    "kysely": ">=0.28.8"
+    "kysely": ">=0.28.8",
+    "@kysera/executor": "workspace:*",
+    "better-sqlite3": ">=9.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@kysera/executor": {
+      "optional": true
+    },
+    "better-sqlite3": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@kysera/executor": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.1",
     "@vitest/coverage-v8": "^4.0.16",

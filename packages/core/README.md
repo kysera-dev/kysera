@@ -636,6 +636,116 @@ interface QueryMetrics {
 
 ---
 
+## 🔌 Plugin Base Utilities
+
+Core provides base abstractions for creating Kysera plugins, reducing boilerplate and ensuring consistent behavior across the plugin ecosystem.
+
+### BasePluginOptions
+
+Common options interface shared by all Kysera plugins:
+
+```typescript
+import type { BasePluginOptions, BasePluginOptionsWithPrimaryKey } from '@kysera/core'
+
+// Base options for all plugins
+interface BasePluginOptions {
+  logger?: KyseraLogger  // Default: silentLogger
+  tables?: string[]      // Whitelist tables (undefined = all)
+  excludeTables?: string[] // Blacklist tables
+}
+
+// Extended options for plugins needing primary key
+interface BasePluginOptionsWithPrimaryKey extends BasePluginOptions {
+  primaryKeyColumn?: string // Default: 'id'
+}
+```
+
+### createPluginConfig()
+
+Standardizes plugin configuration with sensible defaults:
+
+```typescript
+import { createPluginConfig, type BasePluginOptionsWithPrimaryKey } from '@kysera/core'
+
+interface MyPluginOptions extends BasePluginOptionsWithPrimaryKey {
+  customOption: string
+}
+
+export function myPlugin(options: MyPluginOptions = {}): Plugin {
+  const config = createPluginConfig('my-plugin', options)
+
+  // config.logger - Configured logger (defaults to silentLogger)
+  // config.tables - Whitelist (undefined = all tables)
+  // config.excludeTables - Blacklist (defaults to [])
+  // config.primaryKeyColumn - Primary key (defaults to 'id')
+
+  config.logger.debug('Initializing my-plugin')
+
+  return {
+    name: config.name,
+    // ... plugin implementation
+  }
+}
+```
+
+### createPluginMetadata()
+
+Creates plugin metadata for dependency management and conflict detection:
+
+```typescript
+import { createPluginMetadata, PLUGIN_PRIORITIES } from '@kysera/core'
+
+const metadata = createPluginMetadata('soft-delete', '0.8.0', {
+  priority: PLUGIN_PRIORITIES.FILTER,
+  dependencies: ['executor'],
+  conflictsWith: ['hard-delete-only']
+})
+// { name: 'soft-delete', version: '0.8.0', priority: 500, ... }
+```
+
+### PLUGIN_PRIORITIES
+
+Recommended priority values for consistent plugin ordering:
+
+```typescript
+import { PLUGIN_PRIORITIES } from '@kysera/core'
+
+// Higher priority = runs first
+PLUGIN_PRIORITIES.SECURITY  // 1000 - RLS, authentication (run first)
+PLUGIN_PRIORITIES.FILTER    // 500  - Soft delete, tenant isolation
+PLUGIN_PRIORITIES.TRANSFORM // 100  - Timestamps, data transformation
+PLUGIN_PRIORITIES.AUDIT     // 50   - Audit logging, change tracking
+PLUGIN_PRIORITIES.DEFAULT   // 0    - Default priority
+PLUGIN_PRIORITIES.DEBUG     // -100 - Query logging, profiling (run last)
+```
+
+### Plugin Base Types
+
+```typescript
+// Resolved plugin configuration
+interface ResolvedPluginConfig {
+  readonly name: string
+  readonly logger: KyseraLogger
+  readonly tables: string[] | undefined
+  readonly excludeTables: string[]
+  readonly primaryKeyColumn: string
+}
+
+// Plugin metadata
+interface PluginMetadata {
+  name: string
+  version: string
+  dependencies?: readonly string[]
+  priority?: number
+  conflictsWith?: readonly string[]
+}
+
+// Priority type
+type PluginPriority = 1000 | 500 | 100 | 50 | 0 | -100
+```
+
+---
+
 ## 📝 Logger Interface
 
 Core provides a shared logger interface for consistency across the Kysera ecosystem:
