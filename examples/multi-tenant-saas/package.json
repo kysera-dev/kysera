@@ -1,6 +1,6 @@
 {
   "name": "multi-tenant-saas-example",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "type": "module",
   "description": "Multi-tenant SaaS application example using Kysera",
