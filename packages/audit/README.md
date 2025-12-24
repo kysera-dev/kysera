@@ -2152,10 +2152,6 @@ await bulkUpdateInBatches(largeUpdateArray, 50)
 
 MIT © [Omnitron Dev](https://github.com/omnitron-dev)
 
-## 🤝 Contributing
-
-Contributions are welcome! Please read our [Contributing Guide](../../CONTRIBUTING.md) for details.
-
 ## 📚 Related Packages
 
 - [`@kysera/core`](../core) - Core utilities and error handling

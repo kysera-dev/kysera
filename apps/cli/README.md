@@ -420,10 +420,6 @@ Cache Hit Rate: 85%
 - [Migration Guide](https://kysera.dev/guides/migrations)
 - [Plugin Development](https://kysera.dev/guides/plugins)
 
-## 🤝 Contributing
-
-See [CONTRIBUTING.md](../../CONTRIBUTING.md) for development setup and guidelines.
-
 ## 📄 License
 
 MIT © Kysera Team

@@ -796,10 +796,6 @@ try {
 
 MIT
 
-## Contributing
-
-See the main [Kysera repository](https://github.com/kysera-dev/kysera) for contribution guidelines.
-
 ## Related Packages
 
 - `@kysera/core` - Core utilities and types

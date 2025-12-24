@@ -929,7 +929,3 @@ afterEach(async () => {
 ## License
 
 MIT
-
-## Contributing
-
-Issues and pull requests are welcome at [github.com/kysera-dev/kysera](https://github.com/kysera-dev/kysera).

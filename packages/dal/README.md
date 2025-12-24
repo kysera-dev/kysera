@@ -939,10 +939,6 @@ const post = await getPostWithAuthor(executor, postId)
 
 MIT
 
-## Contributing
-
-Contributions are welcome! Please see the [main repository](https://github.com/kysera-dev/kysera) for guidelines.
-
 ## Links
 
 - [GitHub Repository](https://github.com/kysera-dev/kysera)

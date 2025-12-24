@@ -862,10 +862,6 @@ Test files:
 
 MIT
 
-## Contributing
-
-See the main [Kysera repository](https://github.com/kysera-dev/kysera) for contribution guidelines.
-
 ## Links
 
 - [Documentation](https://kysera.dev)
