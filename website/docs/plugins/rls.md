@@ -10,10 +10,10 @@ Implement declarative authorization policies for multi-tenant applications with 
 
 The RLS plugin uses the unified `@kysera/executor` Plugin interface and works with both **Repository** and **DAL** patterns through query interception.
 
-:::caution Breaking Change in v0.7.3
+:::caution Breaking Change in v0.8.0
 **SECURITY: `requireContext` now defaults to `true` (secure-by-default)**
 
-Starting from v0.7.3, the RLS plugin requires an RLS context by default. If you're upgrading from an earlier version and your application allows queries without RLS context (e.g., background jobs, system operations), you need to explicitly configure the plugin:
+Starting from v0.8.0, the RLS plugin requires an RLS context by default. If you're upgrading from an earlier version and your application allows queries without RLS context (e.g., background jobs, system operations), you need to explicitly configure the plugin:
 
 ```typescript
 // Option 1: Use system context for privileged operations (recommended)
@@ -102,7 +102,7 @@ interface RLSPluginOptions<DB = unknown> {
 }
 ```
 
-### Security Configuration (v0.7.3+)
+### Security Configuration (v0.8.0+)
 
 The RLS plugin provides multiple security modes to balance safety and flexibility:
 
@@ -1304,8 +1304,8 @@ await rlsContext.runAsync(
 ### Breaking Change: `requireContext` Default
 
 **What changed:**
-- v0.7.0-v0.7.2: `requireContext` defaults to `false` (permissive)
-- v0.7.3+: `requireContext` defaults to `true` (secure-by-default)
+- v0.7.x: `requireContext` defaults to `false` (permissive)
+- v0.8.0+: `requireContext` defaults to `true` (secure-by-default)
 
 **Why it changed:**
 The previous default allowed queries without RLS context, which could lead to accidental data leaks in multi-tenant applications. The new default ensures all queries have proper context.
@@ -1317,10 +1317,10 @@ The previous default allowed queries without RLS context, which could lead to ac
 Update your application to always provide RLS context:
 
 ```typescript
-// Before v0.7.3 (worked without context)
+// Before v0.8.0 (worked without context)
 const posts = await orm.posts.findAll()
 
-// After v0.7.3 (requires context)
+// After v0.8.0 (requires context)
 await rlsContext.runAsync(
   {
     auth: {

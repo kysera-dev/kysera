@@ -780,7 +780,7 @@ interface RLSPluginOptions<DB = unknown> {
    * Require RLS context (throws if missing)
    * @default true - SECURE BY DEFAULT
    *
-   * SECURITY: Changed to true in v0.7.3+ for secure-by-default.
+   * SECURITY: Changed to true in v0.8.0+ for secure-by-default.
    * When true, missing context throws RLSContextError.
    * Only set to false if you have other security controls.
    */
@@ -836,9 +836,9 @@ const plugin = rlsPlugin({
 const orm = await createORM(db, [plugin])
 ```
 
-### Security Configuration (v0.7.3+)
+### Security Configuration (v0.8.0+)
 
-**BREAKING CHANGE**: Starting in v0.7.3, `requireContext` defaults to `true` for secure-by-default behavior.
+**BREAKING CHANGE**: Starting in v0.8.0, `requireContext` defaults to `true` for secure-by-default behavior.
 
 #### Secure Defaults (Recommended)
 

@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking Changes
 
+- **RLS Plugin**: `requireContext` now defaults to `true` (secure-by-default). Applications that previously relied on queries without RLS context must now explicitly set `requireContext: false` or use `rlsContext.asSystemAsync()` for system operations.
 - **RLS Plugin**: Removed deprecated `skipTables` option. Use `excludeTables` instead.
 - **Types**: Removed deprecated `DatabaseDialect` type alias from `@kysera/core`, `@kysera/dialects`, and `@kysera/testing`. Use `Dialect` from `@kysera/core` instead.
 
@@ -24,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - All packages updated to version 0.8.0
 - RLS plugin configuration simplified (only `excludeTables` supported)
+- RLS plugin now enforces context by default for improved security
 - Type exports consolidated to use canonical `Dialect` type from `@kysera/core`
 
 ### Migration

@@ -509,7 +509,7 @@ WHERE status = 'published';
 
 ## Cursor Security
 
-**NEW in v0.7.3**: Prevent cursor tampering with signing and encryption.
+Prevent cursor tampering with signing and encryption.
 
 ### Why Cursor Security Matters
 
