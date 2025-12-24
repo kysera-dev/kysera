@@ -1673,20 +1673,6 @@ await db.transaction().execute(async trx => {
 
 ---
 
-## 🤝 Contributing
-
-Contributions are welcome! This package follows strict development principles:
-
-- ✅ **Zero dependencies** (peer deps only)
-- ✅ **100% type safe** (TypeScript strict mode)
-- ✅ **95%+ test coverage** (16+ tests)
-- ✅ **Multi-database tested** (PostgreSQL, MySQL, SQLite)
-- ✅ **ESM only** (no CommonJS)
-
-See [CLAUDE.md](../../CLAUDE.md) for development guidelines.
-
----
-
 ## 📄 License
 
 MIT © Kysera

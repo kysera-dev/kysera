@@ -192,14 +192,6 @@ If completions don't work:
 2. Fish loads completions automatically, no reload needed
 3. Check Fish's completion search path: `echo $fish_complete_path`
 
-## Contributing
-
-If you find issues or want to add more completions:
-
-1. Test your changes in the appropriate shell
-2. Ensure all commands and options are covered
-3. Submit a PR with clear descriptions of the changes
-
 ## License
 
 MIT © Kysera Team

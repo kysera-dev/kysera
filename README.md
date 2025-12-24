@@ -191,10 +191,6 @@ Full documentation available at **[kysera.dev](https://kysera.dev)**:
 - [API Reference](https://kysera.dev/docs/api)
 - [Guides](https://kysera.dev/docs/guides)
 
-## Contributing
-
-Contributions welcome! Please read our contributing guidelines before submitting PRs.
-
 ## License
 
 MIT

@@ -359,16 +359,6 @@ If you find any issues with completions:
 4. Check if the issue occurs in a clean shell session
 5. Submit an issue with all details
 
-## Contributing
-
-To add new completions:
-
-1. Update the respective completion file (kysera.bash, kysera.zsh, or kysera.fish)
-2. Add test cases to this document
-3. Verify completions work in the target shell
-4. Update the README.md in the completions directory
-5. Submit a PR with examples
-
 ---
 
 Last updated: 2025-12-07

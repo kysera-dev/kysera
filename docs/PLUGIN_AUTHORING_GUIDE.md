@@ -481,8 +481,6 @@ export const debugPlugin = (): Plugin => ({
 
 Kysera's plugin system is designed for simplicity and explicitness. Focus on extending repositories with new methods rather than trying to intercept queries at a low level.
 
-For questions or contributions, see our [GitHub repository](https://github.com/omnitron-dev/kysera).
-
 ---
 
 **Last Updated**: 2025-10-01

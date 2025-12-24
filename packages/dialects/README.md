@@ -1005,20 +1005,6 @@ for (const table of tables) {
 
 ---
 
-## 🤝 Contributing
-
-Contributions are welcome! This package follows strict development principles:
-
-- ✅ **Zero runtime dependencies** (peer deps only)
-- ✅ **100% type safe** (TypeScript strict mode)
-- ✅ **Comprehensive test coverage** (95%+ coverage)
-- ✅ **Cross-database compatible** (PostgreSQL, MySQL, SQLite)
-- ✅ **ESM only** (no CommonJS)
-
-See [CLAUDE.md](../../CLAUDE.md) for development guidelines.
-
----
-
 ## 📄 License
 
 MIT © Kysera
