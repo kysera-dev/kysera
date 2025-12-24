@@ -223,9 +223,10 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
     /**
      * Lifecycle: Cleanup resources when executor is destroyed
      */
-    async onDestroy() {
+    onDestroy(): Promise<void> {
       // No cleanup required - soft-delete plugin has no persistent resources
       logger.debug('Soft-delete plugin destroyed')
+      return Promise.resolve()
     },
 
     /**

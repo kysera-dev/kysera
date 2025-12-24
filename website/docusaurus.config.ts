@@ -106,8 +106,12 @@ const config: Config = {
     footer: {
       links: [
         {
-          title: 'Documentation',
+          title: 'Learn',
           items: [
+            {
+              label: 'Introduction',
+              to: '/docs/introduction'
+            },
             {
               label: 'Getting Started',
               to: '/docs/getting-started'
@@ -117,25 +121,100 @@ const config: Config = {
               to: '/docs/core-concepts/overview'
             },
             {
-              label: 'API Reference',
-              to: '/docs/api/core'
+              label: 'Architecture',
+              to: '/docs/core-concepts/architecture'
             }
           ]
         },
         {
-          title: 'Packages',
+          title: 'Guides',
+          items: [
+            {
+              label: 'Best Practices',
+              to: '/docs/guides/best-practices'
+            },
+            {
+              label: 'Testing',
+              to: '/docs/guides/testing'
+            },
+            {
+              label: 'Migrations',
+              to: '/docs/guides/migrations'
+            },
+            {
+              label: 'DAL vs Repository',
+              to: '/docs/guides/dal-vs-repository'
+            },
+            {
+              label: 'Troubleshooting',
+              to: '/docs/guides/troubleshooting'
+            }
+          ]
+        },
+        {
+          title: 'API Reference',
           items: [
             {
               label: '@kysera/core',
               to: '/docs/api/core'
             },
             {
+              label: '@kysera/executor',
+              to: '/docs/api/executor'
+            },
+            {
               label: '@kysera/repository',
               to: '/docs/api/repository'
             },
             {
-              label: 'Plugins',
+              label: '@kysera/dal',
+              to: '/docs/api/dal'
+            },
+            {
+              label: 'All Packages',
+              to: '/docs/api/overview'
+            }
+          ]
+        },
+        {
+          title: 'Plugins',
+          items: [
+            {
+              label: 'Overview',
               to: '/docs/plugins/overview'
+            },
+            {
+              label: 'Soft Delete',
+              to: '/docs/plugins/soft-delete'
+            },
+            {
+              label: 'Timestamps',
+              to: '/docs/plugins/timestamps'
+            },
+            {
+              label: 'Audit',
+              to: '/docs/plugins/audit'
+            },
+            {
+              label: 'RLS',
+              to: '/docs/plugins/rls'
+            }
+          ]
+        },
+        {
+          title: 'Tools',
+          items: [
+            {
+              label: 'CLI Overview',
+              to: '/docs/cli/overview'
+            },
+            {
+              label: 'Examples',
+              to: '/docs/examples/overview'
+            },
+            {
+              label: 'Migration v0.7 → v0.8',
+              to: '/docs/guides/migration-v08'
             }
           ]
         },
@@ -153,12 +232,7 @@ const config: Config = {
             {
               label: 'Discussions',
               href: 'https://github.com/kysera-dev/kysera/discussions'
-            }
-          ]
-        },
-        {
-          title: 'More',
-          items: [
+            },
             {
               label: 'Kysely',
               href: 'https://kysely.dev'

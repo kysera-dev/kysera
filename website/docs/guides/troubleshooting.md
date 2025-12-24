@@ -253,25 +253,29 @@ const result = await paginateCursor(
 
 **Problem:** Loading thousands of rows into memory causes out-of-memory errors.
 
-**Solution:** Use streaming or limit page sizes:
+**Solution:** Use Kysely's native streaming or limit page sizes:
 
 ```typescript
-import { executeStream } from '@kysera/core'
-
 // ❌ Loads all rows into memory
 const allUsers = await db.selectFrom('users').selectAll().execute()
 
-// ✅ Stream rows one at a time
-for await (const user of executeStream(db.selectFrom('users').selectAll())) {
+// ✅ Use Kysely's native stream() method
+const stream = db.selectFrom('users').selectAll().stream()
+
+for await (const user of stream) {
   await processUser(user)
 }
 
 // ✅ Or paginate with reasonable limits
+import { paginate } from '@kysera/core'
+
 const result = await paginate(
   db.selectFrom('users').selectAll().orderBy('id', 'asc'),
   { page: 1, limit: 100 } // Process in batches
 )
 ```
+
+**Note:** Kysera does not provide a separate `executeStream` utility. Use Kysely's built-in `.stream()` method directly for streaming large datasets.
 
 ---
 

@@ -67,3 +67,17 @@ export {
   assertRowNotExists,
   type WaitForOptions
 } from './helpers.js'
+
+// Plugin testing utilities
+export {
+  createMockPlugin,
+  spyOnPlugin,
+  assertPluginBehavior,
+  createInMemoryDatabase,
+  createPluginTestHarness,
+  type RecordedOperation,
+  type MockOperationContext,
+  type PluginTestResult,
+  type CreateTestExecutorOptions,
+  type PluginAssertionOptions
+} from './plugin-testing.js'

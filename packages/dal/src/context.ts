@@ -58,7 +58,8 @@ function detectTransaction<DB>(
 function isKyseraTransaction<DB>(
   db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>
 ): db is KyseraTransaction<DB> {
-  // Check for KyseraExecutor marker
+  // Check for KyseraExecutor marker - runtime check for unknown inputs
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (!('__kysera' in db && db.__kysera)) {
     return false
   }
@@ -67,6 +68,7 @@ function isKyseraTransaction<DB>(
   const executor = db
 
   // Check if __rawDb exists (it might be missing on malformed executors)
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (!executor.__rawDb) {
     return false
   }
@@ -282,6 +284,7 @@ export interface TransactionOptionsWithLogger extends TransactionOptions {
  * });
  * ```
  */
+// eslint-disable-next-line complexity
 export async function withTransaction<DB, T>(
   db: Kysely<DB> | KyseraExecutor<DB> | DbContext<DB>,
   fn: (ctx: DbContext<DB>) => Promise<T>,
@@ -355,6 +358,7 @@ export async function withTransaction<DB, T>(
             throw rollbackError
           case 'callback':
             // Call custom callback with both errors
+            // eslint-disable-next-line max-depth
             if (onRollbackError) {
               await onRollbackError(error, rollbackError)
             }

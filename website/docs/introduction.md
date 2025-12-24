@@ -106,8 +106,9 @@ Layer 0: Kysely Foundation (Direct usage, no wrapper)
 
 ```typescript
 import { Kysely, PostgresDialect, Generated } from 'kysely'
+import { Pool } from 'pg'
 import { createExecutor } from '@kysera/executor'
-import { createORM } from '@kysera/repository'
+import { createORM, zodAdapter } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { timestampsPlugin } from '@kysera/timestamps'
 import { z } from 'zod'
@@ -145,8 +146,8 @@ const userRepo = orm.createRepository(exec => {
     tableName: 'users',
     mapRow: row => row,
     schemas: {
-      create: z.object({ email: z.string().email(), name: z.string() }),
-      update: z.object({ email: z.string().email(), name: z.string() }).partial()
+      create: zodAdapter(z.object({ email: z.string().email(), name: z.string() })),
+      update: zodAdapter(z.object({ email: z.string().email(), name: z.string() }).partial())
     }
   })
 })

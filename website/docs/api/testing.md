@@ -374,3 +374,237 @@ export const seedAll = composeSeeders([seedUsers, seedPosts]);
 - **Transaction**: Fastest (use with `testInTransaction`)
 - **Truncate**: Fast bulk cleanup, handles FKs automatically
 - **Delete**: Medium speed, requires FK-safe order
+
+## Plugin Testing
+
+Utilities for testing Kysera plugins in isolation and integration scenarios.
+
+### createMockPlugin()
+
+Creates a mock plugin for testing plugin interactions and execution order.
+
+```typescript
+import { createMockPlugin } from '@kysera/testing'
+
+const mockPlugin = createMockPlugin('test-plugin', {
+  onIntercept: (qb, ctx) => {
+    console.log(`Intercepted ${ctx.operation} on ${ctx.table}`)
+    return qb // Return unmodified
+  },
+  priority: 100
+})
+
+const executor = await createExecutor(db, [mockPlugin, softDeletePlugin()])
+
+// Run some queries
+await executor.selectFrom('users').selectAll().execute()
+
+// Check recorded operations
+expect(mockPlugin.operations).toHaveLength(1)
+expect(mockPlugin.operations[0].operation).toBe('select')
+expect(mockPlugin.operations[0].table).toBe('users')
+
+// Reset tracking
+mockPlugin.reset()
+```
+
+**Returns:**
+
+```typescript
+interface MockPlugin extends Plugin {
+  operations: RecordedOperation[]
+  reset: () => void
+}
+
+interface RecordedOperation {
+  operation: 'select' | 'insert' | 'update' | 'delete' | 'replace' | 'merge'
+  table: string
+  timestamp: Date
+  metadata: Record<string, unknown>
+}
+```
+
+### spyOnPlugin()
+
+Wraps an existing plugin to record all operations while preserving original behavior.
+
+```typescript
+import { spyOnPlugin } from '@kysera/testing'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+const spiedPlugin = spyOnPlugin(softDeletePlugin())
+
+const executor = await createExecutor(db, [spiedPlugin])
+
+await executor.deleteFrom('users').where('id', '=', 1).execute()
+
+// Verify the plugin was called
+expect(spiedPlugin.calls).toHaveLength(1)
+expect(spiedPlugin.calls[0].operation).toBe('delete')
+
+// Reset call tracking
+spiedPlugin.reset()
+```
+
+**Returns:**
+
+```typescript
+interface SpiedPlugin extends Plugin {
+  calls: RecordedOperation[]
+  reset: () => void
+}
+```
+
+### assertPluginBehavior()
+
+Asserts that a plugin behaves as expected for a given operation.
+
+```typescript
+import { assertPluginBehavior } from '@kysera/testing'
+import type { QueryBuilderContext } from '@kysera/executor'
+
+const plugin = softDeletePlugin({ deletedAtColumn: 'deleted_at' })
+
+const result = assertPluginBehavior(
+  plugin,
+  { where: () => mockQb }, // Mock query builder
+  { operation: 'select', table: 'users', metadata: {} } as QueryBuilderContext,
+  { shouldModifyQuery: true }
+)
+
+expect(result.intercepted).toBe(true)
+expect(result.modified).toBe(true)
+expect(result.error).toBeUndefined()
+```
+
+**Returns:**
+
+```typescript
+interface PluginTestResult {
+  intercepted: boolean
+  modified: boolean
+  error?: Error
+}
+```
+
+### createInMemoryDatabase()
+
+Creates an in-memory SQLite database for fast, isolated plugin tests.
+
+```typescript
+import { createInMemoryDatabase } from '@kysera/testing'
+
+const db = await createInMemoryDatabase<MyDB>(`
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    email TEXT NOT NULL,
+    name TEXT,
+    deleted_at TEXT
+  );
+  CREATE TABLE posts (
+    id INTEGER PRIMARY KEY,
+    title TEXT NOT NULL,
+    user_id INTEGER
+  )
+`)
+
+const executor = await createExecutor(db, [softDeletePlugin()])
+
+// Run tests against in-memory database
+await executor.insertInto('users').values({ email: 'test@example.com', name: 'Test' }).execute()
+
+// Clean up
+await db.destroy()
+```
+
+:::note Dependency
+Requires `better-sqlite3` as a dev dependency:
+```bash
+pnpm add -D better-sqlite3
+```
+:::
+
+### createPluginTestHarness()
+
+Creates a structured test harness for plugin integration testing with setup, execute, verify, and teardown phases.
+
+```typescript
+import { createPluginTestHarness, createMockPlugin } from '@kysera/testing'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { timestampsPlugin } from '@kysera/timestamps'
+
+const harness = createPluginTestHarness({
+  plugins: [softDeletePlugin(), timestampsPlugin()],
+  schema: `
+    CREATE TABLE posts (
+      id INTEGER PRIMARY KEY,
+      title TEXT,
+      deleted_at TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `,
+  seedData: async (executor) => {
+    await executor.insertInto('posts')
+      .values({ title: 'Seed Post' })
+      .execute()
+  }
+})
+
+// Setup: creates in-memory DB, applies schema, runs seeds
+await harness.setup()
+
+// Execute: run test operations
+const result = await harness.execute(async (executor) => {
+  return executor.insertInto('posts')
+    .values({ title: 'Test Post' })
+    .returningAll()
+    .executeTakeFirst()
+})
+
+// Verify: run assertions
+harness.verify(result, (r) => {
+  expect(r.title).toBe('Test Post')
+  expect(r.created_at).toBeDefined()
+  expect(r.updated_at).toBeDefined()
+})
+
+// Access raw database if needed
+const db = harness.getDb()
+
+// Teardown: clean up resources
+await harness.teardown()
+```
+
+**Harness Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `setup()` | Creates database, applies schema, runs seedData |
+| `execute(fn)` | Executes test function with executor |
+| `verify(result, assertions)` | Runs assertions on result |
+| `getDb()` | Returns raw Kysely instance |
+| `teardown()` | Destroys database, cleans up resources |
+
+### Plugin Testing Types
+
+```typescript
+interface RecordedOperation {
+  operation: 'select' | 'insert' | 'update' | 'delete' | 'replace' | 'merge'
+  table: string
+  timestamp: Date
+  metadata: Record<string, unknown>
+}
+
+interface PluginTestResult {
+  intercepted: boolean
+  modified: boolean
+  error?: Error
+}
+
+interface PluginAssertionOptions {
+  expectedOperation?: QueryBuilderContext['operation']
+  expectedTable?: string
+  shouldModifyQuery?: boolean
+}
+```

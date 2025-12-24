@@ -106,6 +106,7 @@ export function validateConditions(
   pkConfig: PrimaryKeyConfig,
   options: ColumnValidationOptions = {}
 ): Record<string, unknown> {
+  // eslint-disable-next-line @typescript-eslint/dot-notation
   const { enabled = process.env['NODE_ENV'] === 'development', allowedColumns } = options
 
   if (!enabled) {

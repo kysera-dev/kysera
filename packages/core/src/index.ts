@@ -39,5 +39,8 @@ export * from './types.js'
 // Logger
 export * from './logger.js'
 
+// Plugin Base Utilities
+export * from './plugin-base.js'
+
 // Version
 export * from './version.js'

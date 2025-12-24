@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { AuditOptionsSchema } from '@kysera/audit'
+import { AuditOptionsSchema } from '@kysera/audit/schema'
 import { SoftDeleteOptionsSchema } from '@kysera/soft-delete/schema'
-import { TimestampsOptionsSchema } from '@kysera/timestamps'
+import { TimestampsOptionsSchema } from '@kysera/timestamps/schema'
 
 // Database connection schema
 const DatabaseConnectionObjectSchema = z.object({

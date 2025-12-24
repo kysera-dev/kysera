@@ -38,7 +38,7 @@ async function loadMore(offset: number) {
 **Key features:**
 
 - No COUNT(\*) query
-- Limit: 1-10000 (auto-bounded via `MAX_LIMIT = 10000`)
+- Limit: 1-100 (auto-bounded via `MAX_LIMIT = 100`)
 - Compatible with PostgreSQL, MySQL, SQLite, and MSSQL
 
 **Bounds checking:**
@@ -46,7 +46,7 @@ async function loadMore(offset: number) {
 ```typescript
 // Limit is automatically clamped to valid range
 applyOffset(query, { limit: 0 }) // Uses 1 (minimum)
-applyOffset(query, { limit: 20000 }) // Uses 10000 (MAX_LIMIT)
+applyOffset(query, { limit: 20000 }) // Uses 100 (MAX_LIMIT)
 applyOffset(query, { limit: -5 }) // Uses 1 (minimum)
 ```
 
@@ -55,7 +55,7 @@ applyOffset(query, { limit: -5 }) // Uses 1 (minimum)
 Traditional page-based pagination with total count.
 
 ```typescript
-import { paginate, MAX_PAGE, MAX_LIMIT } from '@kysera/core'
+import { paginate, MAX_LIMIT } from '@kysera/core'
 
 const result = await paginate(
   db.selectFrom('posts').selectAll().where('status', '=', 'published'),
@@ -81,14 +81,14 @@ console.log(result)
 Kysera automatically enforces safe limits to prevent performance issues:
 
 ```typescript
-// Page bounds (MAX_PAGE = 10000)
+// Page bounds
 paginate(query, { page: 0 }) // Uses page 1 (minimum)
-paginate(query, { page: 15000 }) // Uses page 10000 (MAX_PAGE)
+paginate(query, { page: 15000 }) // Uses page 15000 (no upper bound on pages)
 paginate(query, { page: -5 }) // Uses page 1 (minimum)
 
-// Limit bounds (MAX_LIMIT = 10000)
+// Limit bounds (MAX_LIMIT = 100)
 paginate(query, { page: 1, limit: 0 }) // Uses limit 1 (minimum)
-paginate(query, { page: 1, limit: 20000 }) // Uses limit 10000 (MAX_LIMIT)
+paginate(query, { page: 1, limit: 20000 }) // Uses limit 100 (MAX_LIMIT)
 paginate(query, { page: 1, limit: -10 }) // Uses limit 1 (minimum)
 
 // MSSQL requires ORDER BY for offset pagination
@@ -98,12 +98,12 @@ paginate(
 )
 ```
 
-**Important:** Page 10,000 with limit 10000 means skipping 99,990,000 rows. If you need to access data beyond this point, use cursor pagination instead.
+**Important:** High page numbers with offset pagination can skip many rows and degrade performance. For large datasets or high page numbers, use cursor pagination instead.
 
 ### When to Use
 
 - Need page numbers (e.g., "Page 3 of 10")
-- Small to medium datasets (< 10,000 rows)
+- Small to medium datasets
 - Random page access needed
 - Admin panels, simple lists
 
@@ -114,7 +114,7 @@ paginate(
 | Simple to implement | O(n) at high pages             |
 | Page numbers        | Inconsistent with data changes |
 | Jump to any page    | Performance degrades           |
-| Built-in bounds     | Limited to 10,000 pages        |
+| Built-in bounds     | Max limit of 100 rows per page |
 
 ## Cursor Pagination
 
@@ -148,11 +148,11 @@ const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
 Cursor pagination also enforces limit bounds for safety:
 
 ```typescript
-import { MAX_LIMIT } from '@kysera/core' // MAX_LIMIT = 10000
+import { MAX_LIMIT } from '@kysera/core' // MAX_LIMIT = 100
 
 // Limit bounds automatically enforced
 paginateCursor(query, { orderBy: [...], limit: 0 }) // Uses 1 (minimum)
-paginateCursor(query, { orderBy: [...], limit: 20000 }) // Uses 10000 (MAX_LIMIT)
+paginateCursor(query, { orderBy: [...], limit: 20000 }) // Uses 100 (MAX_LIMIT)
 paginateCursor(query, { orderBy: [...], limit: -10 }) // Uses 1 (minimum)
 
 // No page limit - cursor pagination scales to any dataset size
@@ -178,12 +178,12 @@ paginateCursor(
 
 ### When to Use
 
-- Large datasets (> 10,000 rows)
+- Large datasets
 - Infinite scroll UI
 - Real-time data (frequent inserts/deletes)
 - API responses
 - Mobile apps
-- When you need to paginate beyond offset pagination's 10,000 page limit
+- When you need consistent performance at any dataset size
 
 ### Pros and Cons
 
@@ -223,7 +223,7 @@ const result = await userRepo.paginateCursor({
 ```typescript
 app.get('/posts', async (req, res) => {
   const page = parseInt(req.query.page) || 1
-  const limit = Math.min(parseInt(req.query.limit) || 20, 10000)
+  const limit = Math.min(parseInt(req.query.limit) || 20, 100)
 
   const result = await paginate(db.selectFrom('posts').selectAll(), { page, limit })
 
@@ -250,7 +250,7 @@ app.get('/posts', async (req, res) => {
 
 ```typescript
 app.get('/posts', async (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit) || 20, 10000)
+  const limit = Math.min(parseInt(req.query.limit) || 20, 100)
   const cursor = req.query.cursor || null
 
   const result = await paginateCursor(db.selectFrom('posts').selectAll(), {
@@ -760,14 +760,14 @@ if (cursor.startsWith('v2:')) {
 ### 2. Limit Maximum Page Size
 
 ```typescript
-const limit = Math.min(parseInt(req.query.limit) || 20, 10000)
+const limit = Math.min(parseInt(req.query.limit) || 20, 100)
 ```
 
 ### 3. Use Cursor for Large Datasets
 
 ```typescript
 // Large dataset? Use cursor
-if (totalCount > 10000) {
+if (totalCount > 1000) {
   return paginateCursor(query, options)
 }
 // Small dataset? Offset is fine

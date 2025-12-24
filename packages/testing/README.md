@@ -511,6 +511,179 @@ await deleteUser(db, userId)
 await assertRowNotExists(db, 'users', { id: userId })
 ```
 
+## Plugin Testing
+
+Utilities for testing Kysera plugins in isolation and integration scenarios.
+
+### createMockPlugin()
+
+Creates a mock plugin that records all intercepted operations. Useful for testing plugin composition and execution order.
+
+```typescript
+import { createMockPlugin } from '@kysera/testing'
+import { createExecutor } from '@kysera/executor'
+
+const mockPlugin = createMockPlugin('test-plugin', {
+  onIntercept: (qb, ctx) => {
+    console.log(`Intercepted ${ctx.operation} on ${ctx.table}`)
+    return qb
+  }
+})
+
+const executor = await createExecutor(db, [mockPlugin, softDeletePlugin()])
+
+await executor.selectFrom('users').selectAll().execute()
+
+// Check recorded operations
+expect(mockPlugin.operations).toHaveLength(1)
+expect(mockPlugin.operations[0].operation).toBe('select')
+expect(mockPlugin.operations[0].table).toBe('users')
+
+// Reset tracking
+mockPlugin.reset()
+```
+
+### spyOnPlugin()
+
+Wraps an existing plugin to record all operations while preserving original behavior.
+
+```typescript
+import { spyOnPlugin } from '@kysera/testing'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+const spiedPlugin = spyOnPlugin(softDeletePlugin())
+
+const executor = await createExecutor(db, [spiedPlugin])
+
+await executor.deleteFrom('users').where('id', '=', 1).execute()
+
+// Verify the plugin was called
+expect(spiedPlugin.calls).toHaveLength(1)
+expect(spiedPlugin.calls[0].operation).toBe('delete')
+
+// Reset call tracking
+spiedPlugin.reset()
+```
+
+### assertPluginBehavior()
+
+Unit-level assertion helper for plugin interceptQuery methods.
+
+```typescript
+import { assertPluginBehavior } from '@kysera/testing'
+
+const plugin = softDeletePlugin({ deletedAtColumn: 'deleted_at' })
+
+const result = assertPluginBehavior(
+  plugin,
+  { where: () => mockQb }, // Mock query builder
+  { operation: 'select', table: 'users', metadata: {} },
+  { shouldModifyQuery: true }
+)
+
+expect(result.intercepted).toBe(true)
+expect(result.modified).toBe(true)
+```
+
+### createInMemoryDatabase()
+
+Creates an SQLite in-memory database for fast, isolated plugin tests.
+
+```typescript
+import { createInMemoryDatabase } from '@kysera/testing'
+import { createExecutor } from '@kysera/executor'
+
+const db = await createInMemoryDatabase(`
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    email TEXT NOT NULL,
+    deleted_at TEXT
+  )
+`)
+
+const executor = await createExecutor(db, [softDeletePlugin()])
+
+// Run tests against in-memory database
+await executor.insertInto('users').values({ email: 'test@example.com' }).execute()
+
+// Cleanup
+await db.destroy()
+```
+
+**Requirements:** `better-sqlite3` must be installed as a dev dependency.
+
+### createPluginTestHarness()
+
+Complete integration test framework with setup, execute, verify, and teardown phases.
+
+```typescript
+import { createPluginTestHarness } from '@kysera/testing'
+import { softDeletePlugin } from '@kysera/soft-delete'
+import { timestampsPlugin } from '@kysera/timestamps'
+
+const harness = createPluginTestHarness({
+  plugins: [softDeletePlugin(), timestampsPlugin()],
+  schema: `
+    CREATE TABLE posts (
+      id INTEGER PRIMARY KEY,
+      title TEXT,
+      deleted_at TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `,
+  seedData: async (executor) => {
+    await executor.insertInto('posts').values({ title: 'Seed Post' }).execute()
+  }
+})
+
+// Setup: create in-memory DB, apply schema, seed data
+await harness.setup()
+
+// Execute: run test code
+const result = await harness.execute(async (executor) => {
+  return executor.insertInto('posts')
+    .values({ title: 'Test Post' })
+    .returningAll()
+    .executeTakeFirst()
+})
+
+// Verify: make assertions
+harness.verify(result, (r) => {
+  expect(r.created_at).toBeDefined()
+  expect(r.updated_at).toBeDefined()
+})
+
+// Teardown: cleanup resources
+await harness.teardown()
+```
+
+### Plugin Testing Types
+
+```typescript
+// Recorded operation from mock/spy plugins
+interface RecordedOperation {
+  operation: 'select' | 'insert' | 'update' | 'delete'
+  table: string
+  timestamp: Date
+  metadata: Record<string, unknown>
+}
+
+// Plugin test result
+interface PluginTestResult {
+  intercepted: boolean
+  modified: boolean
+  error?: Error
+}
+
+// Assertion options
+interface PluginAssertionOptions {
+  expectedOperation?: 'select' | 'insert' | 'update' | 'delete'
+  expectedTable?: string
+  shouldModifyQuery?: boolean
+}
+```
+
 ## TypeScript Types
 
 ### Core Types

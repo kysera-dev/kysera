@@ -3,7 +3,6 @@ import { sql } from 'kysely'
 import type { Plugin, BaseRepositoryLike } from '@kysera/executor'
 import { isRepositoryLike } from '@kysera/executor'
 import { NotFoundError, BadRequestError, type KyseraLogger, silentLogger } from '@kysera/core'
-import { z } from 'zod'
 import { VERSION } from './version.js'
 
 // ============================================================================
@@ -144,23 +143,6 @@ export interface AuditOptions {
    */
   logger?: KyseraLogger
 }
-
-/**
- * Zod schema for AuditOptions
- * Used for validation and configuration in the kysera-cli
- */
-export const AuditOptionsSchema = z.object({
-  auditTable: z.string().optional(),
-  primaryKeyColumn: z.string().optional(),
-  captureOldValues: z.boolean().optional(),
-  captureNewValues: z.boolean().optional(),
-  skipSystemOperations: z.boolean().optional(),
-  tables: z.array(z.string()).optional(),
-  excludeTables: z.array(z.string()).optional(),
-  getUserId: z.function().optional(),
-  getTimestamp: z.function().optional(),
-  metadata: z.function().optional()
-})
 
 /**
  * Audit log entry structure (raw from database)
@@ -1282,10 +1264,11 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
       await lockPromise
     },
 
-    async onDestroy(): Promise<void> {
+    onDestroy(): Promise<void> {
       // Clean up any remaining locks
       auditTableCreationLocks.clear()
       logger.debug('Audit plugin destroyed, cleared table creation locks')
+      return Promise.resolve()
     },
 
     extendRepository<T extends object>(repo: T): T {

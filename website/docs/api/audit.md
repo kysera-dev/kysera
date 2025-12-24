@@ -45,6 +45,9 @@ export type {
   ParsedAuditLogEntry,
   AuditPaginationOptions
 }
+
+// Schema (optional, requires Zod)
+export { AuditOptionsSchema, type AuditOptionsSchemaType } from './schema'
 ```
 
 ## auditPlugin
@@ -798,6 +801,68 @@ const orm = await createORM(db, [
 // All plugins work together:
 // - Soft delete creates audit entry
 // - Timestamps are included in audit values
+```
+
+## Schema Validation (Optional)
+
+The audit plugin provides optional Zod schemas for configuration validation. This is useful for CLI tools, configuration file parsing, and runtime validation.
+
+:::info Separate Export
+Schemas are exported from `@kysera/audit/schema` to keep Zod as an optional dependency. The main `@kysera/audit` export works without Zod installed.
+:::
+
+### AuditOptionsSchema
+
+Zod schema for validating `AuditOptions` configuration.
+
+```typescript
+import { AuditOptionsSchema } from '@kysera/audit/schema'
+
+// Validate configuration
+const result = AuditOptionsSchema.safeParse({
+  auditTable: 'audit_logs',
+  captureOldValues: true,
+  captureNewValues: true,
+  excludeTables: ['migrations', 'sessions']
+})
+
+if (result.success) {
+  console.log('Valid config:', result.data)
+} else {
+  console.error('Invalid config:', result.error.issues)
+}
+```
+
+### Schema Fields
+
+```typescript
+const AuditOptionsSchema = z.object({
+  auditTable: z.string().optional(),
+  primaryKeyColumn: z.string().optional(),
+  captureOldValues: z.boolean().optional(),
+  captureNewValues: z.boolean().optional(),
+  skipSystemOperations: z.boolean().optional(),
+  tables: z.array(z.string()).optional(),
+  excludeTables: z.array(z.string()).optional(),
+  getUserId: z.function().optional(),
+  getTimestamp: z.function().optional(),
+  metadata: z.function().optional()
+})
+```
+
+### Type Inference
+
+```typescript
+import { AuditOptionsSchema, type AuditOptionsSchemaType } from '@kysera/audit/schema'
+
+// Type inferred from schema
+type Options = AuditOptionsSchemaType
+
+// Same as AuditOptions interface
+const config: Options = {
+  auditTable: 'change_history',
+  captureOldValues: true
+}
 ```
 
 ## See Also

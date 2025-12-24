@@ -1079,6 +1079,81 @@ const plugin = timestampsPlugin({
 
 ---
 
+## 🔒 Schema Validation (Optional)
+
+The timestamps plugin provides optional Zod schemas for configuration validation. These are exported from a separate subpath to keep Zod as an optional dependency.
+
+### Installation
+
+```bash
+# Zod is optional - only needed if you use schema validation
+npm install zod
+```
+
+### Usage
+
+```typescript
+import { TimestampsOptionsSchema } from '@kysera/timestamps/schema'
+
+// Validate configuration
+const result = TimestampsOptionsSchema.safeParse({
+  createdAtColumn: 'created_at',
+  updatedAtColumn: 'updated_at',
+  setUpdatedAtOnInsert: true,
+  dateFormat: 'iso'
+})
+
+if (result.success) {
+  console.log('Valid options:', result.data)
+  const plugin = timestampsPlugin(result.data)
+} else {
+  console.error('Invalid configuration:', result.error.issues)
+}
+```
+
+### Schema Fields
+
+The `TimestampsOptionsSchema` validates:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `createdAtColumn` | `string?` | Column name for creation timestamp |
+| `updatedAtColumn` | `string?` | Column name for update timestamp |
+| `setUpdatedAtOnInsert` | `boolean?` | Set updated_at on insert |
+| `tables` | `string[]?` | Whitelist of tables |
+| `excludeTables` | `string[]?` | Blacklist of tables |
+| `getTimestamp` | `function?` | Custom timestamp generator |
+| `dateFormat` | `'iso' \| 'unix' \| 'date'?` | Timestamp format |
+| `primaryKeyColumn` | `string?` | Primary key column name |
+
+### Type Inference
+
+```typescript
+import { TimestampsOptionsSchema, type TimestampsOptionsSchemaType } from '@kysera/timestamps/schema'
+
+// Type is inferred from the schema
+const options: TimestampsOptionsSchemaType = {
+  createdAtColumn: 'created',
+  updatedAtColumn: 'modified',
+  dateFormat: 'unix'
+}
+```
+
+### CLI Integration
+
+The schema is particularly useful for CLI tools and configuration files:
+
+```typescript
+import { TimestampsOptionsSchema } from '@kysera/timestamps/schema'
+import { readFileSync } from 'fs'
+
+// Validate config file
+const config = JSON.parse(readFileSync('timestamps.config.json', 'utf-8'))
+const validated = TimestampsOptionsSchema.parse(config)
+```
+
+---
+
 ## 📖 API Reference
 
 ### timestampsPlugin(options?)

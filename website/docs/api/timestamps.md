@@ -30,6 +30,9 @@ export { timestampsPlugin } from './index'
 
 // Types
 export type { TimestampsOptions, TimestampsMethods, TimestampsRepository }
+
+// Schema (optional, requires Zod)
+export { TimestampsOptionsSchema, type TimestampsOptionsSchemaType } from './schema'
 ```
 
 ## timestampsPlugin
@@ -621,6 +624,67 @@ const orm = await createORM(db, [
 timestampsPlugin({
   excludeTables: ['migrations', 'audit_logs', 'system_config']
 })
+```
+
+## Schema Validation (Optional)
+
+The timestamps plugin provides optional Zod schemas for configuration validation. This is useful for CLI tools, configuration file parsing, and runtime validation.
+
+:::info Separate Export
+Schemas are exported from `@kysera/timestamps/schema` to keep Zod as an optional dependency. The main `@kysera/timestamps` export works without Zod installed.
+:::
+
+### TimestampsOptionsSchema
+
+Zod schema for validating `TimestampsOptions` configuration.
+
+```typescript
+import { TimestampsOptionsSchema } from '@kysera/timestamps/schema'
+
+// Validate configuration
+const result = TimestampsOptionsSchema.safeParse({
+  createdAtColumn: 'created_at',
+  updatedAtColumn: 'updated_at',
+  setUpdatedAtOnInsert: true,
+  dateFormat: 'iso'
+})
+
+if (result.success) {
+  console.log('Valid config:', result.data)
+} else {
+  console.error('Invalid config:', result.error.issues)
+}
+```
+
+### Schema Fields
+
+```typescript
+const TimestampsOptionsSchema = z.object({
+  createdAtColumn: z.string().optional(),
+  updatedAtColumn: z.string().optional(),
+  setUpdatedAtOnInsert: z.boolean().optional(),
+  tables: z.array(z.string()).optional(),
+  excludeTables: z.array(z.string()).optional(),
+  getTimestamp: z.function().optional(),
+  dateFormat: z.enum(['iso', 'unix', 'date']).optional(),
+  primaryKeyColumn: z.string().optional()
+})
+```
+
+### Type Inference
+
+```typescript
+import { TimestampsOptionsSchema, type TimestampsOptionsSchemaType } from '@kysera/timestamps/schema'
+
+// Type inferred from schema
+type Options = TimestampsOptionsSchemaType
+
+// Same as TimestampsOptions interface
+const config: Options = {
+  createdAtColumn: 'created',
+  updatedAtColumn: 'modified',
+  dateFormat: 'iso'
+}
 ```
 
 ## See Also

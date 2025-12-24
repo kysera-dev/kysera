@@ -266,17 +266,47 @@ const PaymentSchema = z.discriminatedUnion('type', [
 
 ## Error Handling
 
-### ValidationError
+### Handling Validation Errors
+
+Kysera uses safe parsing for validation error handling. The `ValidationError` is an interface (not a class), so you cannot use `instanceof` with it.
 
 ```typescript
-import { ValidationError } from '@kysera/core'
+import { createValidator, zodAdapter } from '@kysera/repository'
+import { z } from 'zod'
 
+const CreateUserSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1)
+})
+
+// Method 1: Use safe validation (recommended)
+const validator = createValidator(zodAdapter(CreateUserSchema))
+const result = validator.validateSafe(userData)
+
+if (!result.success) {
+  console.log(result.error) // ValidationError interface
+  // Return 400 Bad Request with error details
+} else {
+  await userRepo.create(result.data)
+}
+
+// Method 2: Use schema's safeParse directly
+const parseResult = zodAdapter(CreateUserSchema).safeParse(userData)
+
+if (!parseResult.success) {
+  console.log(parseResult.error) // ValidationError interface
+} else {
+  await userRepo.create(parseResult.data)
+}
+
+// Method 3: Let validation errors throw (from underlying library)
 try {
   await userRepo.create(invalidData)
 } catch (error) {
-  if (error instanceof ValidationError) {
-    console.log(error.errors) // Zod error details
-    // Return 400 Bad Request with error details
+  // This will be a ZodError (or error from your validation library)
+  // Not a Kysera ValidationError class
+  if (error instanceof z.ZodError) {
+    console.log(error.errors)
   }
 }
 ```
@@ -284,14 +314,24 @@ try {
 ### Formatting Validation Errors
 
 ```typescript
+import type { ValidationError } from '@kysera/repository'
+
 const formatValidationError = (error: ValidationError) => {
   return {
-    message: 'Validation failed',
-    errors: error.errors.map(e => ({
-      field: e.path.join('.'),
-      message: e.message
-    }))
+    message: error.message,
+    errors: error.issues?.map(issue => ({
+      field: issue.path.join('.'),
+      message: issue.message,
+      code: issue.code
+    })) || []
   }
+}
+
+// Usage with safe validation
+const result = validator.validateSafe(userData)
+if (!result.success) {
+  const formatted = formatValidationError(result.error)
+  res.status(400).json(formatted)
 }
 ```
 

@@ -3,7 +3,6 @@ import type { Repository } from '@kysera/repository'
 import type { Kysely, SelectQueryBuilder } from 'kysely'
 import { silentLogger, detectDialect } from '@kysera/core'
 import type { KyseraLogger } from '@kysera/core'
-import { z } from 'zod'
 import { VERSION } from './version.js'
 
 /**
@@ -87,21 +86,6 @@ export interface TimestampsOptions {
    */
   logger?: KyseraLogger
 }
-
-/**
- * Zod schema for TimestampsOptions
- * Used for validation and configuration in the kysera-cli
- */
-export const TimestampsOptionsSchema = z.object({
-  createdAtColumn: z.string().optional(),
-  updatedAtColumn: z.string().optional(),
-  setUpdatedAtOnInsert: z.boolean().optional(),
-  tables: z.array(z.string()).optional(),
-  excludeTables: z.array(z.string()).optional(),
-  getTimestamp: z.function().optional(),
-  dateFormat: z.enum(['iso', 'unix', 'date']).optional(),
-  primaryKeyColumn: z.string().optional()
-})
 
 /**
  * Repository extended with timestamp methods
@@ -288,9 +272,10 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
     /**
      * Lifecycle: Cleanup resources when executor is destroyed
      */
-    async onDestroy() {
+    onDestroy(): Promise<void> {
       // No cleanup required - timestamps plugin has no persistent resources
       logger.debug('Timestamps plugin destroyed')
+      return Promise.resolve()
     },
 
     extendRepository<T extends object>(repo: T): T {

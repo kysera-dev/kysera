@@ -250,7 +250,7 @@ function tryMultipleDetectionStrategies<DB>(db: Kysely<DB>): Dialect | null {
 function tryGetExecutorStrategy<DB>(db: Kysely<DB>): Dialect | null {
   try {
     // Type assertion is necessary for accessing internal Kysely properties
-     
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
     const dbWithAdapter = db as unknown as DatabaseExecutorWithAdapter
     const executor = dbWithAdapter.getExecutor?.()
     const adapter = executor?.adapter
@@ -375,7 +375,7 @@ async function cleanUsingTruncate<DB>(
   providedDialect?: Dialect,
   logger: KyseraLogger = silentLogger
 ): Promise<void> {
-   
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
   const dialect = detectDialect(db, providedDialect, logger)
 
   switch (dialect) {

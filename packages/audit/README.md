@@ -1657,6 +1657,84 @@ const history: ParsedAuditLogEntry[] = await userRepo.getAuditHistory(123)
 const restored: User = await userRepo.restoreFromAudit(42)
 ```
 
+---
+
+## 🔒 Schema Validation (Optional)
+
+The audit plugin provides optional Zod schemas for configuration validation. These are exported from a separate subpath to keep Zod as an optional dependency.
+
+### Installation
+
+```bash
+# Zod is optional - only needed if you use schema validation
+npm install zod
+```
+
+### Usage
+
+```typescript
+import { AuditOptionsSchema } from '@kysera/audit/schema'
+
+// Validate configuration
+const result = AuditOptionsSchema.safeParse({
+  auditTable: 'audit_logs',
+  captureOldValues: true,
+  captureNewValues: true,
+  primaryKeyColumn: 'id'
+})
+
+if (result.success) {
+  console.log('Valid options:', result.data)
+  const plugin = auditPlugin(result.data)
+} else {
+  console.error('Invalid configuration:', result.error.issues)
+}
+```
+
+### Schema Fields
+
+The `AuditOptionsSchema` validates:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `auditTable` | `string?` | Name of the audit log table |
+| `primaryKeyColumn` | `string?` | Primary key column name |
+| `captureOldValues` | `boolean?` | Capture old values on update/delete |
+| `captureNewValues` | `boolean?` | Capture new values on insert/update |
+| `skipSystemOperations` | `boolean?` | Skip system-level operations |
+| `tables` | `string[]?` | Whitelist of tables to audit |
+| `excludeTables` | `string[]?` | Blacklist of tables |
+| `getUserId` | `function?` | Function to get current user ID |
+| `getTimestamp` | `function?` | Custom timestamp generator |
+| `metadata` | `function?` | Custom metadata generator |
+
+### Type Inference
+
+```typescript
+import { AuditOptionsSchema, type AuditOptionsSchemaType } from '@kysera/audit/schema'
+
+// Type is inferred from the schema
+const options: AuditOptionsSchemaType = {
+  auditTable: 'my_audit_logs',
+  captureOldValues: true
+}
+```
+
+### CLI Integration
+
+The schema is particularly useful for CLI tools and configuration files:
+
+```typescript
+import { AuditOptionsSchema } from '@kysera/audit/schema'
+import { readFileSync } from 'fs'
+
+// Validate config file
+const config = JSON.parse(readFileSync('audit.config.json', 'utf-8'))
+const validated = AuditOptionsSchema.parse(config)
+```
+
+---
+
 ## 📖 API Reference
 
 ### Plugin Functions

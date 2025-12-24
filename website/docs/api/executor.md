@@ -293,54 +293,6 @@ const allUsers = await rawDb.selectFrom('users').selectAll().execute()
 
 Use with caution - bypassing plugins can expose deleted records, violate RLS policies, etc.
 
-### withSchema
-
-Switch to a different schema while maintaining plugin interception.
-
-```typescript
-function withSchema<DB>(
-  executor: KyseraExecutor<DB>,
-  schema: string
-): KyseraExecutor<DB>
-```
-
-**Parameters:**
-
-- `executor` - KyseraExecutor instance
-- `schema` - Schema name to switch to
-
-**Returns:** `KyseraExecutor<DB>` - New executor with schema switched (plugins preserved)
-
-**Example:**
-
-```typescript
-import { createExecutor, withSchema } from '@kysera/executor'
-import { softDeletePlugin } from '@kysera/soft-delete'
-
-const executor = await createExecutor(db, [softDeletePlugin()])
-
-// Switch to a different schema
-const tenantExecutor = withSchema(executor, 'tenant_123')
-
-// Queries use the specified schema with plugins applied
-const users = await tenantExecutor.selectFrom('users').selectAll().execute()
-// SELECT * FROM tenant_123.users WHERE deleted_at IS NULL
-```
-
-**Use Cases:**
-
-- Multi-tenant applications with schema-per-tenant architecture
-- Database introspection across schemas
-- Cross-schema queries with consistent plugin behavior
-- Dynamic schema selection based on context
-
-**Important Notes:**
-
-- Plugin interceptors are preserved in the schema-switched executor
-- Returns a new executor instance (original is unchanged)
-- Uses Kysely's `withSchema()` method internally
-- All plugin behavior remains active in the new schema context
-
 ### wrapTransaction
 
 Wrap a transaction with plugins from an executor.
