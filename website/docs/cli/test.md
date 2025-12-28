@@ -25,6 +25,7 @@ kysera test setup
 -d, --database <name>     Test database name
 --clean                   Drop existing test database
 --migrate                 Run migrations (default: true)
+--no-migrate              Skip running migrations
 --seed                    Run seeders
 --fixtures <files...>     Load specific fixtures
 --parallel                Enable parallel test execution

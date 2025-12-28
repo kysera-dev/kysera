@@ -70,7 +70,7 @@ export interface MultiDbTestDatabase {
 export const DB_CONFIGS = {
   postgres: {
     host: 'localhost',
-    port: 5432,
+    port: parseInt(process.env.DB_PORT || '5432'),
     database: 'kysera_test',
     user: 'test',
     password: 'test'

@@ -75,35 +75,28 @@ interface TimestampsOptions {
 }
 ```
 
-### Important Limitation
+### Primary Key Column Support
 
-:::warning Primary Key Column Limitation
+All methods that use ID-based filtering respect the `primaryKeyColumn` configuration option:
 
-The `primaryKeyColumn` option **only affects the `touch()` method**. The following methods currently hardcode the column name as `'id'`:
+| Method            | Uses `primaryKeyColumn`? | Notes                       |
+| ----------------- | ------------------------ | --------------------------- |
+| `create()`        | N/A                      | No ID-based filtering       |
+| `update()`        | N/A                      | No ID-based filtering       |
+| `touch(id)`       | ✅ Yes                   | Uses configured primary key |
+| `updateMany(ids)` | ✅ Yes                   | Uses configured primary key |
+| `touchMany(ids)`  | ✅ Yes                   | Uses configured primary key |
+| `createMany()`    | N/A                      | No ID-based filtering       |
 
-- `updateMany(ids, input)` - Uses hardcoded `'id'` for WHERE clause
-- `touchMany(ids)` - Uses hardcoded `'id'` for WHERE clause
+:::tip UUID Primary Keys
+For tables with UUID or custom primary keys, configure `primaryKeyColumn`:
 
-**Workaround**: If your table uses a different primary key column (e.g., `user_id`, `uuid`), you should:
-
-- Use `touch(id)` for single record updates (respects `primaryKeyColumn`)
-- Avoid `updateMany()` and `touchMany()` for tables with non-standard primary keys
-- Manually construct queries for batch operations on such tables
-
-This limitation will be addressed in a future version.
-
+```typescript
+timestampsPlugin({
+  primaryKeyColumn: 'uuid' // All methods will use this column for WHERE clauses
+})
+```
 :::
-
-### Methods and Primary Key Column Support
-
-| Method            | Respects `primaryKeyColumn`? | Notes                       |
-| ----------------- | ---------------------------- | --------------------------- |
-| `create()`        | N/A                          | No ID-based filtering       |
-| `update()`        | N/A                          | No ID-based filtering       |
-| `touch(id)`       | ✅ Yes                       | Uses configured primary key |
-| `updateMany(ids)` | ❌ No                        | Hardcoded to `'id'`         |
-| `touchMany(ids)`  | ❌ No                        | Hardcoded to `'id'`         |
-| `createMany()`    | N/A                          | No ID-based filtering       |
 
 ### Configuration Examples
 
@@ -130,9 +123,9 @@ timestampsPlugin({
   getTimestamp: () => new Date().toISOString()
 })
 
-// Custom primary key (only affects touch() method)
+// Custom primary key (affects all ID-based operations)
 timestampsPlugin({
-  primaryKeyColumn: 'user_id' // touch() will use user_id, but updateMany/touchMany still use 'id'
+  primaryKeyColumn: 'user_id' // touch(), updateMany(), touchMany() will all use user_id
 })
 ```
 
@@ -214,10 +207,6 @@ console.log(`User last active: ${user.updated_at}`)
 
 ### Batch Operations
 
-:::warning
-Note: `updateMany()` and `touchMany()` currently require tables to have a primary key column named `'id'`. See [Primary Key Column Limitation](#important-limitation) for details.
-:::
-
 ```typescript
 // Create many with automatic timestamps
 const posts = await postRepo.createMany([
@@ -226,16 +215,15 @@ const posts = await postRepo.createMany([
   { title: 'Post 3', content: '...' }
 ])
 
-// Update many (requires primary key named 'id')
+// Update many - respects primaryKeyColumn configuration
 await postRepo.updateMany([1, 2, 3], { status: 'published' })
 
-// Touch many (requires primary key named 'id')
+// Touch many - respects primaryKeyColumn configuration
 await postRepo.touchMany([1, 2, 3, 4, 5])
 
-// For tables with custom primary keys, use touch() in a loop:
-for (const userId of userIds) {
-  await userRepo.touch(userId) // Respects primaryKeyColumn configuration
-}
+// For UUID primary keys, configure primaryKeyColumn:
+// timestampsPlugin({ primaryKeyColumn: 'uuid' })
+await userRepo.touchMany(['uuid-1', 'uuid-2', 'uuid-3'])
 ```
 
 ### Bypassing Timestamps

@@ -22,6 +22,7 @@ kysera migrate create <name>
 
 ```
 -d, --dir <path>           Migration directory (default: ./migrations)
+--directory <path>         Alias for --dir
 -t, --template <type>      Template type
 --ts                       Generate TypeScript (default: true)
 --table <name>             Table name for templates
@@ -64,6 +65,7 @@ kysera migrate up
 ```
 -t, --to <migration>      Migrate up to specific migration
 -s, --steps <number>      Number of migrations to run
+--count <number>          Alias for --steps
 --dry-run                 Preview without executing
 --force                   Force execution
 -v, --verbose             Detailed output

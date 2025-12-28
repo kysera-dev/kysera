@@ -44,11 +44,13 @@ describe('plugin-base', () => {
         const tables = ['table1', 'table2', 'table3']
         const excludeTables = ['exclude1', 'exclude2']
 
-        const config = createPluginConfig('preserve-test', {
+        const options: BasePluginOptionsWithPrimaryKey = {
           tables,
           excludeTables,
           primaryKeyColumn: 'custom_id'
-        })
+        }
+
+        const config = createPluginConfig('preserve-test', options)
 
         expect(config.tables).toEqual(tables)
         expect(config.excludeTables).toEqual(excludeTables)
@@ -678,10 +680,11 @@ describe('plugin-base', () => {
 
     describe('type safety', () => {
       it('should maintain type safety for ResolvedPluginConfig', () => {
-        const config = createPluginConfig('type-safe', {
+        const options: BasePluginOptionsWithPrimaryKey = {
           tables: ['users'],
           primaryKeyColumn: 'id'
-        })
+        }
+        const config = createPluginConfig('type-safe', options)
 
         // These should all be correctly typed
         const name: string = config.name
@@ -730,7 +733,7 @@ describe('plugin-base', () => {
           tables: ['users']
         }
 
-        const config = createPluginConfig<CustomPluginOptions>('custom', options)
+        const config = createPluginConfig('custom', options)
 
         expect(config.name).toBe('custom')
         expect(config.tables).toEqual(['users'])

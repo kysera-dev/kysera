@@ -14,7 +14,7 @@ Kysera provides **three transaction patterns** for different use cases, built on
 |---------|---------|----------|-----------|---------|
 | **DAL `withTransaction`** | `@kysera/dal` | Functional queries, nested transactions | ✅ Yes | ✅ Yes |
 | **Repository ORM `transaction()`** | `@kysera/repository` | Multiple repositories, complex flows | ✅ Yes (via DAL) | ✅ Yes |
-| **Base Repository `transaction()`** | `@kysera/repository` | Single repository operations | ❌ No | ⚠️ Partial |
+| **Base Repository `transaction()`** | `@kysera/repository` | Single repository operations | ✅ Yes (via DAL) | ✅ Yes |
 
 :::tip Recommendation
 Use **Pattern 1** (DAL `withTransaction`) or **Pattern 2** (ORM `transaction()`) for most use cases. They provide savepoint support, plugin propagation, and better composability.
@@ -153,59 +153,51 @@ await orm.transaction(async (ctx) => {
 })
 ```
 
-## Pattern 3: Base Repository `transaction()` (Legacy/Simple Cases)
+## Pattern 3: Base Repository `transaction()` (Simple Single-Repo Cases)
 
-**Direct Kysely transaction - simple but limited.**
+**Convenient transaction API for single repository operations. Internally delegates to DAL's `withTransaction`.**
 
 ### Use When
 
-- Single repository operations only
-- No plugins needed
-- No nested transactions
-- Simple, isolated use case
+- Single repository operations
+- Need simple, clean API
+- Want automatic savepoint and plugin support
 
-### Limitations
+### Features
 
-❌ No savepoint support (nested calls create separate transactions)
-❌ No automatic plugin propagation
-❌ Cannot coordinate with other repositories
+✅ Savepoint support (via DAL delegation)
+✅ Plugin propagation (via DAL delegation)
+✅ Simple callback interface
+
+:::info Implementation Detail
+As of v0.7.3, `BaseRepository.transaction()` delegates to `@kysera/dal`'s `withTransaction()` internally, providing full savepoint and plugin support. The callback receives a raw `Transaction<DB>` for backward compatibility.
+:::
 
 ### Example
 
 ```typescript
 const userRepo = createRepository(createUserRepository)
 
-// Simple, isolated transaction
+// Simple, clean transaction with full plugin support
 await userRepo.transaction(async (trx) => {
-  // trx is raw Transaction<DB>, no plugins
+  // trx has plugin filters applied automatically
   const user = await trx
     .insertInto('users')
     .values(userData)
     .returningAll()
     .executeTakeFirstOrThrow()
 
-  // Manual plugin handling required
   return user
 })
 ```
 
-### Migration Path
+### When to Use Pattern 1/2 Instead
 
-If you need plugins or coordination, migrate to Pattern 1 or 2:
+Use Pattern 1 (DAL) or Pattern 2 (ORM) when you need:
 
-```typescript
-// OLD (limited):
-await userRepo.transaction(async (trx) => {
-  // ...
-})
-
-// NEW (recommended):
-await withTransaction(executor, async (ctx) => {
-  // Use repository methods or DAL queries
-  const userRepo = orm.createRepository(createUserRepository)
-  // ...
-})
-```
+- To coordinate multiple repositories in one transaction
+- Access to the full `DbContext` with metadata
+- Explicit control over isolation levels
 
 ## The Executor Pattern
 
@@ -331,16 +323,18 @@ await withTransaction(db, async (ctx) => {
 })
 ```
 
-### No Savepoints (Pattern 3)
+### Pattern 3 Also Supports Savepoints
+
+Since Pattern 3 now delegates to DAL's `withTransaction`, nested calls work correctly:
 
 ```typescript
 await repo.transaction(async (trx1) => {
   const user = await createUser(trx1)
 
-  // This starts a NEW transaction (not nested!)
+  // Nested call creates SAVEPOINT automatically (via DAL delegation)
   await repo.transaction(async (trx2) => {
-    // trx2 is separate from trx1
-    // If this fails, trx1 is NOT rolled back
+    // trx2 is a savepoint within trx1
+    // If this fails, only trx2 is rolled back
   })
 })
 ```

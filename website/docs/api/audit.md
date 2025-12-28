@@ -38,12 +38,10 @@ export type {
   AuditOptions,
   AuditLogEntry,
   AuditFilters,
-  AuditMethods,
-  AuditRepository,
-  AuditOperation,
   AuditRepositoryExtensions,
   ParsedAuditLogEntry,
-  AuditPaginationOptions
+  AuditPaginationOptions,
+  AuditTimestamp
 }
 
 // Schema (optional, requires Zod)
@@ -106,7 +104,7 @@ interface AuditOptions {
   /**
    * Function to get the current user ID
    */
-  getUserId?: () => string | number | null
+  getUserId?: () => string | null
 
   /**
    * Function to get the timestamp for audit entries
@@ -323,19 +321,19 @@ const insertLogs = await userRepo.getTableAuditLogs({
 
 // Filter by date range
 const recentLogs = await userRepo.getTableAuditLogs({
-  fromDate: new Date('2024-01-01'),
-  toDate: new Date('2024-01-31')
+  startDate: new Date('2024-01-01'),
+  endDate: new Date('2024-01-31')
 })
 
 // Filter by user
 const userLogs = await userRepo.getTableAuditLogs({
-  changedBy: 'user-123'
+  userId: 'user-123'
 })
 
 // Combine multiple filters with pagination
 const filteredLogs = await userRepo.getTableAuditLogs({
   operation: 'UPDATE',
-  changedBy: 'admin',
+  userId: 'admin',
   limit: 50,
   offset: 0
 })

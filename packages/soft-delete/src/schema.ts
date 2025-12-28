@@ -31,7 +31,10 @@ export const SoftDeleteOptionsSchema = z.object({
   deletedAtColumn: z.string().optional(),
   includeDeleted: z.boolean().optional(),
   tables: z.array(z.string()).optional(),
-  primaryKeyColumn: z.string().optional()
+  excludeTables: z.array(z.string()).optional(),
+  primaryKeyColumn: z.string().optional(),
+  // Note: logger is not validated as it's a function interface
+  // CLI tools should handle logger separately
 })
 
 /**
