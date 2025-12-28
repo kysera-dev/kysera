@@ -185,22 +185,16 @@ if (dialect === 'postgres') {
 
 ### Version
 
-Package version information and utilities.
+Package version information.
 
 ```typescript
-import { VERSION, getPackageVersion, formatVersionString, isDevelopmentVersion } from '@kysera/core'
+import { VERSION } from '@kysera/core'
 
 console.log(VERSION) // '0.8.0'
-console.log(getPackageVersion()) // '0.8.0'
-console.log(formatVersionString('v')) // 'v0.8.0'
-console.log(isDevelopmentVersion()) // false (true in development)
 ```
 
 **Exports:**
 - `VERSION` - Current package version constant
-- `getPackageVersion()` - Get package version
-- `formatVersionString(prefix?)` - Format version with optional prefix
-- `isDevelopmentVersion()` - Check if running in development mode
 
 ## Types
 

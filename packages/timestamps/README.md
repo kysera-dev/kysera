@@ -366,7 +366,13 @@ interface Database {
 await userRepo.touch(userId)
 ```
 
-**Note:** This option only affects the `touch()` method. The `update()` method uses the repository's own primary key logic.
+**Note:** This option affects the following methods:
+- `touch()` - Uses `primaryKeyColumn` in WHERE clause
+- `createMany()` - Uses `primaryKeyColumn` for MySQL/MSSQL fallback ORDER BY
+- `updateMany()` - Uses `primaryKeyColumn` in WHERE ... IN clause
+- `touchMany()` - Uses `primaryKeyColumn` in WHERE ... IN clause
+
+The base `update()` method uses the repository's own primary key logic.
 
 ---
 

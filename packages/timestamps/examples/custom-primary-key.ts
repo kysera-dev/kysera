@@ -198,8 +198,8 @@ async function backwardCompatibilityExample(db: Kysely<StandardDatabase>) {
 /**
  * Key Points:
  *
- * 1. The primaryKeyColumn option only affects the touch() method
- * 2. The update() method uses the repository's own primary key logic
+ * 1. The primaryKeyColumn option affects: touch(), createMany(), updateMany(), touchMany()
+ * 2. The base update() method uses the repository's own primary key logic
  * 3. Default value is 'id' for backward compatibility
  * 4. Supports any column type (number, string, etc.)
  * 5. Configure per plugin instance for different tables

@@ -846,7 +846,7 @@ describe('AuditOptionsSchema - Schema Structure', () => {
     const shape = AuditOptionsSchema.shape
 
     // All fields should be optional (unwrap should succeed)
-    Object.entries(shape).forEach(([key, value]) => {
+    Object.entries(shape).forEach(([_key, value]) => {
       expect(value.isOptional()).toBe(true)
     })
   })

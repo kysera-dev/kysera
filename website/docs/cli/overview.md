@@ -71,6 +71,9 @@ kysera migrate create <name>
 kysera migrate up
 kysera migrate down
 kysera migrate status
+kysera migrate list
+kysera migrate reset
+kysera migrate fresh            # Drop all tables and run migrations from scratch
 ```
 
 ### [generate](/docs/cli/generate)

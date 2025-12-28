@@ -164,8 +164,8 @@ console.log(history[0].new_values) // Parsed object
 // Query audit logs across the entire table with filters
 const logs = await userRepo.getTableAuditLogs({
   operation: 'UPDATE',
-  since: new Date('2025-01-01'),
-  until: new Date('2025-01-31'),
+  startDate: new Date('2025-01-01'),
+  endDate: new Date('2025-01-31'),
   limit: 100
 })
 
@@ -194,16 +194,21 @@ for (const change of userActivity) {
 ### Filter Types
 
 ```typescript
-interface AuditFilters {
+interface AuditFilters extends AuditPaginationOptions {
+  /** Filter by operation type */
   operation?: 'INSERT' | 'UPDATE' | 'DELETE'
-  since?: Date | string
-  until?: Date | string
-  limit?: number
-  offset?: number
+  /** Filter by user ID (changed_by field) */
+  userId?: string
+  /** Filter by start date (inclusive) */
+  startDate?: Date | string
+  /** Filter by end date (inclusive) */
+  endDate?: Date | string
 }
 
 interface AuditPaginationOptions {
+  /** Maximum number of records to return */
   limit?: number
+  /** Number of records to skip */
   offset?: number
 }
 ```

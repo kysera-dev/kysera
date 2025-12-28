@@ -88,9 +88,16 @@ interface RLSPluginOptions<DB = unknown> {
   /**
    * Require RLS context for all operations
    * Throws RLSContextError if context not set
-   * @default false
+   * @default true (changed in v0.8.0 for secure-by-default)
    */
   requireContext?: boolean
+
+  /**
+   * Allow queries without filtering when context is missing
+   * Only applies when requireContext is false
+   * @default false
+   */
+  allowUnfilteredQueries?: boolean
 
   /**
    * Log policy decisions for debugging
@@ -279,6 +286,10 @@ deny(['create', 'update', 'delete'], ctx => ctx.auth.roles?.includes('guest'))
 ### filter
 
 Add WHERE conditions to queries automatically.
+
+:::warning Synchronous Only
+**Filter conditions must be synchronous functions.** Async filter policies are not currently supported and will result in runtime errors. Use `allow()` or `validate()` for policies that require async operations.
+:::
 
 ```typescript
 function filter(

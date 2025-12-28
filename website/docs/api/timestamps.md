@@ -29,7 +29,7 @@ npm install @kysera/timestamps
 export { timestampsPlugin } from './index'
 
 // Types
-export type { TimestampsOptions, TimestampsMethods, TimestampsRepository }
+export type { TimestampsOptions, TimestampMethods, TimestampsRepository }
 
 // Schema (optional, requires Zod)
 export { TimestampsOptionsSchema, type TimestampsOptionsSchemaType } from './schema'

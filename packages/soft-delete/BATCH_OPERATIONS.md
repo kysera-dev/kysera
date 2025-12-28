@@ -51,6 +51,15 @@ const deleted = await userRepo.findDeleted()
 - ✅ Handles empty arrays gracefully (returns [])
 - ✅ Throws error if any record not found
 
+:::warning Duplicate IDs
+If the array contains duplicate IDs (e.g., `[1, 2, 2, 3]`), the method will throw a `NotFoundError` because the returned record count won't match the input array length. **Always deduplicate before calling:**
+
+```typescript
+const uniqueIds = Array.from(new Set([1, 2, 2, 3]))
+await userRepo.softDeleteMany(uniqueIds) // Works correctly
+```
+:::
+
 ### Error Handling
 
 ```typescript
