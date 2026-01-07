@@ -1316,6 +1316,822 @@ export {
 
 ---
 
+## Advanced Features
+
+The following advanced features provide enterprise-grade capabilities for complex authorization scenarios.
+
+### Context Resolvers (Pre-resolved Async Data)
+
+Context resolvers allow you to pre-fetch and cache async data (like organization memberships, permissions from external services) before policy evaluation. This keeps policies synchronous and fast.
+
+```typescript
+import {
+  ResolverManager,
+  createResolverManager,
+  createResolver,
+  type EnhancedRLSContext
+} from '@kysera/rls'
+
+// Define a resolver for organization memberships
+const orgResolver = createResolver({
+  name: 'org-memberships',
+  resolve: async (ctx) => {
+    // Fetch from database or external service
+    const memberships = await db
+      .selectFrom('organization_members')
+      .where('user_id', '=', ctx.auth.userId)
+      .select(['organization_id', 'role'])
+      .execute()
+
+    return {
+      resolvedAt: new Date(),
+      organizationIds: memberships.map(m => m.organization_id),
+      orgRoles: memberships.reduce((acc, m) => {
+        acc[m.organization_id] = m.role
+        return acc
+      }, {} as Record<string, string>)
+    }
+  },
+  cacheKey: (ctx) => `rls:org:${ctx.auth.userId}`,
+  cacheTtl: 300 // 5 minutes
+})
+
+// Create manager and register resolvers
+const manager = createResolverManager({
+  defaultCacheTtl: 300,
+  parallelResolution: true,
+  resolverTimeout: 5000
+})
+
+manager.register(orgResolver)
+
+// Resolve context before using RLS
+const baseCtx = {
+  auth: { userId: '123', roles: ['user'] },
+  timestamp: new Date()
+}
+
+const enhancedCtx = await manager.resolve(baseCtx)
+// enhancedCtx.auth.resolved contains: { organizationIds, orgRoles, resolvedAt }
+
+// Use in RLS context - policies can access resolved data synchronously
+await rlsContext.runAsync(enhancedCtx, async () => {
+  const posts = await orm.posts.findAll()
+})
+```
+
+**Resolver Dependencies:**
+
+```typescript
+const permissionResolver = createResolver({
+  name: 'permissions',
+  dependsOn: ['org-memberships'], // Runs after org-memberships
+  resolve: async (ctx) => {
+    const orgIds = ctx.auth.resolved?.organizationIds ?? []
+    const permissions = await fetchPermissions(ctx.auth.userId, orgIds)
+    return { resolvedAt: new Date(), permissions }
+  }
+})
+```
+
+**Cache Invalidation:**
+
+```typescript
+// Invalidate specific resolver cache
+await manager.invalidateCache(userId, 'org-memberships')
+
+// Invalidate all caches for a user
+await manager.invalidateCache(userId)
+
+// Clear all caches
+await manager.clearCache()
+```
+
+---
+
+### Field-Level Access Control
+
+Control access to individual columns within rows based on user context. Supports reading, writing, and masking.
+
+```typescript
+import {
+  createFieldAccessRegistry,
+  createFieldAccessProcessor,
+  ownerOnly,
+  rolesOnly,
+  maskedField,
+  publicReadRestrictedWrite,
+  type FieldAccessSchema
+} from '@kysera/rls'
+
+// Define field access rules
+const fieldSchema: FieldAccessSchema = {
+  users: {
+    fields: {
+      // Email only visible to owner or admin
+      email: ownerOnly('id'),
+
+      // Salary only visible to HR
+      salary: rolesOnly(['hr', 'admin']),
+
+      // SSN always masked except for owner
+      ssn: maskedField('***-**-****', ownerOnly('id')),
+
+      // Phone public read, restricted write
+      phone: publicReadRestrictedWrite(['admin']),
+
+      // Custom rule
+      notes: {
+        read: ctx => ctx.auth.roles.includes('manager'),
+        write: ctx => ctx.auth.roles.includes('admin')
+      }
+    },
+    defaultMask: '[REDACTED]'
+  }
+}
+
+// Create registry and processor
+const registry = createFieldAccessRegistry(fieldSchema)
+const processor = createFieldAccessProcessor(registry)
+
+// Check field access
+const canReadEmail = registry.canReadField('users', 'email', {
+  auth: { userId: '1', roles: ['user'] },
+  row: { id: '1', email: 'user@example.com' }
+})
+
+// Mask sensitive fields in rows
+const rows = await db.selectFrom('users').selectAll().execute()
+const maskedRows = processor.maskRows('users', rows, {
+  auth: { userId: '1', roles: ['user'] }
+})
+// Results have sensitive fields masked based on rules
+```
+
+**Predefined Access Patterns:**
+
+| Pattern | Description |
+|---------|-------------|
+| `ownerOnly(field)` | Only row owner can read/write |
+| `rolesOnly(roles)` | Only specified roles can access |
+| `readOnly()` | Anyone can read, no one can write |
+| `neverAccessible()` | Always hidden |
+| `publicReadRestrictedWrite(roles)` | Anyone reads, roles write |
+| `maskedField(mask, condition)` | Shows mask unless condition passes |
+| `ownerOrRoles(roles, field)` | Owner or specified roles |
+
+---
+
+### Relationship-Based Access Control (ReBAC)
+
+Define access based on relationships between entities using EXISTS subqueries. Ideal for complex organizational hierarchies.
+
+```typescript
+import {
+  ReBAcRegistry,
+  ReBAcTransformer,
+  createReBAcRegistry,
+  createReBAcTransformer,
+  orgMembershipPath,
+  shopOrgMembershipPath,
+  allowRelation,
+  denyRelation,
+  type ReBAcSchema
+} from '@kysera/rls'
+
+// Define relationship paths
+const rebacSchema: ReBAcSchema<Database> = {
+  products: {
+    relationships: [
+      // products -> shops -> organizations -> org_members
+      shopOrgMembershipPath('products', 'shop_id')
+    ],
+    policies: [
+      {
+        name: 'org-member-access',
+        policyType: 'allow',
+        operation: ['read', 'update'],
+        relationshipPath: 'products_shop_org_membership',
+        endCondition: ctx => ({
+          user_id: ctx.auth.userId,
+          status: 'active'
+        })
+      }
+    ]
+  },
+
+  documents: {
+    relationships: [
+      // Custom path: documents -> projects -> teams -> team_members
+      {
+        name: 'documents_team_membership',
+        steps: [
+          { from: 'documents', to: 'projects', fromColumn: 'project_id', toColumn: 'id' },
+          { from: 'projects', to: 'teams', fromColumn: 'team_id', toColumn: 'id' },
+          { from: 'teams', to: 'team_members', fromColumn: 'id', toColumn: 'team_id' }
+        ]
+      }
+    ],
+    policies: [
+      allowRelation('read', 'documents_team_membership', ctx => ({
+        user_id: ctx.auth.userId
+      }))
+    ]
+  }
+}
+
+// Create registry and transformer
+const registry = createReBAcRegistry(rebacSchema)
+const transformer = createReBAcTransformer(registry)
+
+// Transform queries to add EXISTS subqueries
+await rlsContext.runAsync(ctx, async () => {
+  // Original: SELECT * FROM products
+  // Transformed: SELECT * FROM products WHERE EXISTS (
+  //   SELECT 1 FROM shops
+  //   JOIN organizations ON ...
+  //   JOIN org_members ON ...
+  //   WHERE org_members.user_id = $1 AND org_members.status = 'active'
+  // )
+  const products = await transformer.transformSelect(
+    db.selectFrom('products').selectAll(),
+    'products',
+    'read'
+  ).execute()
+})
+```
+
+**Predefined Relationship Patterns:**
+
+```typescript
+// Organization membership: table -> organizations -> org_members
+orgMembershipPath('documents', 'organization_id')
+
+// Shop-based: table -> shops -> organizations -> org_members
+shopOrgMembershipPath('products', 'shop_id')
+
+// Team hierarchy: table -> teams (recursive) -> team_members
+teamHierarchyPath('tasks', 'team_id')
+```
+
+---
+
+### Policy Composition & Reusable Policies
+
+Create reusable policy templates that can be composed and extended across tables.
+
+```typescript
+import {
+  createTenantIsolationPolicy,
+  createOwnershipPolicy,
+  createSoftDeletePolicy,
+  createStatusAccessPolicy,
+  createAdminPolicy,
+  composePolicies,
+  extendPolicy,
+  defineFilterPolicy,
+  defineAllowPolicy,
+  defineDenyPolicy,
+  defineValidatePolicy
+} from '@kysera/rls'
+
+// Use predefined policy templates
+const tenantPolicy = createTenantIsolationPolicy({
+  tenantColumn: 'tenant_id',
+  validateOnCreate: true
+})
+
+const ownerPolicy = createOwnershipPolicy({
+  ownerColumn: 'user_id',
+  allowedOperations: ['update', 'delete']
+})
+
+const softDeletePolicy = createSoftDeletePolicy({
+  deletedAtColumn: 'deleted_at',
+  includeDeleted: false
+})
+
+const statusPolicy = createStatusAccessPolicy({
+  statusColumn: 'status',
+  publicStatuses: ['published'],
+  draftStatuses: ['draft'],
+  archivedStatuses: ['archived']
+})
+
+const adminPolicy = createAdminPolicy({
+  adminRoles: ['admin', 'superadmin']
+})
+
+// Compose policies together
+const combinedPolicy = composePolicies(
+  tenantPolicy,
+  ownerPolicy,
+  softDeletePolicy,
+  adminPolicy
+)
+
+// Use in schema
+const schema = defineRLSSchema<Database>({
+  posts: {
+    policies: combinedPolicy.policies,
+    defaultDeny: true
+  }
+})
+```
+
+**Custom Reusable Policies:**
+
+```typescript
+// Define reusable filter
+const publicPostsFilter = defineFilterPolicy(
+  'public-posts',
+  ctx => ({ is_public: true, deleted_at: null })
+)
+
+// Define reusable allow policy
+const ownerEditPolicy = defineAllowPolicy(
+  'owner-edit',
+  ['update', 'delete'],
+  ctx => ctx.auth.userId === ctx.row?.author_id
+)
+
+// Define reusable deny policy
+const preventDeletePublished = defineDenyPolicy(
+  'no-delete-published',
+  'delete',
+  ctx => ctx.row?.status === 'published'
+)
+
+// Define reusable validation
+const tenantValidation = defineValidatePolicy(
+  'tenant-validation',
+  ['create', 'update'],
+  ctx => !ctx.data?.tenant_id || ctx.data.tenant_id === ctx.auth.tenantId
+)
+
+// Extend existing policy
+const extendedPolicy = extendPolicy(tenantPolicy, {
+  additionalPolicies: [ownerEditPolicy.policies[0]!]
+})
+```
+
+---
+
+### Audit Trail Integration
+
+Log all RLS policy decisions with buffering, sampling, and filtering capabilities.
+
+```typescript
+import {
+  AuditLogger,
+  createAuditLogger,
+  ConsoleAuditAdapter,
+  InMemoryAuditAdapter,
+  type AuditConfig,
+  type RLSAuditAdapter
+} from '@kysera/rls'
+
+// Custom database adapter
+class DatabaseAuditAdapter implements RLSAuditAdapter {
+  constructor(private db: Kysely<AuditDB>) {}
+
+  async log(event: RLSAuditEvent): Promise<void> {
+    await this.db.insertInto('rls_audit_log')
+      .values({
+        user_id: String(event.userId),
+        operation: event.operation,
+        table_name: event.table,
+        decision: event.decision,
+        policy_name: event.policyName,
+        reason: event.reason,
+        context: JSON.stringify(event.context),
+        created_at: event.timestamp
+      })
+      .execute()
+  }
+
+  async logBatch(events: RLSAuditEvent[]): Promise<void> {
+    await this.db.insertInto('rls_audit_log')
+      .values(events.map(e => ({
+        user_id: String(e.userId),
+        operation: e.operation,
+        table_name: e.table,
+        decision: e.decision,
+        policy_name: e.policyName,
+        context: JSON.stringify(e.context),
+        created_at: e.timestamp
+      })))
+      .execute()
+  }
+}
+
+// Create audit logger
+const auditLogger = createAuditLogger({
+  adapter: new DatabaseAuditAdapter(auditDb),
+  enabled: true,
+  bufferSize: 100, // Buffer up to 100 events
+  flushInterval: 5000, // Flush every 5 seconds
+  sampleRate: 1.0, // Log 100% of events (use 0.1 for 10%)
+  async: true, // Fire-and-forget logging
+
+  // Default settings for all tables
+  defaults: {
+    logAllowed: false, // Don't log allow decisions
+    logDenied: true, // Log all denials
+    logFilters: false // Don't log filter applications
+  },
+
+  // Table-specific settings
+  tables: {
+    sensitive_data: {
+      logAllowed: true, // Log all access to sensitive tables
+      includeContext: ['requestId', 'ipAddress']
+    },
+    public_content: {
+      enabled: false // Don't audit public content
+    }
+  },
+
+  // Error handler
+  onError: (error, events) => {
+    console.error('Audit logging failed:', error, events.length, 'events lost')
+  }
+})
+
+// Log decisions
+await auditLogger.logAllow('read', 'posts', 'ownership-allow')
+await auditLogger.logDeny('delete', 'posts', 'status-check', {
+  reason: 'Cannot delete published posts',
+  rowIds: [123]
+})
+await auditLogger.logFilter('posts', 'tenant-filter')
+
+// Ensure all events are flushed
+await auditLogger.flush()
+
+// Graceful shutdown
+await auditLogger.close()
+```
+
+**Built-in Adapters:**
+
+```typescript
+// Console adapter (development)
+const consoleAdapter = new ConsoleAuditAdapter({
+  format: 'text', // or 'json'
+  colors: true,
+  includeTimestamp: true
+})
+
+// In-memory adapter (testing)
+const memoryAdapter = new InMemoryAuditAdapter(10000) // max 10k events
+const events = memoryAdapter.getEvents()
+const stats = memoryAdapter.getStats()
+const filtered = memoryAdapter.query({
+  userId: '123',
+  decision: 'deny',
+  startTime: new Date('2024-01-01')
+})
+```
+
+---
+
+### Policy Testing Utilities
+
+Unit test your RLS policies without a database connection.
+
+```typescript
+import {
+  PolicyTester,
+  createPolicyTester,
+  createTestAuthContext,
+  createTestRow,
+  policyAssertions
+} from '@kysera/rls'
+
+const tester = createPolicyTester(rlsSchema)
+
+describe('Post RLS Policies', () => {
+  it('should allow owner to update their post', async () => {
+    const result = await tester.evaluate('posts', 'update', {
+      auth: createTestAuthContext({
+        userId: 'user-1',
+        roles: ['user'],
+        tenantId: 'tenant-1'
+      }),
+      row: createTestRow({
+        id: 'post-1',
+        author_id: 'user-1',
+        tenant_id: 'tenant-1',
+        status: 'draft'
+      })
+    })
+
+    expect(result.allowed).toBe(true)
+    expect(result.policyName).toBe('ownership-allow')
+    expect(result.decisionType).toBe('allow')
+  })
+
+  it('should deny non-owner update', async () => {
+    const result = await tester.evaluate('posts', 'update', {
+      auth: createTestAuthContext({
+        userId: 'user-2',
+        roles: ['user']
+      }),
+      row: createTestRow({
+        id: 'post-1',
+        author_id: 'user-1'
+      })
+    })
+
+    policyAssertions.assertDenied(result)
+    expect(result.reason).toContain('not owner')
+  })
+
+  it('should apply tenant filter correctly', () => {
+    const filters = tester.getFilters('posts', 'read', {
+      auth: createTestAuthContext({
+        userId: 'user-1',
+        tenantId: 'tenant-1'
+      })
+    })
+
+    policyAssertions.assertFiltersInclude(filters, {
+      tenant_id: 'tenant-1'
+    })
+    expect(filters.appliedFilters).toContain('tenant-isolation')
+  })
+
+  it('should bypass for admin role', async () => {
+    const result = await tester.evaluate('posts', 'delete', {
+      auth: createTestAuthContext({
+        userId: 'admin-1',
+        roles: ['admin']
+      }),
+      row: createTestRow({ id: 'post-1' })
+    })
+
+    expect(result.allowed).toBe(true)
+    expect(result.reason).toContain('Role bypass')
+  })
+
+  it('should test specific policy', async () => {
+    const { found, result } = await tester.testPolicy(
+      'posts',
+      'ownership-allow',
+      {
+        auth: createTestAuthContext({ userId: 'user-1' }),
+        row: createTestRow({ author_id: 'user-1' })
+      }
+    )
+
+    expect(found).toBe(true)
+    expect(result).toBe(true)
+  })
+})
+
+// List all policies for debugging
+const policies = tester.listPolicies('posts')
+console.log('Allows:', policies.allows)
+console.log('Denies:', policies.denies)
+console.log('Filters:', policies.filters)
+console.log('Validates:', policies.validates)
+```
+
+**Assertion Helpers:**
+
+```typescript
+import { policyAssertions } from '@kysera/rls'
+
+// Assert allowed
+policyAssertions.assertAllowed(result, 'Custom error message')
+
+// Assert denied
+policyAssertions.assertDenied(result)
+
+// Assert specific policy made decision
+policyAssertions.assertPolicyUsed(result, 'ownership-allow')
+
+// Assert filter conditions
+policyAssertions.assertFiltersInclude(filterResult, {
+  tenant_id: 'expected-tenant',
+  deleted_at: null
+})
+```
+
+---
+
+### Conditional Policy Activation
+
+Activate policies based on environment, feature flags, or time-based conditions.
+
+```typescript
+import {
+  whenEnvironment,
+  whenFeature,
+  whenTimeRange,
+  whenCondition,
+  defineRLSSchema,
+  filter,
+  allow,
+  deny
+} from '@kysera/rls'
+
+const schema = defineRLSSchema<Database>({
+  posts: {
+    policies: [
+      // Only active in production
+      whenEnvironment('production', () =>
+        filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
+      ),
+
+      // Only when feature flag is enabled
+      whenFeature('strict-rls', () =>
+        deny('delete', ctx => ctx.row?.status === 'published')
+      ),
+
+      // Business hours only (9 AM - 6 PM)
+      whenTimeRange(9, 18, () =>
+        allow('create', ctx => ctx.auth.roles.includes('user'))
+      ),
+
+      // Overnight maintenance (10 PM - 6 AM, crosses midnight)
+      whenTimeRange(22, 6, () =>
+        deny('all', () => true, { name: 'maintenance-mode' })
+      ),
+
+      // Custom condition
+      whenCondition(
+        ctx => ctx.meta?.featureFlags?.includes('beta') ?? false,
+        () => allow('read', ctx => ctx.auth.attributes?.betaTester === true)
+      ),
+
+      // Nested conditions
+      whenEnvironment('production', () =>
+        whenFeature('audit-mode', () =>
+          filter('read', ctx => ({
+            ...ctx.auth.tenantId && { tenant_id: ctx.auth.tenantId },
+            audit_enabled: true
+          }))
+        )
+      )
+    ]
+  }
+})
+```
+
+**Setting Activation Context:**
+
+```typescript
+await rlsContext.runAsync({
+  auth: {
+    userId: user.id,
+    roles: user.roles,
+    tenantId: user.tenantId
+  },
+  timestamp: new Date(),
+  meta: {
+    environment: process.env.NODE_ENV,
+    features: new Set(['strict-rls', 'audit-mode']),
+    featureFlags: ['beta', 'new-ui']
+  }
+}, async () => {
+  // Policies will check activation conditions
+  const posts = await orm.posts.findAll()
+})
+```
+
+**Feature Flag Integration:**
+
+```typescript
+// With object-style features
+meta: {
+  features: {
+    'strict-rls': true,
+    'audit-mode': false,
+    'beta-features': user.isBetaTester
+  }
+}
+
+// With Set
+meta: {
+  features: new Set(['strict-rls', 'audit-mode'])
+}
+
+// With array
+meta: {
+  features: ['strict-rls', 'audit-mode']
+}
+```
+
+---
+
+## Complete API Exports
+
+```typescript
+// Core
+export { defineRLSSchema, mergeRLSSchemas } from '@kysera/rls'
+export { allow, deny, filter, validate } from '@kysera/rls'
+export { whenEnvironment, whenFeature, whenTimeRange, whenCondition } from '@kysera/rls'
+export { rlsPlugin } from '@kysera/rls'
+export { rlsContext, createRLSContext, withRLSContext, withRLSContextAsync } from '@kysera/rls'
+
+// Context Resolvers
+export {
+  ResolverManager,
+  createResolverManager,
+  createResolver,
+  InMemoryCacheProvider,
+  type ContextResolver,
+  type EnhancedRLSContext,
+  type ResolvedData
+} from '@kysera/rls'
+
+// ReBAC
+export {
+  ReBAcRegistry,
+  ReBAcTransformer,
+  createReBAcRegistry,
+  createReBAcTransformer,
+  orgMembershipPath,
+  shopOrgMembershipPath,
+  teamHierarchyPath,
+  allowRelation,
+  denyRelation,
+  type RelationshipPath,
+  type ReBAcSchema
+} from '@kysera/rls'
+
+// Field Access
+export {
+  FieldAccessRegistry,
+  FieldAccessProcessor,
+  createFieldAccessRegistry,
+  createFieldAccessProcessor,
+  ownerOnly,
+  rolesOnly,
+  readOnly,
+  neverAccessible,
+  publicReadRestrictedWrite,
+  maskedField,
+  ownerOrRoles,
+  type FieldAccessSchema
+} from '@kysera/rls'
+
+// Policy Composition
+export {
+  createTenantIsolationPolicy,
+  createOwnershipPolicy,
+  createSoftDeletePolicy,
+  createStatusAccessPolicy,
+  createAdminPolicy,
+  composePolicies,
+  extendPolicy,
+  defineFilterPolicy,
+  defineAllowPolicy,
+  defineDenyPolicy,
+  defineValidatePolicy,
+  defineCombinedPolicy,
+  type ReusablePolicy
+} from '@kysera/rls'
+
+// Audit Trail
+export {
+  AuditLogger,
+  createAuditLogger,
+  ConsoleAuditAdapter,
+  InMemoryAuditAdapter,
+  type RLSAuditEvent,
+  type RLSAuditAdapter,
+  type AuditConfig
+} from '@kysera/rls'
+
+// Testing
+export {
+  PolicyTester,
+  createPolicyTester,
+  createTestAuthContext,
+  createTestRow,
+  policyAssertions,
+  type PolicyEvaluationResult,
+  type FilterEvaluationResult,
+  type TestContext
+} from '@kysera/rls'
+
+// Errors
+export {
+  RLSError,
+  RLSContextError,
+  RLSPolicyViolation,
+  RLSPolicyEvaluationError,
+  RLSSchemaError,
+  RLSContextValidationError,
+  RLSErrorCodes
+} from '@kysera/rls'
+```
+
+---
+
 ## License
 
 MIT
