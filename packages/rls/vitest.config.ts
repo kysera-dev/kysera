@@ -12,12 +12,11 @@ export default defineConfig({
       exclude: ['src/**/*.d.ts', 'src/**/index.ts']
     },
     testTimeout: 30000, // Increased for integration tests
-    // Pool configuration for better test isolation
-    pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true
-      }
+    // Run test files sequentially (important for integration tests sharing a database)
+    fileParallelism: false,
+    // Run tests within a file sequentially
+    sequence: {
+      concurrent: false
     }
   }
 })

@@ -10,10 +10,11 @@
 
 import type {
   Operation,
-  PolicyDefinition,
   PolicyCondition,
   FilterCondition,
-  PolicyHints
+  PolicyHints,
+  PolicyActivationCondition,
+  ConditionalPolicyDefinition
 } from './types.js'
 
 /**
@@ -26,6 +27,24 @@ export interface PolicyOptions {
   priority?: number
   /** Performance optimization hints */
   hints?: PolicyHints
+  /**
+   * Condition that determines if this policy is active
+   * The policy will only be evaluated if this returns true
+   *
+   * @example
+   * ```typescript
+   * // Only apply in production
+   * allow('read', () => true, {
+   *   condition: ctx => ctx.meta?.environment === 'production'
+   * })
+   *
+   * // Feature-gated policy
+   * filter('read', ctx => ({ strict: true }), {
+   *   condition: ctx => ctx.meta?.features?.strictMode
+   * })
+   * ```
+   */
+  condition?: PolicyActivationCondition
 }
 
 /**
@@ -54,8 +73,8 @@ export function allow(
   operation: Operation | Operation[],
   condition: PolicyCondition,
   options?: PolicyOptions
-): PolicyDefinition {
-  const policy: PolicyDefinition = {
+): ConditionalPolicyDefinition {
+  const policy: ConditionalPolicyDefinition = {
     type: 'allow',
     operation,
     condition: condition,
@@ -68,6 +87,10 @@ export function allow(
 
   if (options?.hints !== undefined) {
     policy.hints = options.hints
+  }
+
+  if (options?.condition !== undefined) {
+    policy.activationCondition = options.condition
   }
 
   return policy
@@ -100,8 +123,8 @@ export function deny(
   operation: Operation | Operation[],
   condition?: PolicyCondition,
   options?: PolicyOptions
-): PolicyDefinition {
-  const policy: PolicyDefinition = {
+): ConditionalPolicyDefinition {
+  const policy: ConditionalPolicyDefinition = {
     type: 'deny',
     operation,
     condition: condition ?? (() => true),
@@ -114,6 +137,10 @@ export function deny(
 
   if (options?.hints !== undefined) {
     policy.hints = options.hints
+  }
+
+  if (options?.condition !== undefined) {
+    policy.activationCondition = options.condition
   }
 
   return policy
@@ -159,8 +186,8 @@ export function filter(
   operation: 'read' | 'all',
   condition: FilterCondition,
   options?: PolicyOptions
-): PolicyDefinition {
-  const policy: PolicyDefinition = {
+): ConditionalPolicyDefinition {
+  const policy: ConditionalPolicyDefinition = {
     type: 'filter',
     operation: operation === 'all' ? 'read' : operation,
     condition: condition as unknown as PolicyCondition,
@@ -173,6 +200,10 @@ export function filter(
 
   if (options?.hints !== undefined) {
     policy.hints = options.hints
+  }
+
+  if (options?.condition !== undefined) {
+    policy.activationCondition = options.condition
   }
 
   return policy
@@ -206,10 +237,10 @@ export function validate(
   operation: 'create' | 'update' | 'all',
   condition: PolicyCondition,
   options?: PolicyOptions
-): PolicyDefinition {
+): ConditionalPolicyDefinition {
   const ops: Operation[] = operation === 'all' ? ['create', 'update'] : [operation]
 
-  const policy: PolicyDefinition = {
+  const policy: ConditionalPolicyDefinition = {
     type: 'validate',
     operation: ops,
     condition: condition,
@@ -224,5 +255,151 @@ export function validate(
     policy.hints = options.hints
   }
 
+  if (options?.condition !== undefined) {
+    policy.activationCondition = options.condition
+  }
+
+  return policy
+}
+
+// ============================================================================
+// Conditional Policy Helpers
+// ============================================================================
+
+/**
+ * Create a policy that is only active in specific environments
+ *
+ * @param environments - Environments where the policy is active
+ * @param policyFn - Function that creates the policy
+ * @returns Policy with environment condition
+ *
+ * @example
+ * ```typescript
+ * // Policy only active in production
+ * const prodPolicy = whenEnvironment(['production'], () =>
+ *   allow('read', () => true, { name: 'prod-read' })
+ * );
+ *
+ * // Policy active in staging and production
+ * const nonDevPolicy = whenEnvironment(['staging', 'production'], () =>
+ *   filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
+ * );
+ * ```
+ */
+export function whenEnvironment(
+  environments: string[],
+  policyFn: () => ConditionalPolicyDefinition
+): ConditionalPolicyDefinition {
+  const policy = policyFn()
+  const existingCondition = policy.activationCondition
+  policy.activationCondition = ctx => {
+    const envMatch = environments.includes(ctx.environment ?? '')
+    if (!envMatch) return false
+    // If there was an existing condition (from inner wrapper), it must also pass
+    return existingCondition ? existingCondition(ctx) : true
+  }
+  return policy
+}
+
+/**
+ * Create a policy that is only active when a feature flag is enabled
+ *
+ * @param feature - Feature flag name
+ * @param policyFn - Function that creates the policy
+ * @returns Policy with feature flag condition
+ *
+ * @example
+ * ```typescript
+ * // Policy only active when 'strict_rls' feature is enabled
+ * const strictPolicy = whenFeature('strict_rls', () =>
+ *   deny('delete', () => true, { name: 'strict-no-delete' })
+ * );
+ * ```
+ */
+export function whenFeature(
+  feature: string,
+  policyFn: () => ConditionalPolicyDefinition
+): ConditionalPolicyDefinition {
+  const policy = policyFn()
+  const existingCondition = policy.activationCondition
+  policy.activationCondition = ctx => {
+    let featureEnabled = false
+    if (Array.isArray(ctx.features)) {
+      featureEnabled = ctx.features.includes(feature)
+    } else if (ctx.features && typeof ctx.features === 'object' && 'has' in ctx.features) {
+      // Support Set<string>
+      featureEnabled = (ctx.features as Set<string>).has(feature)
+    } else if (ctx.features && typeof ctx.features === 'object') {
+      // Support object-style features: { feature_name: boolean }
+      featureEnabled = !!(ctx.features as Record<string, unknown>)[feature]
+    }
+    if (!featureEnabled) return false
+    // If there was an existing condition (from inner wrapper), it must also pass
+    return existingCondition ? existingCondition(ctx) : true
+  }
+  return policy
+}
+
+/**
+ * Create a policy that is only active during specific hours
+ *
+ * @param startHour - Start hour (0-23)
+ * @param endHour - End hour (0-23)
+ * @param policyFn - Function that creates the policy
+ * @returns Policy with time-based condition
+ *
+ * @example
+ * ```typescript
+ * // Policy only active during business hours (9 AM - 5 PM)
+ * const businessHoursPolicy = whenTimeRange(9, 17, () =>
+ *   allow('update', () => true, { name: 'business-hours-update' })
+ * );
+ * ```
+ */
+export function whenTimeRange(
+  startHour: number,
+  endHour: number,
+  policyFn: () => ConditionalPolicyDefinition
+): ConditionalPolicyDefinition {
+  const policy = policyFn()
+  const existingCondition = policy.activationCondition
+  policy.activationCondition = ctx => {
+    const hour = (ctx.timestamp ?? new Date()).getHours()
+    let inRange: boolean
+    // Handle midnight crossing (e.g., 22:00 to 06:00)
+    if (startHour > endHour) {
+      inRange = hour >= startHour || hour < endHour
+    } else {
+      inRange = hour >= startHour && hour < endHour
+    }
+    if (!inRange) return false
+    // If there was an existing condition (from inner wrapper), it must also pass
+    return existingCondition ? existingCondition(ctx) : true
+  }
+  return policy
+}
+
+/**
+ * Create a policy that is only active when a custom condition is met
+ *
+ * @param condition - Custom activation condition
+ * @param policyFn - Function that creates the policy
+ * @returns Policy with custom condition
+ *
+ * @example
+ * ```typescript
+ * // Policy only active when user is in beta program
+ * const betaPolicy = whenCondition(
+ *   ctx => ctx.meta?.betaUser === true,
+ *   () => allow('read', () => true, { name: 'beta-read' })
+ * );
+ * ```
+ */
+export function whenCondition(
+  condition: PolicyActivationCondition,
+  policyFn: () => ConditionalPolicyDefinition
+): ConditionalPolicyDefinition {
+  const policy = policyFn()
+  policy.activationCondition = condition
   return policy
 }

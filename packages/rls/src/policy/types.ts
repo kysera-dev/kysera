@@ -751,4 +751,88 @@ export interface PolicyHints {
    * Stable policies can be cached during a query execution
    */
   stable?: boolean
+
+  /**
+   * Whether the policy condition can be async
+   * @internal Used by validation and allow/deny policies
+   */
+  async?: boolean
+
+  /**
+   * Whether the policy result is cacheable
+   */
+  cacheable?: boolean
+
+  /**
+   * Cache TTL in seconds if cacheable
+   */
+  cacheTTL?: number
+}
+
+// ============================================================================
+// Conditional Policy Activation
+// ============================================================================
+
+/**
+ * Context for evaluating policy activation conditions
+ *
+ * Contains metadata about the current environment that determines
+ * whether a policy should be active.
+ */
+export interface PolicyActivationContext {
+  /**
+   * Current environment (development, staging, production)
+   */
+  environment?: string
+
+  /**
+   * Feature flags that are enabled
+   * Can be a Set, array, or object with boolean/truthy values
+   */
+  features?: Set<string> | string[] | Record<string, unknown>
+
+  /**
+   * Current timestamp (for time-based policies)
+   */
+  timestamp?: Date
+
+  /**
+   * Custom metadata for activation decisions
+   */
+  meta?: Record<string, unknown>
+}
+
+/**
+ * Condition function for policy activation
+ *
+ * Returns true if the policy should be active, false otherwise.
+ *
+ * @example
+ * ```typescript
+ * // Only active in production
+ * const productionOnly: PolicyActivationCondition = ctx =>
+ *   ctx.environment === 'production';
+ *
+ * // Only active when feature flag is enabled
+ * const featureGated: PolicyActivationCondition = ctx =>
+ *   ctx.features?.includes('new_security_policy') ?? false;
+ *
+ * // Time-based activation (active during business hours)
+ * const businessHours: PolicyActivationCondition = ctx => {
+ *   const hour = (ctx.timestamp ?? new Date()).getHours();
+ *   return hour >= 9 && hour < 17;
+ * };
+ * ```
+ */
+export type PolicyActivationCondition = (ctx: PolicyActivationContext) => boolean
+
+/**
+ * Extended policy definition with activation condition
+ */
+export interface ConditionalPolicyDefinition extends PolicyDefinition {
+  /**
+   * Condition that determines if this policy is active
+   * If undefined, the policy is always active
+   */
+  activationCondition?: PolicyActivationCondition
 }
