@@ -174,11 +174,20 @@ export async function initializeSchema(
   type: DatabaseType
 ): Promise<void> {
   // Drop existing tables in reverse dependency order
-  await db.schema.dropTable('audit_logs').ifExists().execute()
-  await db.schema.dropTable('comments').ifExists().execute()
-  await db.schema.dropTable('posts').ifExists().execute()
-  await db.schema.dropTable('resources').ifExists().execute()
-  await db.schema.dropTable('users').ifExists().execute()
+  // Use CASCADE for PostgreSQL to also drop dependent objects like sequences
+  if (type === 'postgres') {
+    await sql`DROP TABLE IF EXISTS audit_logs CASCADE`.execute(db)
+    await sql`DROP TABLE IF EXISTS comments CASCADE`.execute(db)
+    await sql`DROP TABLE IF EXISTS posts CASCADE`.execute(db)
+    await sql`DROP TABLE IF EXISTS resources CASCADE`.execute(db)
+    await sql`DROP TABLE IF EXISTS users CASCADE`.execute(db)
+  } else {
+    await db.schema.dropTable('audit_logs').ifExists().execute()
+    await db.schema.dropTable('comments').ifExists().execute()
+    await db.schema.dropTable('posts').ifExists().execute()
+    await db.schema.dropTable('resources').ifExists().execute()
+    await db.schema.dropTable('users').ifExists().execute()
+  }
 
   const isPostgres = type === 'postgres'
   const isSqlite = type === 'sqlite'
@@ -373,7 +382,27 @@ export async function initializeSchema(
 
   await auditBuilder.execute()
 
-  // Create indexes
+  // Create indexes (drop first to handle re-initialization)
+  const indexNames = [
+    'idx_users_tenant',
+    'idx_users_role',
+    'idx_posts_tenant',
+    'idx_posts_user',
+    'idx_posts_status',
+    'idx_resources_tenant',
+    'idx_resources_owner',
+    'idx_comments_tenant'
+  ]
+
+  // Drop existing indexes
+  for (const indexName of indexNames) {
+    try {
+      await db.schema.dropIndex(indexName).ifExists().execute()
+    } catch {
+      // Ignore errors - index might not exist
+    }
+  }
+
   await db.schema.createIndex('idx_users_tenant').on('users').column('tenant_id').execute()
   await db.schema.createIndex('idx_users_role').on('users').column('role').execute()
   await db.schema.createIndex('idx_posts_tenant').on('posts').column('tenant_id').execute()
