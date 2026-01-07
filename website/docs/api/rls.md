@@ -1273,6 +1273,545 @@ interface ValidatePolicy {
 }
 ```
 
+## Context Resolvers
+
+Pre-fetch and cache async data before policy evaluation.
+
+### ResolverManager
+
+```typescript
+class ResolverManager<TResolved extends ResolvedData = ResolvedData> {
+  constructor(options?: ResolverManagerOptions)
+
+  // Register/unregister resolvers
+  register<T extends ResolvedData>(resolver: ContextResolver<T>): void
+  unregister(name: string): boolean
+  hasResolver(name: string): boolean
+  getResolverNames(): string[]
+
+  // Resolve context
+  resolve(baseContext: BaseResolverContext): Promise<EnhancedRLSContext<unknown, TResolved>>
+  resolveOne<T>(name: string, baseContext: BaseResolverContext): Promise<T | null>
+
+  // Cache management
+  invalidateCache(userId: string | number, resolverName?: string): Promise<void>
+  clearCache(): Promise<void>
+}
+```
+
+### createResolver
+
+```typescript
+function createResolver<TResolved extends ResolvedData>(
+  config: ContextResolver<TResolved>
+): ContextResolver<TResolved>
+
+interface ContextResolver<TResolved = ResolvedData> {
+  name: string
+  resolve: (ctx: BaseResolverContext) => Promise<TResolved>
+  cacheKey?: (ctx: BaseResolverContext) => string | null
+  cacheTtl?: number
+  dependsOn?: string[]
+  required?: boolean
+  priority?: number
+}
+```
+
+### ResolverManagerOptions
+
+```typescript
+interface ResolverManagerOptions {
+  cacheProvider?: ResolverCacheProvider
+  defaultCacheTtl?: number // Default: 300
+  parallelResolution?: boolean // Default: true
+  resolverTimeout?: number // Default: 5000ms
+  logger?: KyseraLogger
+}
+```
+
+## Field-Level Access Control
+
+### FieldAccessRegistry
+
+```typescript
+class FieldAccessRegistry {
+  constructor(schema?: FieldAccessSchema, options?: { logger?: KyseraLogger })
+
+  loadSchema(schema: FieldAccessSchema): void
+  registerTable(table: string, config: TableFieldAccessConfig): void
+
+  canReadField(table: string, field: string, ctx: FieldAccessContext): boolean
+  canWriteField(table: string, field: string, ctx: FieldAccessContext): boolean
+  getFieldMask(table: string, field: string): unknown
+
+  hasTable(table: string): boolean
+  getTables(): string[]
+}
+```
+
+### FieldAccessProcessor
+
+```typescript
+class FieldAccessProcessor {
+  constructor(registry: FieldAccessRegistry, options?: FieldAccessOptions)
+
+  maskRow<T extends Record<string, unknown>>(
+    table: string,
+    row: T,
+    ctx: FieldAccessContext
+  ): MaskedRow<T>
+
+  maskRows<T extends Record<string, unknown>>(
+    table: string,
+    rows: T[],
+    ctx: FieldAccessContext
+  ): MaskedRow<T>[]
+
+  getWritableFields(table: string, ctx: FieldAccessContext): string[]
+  filterWritableData<T>(table: string, data: T, ctx: FieldAccessContext): Partial<T>
+}
+```
+
+### Predefined Access Patterns
+
+```typescript
+// Only row owner can read/write
+function ownerOnly(ownerField?: string): FieldAccessConfig
+
+// Only specified roles can access
+function rolesOnly(roles: string[]): FieldAccessConfig
+
+// Anyone can read, no one can write
+function readOnly(): FieldAccessConfig
+
+// Always hidden
+function neverAccessible(): FieldAccessConfig
+
+// Anyone reads, specified roles write
+function publicReadRestrictedWrite(writeRoles: string[]): FieldAccessConfig
+
+// Shows mask unless condition passes
+function maskedField(mask: unknown, accessConfig: FieldAccessConfig): FieldAccessConfig
+
+// Owner or specified roles
+function ownerOrRoles(roles: string[], ownerField?: string): FieldAccessConfig
+```
+
+## ReBAC (Relationship-Based Access Control)
+
+### ReBAcRegistry
+
+```typescript
+class ReBAcRegistry<DB = unknown> {
+  constructor(schema?: ReBAcSchema<DB>, options?: { logger?: KyseraLogger })
+
+  loadSchema(schema: ReBAcSchema<DB>): void
+  registerTable(table: string, config: TableReBAcConfig): void
+  registerRelationship(path: RelationshipPath): void
+
+  getPolicies(table: string, operation: Operation): CompiledReBAcPolicy[]
+  getRelationship(name: string, table?: string): CompiledRelationshipPath | undefined
+
+  hasTable(table: string): boolean
+  getTables(): string[]
+  clear(): void
+}
+```
+
+### ReBAcTransformer
+
+```typescript
+class ReBAcTransformer<DB = unknown> {
+  constructor(registry: ReBAcRegistry<DB>, options?: ReBAcQueryOptions)
+
+  transformSelect<T extends SelectQueryBuilder<DB, any, any>>(
+    qb: T,
+    table: string,
+    operation: Operation
+  ): T
+
+  buildExistsSubquery(
+    db: Kysely<DB>,
+    path: CompiledRelationshipPath,
+    sourceTable: string,
+    endConditions: Record<string, unknown>
+  ): RawBuilder<unknown>
+}
+```
+
+### Predefined Relationship Paths
+
+```typescript
+// table -> organizations -> org_members
+function orgMembershipPath(
+  resourceTable: string,
+  orgIdColumn?: string
+): RelationshipPath
+
+// table -> shops -> organizations -> org_members
+function shopOrgMembershipPath(
+  resourceTable: string,
+  shopIdColumn?: string
+): RelationshipPath
+
+// table -> teams (recursive) -> team_members
+function teamHierarchyPath(
+  resourceTable: string,
+  teamIdColumn?: string
+): RelationshipPath
+```
+
+### Policy Builders
+
+```typescript
+function allowRelation(
+  operation: Operation | Operation[],
+  relationshipPath: string,
+  endCondition: ReBAcEndCondition
+): ReBAcPolicyDefinition
+
+function denyRelation(
+  operation: Operation | Operation[],
+  relationshipPath: string,
+  endCondition: ReBAcEndCondition
+): ReBAcPolicyDefinition
+```
+
+## Policy Composition
+
+### Predefined Policy Templates
+
+```typescript
+function createTenantIsolationPolicy(config: TenantIsolationConfig): ReusablePolicy
+function createOwnershipPolicy(config: OwnershipConfig): ReusablePolicy
+function createSoftDeletePolicy(config: SoftDeleteConfig): ReusablePolicy
+function createStatusAccessPolicy(config: StatusAccessConfig): ReusablePolicy
+function createAdminPolicy(config: { adminRoles: string[] }): ReusablePolicy
+```
+
+### Configuration Types
+
+```typescript
+interface TenantIsolationConfig {
+  tenantColumn?: string // Default: 'tenant_id'
+  validateOnCreate?: boolean // Default: true
+  validateOnUpdate?: boolean // Default: false
+}
+
+interface OwnershipConfig {
+  ownerColumn?: string // Default: 'user_id'
+  allowedOperations?: Operation[] // Default: ['update', 'delete']
+}
+
+interface SoftDeleteConfig {
+  deletedAtColumn?: string // Default: 'deleted_at'
+  includeDeleted?: boolean // Default: false
+}
+
+interface StatusAccessConfig {
+  statusColumn?: string // Default: 'status'
+  publicStatuses?: string[]
+  draftStatuses?: string[]
+  archivedStatuses?: string[]
+}
+```
+
+### Composition Functions
+
+```typescript
+function composePolicies(...policies: ReusablePolicy[]): ReusablePolicy
+function extendPolicy(base: ReusablePolicy, options: { additionalPolicies?: PolicyDefinition[] }): ReusablePolicy
+function overridePolicy(base: ReusablePolicy, overrides: Partial<ReusablePolicy>): ReusablePolicy
+```
+
+### Policy Definition Builders
+
+```typescript
+function defineFilterPolicy(
+  name: string,
+  filterFn: (ctx: PolicyEvaluationContext) => Record<string, unknown>,
+  options?: { priority?: number }
+): ReusablePolicy
+
+function defineAllowPolicy(
+  name: string,
+  operations: Operation | Operation[],
+  condition: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>,
+  options?: { priority?: number }
+): ReusablePolicy
+
+function defineDenyPolicy(
+  name: string,
+  operations: Operation | Operation[],
+  condition: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>,
+  options?: { priority?: number }
+): ReusablePolicy
+
+function defineValidatePolicy(
+  name: string,
+  operations: Operation | Operation[],
+  condition: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>,
+  options?: { priority?: number }
+): ReusablePolicy
+
+function defineCombinedPolicy(
+  name: string,
+  policies: PolicyDefinition[]
+): ReusablePolicy
+```
+
+## Audit Trail
+
+### AuditLogger
+
+```typescript
+class AuditLogger {
+  constructor(config: AuditConfig)
+
+  // Log decisions
+  logDecision(
+    operation: Operation,
+    table: string,
+    decision: AuditDecision,
+    policyName?: string,
+    options?: AuditLogOptions
+  ): Promise<void>
+
+  logAllow(operation: Operation, table: string, policyName?: string, options?: AuditLogOptions): Promise<void>
+  logDeny(operation: Operation, table: string, policyName?: string, options?: AuditLogOptions): Promise<void>
+  logFilter(table: string, policyName?: string, options?: { context?: Record<string, unknown> }): Promise<void>
+
+  // Buffer management
+  flush(): Promise<void>
+  close(): Promise<void>
+
+  // Properties
+  get bufferSize(): number
+  get enabled(): boolean
+  setEnabled(enabled: boolean): void
+}
+```
+
+### AuditConfig
+
+```typescript
+interface AuditConfig {
+  adapter: RLSAuditAdapter
+  enabled?: boolean // Default: true
+  bufferSize?: number // Default: 100
+  flushInterval?: number // Default: 5000ms
+  async?: boolean // Default: true
+  sampleRate?: number // Default: 1.0
+
+  defaults?: {
+    logAllowed?: boolean // Default: false
+    logDenied?: boolean // Default: true
+    logFilters?: boolean // Default: false
+    includeContext?: string[]
+    excludeContext?: string[]
+  }
+
+  tables?: Record<string, TableAuditConfig>
+  onError?: (error: Error, events: RLSAuditEvent[]) => void
+}
+```
+
+### Built-in Adapters
+
+```typescript
+class ConsoleAuditAdapter implements RLSAuditAdapter {
+  constructor(options?: {
+    format?: 'text' | 'json'
+    colors?: boolean
+    includeTimestamp?: boolean
+  })
+}
+
+class InMemoryAuditAdapter implements RLSAuditAdapter {
+  constructor(maxSize?: number)
+
+  getEvents(): RLSAuditEvent[]
+  query(params: AuditQueryParams): RLSAuditEvent[]
+  getStats(params?: { startTime?: Date; endTime?: Date }): AuditStats
+  clear(): void
+  get size(): number
+}
+```
+
+### RLSAuditEvent
+
+```typescript
+interface RLSAuditEvent {
+  timestamp: Date
+  userId: string | number
+  tenantId?: string | number
+  operation: Operation
+  table: string
+  policyName?: string
+  decision: 'allow' | 'deny' | 'filter'
+  reason?: string
+  context?: Record<string, unknown>
+  rowIds?: (string | number)[]
+  queryHash?: string
+  requestId?: string
+  ipAddress?: string
+  userAgent?: string
+  durationMs?: number
+}
+```
+
+## Policy Testing
+
+### PolicyTester
+
+```typescript
+class PolicyTester<DB = unknown> {
+  constructor(schema: RLSSchema<DB>)
+
+  // Evaluate full policy chain
+  evaluate(
+    table: string,
+    operation: Operation,
+    context: TestContext
+  ): Promise<PolicyEvaluationResult>
+
+  // Get filter conditions
+  getFilters(
+    table: string,
+    operation: 'read',
+    context: Pick<TestContext, 'auth' | 'meta'>
+  ): FilterEvaluationResult
+
+  // Test specific policy
+  testPolicy(
+    table: string,
+    policyName: string,
+    context: TestContext
+  ): Promise<{ found: boolean; result?: boolean }>
+
+  // Introspection
+  listPolicies(table: string): {
+    allows: string[]
+    denies: string[]
+    filters: string[]
+    validates: string[]
+  }
+
+  getTables(): string[]
+}
+```
+
+### Result Types
+
+```typescript
+interface PolicyEvaluationResult {
+  allowed: boolean
+  policyName?: string
+  decisionType: 'allow' | 'deny' | 'default'
+  reason?: string
+  evaluatedPolicies: {
+    name: string
+    type: 'allow' | 'deny' | 'validate'
+    result: boolean
+  }[]
+}
+
+interface FilterEvaluationResult {
+  conditions: Record<string, unknown>
+  appliedFilters: string[]
+}
+```
+
+### Test Helpers
+
+```typescript
+function createTestAuthContext(
+  overrides: Partial<RLSAuthContext> & { userId: string | number }
+): RLSAuthContext
+
+function createTestRow<T extends Record<string, unknown>>(data: T): T
+
+const policyAssertions: {
+  assertAllowed(result: PolicyEvaluationResult, message?: string): void
+  assertDenied(result: PolicyEvaluationResult, message?: string): void
+  assertPolicyUsed(result: PolicyEvaluationResult, policyName: string, message?: string): void
+  assertFiltersInclude(result: FilterEvaluationResult, expected: Record<string, unknown>, message?: string): void
+}
+```
+
+## Conditional Policy Activation
+
+### Activation Wrappers
+
+```typescript
+function whenEnvironment(
+  env: string,
+  policyFn: () => PolicyDefinition
+): ConditionalPolicyDefinition
+
+function whenFeature(
+  feature: string,
+  policyFn: () => PolicyDefinition
+): ConditionalPolicyDefinition
+
+function whenTimeRange(
+  startHour: number,
+  endHour: number,
+  policyFn: () => PolicyDefinition
+): ConditionalPolicyDefinition
+
+function whenCondition(
+  condition: (ctx: PolicyActivationContext) => boolean,
+  policyFn: () => PolicyDefinition
+): ConditionalPolicyDefinition
+```
+
+### PolicyActivationContext
+
+```typescript
+interface PolicyActivationContext extends PolicyEvaluationContext {
+  environment?: string
+  features?: Set<string> | string[] | Record<string, unknown>
+  timestamp?: Date
+}
+```
+
+## Complete Exports
+
+```typescript
+// Core
+export { defineRLSSchema, mergeRLSSchemas } from '@kysera/rls'
+export { allow, deny, filter, validate } from '@kysera/rls'
+export { whenEnvironment, whenFeature, whenTimeRange, whenCondition } from '@kysera/rls'
+export { rlsPlugin } from '@kysera/rls'
+export { rlsContext, createRLSContext, withRLSContext, withRLSContextAsync } from '@kysera/rls'
+
+// Context Resolvers
+export { ResolverManager, createResolverManager, createResolver, InMemoryCacheProvider } from '@kysera/rls'
+
+// ReBAC
+export { ReBAcRegistry, ReBAcTransformer, createReBAcRegistry, createReBAcTransformer } from '@kysera/rls'
+export { orgMembershipPath, shopOrgMembershipPath, teamHierarchyPath, allowRelation, denyRelation } from '@kysera/rls'
+
+// Field Access
+export { FieldAccessRegistry, FieldAccessProcessor, createFieldAccessRegistry, createFieldAccessProcessor } from '@kysera/rls'
+export { ownerOnly, rolesOnly, readOnly, neverAccessible, publicReadRestrictedWrite, maskedField, ownerOrRoles } from '@kysera/rls'
+
+// Policy Composition
+export { createTenantIsolationPolicy, createOwnershipPolicy, createSoftDeletePolicy, createStatusAccessPolicy, createAdminPolicy } from '@kysera/rls'
+export { composePolicies, extendPolicy, overridePolicy } from '@kysera/rls'
+export { defineFilterPolicy, defineAllowPolicy, defineDenyPolicy, defineValidatePolicy, defineCombinedPolicy } from '@kysera/rls'
+
+// Audit Trail
+export { AuditLogger, createAuditLogger, ConsoleAuditAdapter, InMemoryAuditAdapter } from '@kysera/rls'
+
+// Testing
+export { PolicyTester, createPolicyTester, createTestAuthContext, createTestRow, policyAssertions } from '@kysera/rls'
+
+// Errors
+export { RLSError, RLSContextError, RLSPolicyViolation, RLSPolicyEvaluationError, RLSSchemaError, RLSContextValidationError, RLSErrorCodes } from '@kysera/rls'
+```
+
 ## See Also
 
 - [Executor API Reference](/docs/api/executor)

@@ -1470,6 +1470,255 @@ await rlsContext.runAsync(
 )
 ```
 
+## Advanced Features
+
+The RLS plugin includes enterprise-grade features for complex authorization scenarios.
+
+### Context Resolvers
+
+Pre-fetch and cache async data (like organization memberships) before policy evaluation. This keeps policies synchronous and fast.
+
+```typescript
+import {
+  createResolverManager,
+  createResolver,
+  type EnhancedRLSContext
+} from '@kysera/rls'
+
+const orgResolver = createResolver({
+  name: 'org-memberships',
+  resolve: async (ctx) => {
+    const memberships = await db
+      .selectFrom('organization_members')
+      .where('user_id', '=', ctx.auth.userId)
+      .select(['organization_id', 'role'])
+      .execute()
+    return {
+      resolvedAt: new Date(),
+      organizationIds: memberships.map(m => m.organization_id)
+    }
+  },
+  cacheKey: (ctx) => `rls:org:${ctx.auth.userId}`,
+  cacheTtl: 300
+})
+
+const manager = createResolverManager({ parallelResolution: true })
+manager.register(orgResolver)
+
+// Resolve context before using RLS
+const enhancedCtx = await manager.resolve(baseCtx)
+
+await rlsContext.runAsync(enhancedCtx, async () => {
+  // Policies can access ctx.auth.resolved.organizationIds synchronously
+  const posts = await orm.posts.findAll()
+})
+```
+
+### Field-Level Access Control
+
+Control access to individual columns with masking support.
+
+```typescript
+import {
+  createFieldAccessRegistry,
+  createFieldAccessProcessor,
+  ownerOnly,
+  rolesOnly,
+  maskedField
+} from '@kysera/rls'
+
+const fieldSchema = {
+  users: {
+    fields: {
+      email: ownerOnly('id'),
+      salary: rolesOnly(['hr', 'admin']),
+      ssn: maskedField('***-**-****', ownerOnly('id'))
+    },
+    defaultMask: '[REDACTED]'
+  }
+}
+
+const registry = createFieldAccessRegistry(fieldSchema)
+const processor = createFieldAccessProcessor(registry)
+
+const maskedRows = processor.maskRows('users', rows, { auth })
+```
+
+**Predefined Patterns:**
+- `ownerOnly(field)` - Only row owner can access
+- `rolesOnly(roles)` - Only specified roles
+- `maskedField(mask, condition)` - Shows mask unless condition passes
+- `publicReadRestrictedWrite(roles)` - Anyone reads, roles write
+
+### Relationship-Based Access Control (ReBAC)
+
+Define access based on relationships using EXISTS subqueries.
+
+```typescript
+import {
+  createReBAcRegistry,
+  createReBAcTransformer,
+  shopOrgMembershipPath,
+  allowRelation
+} from '@kysera/rls'
+
+const rebacSchema = {
+  products: {
+    relationships: [
+      shopOrgMembershipPath('products', 'shop_id')
+    ],
+    policies: [
+      allowRelation('read', 'products_shop_org_membership', ctx => ({
+        user_id: ctx.auth.userId,
+        status: 'active'
+      }))
+    ]
+  }
+}
+
+const registry = createReBAcRegistry(rebacSchema)
+const transformer = createReBAcTransformer(registry)
+
+// Transforms SELECT to add EXISTS subquery for relationship check
+const products = await transformer.transformSelect(
+  db.selectFrom('products').selectAll(),
+  'products',
+  'read'
+).execute()
+```
+
+### Policy Composition
+
+Create reusable policy templates.
+
+```typescript
+import {
+  createTenantIsolationPolicy,
+  createOwnershipPolicy,
+  createSoftDeletePolicy,
+  composePolicies
+} from '@kysera/rls'
+
+const tenantPolicy = createTenantIsolationPolicy({ tenantColumn: 'tenant_id' })
+const ownerPolicy = createOwnershipPolicy({ ownerColumn: 'user_id' })
+const softDeletePolicy = createSoftDeletePolicy({ deletedAtColumn: 'deleted_at' })
+
+const combinedPolicy = composePolicies(tenantPolicy, ownerPolicy, softDeletePolicy)
+
+const schema = defineRLSSchema({
+  posts: {
+    policies: combinedPolicy.policies,
+    defaultDeny: true
+  }
+})
+```
+
+### Audit Trail
+
+Log all policy decisions with buffering and sampling.
+
+```typescript
+import {
+  createAuditLogger,
+  ConsoleAuditAdapter
+} from '@kysera/rls'
+
+const auditLogger = createAuditLogger({
+  adapter: new ConsoleAuditAdapter({ format: 'json' }),
+  bufferSize: 100,
+  flushInterval: 5000,
+  defaults: {
+    logAllowed: false,
+    logDenied: true
+  },
+  tables: {
+    sensitive_data: { logAllowed: true }
+  }
+})
+
+await auditLogger.logAllow('read', 'posts', 'ownership-allow')
+await auditLogger.logDeny('delete', 'posts', 'status-check', {
+  reason: 'Cannot delete published posts'
+})
+```
+
+### Policy Testing
+
+Unit test policies without a database.
+
+```typescript
+import {
+  createPolicyTester,
+  createTestAuthContext,
+  createTestRow,
+  policyAssertions
+} from '@kysera/rls'
+
+const tester = createPolicyTester(rlsSchema)
+
+it('should allow owner to update', async () => {
+  const result = await tester.evaluate('posts', 'update', {
+    auth: createTestAuthContext({ userId: 'user-1', roles: ['user'] }),
+    row: createTestRow({ author_id: 'user-1' })
+  })
+
+  policyAssertions.assertAllowed(result)
+})
+
+it('should apply tenant filter', () => {
+  const filters = tester.getFilters('posts', 'read', {
+    auth: createTestAuthContext({ userId: 'user-1', tenantId: 'tenant-1' })
+  })
+
+  policyAssertions.assertFiltersInclude(filters, { tenant_id: 'tenant-1' })
+})
+```
+
+### Conditional Policy Activation
+
+Activate policies based on environment, feature flags, or time.
+
+```typescript
+import {
+  whenEnvironment,
+  whenFeature,
+  whenTimeRange
+} from '@kysera/rls'
+
+const schema = defineRLSSchema({
+  posts: {
+    policies: [
+      // Only in production
+      whenEnvironment('production', () =>
+        filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
+      ),
+
+      // Feature flag controlled
+      whenFeature('strict-rls', () =>
+        deny('delete', ctx => ctx.row?.status === 'published')
+      ),
+
+      // Business hours (9-18) or overnight (22-6)
+      whenTimeRange(9, 18, () =>
+        allow('create', ctx => ctx.auth.roles.includes('user'))
+      )
+    ]
+  }
+})
+
+// Set activation context
+await rlsContext.runAsync({
+  auth: { userId: user.id, roles: user.roles },
+  meta: {
+    environment: 'production',
+    features: new Set(['strict-rls'])
+  },
+  timestamp: new Date()
+}, async () => {
+  // Policies check activation conditions
+})
+```
+
 ## See Also
 
 - [Plugin Overview](/docs/plugins/overview)
