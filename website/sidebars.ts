@@ -185,6 +185,7 @@ const sidebars: SidebarsConfig = {
         'cli/migrate',
         'cli/generate',
         'cli/db',
+        'cli/schema',
         'cli/health',
         'cli/test',
         'cli/debug',

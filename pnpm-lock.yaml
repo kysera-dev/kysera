@@ -104,6 +104,9 @@ importers:
       '@kysera/debug':
         specifier: workspace:*
         version: link:../../packages/debug
+      '@kysera/dialects':
+        specifier: workspace:*
+        version: link:../../packages/dialects
       '@kysera/infra':
         specifier: workspace:*
         version: link:../../packages/infra

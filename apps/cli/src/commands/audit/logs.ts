@@ -15,6 +15,7 @@ export interface LogsOptions {
   json?: boolean
   verbose?: boolean
   config?: string
+  schema?: string
 }
 
 export function logsCommand(): Command {
@@ -24,12 +25,13 @@ export function logsCommand(): Command {
     .option('-u, --user <id>', 'Filter by user ID')
     .option('-a, --action <type>', 'Filter by action (INSERT/UPDATE/DELETE)')
     .option('-l, --limit <n>', 'Limit number of results', '50')
-    .option('-s, --since <datetime>', 'Show logs since datetime (ISO 8601)')
+    .option('--since <datetime>', 'Show logs since datetime (ISO 8601)')
     .option('--until <datetime>', 'Show logs until datetime (ISO 8601)')
     .option('-e, --entity-id <id>', 'Filter by entity ID')
     .option('--json', 'Output as JSON')
     .option('-v, --verbose', 'Show detailed information including changes')
     .option('-c, --config <path>', 'Path to configuration file')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: LogsOptions) => {
       try {
         await queryAuditLogs(options)
@@ -48,14 +50,17 @@ export function logsCommand(): Command {
 }
 
 async function queryAuditLogs(options: LogsOptions): Promise<void> {
-  await withDatabase({ config: options.config, verbose: options.verbose }, async db => {
+  await withDatabase({ config: options.config, verbose: options.verbose, schema: options.schema }, async (db, config, schema) => {
+    // Use schema-aware db for PostgreSQL
+    const schemaDb = schema !== 'public' ? db.withSchema(schema) : db
     const querySpinner = spinner() as any
     querySpinner.start('Querying audit logs...')
 
     // Check if audit_logs table exists
-    const tables = await db
+    const tables = await schemaDb
       .selectFrom('information_schema.tables')
       .select('table_name')
+      .where('table_schema', '=', schema)
       .where('table_name', '=', 'audit_logs')
       .execute()
 
@@ -71,7 +76,7 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
     }
 
     // Build query
-    let query = db.selectFrom('audit_logs').selectAll().orderBy('created_at', 'desc')
+    let query = schemaDb.selectFrom('audit_logs').selectAll().orderBy('created_at', 'desc')
 
     // Apply filters
     if (options.table) {

@@ -12,6 +12,7 @@ export interface ResetOptions {
   seed?: boolean
   config?: string
   verbose?: boolean
+  schema?: string
 }
 
 export function resetCommand(): Command {
@@ -21,6 +22,7 @@ export function resetCommand(): Command {
     .option('--seed', 'Run seeds after reset')
     .option('-c, --config <path>', 'Path to configuration file')
     .option('-v, --verbose', 'Show detailed output')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: ResetOptions) => {
       try {
         await resetDatabase(options)
@@ -57,11 +59,11 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
     }
   }
 
-  await withDatabase({ config: options.config, verbose: options.verbose }, async (db, config) => {
+  await withDatabase({ config: options.config, verbose: options.verbose, schema: options.schema }, async (db, config, schema) => {
     const resetSpinner = spinner() as any
 
     // Step 1: Drop all tables
-    resetSpinner.start('Dropping all tables...')
+    resetSpinner.start(`Dropping all tables${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
 
     let tables: string[] = []
 
@@ -70,7 +72,7 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
       const result = (await db
         .selectFrom('information_schema.tables')
         .select('table_name')
-        .where('table_schema', '=', 'public')
+        .where('table_schema', '=', schema)
         .where('table_type', '=', 'BASE TABLE')
         .execute()) as any[]
       tables = result.map(r => r.table_name)
@@ -115,7 +117,7 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
     const migrationsDir = config.migrations?.directory || './migrations'
     const tableName = config.migrations?.tableName || 'kysera_migrations'
 
-    const runner = new MigrationRunner(db, migrationsDir, tableName)
+    const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 
     const { executed, duration } = await runner.up({
       verbose: options.verbose

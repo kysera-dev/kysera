@@ -13,6 +13,7 @@ export interface TablesOptions {
   json?: boolean
   verbose?: boolean
   config?: string
+  schema?: string
 }
 
 export function tablesCommand(): Command {
@@ -21,6 +22,7 @@ export function tablesCommand(): Command {
     .option('--json', 'Output as JSON')
     .option('-v, --verbose', 'Show detailed info (columns, indexes, etc.)')
     .option('-c, --config <path>', 'Path to configuration file')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: TablesOptions) => {
       try {
         await listTables(options)
@@ -39,11 +41,11 @@ export function tablesCommand(): Command {
 }
 
 async function listTables(options: TablesOptions): Promise<void> {
-  await withDatabase({ config: options.config, verbose: options.verbose }, async (db, config) => {
+  await withDatabase({ config: options.config, verbose: options.verbose, schema: options.schema }, async (db, config, schema) => {
     const listSpinner = spinner() as any
-    listSpinner.start('Fetching table information...')
+    listSpinner.start(`Fetching table information${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
 
-    const introspector = new DatabaseIntrospector(db, config.database!.dialect as any)
+    const introspector = new DatabaseIntrospector(db, config.database!.dialect as any, schema)
     const tables = await introspector.getTables()
 
     if (tables.length === 0) {

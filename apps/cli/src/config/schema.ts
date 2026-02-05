@@ -36,6 +36,8 @@ const DatabaseConfigSchema = z
     dialect: DatabaseDialectSchema,
     pool: DatabasePoolSchema.optional(),
     debug: z.boolean().optional().default(false),
+    // PostgreSQL schema (default: 'public')
+    schema: z.string().optional(),
     // Additional database-specific options
     host: z.string().optional(),
     port: z.number().optional(),
@@ -58,6 +60,8 @@ const MigrationConfigSchema = z.object({
   directory: z.string().default('./migrations'),
   pattern: z.string().default('{timestamp}_{name}.ts'),
   tableName: z.string().default('migrations'),
+  /** PostgreSQL schema for migration table (overrides database.schema) */
+  schema: z.string().optional(),
   lockTable: z.boolean().default(true),
   lockTimeout: z.number().default(10000),
   templates: z

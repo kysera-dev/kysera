@@ -11,6 +11,7 @@ export interface HistoryOptions {
   json?: boolean
   reverse?: boolean
   config?: string
+  schema?: string
 }
 
 export function historyCommand(): Command {
@@ -23,6 +24,7 @@ export function historyCommand(): Command {
     .option('--json', 'Output as JSON')
     .option('--reverse', 'Show oldest first (default: newest first)')
     .option('-c, --config <path>', 'Path to configuration file')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (table: string, entityId: string, options: HistoryOptions) => {
       try {
         await showEntityHistory(table, entityId, options)
@@ -45,14 +47,17 @@ async function showEntityHistory(
   entityId: string,
   options: HistoryOptions
 ): Promise<void> {
-  await withDatabase({ config: options.config }, async db => {
+  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
+    // Use schema-aware db for PostgreSQL
+    const schemaDb = schema !== 'public' ? db.withSchema(schema) : db
     const historySpinner = spinner() as any
     historySpinner.start(`Fetching history for ${tableName} #${entityId}...`)
 
     // Check if audit_logs table exists
-    const tables = await db
+    const tables = await schemaDb
       .selectFrom('information_schema.tables')
       .select('table_name')
+      .where('table_schema', '=', schema)
       .where('table_name', '=', 'audit_logs')
       .execute()
 

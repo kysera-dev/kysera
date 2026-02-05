@@ -13,6 +13,7 @@ export interface ResetOptions {
   seed?: boolean
   config?: string
   verbose?: boolean
+  schema?: string
 }
 
 export function resetCommand(): Command {
@@ -23,6 +24,7 @@ export function resetCommand(): Command {
     .option('--seed', 'Run seeds after reset')
     .option('-c, --config <path>', 'Path to configuration file')
     .option('-v, --verbose', 'Show detailed output')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: ResetOptions) => {
       try {
         await resetMigrations(options)
@@ -47,6 +49,7 @@ export function freshCommand(): Command {
     .option('--force', 'Skip confirmation prompt')
     .option('-c, --config <path>', 'Path to configuration file')
     .option('-v, --verbose', 'Show detailed output')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: ResetOptions) => {
       try {
         await freshMigrations(options)
@@ -125,8 +128,14 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
 
   const migrationsDir = config.migrations?.directory || './migrations'
   const tableName = config.migrations?.tableName || 'kysera_migrations'
+  // Determine schema: CLI option > config > default 'public'
+  const schema = options.schema || config.database?.schema || 'public'
 
-  const runner = new MigrationRunner(db, migrationsDir, tableName)
+  if (schema !== 'public') {
+    logger.info(`Using schema: ${schema}`)
+  }
+
+  const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 
   let releaseLock: (() => Promise<void>) | null = null
 
@@ -279,11 +288,18 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
 
     let tables: string[] = []
 
+    // Determine schema: CLI option > config > default 'public'
+    const schema = options.schema || config.database?.schema || 'public'
+
+    if (schema !== 'public') {
+      logger.info(`Using schema: ${schema}`)
+    }
+
     if (config.database.dialect === 'postgres') {
       const result = await db
         .selectFrom('information_schema.tables')
         .select('table_name')
-        .where('table_schema', '=', 'public')
+        .where('table_schema', '=', schema)
         .where('table_type', '=', 'BASE TABLE')
         .execute()
       tables = result.map((r: any) => r.table_name)
@@ -316,7 +332,7 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
     const migrationsDir = config.migrations?.directory || './migrations'
     const tableName = config.migrations?.tableName || 'kysera_migrations'
 
-    const runner = new MigrationRunner(db, migrationsDir, tableName)
+    const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 
     logger.info('')
     logger.info('Running all migrations...')

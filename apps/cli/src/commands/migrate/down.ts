@@ -14,12 +14,13 @@ export interface DownOptions {
   verbose?: boolean
   config?: string
   force?: boolean
+  schema?: string
 }
 
 export function downCommand(): Command {
   const cmd = new Command('down')
     .description('Rollback migrations')
-    .option('-s, --steps <number>', 'Number of migrations to rollback', parseInt)
+    .option('--steps <number>', 'Number of migrations to rollback', parseInt)
     .option('--count <number>', 'Number of migrations to rollback (alias for --steps)', parseInt)
     .option('-t, --to <migration>', 'Rollback to specific migration')
     .option('--all', 'Rollback all migrations')
@@ -27,6 +28,7 @@ export function downCommand(): Command {
     .option('-v, --verbose', 'Show detailed output')
     .option('-c, --config <path>', 'Path to configuration file')
     .option('--force', 'Skip confirmation prompt')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: DownOptions) => {
       try {
         await rollbackMigrations(options)
@@ -63,12 +65,16 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
     }
   }
 
-  await withDatabase({ config: options.config, verbose: options.verbose }, async (db, config) => {
+  await withDatabase({ config: options.config, verbose: options.verbose, schema: options.schema }, async (db, config, schema) => {
     const migrationsDir = config.migrations?.directory || './migrations'
     const tableName = config.migrations?.tableName || 'kysera_migrations'
 
+    if (schema !== 'public') {
+      logger.info(`Using schema: ${schema}`)
+    }
+
     // Create migration runner
-    const runner = new MigrationRunner(db, migrationsDir, tableName)
+    const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 
     // Acquire lock to prevent concurrent migrations
     let releaseLock: (() => Promise<void>) | null = null

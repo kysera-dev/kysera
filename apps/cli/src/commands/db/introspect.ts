@@ -14,6 +14,7 @@ export interface IntrospectOptions {
   json?: boolean
   detailed?: boolean
   config?: string
+  schema?: string
 }
 
 export function introspectCommand(): Command {
@@ -23,6 +24,7 @@ export function introspectCommand(): Command {
     .option('--json', 'Output as JSON')
     .option('--detailed', 'Show detailed information')
     .option('-c, --config <path>', 'Path to configuration file')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (tableName: string | undefined, options: IntrospectOptions) => {
       try {
         await introspectDatabase(tableName, options)
@@ -44,11 +46,11 @@ async function introspectDatabase(
   tableName: string | undefined,
   options: IntrospectOptions
 ): Promise<void> {
-  await withDatabase({ config: options.config }, async (db, config) => {
+  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
     const introspectSpinner = spinner() as any
-    introspectSpinner.start('Introspecting database...')
+    introspectSpinner.start(`Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
 
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any)
+    const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
 
     if (tableName) {
       const tableInfo = await introspector.getTableInfo(tableName)
@@ -113,10 +115,12 @@ async function introspectDatabase(
         console.log('')
         console.log(prism.gray('Database Information:'))
         console.log(`  Dialect: ${config.database.dialect}`)
+        console.log(`  Schema: ${schema}`)
         console.log(`  Tables: ${tables.length}`)
         console.log('')
+        const schemaFlag = schema !== 'public' ? ` --schema ${schema}` : ''
         console.log(
-          prism.gray(`Run ${prism.cyan('kysera db introspect <table>')} to see table details`)
+          prism.gray(`Run ${prism.cyan(`kysera db introspect <table>${schemaFlag}`)} to see table details`)
         )
       }
     }

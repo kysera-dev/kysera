@@ -8,6 +8,7 @@ export interface StatusOptions {
   json?: boolean
   verbose?: boolean
   config?: string
+  schema?: string
 }
 
 export function statusCommand(): Command {
@@ -16,6 +17,7 @@ export function statusCommand(): Command {
     .option('--json', 'Output as JSON')
     .option('-v, --verbose', 'Show detailed information')
     .option('-c, --config <path>', 'Path to configuration file')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: StatusOptions) => {
       try {
         await showMigrationStatus(options)
@@ -34,12 +36,12 @@ export function statusCommand(): Command {
 }
 
 async function showMigrationStatus(options: StatusOptions): Promise<void> {
-  await withDatabase({ config: options.config, verbose: options.verbose }, async (db, config) => {
+  await withDatabase({ config: options.config, verbose: options.verbose, schema: options.schema }, async (db, config, schema) => {
     const migrationsDir = config.migrations?.directory || './migrations'
     const tableName = config.migrations?.tableName || 'kysera_migrations'
 
     // Create migration runner
-    const runner = new MigrationRunner(db, migrationsDir, tableName)
+    const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 
     // Get migration status
     const status = await runner.getMigrationStatus()
@@ -132,6 +134,7 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
     if (options.verbose) {
       console.log(prism.gray('Database Information:'))
       console.log(`  Dialect: ${config.database!.dialect}`)
+      console.log(`  Schema: ${schema}`)
       console.log(`  Migrations Directory: ${migrationsDir}`)
       console.log(`  Migrations Table: ${tableName}`)
       console.log('')

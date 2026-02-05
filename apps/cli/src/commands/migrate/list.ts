@@ -14,6 +14,7 @@ export interface ListOptions {
   executed?: boolean
   json?: boolean
   config?: string
+  schema?: string
 }
 
 export function listCommand(): Command {
@@ -23,6 +24,7 @@ export function listCommand(): Command {
     .option('--executed', 'Show only executed migrations')
     .option('--json', 'Output as JSON')
     .option('-c, --config <path>', 'Path to configuration file')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: ListOptions) => {
       try {
         await listMigrations(options)
@@ -80,9 +82,11 @@ async function listMigrations(options: ListOptions): Promise<void> {
 
   try {
     const tableName = config.migrations?.tableName || 'kysera_migrations'
+    // Determine schema: CLI option > config > default 'public'
+    const schema = options.schema || config.database?.schema || 'public'
 
     // Create migration runner
-    const runner = new MigrationRunner(db, migrationsDir, tableName)
+    const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 
     // Get migration status
     const status = await runner.getMigrationStatus()

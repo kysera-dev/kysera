@@ -13,18 +13,20 @@ export interface UpOptions {
   force?: boolean
   verbose?: boolean
   config?: string
+  schema?: string
 }
 
 export function upCommand(): Command {
   const cmd = new Command('up')
     .description('Run pending migrations')
     .option('-t, --to <migration>', 'Migrate up to specific migration')
-    .option('-s, --steps <number>', 'Number of migrations to run', parseInt)
+    .option('--steps <number>', 'Number of migrations to run', parseInt)
     .option('--count <number>', 'Number of migrations to run (alias for --steps)', parseInt)
     .option('--dry-run', 'Preview migrations without executing')
     .option('--force', 'Force migration even if already executed')
     .option('-v, --verbose', 'Show detailed output')
     .option('-c, --config <path>', 'Path to configuration file')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: UpOptions) => {
       try {
         await runMigrationsUp(options)
@@ -49,9 +51,13 @@ export function upCommand(): Command {
 async function runMigrationsUp(options: UpOptions): Promise<void> {
   logger.debug('Starting runMigrationsUp with options:', options)
 
-  await withDatabase({ config: options.config, verbose: options.verbose }, async (db, config) => {
+  await withDatabase({ config: options.config, verbose: options.verbose, schema: options.schema }, async (db, config, schema) => {
     const migrationsDir = config.migrations?.directory || './migrations'
     const tableName = config.migrations?.tableName || 'kysera_migrations'
+
+    if (schema !== 'public') {
+      logger.info(`Using schema: ${schema}`)
+    }
 
     // Check if migrations directory exists
     const { existsSync } = await import('node:fs')
@@ -68,7 +74,7 @@ async function runMigrationsUp(options: UpOptions): Promise<void> {
     }
 
     // Create migration runner
-    const runner = new MigrationRunner(db, migrationsDir, tableName)
+    const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 
     // Acquire lock to prevent concurrent migrations
     let releaseLock: (() => Promise<void>) | null = null

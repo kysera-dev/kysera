@@ -17,6 +17,7 @@ export interface ExplainOptions {
   timing?: boolean
   summary?: boolean
   config?: string
+  schema?: string
 }
 
 interface ExplainResult {
@@ -40,6 +41,7 @@ export function explainCommand(): Command {
     .option('--timing', 'Show timing information', true)
     .option('--summary', 'Show summary at the end', true)
     .option('-c, --config <path>', 'Path to configuration file')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: ExplainOptions) => {
       try {
         await explainQuery(options)

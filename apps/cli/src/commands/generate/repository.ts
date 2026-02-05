@@ -18,6 +18,7 @@ export interface RepositoryOptions {
   withPagination?: boolean
   withSoftDelete?: boolean
   withTimestamps?: boolean
+  schema?: string
 }
 
 export function repositoryCommand(): Command {
@@ -34,6 +35,7 @@ export function repositoryCommand(): Command {
     .option('--with-soft-delete', 'Include soft delete support', false)
     .option('--with-timestamps', 'Include timestamp support', true)
     .option('--no-with-timestamps', 'Skip timestamp support')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (table: string | undefined, options: RepositoryOptions) => {
       try {
         await generateRepository(table, options)
@@ -55,11 +57,11 @@ async function generateRepository(
   tableName: string | undefined,
   options: RepositoryOptions
 ): Promise<void> {
-  await withDatabase({ config: options.config }, async (db, config) => {
+  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
     const generateSpinner = spinner()
-    generateSpinner.start('Introspecting database...')
+    generateSpinner.start(`Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
 
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any)
+    const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
 
     let tables: TableInfo[] = []
 

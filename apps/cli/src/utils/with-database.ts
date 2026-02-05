@@ -13,6 +13,8 @@ export interface WithDatabaseOptions {
   config?: string
   /** Enable verbose output */
   verbose?: boolean
+  /** PostgreSQL schema name (default: 'public') */
+  schema?: string
 }
 
 /**
@@ -38,9 +40,21 @@ export interface WithDatabaseOptions {
  * });
  * ```
  */
+/**
+ * Context passed to withDatabase handlers
+ */
+export interface DatabaseContext {
+  /** The database instance */
+  db: DatabaseInstance
+  /** The loaded configuration */
+  config: KyseraConfig
+  /** The PostgreSQL schema name (default: 'public') */
+  schema: string
+}
+
 export async function withDatabase<T>(
   options: WithDatabaseOptions,
-  handler: (db: DatabaseInstance, config: KyseraConfig) => Promise<T>
+  handler: (db: DatabaseInstance, config: KyseraConfig, schema: string) => Promise<T>
 ): Promise<T> {
   const config = await loadConfig(options.config)
 
@@ -60,9 +74,12 @@ export async function withDatabase<T>(
     ])
   }
 
+  // Determine schema: CLI option > config > default 'public'
+  const schema = options.schema || config.database.schema || 'public'
+
   try {
     // Cast to DatabaseInstance - the db has these methods at runtime
-    return await handler(db as DatabaseInstance, config)
+    return await handler(db as DatabaseInstance, config, schema)
   } finally {
     await db.destroy()
   }
@@ -92,7 +109,7 @@ export async function withDatabase<T>(
  */
 export async function withDatabaseOptional<T>(
   options: WithDatabaseOptions,
-  handler: (db: DatabaseInstance | null, config: KyseraConfig | null) => Promise<T>
+  handler: (db: DatabaseInstance | null, config: KyseraConfig | null, schema: string) => Promise<T>
 ): Promise<T> {
   let config: KyseraConfig | null = null
   let db: DatabaseInstance | null = null
@@ -107,8 +124,11 @@ export async function withDatabaseOptional<T>(
     db = (await getDatabaseConnection(config.database)) as DatabaseInstance | null
   }
 
+  // Determine schema: CLI option > config > default 'public'
+  const schema = options.schema || config?.database?.schema || 'public'
+
   try {
-    return await handler(db, config)
+    return await handler(db, config, schema)
   } finally {
     if (db) {
       await db.destroy()

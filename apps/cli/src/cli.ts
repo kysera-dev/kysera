@@ -41,6 +41,7 @@ ${prism.gray('Examples:')}
   ${prism.cyan('kysera migrate up')}               Run pending migrations
   ${prism.cyan('kysera generate crud User')}       Generate CRUD for User
   ${prism.cyan('kysera health check')}             Check database health
+  ${prism.cyan('kysera schema list')}              List PostgreSQL schemas
 
 ${prism.gray('Documentation:')} ${prism.underline(prism.blue('https://kysera.dev/docs/cli'))}
 ${prism.gray('GitHub:')} ${prism.underline(prism.blue('https://github.com/kysera/kysera'))}
