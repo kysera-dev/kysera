@@ -39,7 +39,8 @@
   "peerDependencies": {
     "kysely": ">=0.28.8",
     "@kysera/executor": "workspace:*",
-    "@kysera/repository": "workspace:*"
+    "@kysera/repository": "workspace:*",
+    "zod": ">=3.0.0"
   },
   "peerDependenciesMeta": {
     "@kysera/executor": {
@@ -47,6 +48,9 @@
     },
     "@kysera/repository": {
       "optional": true
+    },
+    "zod": {
+      "optional": false
     }
   },
   "dependencies": {
@@ -65,7 +69,8 @@
     "pg": "^8.16.3",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.16"
+    "vitest": "^4.0.16",
+    "zod": "^3.24.2"
   },
   "keywords": [
     "kysely",

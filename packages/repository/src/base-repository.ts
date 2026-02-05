@@ -60,6 +60,17 @@ export interface BaseRepository<DB, Entity, PK = number> {
  */
 export interface RepositoryConfig<Table, Entity> {
   tableName: string
+  /**
+   * PostgreSQL schema for this repository.
+   * When set, all queries are scoped to this schema.
+   *
+   * @example
+   * ```typescript
+   * schema: 'auth'  // queries use auth.users
+   * schema: 'tenant_123'  // multi-tenant pattern
+   * ```
+   */
+  schema?: string
   /** Primary key column name(s). Default: 'id' */
   primaryKey?: PrimaryKeyColumn
   /** Primary key type hint. Default: 'number' */

@@ -675,4 +675,25 @@ describe('Repository Pattern', () => {
       expect(posts[0]?.author.name).toBeTruthy()
     })
   })
+
+  describe('Schema Configuration', () => {
+    it('should accept schema option in repository config', async () => {
+      const factory = createRepositoryFactory(db)
+
+      // Create a repository with schema option (SQLite doesn't support schemas,
+      // but we verify the config is accepted without errors)
+      const userRepo = factory.create<'users', User>({
+        tableName: 'users',
+        schema: 'test_schema', // This would be used in PostgreSQL
+        mapRow: row => row as User,
+        schemas: {
+          create: zodAdapter(CreateUserSchema)
+        }
+      })
+
+      // Repository should be created successfully
+      expect(userRepo).toBeDefined()
+      expect(userRepo.tableName).toBe('users')
+    })
+  })
 })

@@ -1,19 +1,34 @@
 /**
  * MySQL Dialect Adapter
+ *
+ * Note: In MySQL, "schema" and "database" are synonymous.
+ * The schema option maps to the current database context.
  */
 
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
 import { silentLogger, type KyseraLogger } from '@kysera/core'
-import type { DialectAdapter, DatabaseErrorLike } from '../types.js'
-import { assertValidIdentifier } from '../helpers.js'
+import type { DialectAdapter, DialectAdapterOptions, SchemaOptions } from '../types.js'
+import { assertValidIdentifier, errorMatchers } from '../helpers.js'
+
+/**
+ * MySQL-specific adapter options
+ */
+export interface MySQLAdapterOptions extends DialectAdapterOptions {
+  /** Logger instance for error reporting */
+  logger?: KyseraLogger
+}
 
 export class MySQLAdapter implements DialectAdapter {
   readonly dialect = 'mysql' as const
+  readonly defaultSchema: string
   private logger: KyseraLogger
 
-  constructor(logger: KyseraLogger = silentLogger) {
-    this.logger = logger
+  constructor(options: MySQLAdapterOptions = {}) {
+    // In MySQL, defaultSchema is the database name
+    // Empty string means use current database (DATABASE())
+    this.defaultSchema = options.defaultSchema ?? ''
+    this.logger = options.logger ?? silentLogger
   }
 
   getDefaultPort(): number {
@@ -34,67 +49,91 @@ export class MySQLAdapter implements DialectAdapter {
   }
 
   isUniqueConstraintError(error: unknown): boolean {
-    const e = error as DatabaseErrorLike
-    const message = e.message?.toLowerCase() || ''
-    const code = e.code || ''
-    return code === 'ER_DUP_ENTRY' || code === '1062' || message.includes('duplicate entry')
+    return errorMatchers.mysql.uniqueConstraint(error)
   }
 
   isForeignKeyError(error: unknown): boolean {
-    const e = error as DatabaseErrorLike
-    const code = e.code || ''
-    return (
-      code === 'ER_ROW_IS_REFERENCED' ||
-      code === '1451' ||
-      code === 'ER_NO_REFERENCED_ROW' ||
-      code === '1452'
-    )
+    return errorMatchers.mysql.foreignKey(error)
   }
 
   isNotNullError(error: unknown): boolean {
-    const e = error as DatabaseErrorLike
-    const code = e.code || ''
-    return code === 'ER_BAD_NULL_ERROR' || code === '1048'
+    return errorMatchers.mysql.notNull(error)
   }
 
-  async tableExists(db: Kysely<any>, tableName: string): Promise<boolean> {
+  /**
+   * Get the schema (database) filter for queries.
+   * In MySQL, schema = database, so we use DATABASE() if not specified.
+   */
+  private getSchemaFilter(options?: SchemaOptions): ReturnType<typeof sql> | string {
+    const schema = options?.schema ?? this.defaultSchema
+    if (schema) {
+      assertValidIdentifier(schema, 'schema/database name')
+      return schema
+    }
+    return sql`DATABASE()`
+  }
+
+  async tableExists(
+    db: Kysely<any>,
+    tableName: string,
+    options?: SchemaOptions
+  ): Promise<boolean> {
     assertValidIdentifier(tableName, 'table name')
+    const schemaFilter = this.getSchemaFilter(options)
+
     try {
-      const result = await db
+      const query = db
         .selectFrom('information_schema.tables')
         .select('table_name')
         .where('table_name', '=', tableName)
-        .where('table_schema', '=', sql`DATABASE()`)
-        .executeTakeFirst()
+
+      const result = typeof schemaFilter === 'string'
+        ? await query.where('table_schema', '=', schemaFilter).executeTakeFirst()
+        : await query.where('table_schema', '=', schemaFilter).executeTakeFirst()
+
       return !!result
     } catch {
       return false
     }
   }
 
-  async getTableColumns(db: Kysely<any>, tableName: string): Promise<string[]> {
+  async getTableColumns(
+    db: Kysely<any>,
+    tableName: string,
+    options?: SchemaOptions
+  ): Promise<string[]> {
     assertValidIdentifier(tableName, 'table name')
+    const schemaFilter = this.getSchemaFilter(options)
+
     try {
-      const results = await db
+      const query = db
         .selectFrom('information_schema.columns')
         .select('column_name')
         .where('table_name', '=', tableName)
-        .where('table_schema', '=', sql`DATABASE()`)
-        .execute()
+
+      const results = typeof schemaFilter === 'string'
+        ? await query.where('table_schema', '=', schemaFilter).execute()
+        : await query.where('table_schema', '=', schemaFilter).execute()
+
       return results.map(r => r.column_name as string)
     } catch {
       return []
     }
   }
 
-  async getTables(db: Kysely<any>): Promise<string[]> {
+  async getTables(db: Kysely<any>, options?: SchemaOptions): Promise<string[]> {
+    const schemaFilter = this.getSchemaFilter(options)
+
     try {
-      const results = await db
+      const query = db
         .selectFrom('information_schema.tables')
         .select('table_name')
-        .where('table_schema', '=', sql`DATABASE()`)
         .where('table_type', '=', 'BASE TABLE')
-        .execute()
+
+      const results = typeof schemaFilter === 'string'
+        ? await query.where('table_schema', '=', schemaFilter).execute()
+        : await query.where('table_schema', '=', schemaFilter).execute()
+
       return results.map(r => r.table_name as string)
     } catch {
       return []
@@ -126,12 +165,21 @@ export class MySQLAdapter implements DialectAdapter {
     }
   }
 
-  async truncateTable(db: Kysely<any>, tableName: string): Promise<boolean> {
+  async truncateTable(
+    db: Kysely<any>,
+    tableName: string,
+    options?: SchemaOptions
+  ): Promise<boolean> {
     assertValidIdentifier(tableName, 'table name')
+    const schema = options?.schema ?? this.defaultSchema
+
     try {
       await sql.raw('SET FOREIGN_KEY_CHECKS = 0').execute(db)
       try {
-        await sql.raw(`TRUNCATE TABLE ${this.escapeIdentifier(tableName)}`).execute(db)
+        const qualifiedTable = schema
+          ? `${this.escapeIdentifier(schema)}.${this.escapeIdentifier(tableName)}`
+          : this.escapeIdentifier(tableName)
+        await sql.raw(`TRUNCATE TABLE ${qualifiedTable}`).execute(db)
         return true
       } finally {
         // Always try to re-enable FK checks
@@ -152,14 +200,35 @@ export class MySQLAdapter implements DialectAdapter {
     }
   }
 
-  async truncateAllTables(db: Kysely<any>, exclude: string[] = []): Promise<void> {
-    const tables = await this.getTables(db)
+  async truncateAllTables(
+    db: Kysely<any>,
+    exclude: string[] = [],
+    options?: SchemaOptions
+  ): Promise<void> {
+    const tables = await this.getTables(db, options)
     for (const table of tables) {
       if (!exclude.includes(table)) {
-        await this.truncateTable(db, table)
+        await this.truncateTable(db, table, options)
       }
     }
   }
 }
 
+/**
+ * Default MySQL adapter instance
+ */
 export const mysqlAdapter = new MySQLAdapter()
+
+/**
+ * Create a new MySQL adapter with custom configuration
+ *
+ * @param options - Adapter configuration options
+ * @returns Configured MySQLAdapter instance
+ *
+ * @example
+ * // Create adapter with specific database as default
+ * const adapter = createMySQLAdapter({ defaultSchema: 'my_database' })
+ */
+export function createMySQLAdapter(options?: MySQLAdapterOptions): MySQLAdapter {
+  return new MySQLAdapter(options)
+}

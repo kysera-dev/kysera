@@ -292,18 +292,28 @@ Create a database context from any database instance.
 
 ```typescript
 function createContext<DB>(
-  db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>
+  db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>,
+  options?: CreateContextOptions | boolean
 ): DbContext<DB>
+
+interface CreateContextOptions {
+  /** Override transaction detection */
+  isTransaction?: boolean
+  /** PostgreSQL schema for all queries in this context */
+  schema?: string
+}
 ```
 
 **Parameters:**
 
 - `db` - Database instance (Kysely, Transaction, KyseraExecutor, or KyseraTransaction)
+- `options` - Optional configuration object or boolean (boolean for backward compatibility with `isTransaction`)
 
 **Returns:** `DbContext<DB>` with the following properties:
 
-- `db` - The original database instance
+- `db` - The database instance (wrapped with schema if specified)
 - `isTransaction` - Boolean indicating if the context is within a transaction
+- `schema` - The PostgreSQL schema (if specified)
 
 **Notes:**
 
@@ -311,6 +321,7 @@ function createContext<DB>(
 - When using KyseraExecutor, plugins are automatically preserved in the context
 - Transaction state is detected via the `isTransaction` property on the database instance
 - The context is immutable - any modifications return a new context
+- When `schema` is specified, the db instance is wrapped with `.withSchema(schema)`
 
 **Integration with @kysera/executor:**
 
@@ -330,6 +341,59 @@ const user = await findUserById(ctx, 1) // soft-delete filter applied
 // With plain Kysely
 const plainCtx = createContext(db)
 const allUsers = await findUserById(plainCtx, 1) // no plugin filtering
+
+// With schema option
+const schemaCtx = createContext(executor, { schema: 'auth' })
+const authUsers = await findUserById(schemaCtx, 1) // queries use 'auth' schema
+```
+
+#### createSchemaContext
+
+Convenience function to create a schema-scoped context.
+
+```typescript
+function createSchemaContext<DB>(
+  db: Kysely<DB> | KyseraExecutor<DB>,
+  schema: string
+): DbContext<DB>
+```
+
+**Parameters:**
+
+- `db` - Database or executor instance (not transactions - use `createContext` for those)
+- `schema` - PostgreSQL schema name to scope all queries to
+
+**Returns:** `DbContext<DB>` with the schema applied
+
+**Notes:**
+
+- Simpler API than `createContext` when only schema is needed
+- Does not accept `Transaction<DB>` or `KyseraTransaction<DB>` (top-level only)
+- Internally calls `createContext(db, { schema })`
+
+**Use Cases:**
+
+1. **Multi-tenant applications (schema-per-tenant pattern):**
+
+```typescript
+import { createSchemaContext } from '@kysera/dal'
+
+const tenantSchema = `tenant_${request.tenantId}`
+const ctx = createSchemaContext(executor, tenantSchema)
+
+// All queries scoped to tenant's schema
+const users = await getUsers(ctx) // SELECT * FROM "tenant_123"."users"
+```
+
+2. **Domain separation:**
+
+```typescript
+// Separate contexts for different domains
+const authCtx = createSchemaContext(executor, 'auth')
+const adminCtx = createSchemaContext(executor, 'admin')
+
+const user = await getUser(authCtx, userId) // auth.users
+const settings = await getSettings(adminCtx) // admin.settings
 ```
 
 #### withContext
@@ -708,7 +772,22 @@ interface DbContext<DB = Record<string, unknown>> {
   readonly db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>
   /** Whether the context is within a transaction */
   readonly isTransaction: boolean
+  /** PostgreSQL schema context (when using createSchemaContext or schema option) */
+  readonly schema?: string
 }
+```
+
+**Schema Property:**
+
+When `schema` is set, all queries executed through `ctx.db` use the specified PostgreSQL schema instead of the default (typically 'public'). The schema is applied via Kysely's `.withSchema()` method.
+
+```typescript
+const ctx = createSchemaContext(executor, 'tenant_123')
+console.log(ctx.schema) // 'tenant_123'
+
+// All queries through ctx.db are scoped to 'tenant_123' schema
+const users = await ctx.db.selectFrom('users').selectAll().execute()
+// Executes: SELECT * FROM "tenant_123"."users"
 ```
 
 ### QueryFunction
@@ -739,7 +818,7 @@ interface TransactionOptions {
 
 ### TransactionOptionsWithLogger
 
-Extended transaction options with logger support.
+Extended transaction options with logger support and rollback error handling.
 
 ```typescript
 interface TransactionOptionsWithLogger extends TransactionOptions {
@@ -748,15 +827,38 @@ interface TransactionOptionsWithLogger extends TransactionOptions {
    * Defaults to silentLogger (no-op).
    */
   logger?: KyseraLogger
+
+  /**
+   * How to handle savepoint rollback errors in nested transactions.
+   *
+   * - 'log-only' (default): Log rollback errors but don't throw (original error is more important)
+   * - 'throw': Throw rollback error instead of original error (useful for debugging)
+   * - 'callback': Call onRollbackError callback with both errors (for custom handling)
+   *
+   * @default 'log-only'
+   */
+  rollbackErrorMode?: 'log-only' | 'throw' | 'callback'
+
+  /**
+   * Callback invoked when savepoint rollback fails (only used with rollbackErrorMode: 'callback').
+   *
+   * Receives both the original error that triggered the rollback and the rollback error.
+   * This allows custom error handling logic (e.g., logging to external service, alerting, etc.)
+   *
+   * @param originalError - The error that caused the savepoint to rollback
+   * @param rollbackError - The error that occurred during rollback
+   */
+  onRollbackError?: (originalError: unknown, rollbackError: unknown) => void | Promise<void>
 }
 ```
 
-**Example:**
+**Examples:**
 
 ```typescript
 import { withTransaction } from '@kysera/dal'
 import { consoleLogger } from '@kysera/core'
 
+// With logger
 await withTransaction(
   executor,
   async ctx => {
@@ -764,6 +866,70 @@ await withTransaction(
   },
   { logger: consoleLogger }
 )
+
+// Throw rollback error instead of original error (debugging)
+await withTransaction(
+  executor,
+  async ctx => {
+    // ...
+  },
+  { rollbackErrorMode: 'throw' }
+)
+
+// Custom error handling callback
+await withTransaction(
+  executor,
+  async ctx => {
+    // ...
+  },
+  {
+    rollbackErrorMode: 'callback',
+    onRollbackError: async (originalError, rollbackError) => {
+      await logToMonitoring({
+        type: 'savepoint_rollback_failure',
+        originalError,
+        rollbackError
+      })
+    }
+  }
+)
+```
+
+### TransactionRequiredError
+
+Error thrown when a transactional query is executed outside a transaction context.
+
+```typescript
+class TransactionRequiredError extends Error {
+  name: 'TransactionRequiredError'
+  constructor(message?: string)
+}
+```
+
+**Default message:** `'Query requires a transaction. Use withTransaction() to execute this query.'`
+
+**When thrown:** By queries created with `createTransactionalQuery()` when called outside a transaction.
+
+**Example:**
+
+```typescript
+import { createTransactionalQuery, withTransaction, TransactionRequiredError } from '@kysera/dal'
+
+const transferFunds = createTransactionalQuery(async (ctx, from, to, amount) => {
+  // ... transfer logic
+})
+
+// This throws TransactionRequiredError:
+try {
+  await transferFunds(db, 1, 2, 100)
+} catch (error) {
+  if (error instanceof TransactionRequiredError) {
+    console.log('Must use withTransaction()')
+  }
+}
+
+// This works:
+await withTransaction(db, ctx => transferFunds(ctx, 1, 2, 100))
 ```
 
 ### Type Inference Utilities
@@ -796,9 +962,51 @@ type ParallelResult<
 
 **Note:** The type has 3 type parameters: `DB` (database schema), `TArgs` (query arguments), and `T` (queries object).
 
+### Advanced Symbols and Utilities
+
+For advanced use cases (testing, custom context detection, debugging), DAL exports internal symbols:
+
+```typescript
+import {
+  DB_CONTEXT_SYMBOL,
+  IN_TRANSACTION_SYMBOL,
+  SAVEPOINT_COUNTER_SYMBOL,
+  isDbContext
+} from '@kysera/dal'
+```
+
+**Exported Symbols:**
+
+- **`DB_CONTEXT_SYMBOL`** - Symbol used to identify `DbContext` objects. Check if an object is a context: `obj[DB_CONTEXT_SYMBOL] === true`
+- **`IN_TRANSACTION_SYMBOL`** - Symbol marker set on database instances during `withTransaction()`. Used for nested transaction detection.
+- **`SAVEPOINT_COUNTER_SYMBOL`** - Symbol storing the savepoint counter for nested transactions. Incremented for each nested `withTransaction()` call.
+
+**Type Guard:**
+
+- **`isDbContext<DB>(obj)`** - Type guard that returns `true` if `obj` is a valid `DbContext` object
+
+```typescript
+import { isDbContext } from '@kysera/dal'
+
+function processDbOrContext(input: Kysely<DB> | DbContext<DB>) {
+  if (isDbContext(input)) {
+    // input is DbContext<DB>
+    console.log('In transaction:', input.isTransaction)
+    console.log('Schema:', input.schema)
+  } else {
+    // input is Kysely<DB>
+    console.log('Raw Kysely instance')
+  }
+}
+```
+
+:::caution Internal Symbols
+These symbols are exported for advanced use cases but are considered internal API. Use them only when necessary (e.g., testing, debugging, custom context management). The symbol values may change between versions.
+:::
+
 ### Re-exported Executor Types
 
-For convenience, `@kysera/dal` re-exports types and functions from `@kysera/executor`:
+For convenience, `@kysera/dal` re-exports types from `@kysera/executor`:
 
 ```typescript
 // Types
@@ -807,19 +1015,15 @@ import type {
   KyseraExecutor,
   KyseraTransaction,
   AnyKyseraExecutor,
-  QueryBuilderContext
+  QueryBuilderContext,
+  ExecutorConfig,
+  KyseraExecutorMarker,
+  PluginValidationDetails,
+  PluginValidationErrorType
 } from '@kysera/dal'
 
-// Functions
-import {
-  createExecutor,
-  destroyExecutor,
-  isKyseraExecutor,
-  getPlugins,
-  getRawDb,
-  wrapTransaction,
-  withSchema
-} from '@kysera/dal'
+// Error class
+import { PluginValidationError } from '@kysera/dal'
 ```
 
 **Re-exported Types:**
@@ -829,18 +1033,50 @@ import {
 - **`KyseraTransaction<DB>`** - Plugin-aware Transaction wrapper type
 - **`AnyKyseraExecutor<DB>`** - Union of KyseraExecutor or KyseraTransaction
 - **`QueryBuilderContext`** - Context passed to `interceptQuery` hooks
+- **`ExecutorConfig`** - Configuration for executor creation
+- **`KyseraExecutorMarker<DB>`** - Marker interface for identifying executors
+- **`PluginValidationDetails`** - Details for plugin validation errors
+- **`PluginValidationErrorType`** - Type of plugin validation error
 
-**Re-exported Functions:**
+**Re-exported Classes:**
 
-- **`createExecutor()`** - Create plugin-aware executor
-- **`destroyExecutor()`** - Destroy executor and call plugin cleanup hooks
-- **`isKyseraExecutor()`** - Type guard for KyseraExecutor
-- **`getPlugins()`** - Get plugins from executor
-- **`getRawDb()`** - Get raw Kysely instance (bypasses plugins)
-- **`wrapTransaction()`** - Wrap transaction with plugins
-- **`withSchema()`** - Switch schema while maintaining plugins
+- **`PluginValidationError`** - Error thrown when plugin validation fails
 
-See [@kysera/executor documentation](/docs/api/executor) for full details on these types and functions.
+:::note Executor Functions Not Re-exported
+Functions like `createExecutor()`, `destroyExecutor()`, `isKyseraExecutor()`, `getPlugins()`, `getRawDb()`, and `wrapTransaction()` are **not** re-exported from `@kysera/dal`. Import them directly from `@kysera/executor`:
+
+```typescript
+import { createExecutor, destroyExecutor, isKyseraExecutor } from '@kysera/executor'
+```
+:::
+
+**Schema-Related Functions (DAL-native):**
+
+- **`createSchemaContext()`** - Create a schema-scoped context (see above)
+- **`CreateContextOptions`** - Options interface with `schema` property
+
+See [@kysera/executor documentation](/docs/api/executor) for full details on executor types and functions.
+
+### Schema Preservation in Transactions
+
+When using `withTransaction()` with a schema-enabled context, the schema is automatically preserved:
+
+```typescript
+const ctx = createSchemaContext(executor, 'tenant_123')
+
+await withTransaction(ctx.db, async txCtx => {
+  // txCtx.schema === 'tenant_123' (preserved from parent)
+  const users = await getUsers(txCtx) // Uses tenant_123 schema
+  const posts = await getPosts(txCtx) // Uses tenant_123 schema
+})
+```
+
+**How it works:**
+
+1. `withTransaction()` detects the parent context's schema via `isDbContext()`
+2. The transaction is wrapped with `.withSchema()` using the parent's schema
+3. The resulting context has both `isTransaction: true` and `schema` set
+4. Nested savepoints also preserve the schema
 
 ## Plugin Integration
 

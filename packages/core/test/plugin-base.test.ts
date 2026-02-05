@@ -721,7 +721,7 @@ describe('plugin-base', () => {
         expect(Array.isArray(conflicts)).toBe(true)
       })
 
-      it('should accept generic type extending BasePluginOptions', () => {
+      it('should accept extended options', () => {
         interface CustomPluginOptions extends BasePluginOptions {
           customOption: string
           anotherOption?: number
@@ -733,6 +733,7 @@ describe('plugin-base', () => {
           tables: ['users']
         }
 
+        // CustomPluginOptions extends BasePluginOptions, so it's assignable
         const config = createPluginConfig('custom', options)
 
         expect(config.name).toBe('custom')

@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest'
 import type { Kysely, Transaction } from 'kysely'
 import type { DbContext } from '../src/types.js'
 import { DB_CONTEXT_SYMBOL, IN_TRANSACTION_SYMBOL } from '../src/types.js'
-import { createContext, isInTransaction, withTransaction, withContext } from '../src/context.js'
+import { createContext, createSchemaContext, isInTransaction, withTransaction, withContext } from '../src/context.js'
 
 // Mock database type
 interface TestDB {
@@ -260,5 +260,87 @@ describe('withContext', () => {
       // Verify it's the exact same reference
       expect(ctx.db.selectFrom).toBe(selectFromFn)
     })
+  })
+})
+
+describe('createSchemaContext', () => {
+  it('should create context with schema property', () => {
+    const withSchemaMock = vi.fn().mockReturnThis()
+    const mockDb = createMockKysely({
+      withSchema: withSchemaMock
+    })
+
+    const ctx = createSchemaContext(mockDb, 'auth')
+
+    expect(ctx.schema).toBe('auth')
+    expect(ctx.isTransaction).toBe(false)
+    expect(withSchemaMock).toHaveBeenCalledWith('auth')
+  })
+
+  it('should call withSchema on the database', () => {
+    const schemaDbMock = { selectFrom: vi.fn() } as unknown as Kysely<TestDB>
+    const withSchemaMock = vi.fn().mockReturnValue(schemaDbMock)
+    const mockDb = createMockKysely({
+      withSchema: withSchemaMock
+    })
+
+    const ctx = createSchemaContext(mockDb, 'tenant_123')
+
+    expect(ctx.db).toBe(schemaDbMock)
+    expect(withSchemaMock).toHaveBeenCalledWith('tenant_123')
+  })
+})
+
+describe('createContext with schema options', () => {
+  it('should accept options object with schema', () => {
+    const withSchemaMock = vi.fn().mockReturnThis()
+    const mockDb = createMockKysely({
+      withSchema: withSchemaMock
+    })
+
+    const ctx = createContext(mockDb, { schema: 'admin' })
+
+    expect(ctx.schema).toBe('admin')
+    expect(withSchemaMock).toHaveBeenCalledWith('admin')
+  })
+
+  it('should accept options object with isTransaction', () => {
+    const mockDb = createMockKysely()
+
+    const ctx = createContext(mockDb, { isTransaction: true })
+
+    expect(ctx.isTransaction).toBe(true)
+    expect(ctx.schema).toBeUndefined()
+  })
+
+  it('should accept both schema and isTransaction in options', () => {
+    const withSchemaMock = vi.fn().mockReturnThis()
+    const mockDb = createMockKysely({
+      withSchema: withSchemaMock
+    })
+
+    const ctx = createContext(mockDb, { schema: 'billing', isTransaction: true })
+
+    expect(ctx.schema).toBe('billing')
+    expect(ctx.isTransaction).toBe(true)
+    expect(withSchemaMock).toHaveBeenCalledWith('billing')
+  })
+
+  it('should maintain backward compatibility with boolean second argument', () => {
+    const mockDb = createMockKysely()
+
+    const ctx = createContext(mockDb, true)
+
+    expect(ctx.isTransaction).toBe(true)
+    expect(ctx.schema).toBeUndefined()
+  })
+
+  it('should not set schema property when no schema provided', () => {
+    const mockDb = createMockKysely()
+
+    const ctx = createContext(mockDb)
+
+    expect(ctx.schema).toBeUndefined()
+    expect('schema' in ctx).toBe(false)
   })
 })

@@ -79,16 +79,34 @@ function isKyseraTransaction<DB>(
 }
 
 /**
+ * Options for creating a database context.
+ */
+export interface CreateContextOptions {
+  /**
+   * Override transaction detection.
+   * If not provided, transaction status is auto-detected.
+   */
+  isTransaction?: boolean
+  /**
+   * PostgreSQL schema to use for all queries in this context.
+   * When set, the db instance is wrapped with withSchema().
+   *
+   * @example 'auth', 'admin', 'tenant_123'
+   */
+  schema?: string
+}
+
+/**
  * Create a database context from any database instance.
  *
  * Supports raw Kysely instances and plugin-aware KyseraExecutor.
  * When using KyseraExecutor, plugins are automatically available in context.
  *
  * @param db - Kysely, KyseraExecutor, or transaction instance
- * @param isTransaction - Override transaction detection (optional)
+ * @param options - Context options (isTransaction override, schema)
  * @returns Database context
  *
- * @example
+ * @example Basic usage
  * ```typescript
  * import { createContext } from "@kysera/dal";
  * import { createExecutor } from "@kysera/executor";
@@ -97,19 +115,77 @@ function isKyseraTransaction<DB>(
  * const ctx = createContext(executor);
  * const user = await findUserById(ctx, 1); // soft-delete filter applied
  * ```
+ *
+ * @example With schema
+ * ```typescript
+ * const ctx = createContext(executor, { schema: 'auth' });
+ * // All queries use the 'auth' schema
+ * ```
  */
 export function createContext<DB>(
   db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>,
-  isTransaction?: boolean
+  options?: CreateContextOptions | boolean
 ): DbContext<DB> {
-  // If explicitly provided, use that value; otherwise use unified detection
-  const inTransaction = isTransaction ?? detectTransaction(db)
+  // Handle backward compatibility: options can be just isTransaction boolean
+  const opts: CreateContextOptions =
+    typeof options === 'boolean' ? { isTransaction: options } : (options ?? {})
 
-  return {
-    [DB_CONTEXT_SYMBOL]: true,
-    db,
+  const { isTransaction: isTransactionOverride, schema } = opts
+
+  // If explicitly provided, use that value; otherwise use unified detection
+  const inTransaction = isTransactionOverride ?? detectTransaction(db)
+
+  // Apply schema if provided
+  const dbWithSchema = schema ? db.withSchema(schema) : db
+
+  // Use conditional to satisfy exactOptionalPropertyTypes
+  const baseContext = {
+    [DB_CONTEXT_SYMBOL]: true as const,
+    db: dbWithSchema as Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>,
     isTransaction: inTransaction
   }
+
+  return schema !== undefined
+    ? { ...baseContext, schema }
+    : baseContext
+}
+
+/**
+ * Create a database context with a specific PostgreSQL schema.
+ *
+ * Convenience function for creating schema-scoped contexts.
+ * Useful for multi-tenant applications using schema-per-tenant pattern.
+ *
+ * @param db - Kysely or KyseraExecutor instance
+ * @param schema - PostgreSQL schema name
+ * @returns Database context scoped to the specified schema
+ *
+ * @example Multi-tenant usage
+ * ```typescript
+ * import { createSchemaContext } from "@kysera/dal";
+ *
+ * // In middleware or request handler
+ * const tenantSchema = `tenant_${request.tenantId}`;
+ * const ctx = createSchemaContext(executor, tenantSchema);
+ *
+ * // All queries are scoped to tenant's schema
+ * const users = await getUsers(ctx);
+ * ```
+ *
+ * @example Domain separation
+ * ```typescript
+ * const authCtx = createSchemaContext(executor, 'auth');
+ * const adminCtx = createSchemaContext(executor, 'admin');
+ *
+ * const user = await getUser(authCtx, userId);
+ * const settings = await getSettings(adminCtx);
+ * ```
+ */
+export function createSchemaContext<DB>(
+  db: Kysely<DB> | KyseraExecutor<DB>,
+  schema: string
+): DbContext<DB> {
+  return createContext(db, { schema })
 }
 
 /**
@@ -319,11 +395,16 @@ export async function withTransaction<DB, T>(
       }
 
       // Create context with same db (already in transaction)
-      const ctx: DbContext<DB> = {
-        [DB_CONTEXT_SYMBOL]: true,
+      // Preserve schema from parent context if available
+      const parentSchema = isDbContext<DB>(db) ? db.schema : undefined
+      const baseCtx = {
+        [DB_CONTEXT_SYMBOL]: true as const,
         db: actualDb,
-        isTransaction: true
+        isTransaction: true as const
       }
+      const ctx: DbContext<DB> = parentSchema !== undefined
+        ? { ...baseCtx, schema: parentSchema }
+        : baseCtx
 
       // Execute function
       const result = await fn(ctx)
@@ -393,11 +474,17 @@ export async function withTransaction<DB, T>(
     // Initialize savepoint counter
     ;(wrappedTrx as unknown as Record<symbol, number>)[SAVEPOINT_COUNTER_SYMBOL] = 0
 
-    const ctx: DbContext<DB> = {
-      [DB_CONTEXT_SYMBOL]: true,
-      db: wrappedTrx,
-      isTransaction: true
+    // Preserve schema from parent context if available
+    const parentSchema = isDbContext<DB>(db) ? db.schema : undefined
+    const dbWithSchema = parentSchema ? wrappedTrx.withSchema(parentSchema) : wrappedTrx
+    const baseTrxCtx = {
+      [DB_CONTEXT_SYMBOL]: true as const,
+      db: dbWithSchema,
+      isTransaction: true as const
     }
+    const ctx: DbContext<DB> = parentSchema !== undefined
+      ? { ...baseTrxCtx, schema: parentSchema }
+      : baseTrxCtx
 
     return await fn(ctx)
   })

@@ -7,7 +7,7 @@ import {
 } from './base-repository.js'
 import { createTableOperations } from './table-operations.js'
 import type { Executor } from './helpers.js'
-import type { PrimaryKeyColumn, PrimaryKeyTypeHint, DialectConfig } from './types.js'
+import type { PrimaryKeyColumn, PrimaryKeyTypeHint, DialectConfig, Dialect } from './types.js'
 import { normalizePrimaryKeyConfig } from './types.js'
 import { nativeAdapter, type ValidationSchema } from './validation-adapter.js'
 
@@ -58,6 +58,12 @@ export function createRepositoryFactory<DB>(executor: Executor<DB>): {
   executor: Executor<DB>
   create<TableName extends keyof DB & string, Entity, PK = number>(config: {
     tableName: TableName
+    /**
+     * PostgreSQL schema for this repository.
+     * When set, all queries are scoped to this schema.
+     * @example 'auth', 'admin', 'tenant_123'
+     */
+    schema?: string
     /** Primary key column name(s). Default: 'id' */
     primaryKey?: PrimaryKeyColumn
     /** Primary key type hint. Default: 'number' */
@@ -82,6 +88,8 @@ export function createRepositoryFactory<DB>(executor: Executor<DB>): {
 
     create<TableName extends keyof DB & string, Entity, PK = number>(config: {
       tableName: TableName
+      /** PostgreSQL schema for this repository */
+      schema?: string
       primaryKey?: PrimaryKeyColumn
       primaryKeyType?: PrimaryKeyTypeHint
       dialect?: DialectConfig
@@ -94,12 +102,19 @@ export function createRepositoryFactory<DB>(executor: Executor<DB>): {
       validateDbResults?: boolean
       validationStrategy?: 'none' | 'strict'
     }): Repository<Entity, DB, PK> {
-      const { tableName, primaryKey, primaryKeyType, dialect } = config
+      const { tableName, primaryKey, primaryKeyType, dialect, schema } = config
 
       const pkConfig = normalizePrimaryKeyConfig(primaryKey, primaryKeyType)
 
       // Create table operations for this specific table
-      const operations = createTableOperations(executor, tableName, pkConfig, dialect)
+      // Pass schema and dialect options - use conditional to satisfy exactOptionalPropertyTypes
+      const tableOpsOptions: Parameters<typeof createTableOperations>[3] = (() => {
+        const opts: { dialect?: Dialect; schema?: string } = {}
+        if (dialect?.dialect) opts.dialect = dialect.dialect
+        if (schema) opts.schema = schema
+        return Object.keys(opts).length > 0 ? opts : undefined
+      })()
+      const operations = createTableOperations(executor, tableName, pkConfig, tableOpsOptions)
 
       // Create base repository
       const baseRepo = createBaseRepository<DB, DB[TableName], Entity, PK>(
