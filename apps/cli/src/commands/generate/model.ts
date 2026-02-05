@@ -16,6 +16,7 @@ export interface ModelOptions {
   config?: string
   timestamps?: boolean
   softDelete?: boolean
+  schema?: string
 }
 
 export function modelCommand(): Command {
@@ -28,6 +29,7 @@ export function modelCommand(): Command {
     .option('--timestamps', 'Include timestamp fields', true)
     .option('--no-timestamps', 'Exclude timestamp fields')
     .option('--soft-delete', 'Include soft delete fields', false)
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (table: string | undefined, options: ModelOptions) => {
       try {
         await generateModel(table, options)
@@ -46,11 +48,11 @@ export function modelCommand(): Command {
 }
 
 async function generateModel(tableName: string | undefined, options: ModelOptions): Promise<void> {
-  await withDatabase({ config: options.config }, async (db, config) => {
+  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
     const generateSpinner = spinner()
-    generateSpinner.start('Introspecting database...')
+    generateSpinner.start(`Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
 
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any)
+    const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
 
     let tables: TableInfo[] = []
 

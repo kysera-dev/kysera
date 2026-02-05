@@ -34,6 +34,7 @@ export default defineConfig({
     database: process.env.DB_NAME || 'myapp',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD,
+    schema: 'public', // PostgreSQL schema (default: 'public')
     pool: {
       min: 2,
       max: 10
@@ -95,12 +96,41 @@ database: {
   database: 'myapp',
   user: 'postgres',
   password: 'secret',
+  schema: 'public',              // Default schema for operations
   pool: { min: 2, max: 10 },
   ssl: {
     rejectUnauthorized: false  // For self-signed certs
   }
 }
 ```
+
+### PostgreSQL with Schema (Multi-Tenant)
+
+For multi-tenant applications using schema-per-tenant pattern:
+
+```typescript
+database: {
+  dialect: 'postgres',
+  host: 'localhost',
+  port: 5432,
+  database: 'myapp',
+  user: 'postgres',
+  password: 'secret',
+  schema: process.env.TENANT_SCHEMA || 'public'  // Dynamic schema
+}
+```
+
+:::tip Schema Override
+The `--schema` CLI option always takes precedence over the config file setting. This allows you to run operations on different schemas without modifying config:
+
+```bash
+# Run migrations on tenant schema
+kysera migrate up --schema tenant_acme
+
+# List tables in specific schema
+kysera db tables --schema auth
+```
+:::
 
 ### MySQL
 

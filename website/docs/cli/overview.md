@@ -100,6 +100,19 @@ kysera db introspect         # Introspect schema
 kysera db console            # Interactive SQL console
 ```
 
+### [schema](/docs/cli/schema)
+
+PostgreSQL schema management for multi-tenant architectures.
+
+```bash
+kysera schema list           # List all schemas
+kysera schema create <name>  # Create a new schema
+kysera schema drop <name>    # Drop a schema
+kysera schema info <name>    # Show schema details
+kysera schema clone <s> <t>  # Clone schema structure
+kysera schema compare <a> <b># Compare two schemas
+```
+
 ### [health](/docs/cli/health)
 
 Health monitoring.

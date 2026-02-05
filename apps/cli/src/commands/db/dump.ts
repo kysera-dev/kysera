@@ -16,6 +16,7 @@ export interface DumpOptions {
   schemaOnly?: boolean
   format?: 'sql' | 'json'
   config?: string
+  schema?: string
 }
 
 export function dumpCommand(): Command {
@@ -27,6 +28,7 @@ export function dumpCommand(): Command {
     .option('--schema-only', 'Export schema only (no data)')
     .option('-f, --format <type>', 'Format (sql/json)', 'sql')
     .option('-c, --config <path>', 'Path to configuration file')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: DumpOptions) => {
       try {
         await dumpDatabase(options)
@@ -50,11 +52,11 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
     throw new CLIError('Cannot use both --data-only and --schema-only', 'INVALID_OPTIONS')
   }
 
-  await withDatabase({ config: options.config }, async (db, config) => {
+  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
     const dumpSpinner = spinner() as any
-    dumpSpinner.start('Creating database dump...')
+    dumpSpinner.start(`Creating database dump${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
 
-    const introspector = new DatabaseIntrospector(db, config.database!.dialect as any)
+    const introspector = new DatabaseIntrospector(db, config.database!.dialect as any, schema)
 
     // Get tables to dump
     let tables: string[]

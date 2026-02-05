@@ -365,6 +365,14 @@ export function createCommandLoaders(): Map<string, LazyCommand> {
         description: 'Plugin management',
         loader: async () => (await import('../commands/plugin/index.js')).pluginCommand()
       }
+    ],
+    [
+      'schema',
+      {
+        name: 'schema',
+        description: 'PostgreSQL schema management',
+        loader: async () => (await import('../commands/schema/index.js')).schemaCommand()
+      }
     ]
   ])
 }

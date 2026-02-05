@@ -15,6 +15,7 @@ export interface SoftDeletedOptions {
   limit?: string
   json?: boolean
   config?: string
+  schema?: string
 }
 
 export function softDeletedCommand(): Command {
@@ -28,6 +29,7 @@ export function softDeletedCommand(): Command {
     .option('-l, --limit <n>', 'Limit results', '100')
     .option('--json', 'Output as JSON')
     .option('--config <path>', 'Path to configuration file')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: SoftDeletedOptions) => {
       try {
         await querySoftDeleted(options)
@@ -52,7 +54,9 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
     ])
   }
 
-  await withDatabase({ config: options.config }, async (db, config) => {
+  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
+    // Use schema-aware db for PostgreSQL
+    const schemaDb = schema !== 'public' ? db.withSchema(schema) : db
     const querySpinner = spinner()
     const column = options.column || 'deleted_at'
     const limit = parseInt(options.limit || '100', 10)
@@ -60,7 +64,7 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
     if (options.restore) {
       querySpinner.start(`Restoring record ${options.restore}...`)
 
-      await db
+      await schemaDb
         .updateTable(options.table)
         .set({ [column]: null } as any)
         .where('id', '=', options.restore as any)
@@ -73,9 +77,9 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
     if (options.purge) {
       querySpinner.start('Counting soft-deleted records...')
 
-      const countResult = await db
+      const countResult = await schemaDb
         .selectFrom(options.table)
-        .select(db.fn.countAll().as('count'))
+        .select(schemaDb.fn.countAll().as('count'))
         .where(column as any, 'is not', null)
         .executeTakeFirst()
 
@@ -102,7 +106,7 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
 
       querySpinner.start('Purging soft-deleted records...')
 
-      await db
+      await schemaDb
         .deleteFrom(options.table)
         .where(column as any, 'is not', null)
         .execute()
@@ -113,7 +117,7 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
 
     querySpinner.start(`Querying soft-deleted records from ${options.table}...`)
 
-    const results = await db
+    const results = await schemaDb
       .selectFrom(options.table)
       .selectAll()
       .where(column as any, 'is not', null)

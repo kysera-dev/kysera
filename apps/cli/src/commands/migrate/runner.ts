@@ -27,17 +27,41 @@ export interface MigrationStatus {
 }
 
 export class MigrationRunner {
+  private schemaDb: Kysely<any>
+
   constructor(
     private db: Kysely<any>,
     private migrationsDir: string,
-    private tableName: string = 'kysera_migrations'
-  ) {}
+    private tableName: string = 'kysera_migrations',
+    private schema: string = 'public'
+  ) {
+    // Create schema-scoped database instance for PostgreSQL
+    this.schemaDb = this.schema !== 'public' ? this.db.withSchema(this.schema) : this.db
+  }
+
+  /**
+   * Get the fully qualified table name for the migration table
+   */
+  private get qualifiedTableName(): string {
+    return this.schema !== 'public' ? `${this.schema}.${this.tableName}` : this.tableName
+  }
 
   /**
    * Initialize migration table
    */
   async init(): Promise<void> {
-    const hasTable = await this.db.schema
+    // Create schema if it doesn't exist (PostgreSQL only)
+    if (this.schema !== 'public') {
+      try {
+        await sql`CREATE SCHEMA IF NOT EXISTS ${sql.ref(this.schema)}`.execute(this.db)
+        logger.debug(`Ensured schema exists: ${this.schema}`)
+      } catch (err) {
+        // Schema creation might fail on non-PostgreSQL, ignore
+        logger.debug(`Could not create schema (might not be PostgreSQL): ${err}`)
+      }
+    }
+
+    const hasTable = await this.schemaDb.schema
       .createTable(this.tableName)
       .ifNotExists()
       .addColumn('id', 'serial', col => col.primaryKey())
@@ -56,7 +80,7 @@ export class MigrationRunner {
       })
 
     if (hasTable) {
-      logger.debug(`Created migration table: ${this.tableName}`)
+      logger.debug(`Created migration table: ${this.qualifiedTableName}`)
     }
   }
 
@@ -101,7 +125,7 @@ export class MigrationRunner {
     Array<{ name: string; timestamp: string; executed_at: Date; batch: number }>
   > {
     try {
-      const migrations = await this.db
+      const migrations = await this.schemaDb
         .selectFrom(this.tableName)
         .selectAll()
         .orderBy('batch')
@@ -293,10 +317,13 @@ export class MigrationRunner {
 
         // Run migration in transaction
         await this.db.transaction().execute(async trx => {
-          await migration.up(trx)
+          // Pass schema-aware transaction to migration
+          const schemaAwareTrx = this.schema !== 'public' ? trx.withSchema(this.schema) : trx
+          await migration.up(schemaAwareTrx)
 
-          // Record migration
-          await trx
+          // Record migration in the schema-qualified table
+          const migrationTrx = this.schema !== 'public' ? trx.withSchema(this.schema) : trx
+          await migrationTrx
             .insertInto(this.tableName)
             .values({
               name: migration.name,
@@ -402,10 +429,13 @@ export class MigrationRunner {
 
         // Run rollback in transaction
         await this.db.transaction().execute(async trx => {
-          await migration.down(trx)
+          // Pass schema-aware transaction to migration
+          const schemaAwareTrx = this.schema !== 'public' ? trx.withSchema(this.schema) : trx
+          await migration.down(schemaAwareTrx)
 
-          // Remove migration record
-          await trx.deleteFrom(this.tableName).where('name', '=', migration.name).execute()
+          // Remove migration record from the schema-qualified table
+          const migrationTrx = this.schema !== 'public' ? trx.withSchema(this.schema) : trx
+          await migrationTrx.deleteFrom(this.tableName).where('name', '=', migration.name).execute()
         })
 
         const duration = Date.now() - migrationStart
@@ -442,9 +472,9 @@ export class MigrationRunner {
    */
   private async getLastBatch(): Promise<number> {
     try {
-      const result = await this.db
+      const result = await this.schemaDb
         .selectFrom(this.tableName)
-        .select(this.db.fn.max('batch').as('max_batch'))
+        .select(this.schemaDb.fn.max('batch').as('max_batch'))
         .executeTakeFirst()
 
       return (result as any)?.max_batch || 0
@@ -459,29 +489,30 @@ export class MigrationRunner {
   async acquireLock(): Promise<() => Promise<void>> {
     // Simple implementation - in production, use database advisory locks
     let lockAcquired = false
+    const lockTableName = 'kysera_migration_lock'
 
     try {
-      await this.db.insertInto('kysera_migration_lock').values({ id: 1, locked: true }).execute()
+      await this.schemaDb.insertInto(lockTableName).values({ id: 1, locked: true }).execute()
       lockAcquired = true
     } catch (error: any) {
       if (error.message.includes('already exists') || error.message.includes('duplicate')) {
         throw new CLIError('Migrations are already running in another process', 'MIGRATION_LOCKED')
       }
       // Lock table doesn't exist, create it
-      await this.db.schema
-        .createTable('kysera_migration_lock')
+      await this.schemaDb.schema
+        .createTable(lockTableName)
         .ifNotExists()
         .addColumn('id', 'integer', col => col.primaryKey())
         .addColumn('locked', 'boolean', col => col.notNull())
         .execute()
 
-      await this.db.insertInto('kysera_migration_lock').values({ id: 1, locked: true }).execute()
+      await this.schemaDb.insertInto(lockTableName).values({ id: 1, locked: true }).execute()
       lockAcquired = true
     }
 
     return async () => {
       if (lockAcquired) {
-        await this.db.deleteFrom('kysera_migration_lock').where('id', '=', 1).execute()
+        await this.schemaDb.deleteFrom(lockTableName).where('id', '=', 1).execute()
       }
     }
   }

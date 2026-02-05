@@ -37,6 +37,8 @@ kysera db seed
 --dry-run                 Show what would execute
 --transaction             Run in single transaction
 -v, --verbose             Detailed output
+-c, --config <path>       Path to configuration file
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 **Examples:**
@@ -68,6 +70,8 @@ kysera db reset
 ```
 --force                   Skip confirmation
 --exclude <tables>        Tables to exclude
+-c, --config <path>       Path to configuration file
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 ### tables
@@ -83,6 +87,8 @@ kysera db tables
 ```
 --json                    Output as JSON
 -v, --verbose             Show column details
+-c, --config <path>       Path to configuration file
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 **Output:**
@@ -123,6 +129,8 @@ kysera db dump
 --data-only               Export data only
 --format <type>           Format: sql, json
 --tables <list>           Specific tables
+-c, --config <path>       Path to configuration file
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 **Examples:**
@@ -180,6 +188,7 @@ kysera db introspect [table]
 --json                    Output as JSON
 --detailed                Show detailed information with TypeScript types
 -c, --config <path>       Path to configuration file
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 **Examples:**
@@ -196,6 +205,9 @@ kysera db introspect users --detailed
 
 # Output as JSON
 kysera db introspect --json
+
+# Introspect in specific schema
+kysera db introspect --schema tenant_acme
 ```
 
 ### console

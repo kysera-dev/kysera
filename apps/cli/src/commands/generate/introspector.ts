@@ -39,7 +39,8 @@ export interface TableInfo {
 export class DatabaseIntrospector {
   constructor(
     private db: Kysely<any>,
-    private dialect: 'postgres' | 'mysql' | 'sqlite'
+    private dialect: 'postgres' | 'mysql' | 'sqlite',
+    private schema: string = 'public'
   ) {}
 
   /**
@@ -98,7 +99,7 @@ export class DatabaseIntrospector {
     const result = (await this.db
       .selectFrom('information_schema.tables')
       .select('table_name')
-      .where('table_schema', '=', 'public')
+      .where('table_schema', '=', this.schema)
       .where('table_type', '=', 'BASE TABLE')
       .execute()) as any[]
 
@@ -137,7 +138,7 @@ export class DatabaseIntrospector {
         'ccu.table_name as referenced_table',
         'ccu.column_name as referenced_column'
       ])
-      .where('c.table_schema', '=', 'public')
+      .where('c.table_schema', '=', this.schema)
       .where('c.table_name', '=', tableName)
       .orderBy('c.ordinal_position')
       .execute()) as any[]
@@ -160,7 +161,7 @@ export class DatabaseIntrospector {
     const indexes = (await this.db
       .selectFrom('pg_indexes')
       .select(['indexname', 'indexdef'])
-      .where('schemaname', '=', 'public')
+      .where('schemaname', '=', this.schema)
       .where('tablename', '=', tableName)
       .execute()) as any[]
 

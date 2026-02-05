@@ -98,6 +98,7 @@ kysera query soft-deleted [options]
 | `-l, --limit <n>`     | Limit results (default: 100)                  |
 | `--json`              | Output as JSON                                |
 | `--config <path>`     | Path to configuration file                    |
+| `-s, --schema <name>` | PostgreSQL schema name (default: public)      |
 
 ### Examples
 
@@ -163,12 +164,13 @@ kysera query explain <query> [options]
 
 ### Options
 
-| Option            | Description                                  |
-| ----------------- | -------------------------------------------- |
-| `--analyze`       | Run EXPLAIN ANALYZE (PostgreSQL)             |
-| `--format <type>` | Output format: text, json, yaml (PostgreSQL) |
-| `--json`          | Output as JSON                               |
-| `--config <path>` | Path to configuration file                   |
+| Option                | Description                                  |
+| --------------------- | -------------------------------------------- |
+| `--analyze`           | Run EXPLAIN ANALYZE (PostgreSQL)             |
+| `--format <type>`     | Output format: text, json, yaml (PostgreSQL) |
+| `--json`              | Output as JSON                               |
+| `--config <path>`     | Path to configuration file                   |
+| `-s, --schema <name>` | PostgreSQL schema name (default: public)     |
 
 ### Examples
 

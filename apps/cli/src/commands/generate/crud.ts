@@ -20,6 +20,7 @@ export interface CrudOptions {
   withSoftDelete?: boolean
   withTimestamps?: boolean
   format?: boolean
+  schema?: string
 }
 
 export function crudCommand(): Command {
@@ -38,6 +39,7 @@ export function crudCommand(): Command {
     .option('--no-with-timestamps', 'Skip timestamp support')
     .option('--format', 'Format generated files with Prettier', true)
     .option('--no-format', 'Skip formatting')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (table: string, options: CrudOptions) => {
       try {
         await generateCrud(table, options)
@@ -56,11 +58,11 @@ export function crudCommand(): Command {
 }
 
 async function generateCrud(tableName: string, options: CrudOptions): Promise<void> {
-  await withDatabase({ config: options.config }, async (db, config) => {
+  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
     const generateSpinner = spinner()
-    generateSpinner.start(`Introspecting table '${tableName}'...`)
+    generateSpinner.start(`Introspecting table '${tableName}'${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
 
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any)
+    const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
 
     let tableInfo: TableInfo
     try {

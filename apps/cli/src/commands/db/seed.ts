@@ -18,6 +18,7 @@ export interface SeedOptions {
   transaction?: boolean
   config?: string
   verbose?: boolean
+  schema?: string
 }
 
 export function seedCommand(): Command {
@@ -30,6 +31,7 @@ export function seedCommand(): Command {
     .option('--transaction', 'Run all seeds in a single transaction', false)
     .option('-c, --config <path>', 'Path to configuration file')
     .option('-v, --verbose', 'Show detailed output')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: SeedOptions) => {
       try {
         await runSeeds(options)
@@ -82,11 +84,14 @@ async function runSeeds(options: SeedOptions): Promise<void> {
         // Get all tables
         let tables: string[] = []
 
+        // Determine schema: CLI option > config > default 'public'
+        const schema = options.schema || config.database.schema || 'public'
+
         if (config.database.dialect === 'postgres') {
           const result = (await db
             .selectFrom('information_schema.tables')
             .select('table_name')
-            .where('table_schema', '=', 'public')
+            .where('table_schema', '=', schema)
             .where('table_type', '=', 'BASE TABLE')
             .execute()) as any[]
           tables = result.map(r => r.table_name)

@@ -15,6 +15,7 @@ export interface SchemaOptions {
   overwrite?: boolean
   config?: string
   strict?: boolean
+  schema?: string
 }
 
 export function schemaCommand(): Command {
@@ -26,6 +27,7 @@ export function schemaCommand(): Command {
     .option('-c, --config <path>', 'Path to configuration file')
     .option('--strict', 'Use strict validation (no unknown keys)', true)
     .option('--no-strict', 'Allow unknown keys in validation')
+    .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (table: string | undefined, options: SchemaOptions) => {
       try {
         await generateSchema(table, options)
@@ -47,11 +49,11 @@ async function generateSchema(
   tableName: string | undefined,
   options: SchemaOptions
 ): Promise<void> {
-  await withDatabase({ config: options.config }, async (db, config) => {
+  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
     const generateSpinner = spinner()
-    generateSpinner.start('Introspecting database...')
+    generateSpinner.start(`Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
 
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any)
+    const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
 
     let tables: TableInfo[] = []
 

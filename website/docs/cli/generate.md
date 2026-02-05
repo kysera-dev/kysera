@@ -26,6 +26,8 @@ kysera g model [table]
 --overwrite               Overwrite existing files
 --timestamps              Include timestamp fields (default: true)
 --soft-delete             Include soft delete fields
+-c, --config <path>       Path to configuration file
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 **Generated:**
@@ -67,6 +69,8 @@ kysera generate repository <table>
 --overwrite               Overwrite existing files
 --with-validation         Include Zod validation (default: true)
 --with-pagination         Include pagination methods (default: true)
+-c, --config <path>       Path to configuration file
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 **Generated:**
@@ -104,6 +108,8 @@ kysera generate schema <table>
 ```
 -o, --output <path>       Output directory (default: ./src/schemas)
 --overwrite               Overwrite existing files
+-c, --config <path>       Path to configuration file
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 **Generated:**
@@ -149,6 +155,8 @@ kysera generate crud <table>
 --with-soft-delete        Include soft delete support
 --with-timestamps         Include timestamp support (default: true)
 --format                  Format with Prettier (default: true)
+-c, --config <path>       Path to configuration file
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 **Generated Files:**

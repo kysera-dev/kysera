@@ -38,6 +38,7 @@ export default defineConfig({
   ],
   noExternal: [
     '@kysera/core',
+    '@kysera/dialects',
     '@kysera/repository',
     '@kysera/migrations',
     '@kysera/audit',

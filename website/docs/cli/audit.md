@@ -36,12 +36,13 @@ kysera audit logs [options]
 | `-u, --user <id>`        | Filter by user ID                           |
 | `-a, --action <type>`    | Filter by action: INSERT, UPDATE, DELETE    |
 | `-l, --limit <n>`        | Limit number of results (default: 50)       |
-| `-s, --since <datetime>` | Show logs since datetime (ISO 8601)         |
+| `--since <datetime>`     | Show logs since datetime (ISO 8601)         |
 | `--until <datetime>`     | Show logs until datetime (ISO 8601)         |
 | `-e, --entity-id <id>`   | Filter by entity ID                         |
 | `--json`                 | Output as JSON                              |
 | `-v, --verbose`          | Show detailed information including changes |
 | `-c, --config <path>`    | Path to configuration file                  |
+| `-s, --schema <name>`    | PostgreSQL schema name (default: public)    |
 
 ### Examples
 
@@ -127,6 +128,7 @@ kysera audit history <table> <id> [options]
 | `--json`              | Output as JSON                            |
 | `--reverse`           | Show oldest first (default: newest first) |
 | `-c, --config <path>` | Path to configuration file                |
+| `-s, --schema <name>` | PostgreSQL schema name (default: public)  |
 
 ### Examples
 

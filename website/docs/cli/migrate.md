@@ -64,12 +64,13 @@ kysera migrate up
 
 ```
 -t, --to <migration>      Migrate up to specific migration
--s, --steps <number>      Number of migrations to run
+--steps <number>          Number of migrations to run
 --count <number>          Alias for --steps
 --dry-run                 Preview without executing
 --force                   Force execution
 -v, --verbose             Detailed output
 -c, --config <path>       Path to configuration file
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 **Examples:**
@@ -86,6 +87,9 @@ kysera migrate up --to 20251003_add_posts
 
 # Preview changes
 kysera migrate up --dry-run
+
+# Run in specific schema (multi-tenant)
+kysera migrate up --schema tenant_acme
 ```
 
 ### down
@@ -99,12 +103,14 @@ kysera migrate down
 **Options:**
 
 ```
--s, --steps <number>      Migrations to rollback (default: 1)
+--steps <number>          Migrations to rollback (default: 1)
 -t, --to <migration>      Rollback to specific migration
 --all                     Rollback all migrations
 --dry-run                 Preview without executing
 --force                   Skip confirmation
 -v, --verbose             Detailed output
+-c, --config <path>       Path to configuration file
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 **Examples:**
@@ -121,6 +127,9 @@ kysera migrate down --all --force
 
 # Preview rollback
 kysera migrate down --dry-run
+
+# Rollback in specific schema
+kysera migrate down --schema tenant_acme
 ```
 
 ### status
@@ -136,6 +145,8 @@ kysera migrate status
 ```
 --json                    Output as JSON
 -v, --verbose             Show detailed table
+-c, --config <path>       Path to configuration file
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 **Output:**
@@ -179,6 +190,7 @@ kysera migrate reset
 --seed                    Run seeds after reset
 -c, --config <path>       Path to configuration file
 -v, --verbose             Show detailed output
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 ### fresh
@@ -196,6 +208,7 @@ kysera migrate fresh
 --force                   Skip confirmation prompt
 -c, --config <path>       Path to configuration file
 -v, --verbose             Show detailed output
+-s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 
 **Examples:**
