@@ -294,11 +294,17 @@ export function resolvePluginOrder(plugins: readonly Plugin[]): Plugin[] {
 
 /**
  * Create intercepted method that applies plugins
+ *
+ * @param db - Kysely database instance
+ * @param method - Method name being intercepted
+ * @param interceptors - Plugins with interceptQuery methods
+ * @param currentSchema - Optional schema context (from withSchema)
  */
 function createInterceptedMethod<DB>(
   db: Kysely<DB>,
   method: InterceptedMethod,
-  interceptors: readonly Plugin[]
+  interceptors: readonly Plugin[],
+  currentSchema?: string
 ): (table: string) => unknown {
   const operation = METHOD_TO_OPERATION[method]
 
@@ -324,12 +330,11 @@ function createInterceptedMethod<DB>(
     // Call with correct 'this' context
     let qb = originalMethod.call(db, table)
 
-    // Apply interceptors
-    const context: QueryBuilderContext = {
-      operation,
-      table,
-      metadata: {}
-    }
+    // Apply interceptors with schema context
+    // Use spread to conditionally include schema only when defined
+    const context: QueryBuilderContext = currentSchema !== undefined
+      ? { operation, table, schema: currentSchema, metadata: {} }
+      : { operation, table, metadata: {} }
 
     for (const plugin of interceptors) {
       if (plugin.interceptQuery) {
@@ -416,11 +421,17 @@ class LRUCache<K, V> {
 /**
  * Create plugin-aware executor using Proxy
  * Optimized with LRU caching and Set-based lookups
+ *
+ * @param db - Kysely database instance
+ * @param interceptors - Plugins with interceptQuery methods
+ * @param allPlugins - All registered plugins
+ * @param currentSchema - Optional schema context (from withSchema)
  */
 function createProxy<DB>(
   db: Kysely<DB>,
   interceptors: readonly Plugin[],
-  allPlugins: readonly Plugin[]
+  allPlugins: readonly Plugin[],
+  currentSchema?: string
 ): KyseraExecutor<DB> {
   // Cache for bound methods to avoid repeated .bind() allocations
   const methodCache = new Map<string | symbol, unknown>()
@@ -440,6 +451,7 @@ function createProxy<DB>(
     // Handle 'in' operator for type guards
     has(target, prop) {
       if (MARKER_PROPS.has(prop)) return true
+      if (prop === '__schema') return true
       return Reflect.has(target, prop)
     },
 
@@ -448,18 +460,19 @@ function createProxy<DB>(
       if (prop === '__kysera') return true
       if (prop === '__plugins') return allPlugins
       if (prop === '__rawDb') return target
+      if (prop === '__schema') return currentSchema
 
       // Fast path: check intercepted methods first (most common hot path)
       if (typeof prop === 'string' && INTERCEPTED_METHODS_SET.has(prop)) {
         let intercepted = interceptedCache.get(prop)
         if (!intercepted) {
-          intercepted = createInterceptedMethod(target, prop as InterceptedMethod, interceptors)
+          intercepted = createInterceptedMethod(target, prop as InterceptedMethod, interceptors, currentSchema)
           interceptedCache.set(prop, intercepted)
         }
         return intercepted
       }
 
-      // Intercept withSchema to maintain plugin proxy
+      // Intercept withSchema to maintain plugin proxy and track schema
       if (prop === 'withSchema') {
         return (schema: string) => {
           const cachedSchemaProxy = schemaProxyCache.get(schema)
@@ -467,7 +480,8 @@ function createProxy<DB>(
             return cachedSchemaProxy
           }
           const schemaDb = target.withSchema(schema)
-          const newProxy = createProxy(schemaDb, interceptors, allPlugins)
+          // Pass schema to new proxy so it's available in QueryBuilderContext
+          const newProxy = createProxy(schemaDb, interceptors, allPlugins, schema)
           schemaProxyCache.set(schema, newProxy)
           return newProxy
         }

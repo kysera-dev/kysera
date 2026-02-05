@@ -13,6 +13,11 @@ export interface QueryBuilderContext {
   readonly operation: 'select' | 'insert' | 'update' | 'delete' | 'replace' | 'merge'
   /** Table name */
   readonly table: string
+  /**
+   * Current schema context (if withSchema was called).
+   * undefined means default schema is being used.
+   */
+  readonly schema?: string
   /** Additional metadata */
   readonly metadata: Record<string, unknown>
 }
@@ -106,6 +111,11 @@ export interface KyseraExecutorMarker<DB = unknown> {
   readonly __plugins: readonly Plugin[]
   /** Raw Kysely instance bypassing plugin interceptors (for internal plugin use) */
   readonly __rawDb: Kysely<DB>
+  /**
+   * Current schema context (if withSchema was called).
+   * undefined means default schema is being used.
+   */
+  readonly __schema?: string
 }
 
 /**

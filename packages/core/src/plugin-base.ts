@@ -116,7 +116,7 @@ export interface ResolvedPluginConfig {
  */
 export function createPluginConfig(
   name: string,
-  options: BasePluginOptions
+  options: BasePluginOptions | BasePluginOptionsWithPrimaryKey
 ): ResolvedPluginConfig {
   return {
     name,

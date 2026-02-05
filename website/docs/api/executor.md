@@ -49,6 +49,8 @@ The executor intercepts these Kysely methods to apply plugins:
 - `insertInto(table)` - INSERT queries
 - `updateTable(table)` - UPDATE queries
 - `deleteFrom(table)` - DELETE queries
+- `replaceInto(table)` - MySQL REPLACE queries
+- `mergeInto(table)` - SQL MERGE queries (Kysely 0.28.x)
 
 All other Kysely methods pass through unchanged.
 
@@ -417,6 +419,7 @@ type PluginValidationErrorType =
   | 'MISSING_DEPENDENCY'
   | 'CONFLICT'
   | 'CIRCULAR_DEPENDENCY'
+  | 'INITIALIZATION_FAILED'
 ```
 
 ### resolvePluginOrder
@@ -535,8 +538,24 @@ interface QueryBuilderContext {
   readonly operation: 'select' | 'insert' | 'update' | 'delete' | 'replace' | 'merge'
   /** Table name */
   readonly table: string
+  /** Current schema context (if withSchema was called) */
+  readonly schema?: string
   /** Additional metadata (shared across plugin chain) */
   readonly metadata: Record<string, unknown>
+}
+```
+
+**Schema Context:**
+
+When `executor.withSchema()` is used, the `schema` property contains the current schema name. This allows plugins to adjust their behavior based on schema context:
+
+```typescript
+interceptQuery: (qb, context) => {
+  if (context.schema === 'system') {
+    // Skip filtering for system schema
+    return qb
+  }
+  return qb.where('deleted_at', 'is', null)
 }
 ```
 
@@ -594,6 +613,7 @@ interface KyseraExecutorMarker<DB = unknown> {
   readonly __kysera: true
   readonly __plugins: readonly Plugin[]
   readonly __rawDb: Kysely<DB>
+  readonly __schema?: string
 }
 ```
 
@@ -602,6 +622,7 @@ interface KyseraExecutorMarker<DB = unknown> {
 - `__kysera` - Type marker (always `true`)
 - `__plugins` - Registered plugins in execution order
 - `__rawDb` - Raw Kysely instance bypassing interceptors
+- `__schema` - Current schema context (when `withSchema()` is used)
 
 **Example:**
 
@@ -682,7 +703,8 @@ type PluginValidationErrorType =
   | 'DUPLICATE_NAME'
   | 'MISSING_DEPENDENCY'
   | 'CONFLICT'
-  | 'CIRCULAR_DEPENDENCY';
+  | 'CIRCULAR_DEPENDENCY'
+  | 'INITIALIZATION_FAILED';
 
 interface PluginValidationDetails {
   readonly pluginName: string;
@@ -723,16 +745,74 @@ try {
 }
 ```
 
+### BaseRepositoryLike
+
+Base interface for repository-like objects that can be extended by plugins.
+
+```typescript
+interface BaseRepositoryLike<DB = unknown> {
+  /** The name of the database table this repository manages */
+  readonly tableName: string
+  /** The Kysely executor (database or transaction) */
+  readonly executor: Kysely<DB>
+  /** Find a record by its primary key */
+  findById?: (id: unknown) => Promise<unknown>
+  /** Find all records in the table */
+  findAll?: () => Promise<unknown[]>
+  /** Create a new record */
+  create?: (data: unknown) => Promise<unknown>
+  /** Update an existing record by primary key */
+  update?: (id: unknown, data: unknown) => Promise<unknown>
+  /** Delete a record by primary key (returns deleted record or boolean) */
+  delete?: (id: unknown) => Promise<unknown>
+}
+```
+
+This interface represents the minimum contract that a repository-like object must fulfill to be extended by plugins. It's designed to work with both the `@kysera/repository` pattern and custom repository implementations.
+
+### isRepositoryLike
+
+Type guard to check if an object is a repository-like object.
+
+```typescript
+function isRepositoryLike<DB = unknown>(obj: unknown): obj is BaseRepositoryLike<DB>
+```
+
+**Parameters:**
+
+- `obj` - The object to check
+
+**Returns:** `true` if the object is repository-like, `false` otherwise
+
+**Example:**
+
+```typescript
+import { isRepositoryLike } from '@kysera/executor'
+
+// In a plugin's extendRepository method:
+extendRepository<T extends object>(repo: T): T {
+  if (!isRepositoryLike(repo)) {
+    return repo // Not a repository, skip extension
+  }
+
+  // Now we can safely access repo.tableName and repo.executor
+  const { tableName, executor } = repo
+  // ... extend the repository
+}
+```
+
 ## Intercepted Methods
 
-The executor only intercepts these four Kysely methods to apply plugins:
+The executor intercepts these Kysely methods to apply plugins:
 
 ```typescript
 const INTERCEPTED_METHODS = {
   selectFrom: 'select',
   insertInto: 'insert',
   updateTable: 'update',
-  deleteFrom: 'delete'
+  deleteFrom: 'delete',
+  replaceInto: 'replace',  // MySQL REPLACE
+  mergeInto: 'merge'       // SQL MERGE (Kysely 0.28.x)
 } as const
 ```
 
@@ -744,6 +824,8 @@ const INTERCEPTED_METHODS = {
 | `insertInto(table)`  | `'insert'`     | ✅ Yes          |
 | `updateTable(table)` | `'update'`     | ✅ Yes          |
 | `deleteFrom(table)`  | `'delete'`     | ✅ Yes          |
+| `replaceInto(table)` | `'replace'`    | ✅ Yes          |
+| `mergeInto(table)`   | `'merge'`      | ✅ Yes          |
 | All other methods    | N/A            | ❌ Pass-through |
 
 **What this means:**
@@ -1063,14 +1145,16 @@ return new Proxy(db, {
 
 ### Intercepted Methods
 
-Only these four methods trigger plugin interception:
+These methods trigger plugin interception:
 
-| Method               | Operation  | Context                  |
-| -------------------- | ---------- | ------------------------ |
-| `selectFrom(table)`  | `'select'` | Query builder for SELECT |
-| `insertInto(table)`  | `'insert'` | Query builder for INSERT |
-| `updateTable(table)` | `'update'` | Query builder for UPDATE |
-| `deleteFrom(table)`  | `'delete'` | Query builder for DELETE |
+| Method               | Operation   | Context                   |
+| -------------------- | ----------- | ------------------------- |
+| `selectFrom(table)`  | `'select'`  | Query builder for SELECT  |
+| `insertInto(table)`  | `'insert'`  | Query builder for INSERT  |
+| `updateTable(table)` | `'update'`  | Query builder for UPDATE  |
+| `deleteFrom(table)`  | `'delete'`  | Query builder for DELETE  |
+| `replaceInto(table)` | `'replace'` | Query builder for REPLACE |
+| `mergeInto(table)`   | `'merge'`   | Query builder for MERGE   |
 
 All other Kysely methods (`.where()`, `.select()`, `.execute()`, etc.) pass through without interception.
 
@@ -1132,6 +1216,159 @@ const executor = await createExecutor(db, [softDeletePlugin()]);
 const users = await executor.selectFrom('users').selectAll().execute();
 // ~1.1x (Proxy overhead + plugin execution)
 ```
+
+## Schema Plugin
+
+The executor package includes a built-in Schema Plugin for unified schema management across all queries.
+
+### schemaPlugin
+
+Create a schema management plugin with validation and resolution capabilities.
+
+```typescript
+import { schemaPlugin, getResolvedSchema } from '@kysera/executor'
+
+function schemaPlugin(options?: SchemaPluginOptions): Plugin
+```
+
+### SchemaPluginOptions
+
+```typescript
+interface SchemaPluginOptions {
+  /** Default schema for all queries. Default: 'public' */
+  defaultSchema?: string
+  /** Dynamic schema resolver called per-query */
+  resolveSchema?: (context: QueryBuilderContext) => string | undefined
+  /** Async function to validate schema exists during onInit() */
+  validateSchema?: (schema: string) => boolean | Promise<boolean>
+  /** Whitelist of permitted schemas */
+  allowedSchemas?: string[]
+  /** If true, throws error for invalid schema; if false, falls back to default. Default: true */
+  strictValidation?: boolean
+}
+```
+
+### Usage Examples
+
+**Basic usage with default schema:**
+
+```typescript
+const executor = await createExecutor(db, [
+  schemaPlugin({ defaultSchema: 'public' })
+])
+
+// All queries use 'public' schema
+const users = await executor.selectFrom('users').selectAll().execute()
+```
+
+**With allowed schemas whitelist:**
+
+```typescript
+const executor = await createExecutor(db, [
+  schemaPlugin({
+    defaultSchema: 'public',
+    allowedSchemas: ['public', 'auth', 'admin'],
+    strictValidation: true // throws on invalid schema
+  })
+])
+
+// Works - schema is in whitelist
+const users = await executor.withSchema('auth').selectFrom('users').selectAll().execute()
+
+// Throws SchemaValidationError - 'private' not in whitelist
+const data = await executor.withSchema('private').selectFrom('data').selectAll().execute()
+```
+
+**Dynamic schema resolution (multi-tenant):**
+
+```typescript
+const executor = await createExecutor(db, [
+  schemaPlugin({
+    defaultSchema: 'public',
+    resolveSchema: (context) => {
+      // Resolve from metadata (set by RLS or other plugins)
+      const tenantSchema = context.metadata['tenantSchema'] as string | undefined
+      return tenantSchema ?? 'public'
+    }
+  })
+])
+```
+
+**With schema validation:**
+
+```typescript
+const executor = await createExecutor(db, [
+  schemaPlugin({
+    defaultSchema: 'tenant_123',
+    validateSchema: async (schema) => {
+      // Check schema exists in database during plugin initialization
+      const adapter = getAdapter('postgres')
+      return adapter.schemaExists(db, schema)
+    }
+  })
+])
+```
+
+### getResolvedSchema
+
+Utility function to retrieve the resolved schema from query context metadata.
+
+```typescript
+function getResolvedSchema(context: QueryBuilderContext): string | undefined
+```
+
+Used by other plugins to access the resolved schema:
+
+```typescript
+const myPlugin: Plugin = {
+  name: 'my-plugin',
+  version: '1.0.0',
+  dependencies: ['@kysera/schema'], // Ensure schema plugin runs first
+
+  interceptQuery: (qb, context) => {
+    const schema = getResolvedSchema(context)
+    console.log(`Query running in schema: ${schema}`)
+    return qb
+  }
+}
+```
+
+### SchemaValidationError
+
+Error thrown when schema validation fails.
+
+```typescript
+class SchemaValidationError extends Error {
+  constructor(
+    message: string,
+    readonly schema: string,
+    readonly allowedSchemas?: string[]
+  )
+}
+```
+
+**Example:**
+
+```typescript
+import { SchemaValidationError } from '@kysera/executor'
+
+try {
+  await executor.withSchema('invalid').selectFrom('users').execute()
+} catch (error) {
+  if (error instanceof SchemaValidationError) {
+    console.log(`Invalid schema: ${error.schema}`)
+    console.log(`Allowed schemas: ${error.allowedSchemas?.join(', ')}`)
+  }
+}
+```
+
+### Plugin Details
+
+- **Name:** `@kysera/schema`
+- **Version:** `1.0.0`
+- **Priority:** `1000` (runs early, before other plugins)
+
+The high priority ensures schema context is resolved before other plugins like soft-delete or RLS process the query.
 
 ## See Also
 

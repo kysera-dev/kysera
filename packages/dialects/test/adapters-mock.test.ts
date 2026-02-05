@@ -174,8 +174,9 @@ describe('PostgresAdapter - Database Methods (Mocked)', () => {
       await adapter.truncateAllTables(mockDb.db)
 
       expect(truncateSpy).toHaveBeenCalledTimes(2)
-      expect(truncateSpy).toHaveBeenCalledWith(mockDb.db, 'users')
-      expect(truncateSpy).toHaveBeenCalledWith(mockDb.db, 'posts')
+      // truncateTable is now called with undefined options
+      expect(truncateSpy).toHaveBeenCalledWith(mockDb.db, 'users', undefined)
+      expect(truncateSpy).toHaveBeenCalledWith(mockDb.db, 'posts', undefined)
 
       spy.mockRestore()
       truncateSpy.mockRestore()
@@ -188,7 +189,7 @@ describe('PostgresAdapter - Database Methods (Mocked)', () => {
       await adapter.truncateAllTables(mockDb.db, ['migrations'])
 
       expect(truncateSpy).toHaveBeenCalledTimes(2)
-      expect(truncateSpy).not.toHaveBeenCalledWith(mockDb.db, 'migrations')
+      expect(truncateSpy).not.toHaveBeenCalledWith(mockDb.db, 'migrations', expect.anything())
 
       spy.mockRestore()
       truncateSpy.mockRestore()
@@ -307,8 +308,9 @@ describe('MySQLAdapter - Database Methods (Mocked)', () => {
       await adapter.truncateAllTables(mockDb.db)
 
       expect(truncateSpy).toHaveBeenCalledTimes(2)
-      expect(truncateSpy).toHaveBeenCalledWith(mockDb.db, 'users')
-      expect(truncateSpy).toHaveBeenCalledWith(mockDb.db, 'posts')
+      // truncateTable is now called with undefined options
+      expect(truncateSpy).toHaveBeenCalledWith(mockDb.db, 'users', undefined)
+      expect(truncateSpy).toHaveBeenCalledWith(mockDb.db, 'posts', undefined)
 
       spy.mockRestore()
       truncateSpy.mockRestore()
@@ -321,7 +323,7 @@ describe('MySQLAdapter - Database Methods (Mocked)', () => {
       await adapter.truncateAllTables(mockDb.db, ['sessions'])
 
       expect(truncateSpy).toHaveBeenCalledTimes(2)
-      expect(truncateSpy).not.toHaveBeenCalledWith(mockDb.db, 'sessions')
+      expect(truncateSpy).not.toHaveBeenCalledWith(mockDb.db, 'sessions', expect.anything())
 
       spy.mockRestore()
       truncateSpy.mockRestore()
@@ -403,6 +405,130 @@ describe('SQLiteAdapter - Additional Mock Tests', () => {
 
       spy.mockRestore()
       truncateSpy.mockRestore()
+    })
+  })
+})
+
+// =============================================================================
+// Schema Support Tests
+// =============================================================================
+
+describe('Schema Support Tests', () => {
+  describe('PostgresAdapter - Schema Options', () => {
+    const adapter = new PostgresAdapter()
+    let mockDb: ReturnType<typeof createMockDb>
+
+    beforeEach(() => {
+      mockDb = createMockDb()
+      vi.clearAllMocks()
+    })
+
+    it('should have public as default schema', () => {
+      expect(adapter.defaultSchema).toBe('public')
+    })
+
+    it('should use custom default schema when provided', () => {
+      const customAdapter = new PostgresAdapter({ defaultSchema: 'custom_schema' })
+      expect(customAdapter.defaultSchema).toBe('custom_schema')
+    })
+
+    it('should use default schema when no options provided', async () => {
+      mockDb.mockExecuteTakeFirst.mockResolvedValue({ table_name: 'users' })
+
+      await adapter.tableExists(mockDb.db, 'users')
+
+      // Should filter by public schema
+      expect(mockDb.db.where).toHaveBeenCalledWith('table_schema', '=', 'public')
+    })
+
+    it('should use custom schema when provided in options', async () => {
+      mockDb.mockExecuteTakeFirst.mockResolvedValue({ table_name: 'users' })
+
+      await adapter.tableExists(mockDb.db, 'users', { schema: 'auth' })
+
+      // Should filter by auth schema
+      expect(mockDb.db.where).toHaveBeenCalledWith('table_schema', '=', 'auth')
+    })
+
+    it('should validate schema names', async () => {
+      await expect(
+        adapter.tableExists(mockDb.db, 'users', { schema: '; DROP TABLE users' })
+      ).rejects.toThrow('Invalid schema name')
+    })
+
+    it('should pass schema to getTableColumns', async () => {
+      mockDb.mockExecute.mockResolvedValue([{ column_name: 'id' }])
+
+      await adapter.getTableColumns(mockDb.db, 'users', { schema: 'tenant_1' })
+
+      expect(mockDb.db.where).toHaveBeenCalledWith('table_schema', '=', 'tenant_1')
+    })
+
+    it('should pass schema to getTables', async () => {
+      mockDb.mockExecute.mockResolvedValue([{ table_name: 'users' }])
+
+      await adapter.getTables(mockDb.db, { schema: 'admin' })
+
+      expect(mockDb.db.where).toHaveBeenCalledWith('table_schema', '=', 'admin')
+    })
+
+    it('should pass schema to truncateAllTables', async () => {
+      const spy = vi.spyOn(adapter, 'getTables').mockResolvedValue(['users'])
+      const truncateSpy = vi.spyOn(adapter, 'truncateTable').mockResolvedValue(true)
+
+      await adapter.truncateAllTables(mockDb.db, [], { schema: 'test_schema' })
+
+      expect(spy).toHaveBeenCalledWith(mockDb.db, { schema: 'test_schema' })
+      expect(truncateSpy).toHaveBeenCalledWith(mockDb.db, 'users', { schema: 'test_schema' })
+
+      spy.mockRestore()
+      truncateSpy.mockRestore()
+    })
+  })
+
+  describe('MySQLAdapter - Schema Options', () => {
+    const adapter = new MySQLAdapter()
+    let mockDb: ReturnType<typeof createMockDb>
+
+    beforeEach(() => {
+      mockDb = createMockDb()
+      vi.clearAllMocks()
+    })
+
+    it('should have empty string as default schema (uses DATABASE())', () => {
+      expect(adapter.defaultSchema).toBe('')
+    })
+
+    it('should use custom default schema when provided', () => {
+      const customAdapter = new MySQLAdapter({ defaultSchema: 'my_database' })
+      expect(customAdapter.defaultSchema).toBe('my_database')
+    })
+
+    it('should use specified schema in tableExists', async () => {
+      mockDb.mockExecuteTakeFirst.mockResolvedValue({ table_name: 'users' })
+
+      await adapter.tableExists(mockDb.db, 'users', { schema: 'my_db' })
+
+      expect(mockDb.db.where).toHaveBeenCalledWith('table_schema', '=', 'my_db')
+    })
+  })
+
+  describe('SQLiteAdapter - Schema Options', () => {
+    const adapter = new SQLiteAdapter()
+    let mockDb: ReturnType<typeof createMockDb>
+
+    beforeEach(() => {
+      mockDb = createMockDb()
+      vi.clearAllMocks()
+    })
+
+    it('should have main as default schema', () => {
+      expect(adapter.defaultSchema).toBe('main')
+    })
+
+    it('should use custom default schema when provided', () => {
+      const customAdapter = new SQLiteAdapter({ defaultSchema: 'attached_db' })
+      expect(customAdapter.defaultSchema).toBe('attached_db')
     })
   })
 })

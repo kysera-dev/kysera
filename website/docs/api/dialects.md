@@ -6,7 +6,7 @@ description: Dialect-specific utilities for PostgreSQL, MySQL, SQLite, and MSSQL
 
 # @kysera/dialects
 
-Dialect-specific utilities for Kysely database operations. Provides a unified adapter interface for PostgreSQL, MySQL, SQLite, and MSSQL with connection management, error detection, and database introspection.
+Dialect-specific utilities for Kysely database operations. Provides a unified adapter interface for PostgreSQL, MySQL, SQLite, and MSSQL with connection management, error detection, database introspection, multi-tenant schema utilities, and productivity tools.
 
 ## Installation
 
@@ -29,6 +29,10 @@ This is a **utility package** providing dialect-specific abstractions. It works 
 - **Connection URL Utilities** - Parse and build connection URLs
 - **Error Detection** - Identify constraint violations (unique, foreign key, not-null)
 - **Database Introspection** - Check table existence, get columns, list tables
+- **Schema Management** - Create, drop, clone schemas (PostgreSQL/MSSQL)
+- **Multi-Tenant Utilities** - Generate and parse tenant schema names
+- **Schema Inspection** - Get indexes, foreign keys, schema info (PostgreSQL)
+- **Search Path Management** - Control PostgreSQL search_path
 - **Dialect Helpers** - Identifier escaping, timestamp formatting, date handling
 - **Testing Utilities** - Truncate tables, get database size
 
@@ -56,17 +60,13 @@ const adapter = getAdapter('postgres')
 const exists = await adapter.tableExists(db, 'users')
 console.log('Users table exists:', exists)
 
+// With schema support
+const authTables = await adapter.getTables(db, { schema: 'auth' })
+console.log('Auth tables:', authTables)
+
 // Get table columns
-const columns = await adapter.getTableColumns(db, 'users')
+const columns = await adapter.getTableColumns(db, 'users', { schema: 'auth' })
 console.log('Columns:', columns)
-
-// Get all tables
-const tables = await adapter.getTables(db)
-console.log('Tables:', tables)
-
-// Escape identifiers
-const escaped = adapter.escapeIdentifier('user-data')
-console.log('Escaped:', escaped) // "user-data"
 
 // Check error types
 try {
@@ -87,11 +87,16 @@ import {
   escapeIdentifier,
   isUniqueConstraintError,
   parseConnectionUrl,
-  buildConnectionUrl
+  buildConnectionUrl,
+  // Multi-tenant utilities
+  getTenantSchemaName,
+  filterTenantSchemas,
+  // Error detection
+  errorMatchers
 } from '@kysera/dialects'
 
-// Check table existence
-const exists = await tableExists(db, 'users', 'postgres')
+// Check table existence with schema
+const exists = await tableExists(db, 'users', 'postgres', { schema: 'auth' })
 
 // Get columns
 const columns = await getTableColumns(db, 'users', 'mysql')
@@ -103,14 +108,13 @@ const escaped = escapeIdentifier('my-table', 'sqlite')
 const config = parseConnectionUrl('postgresql://user:pass@localhost:5432/mydb?ssl=true')
 // { host: 'localhost', port: 5432, database: 'mydb', user: 'user', password: 'pass', ssl: true }
 
-// Build connection URL
-const url = buildConnectionUrl('postgres', {
-  host: 'localhost',
-  database: 'mydb',
-  user: 'admin',
-  password: 'secret'
-})
-// 'postgresql://admin:secret@localhost:5432/mydb'
+// Multi-tenant schema naming
+const tenantSchema = getTenantSchemaName('acme')  // 'tenant_acme'
+
+// Pre-built error matchers
+if (errorMatchers.postgres.uniqueConstraint(error)) {
+  console.log('Duplicate value!')
+}
 ```
 
 ## Exports
@@ -118,60 +122,88 @@ const url = buildConnectionUrl('postgres', {
 ```typescript
 // Types
 export type {
-  Dialect, // 'postgres' | 'mysql' | 'sqlite' | 'mssql' (from @kysera/core)
-  DatabaseDialect, // @deprecated - use Dialect instead
-  ConnectionConfig, // Connection configuration interface
-  DialectAdapter, // Adapter interface
-  DatabaseErrorLike // Error object shape
+  Dialect,                // 'postgres' | 'mysql' | 'sqlite' | 'mssql' (from @kysera/core)
+  ConnectionConfig,       // Connection configuration interface
+  DialectAdapter,         // Adapter interface
+  DialectAdapterOptions,  // Adapter configuration options
+  SchemaOptions,          // Schema-aware operation options
+  DatabaseErrorLike,      // Error object shape
+  TenantSchemaConfig,     // Multi-tenant configuration
+  SchemaCopyOptions,      // Schema cloning options
+  ExtractedErrorInfo,     // Normalized error information
+  ErrorMatcherConfig      // Error matcher configuration
 } from './types'
 
 // Factory and adapters
 export {
-  getAdapter, // Get singleton adapter instance
-  createDialectAdapter, // Create new adapter instance
-  registerAdapter // Register custom adapter
+  getAdapter,             // Get singleton adapter instance
+  createDialectAdapter,   // Create new adapter instance
+  registerAdapter         // Register custom adapter
 } from './factory'
 
 export {
-  PostgresAdapter, // PostgreSQL adapter class
-  postgresAdapter // PostgreSQL singleton
+  PostgresAdapter,        // PostgreSQL adapter class
+  postgresAdapter,        // PostgreSQL singleton
+  createPostgresAdapter,  // Factory function
+  type PostgresAdapterOptions
 } from './adapters/postgres'
 
 export {
-  MySQLAdapter, // MySQL adapter class
-  mysqlAdapter // MySQL singleton
+  MySQLAdapter,           // MySQL adapter class
+  mysqlAdapter,           // MySQL singleton
+  createMySQLAdapter,     // Factory function
+  type MySQLAdapterOptions
 } from './adapters/mysql'
 
 export {
-  SQLiteAdapter, // SQLite adapter class
-  sqliteAdapter // SQLite singleton
+  SQLiteAdapter,          // SQLite adapter class
+  sqliteAdapter,          // SQLite singleton
+  createSQLiteAdapter,    // Factory function
+  type SQLiteAdapterOptions
 } from './adapters/sqlite'
 
 export {
-  MSSQLAdapter, // MSSQL adapter class
-  mssqlAdapter // MSSQL singleton
+  MSSQLAdapter,           // MSSQL adapter class
+  mssqlAdapter,           // MSSQL singleton
+  createMSSQLAdapter,     // Factory function
+  type MSSQLAdapterOptions
 } from './adapters/mssql'
 
 // Connection utilities
 export {
-  parseConnectionUrl, // Parse database URL
-  buildConnectionUrl, // Build database URL
-  getDefaultPort // Get default port for dialect
+  parseConnectionUrl,     // Parse database URL
+  buildConnectionUrl,     // Build database URL
+  getDefaultPort          // Get default port for dialect
 } from './connection'
 
 // Helper functions (standalone, backward compatible)
 export {
-  tableExists, // Check if table exists
-  getTableColumns, // Get table column names
-  getTables, // Get all tables
-  escapeIdentifier, // Escape SQL identifier
-  getCurrentTimestamp, // Get current timestamp expression
-  formatDate, // Format date for database
-  isUniqueConstraintError, // Check unique constraint error
-  isForeignKeyError, // Check foreign key error
-  isNotNullError, // Check not-null constraint error
-  getDatabaseSize, // Get database size in bytes
-  truncateAllTables // Truncate all tables (testing)
+  validateIdentifier,     // Validate SQL identifier
+  assertValidIdentifier,  // Assert valid identifier (throws)
+  tableExists,            // Check if table exists
+  getTableColumns,        // Get table column names
+  getTables,              // Get all tables
+  escapeIdentifier,       // Escape SQL identifier
+  getCurrentTimestamp,    // Get current timestamp expression
+  formatDate,             // Format date for database
+  isUniqueConstraintError,// Check unique constraint error
+  isForeignKeyError,      // Check foreign key error
+  isNotNullError,         // Check not-null constraint error
+  getDatabaseSize,        // Get database size in bytes
+  truncateAllTables,      // Truncate all tables (testing)
+  // Schema utilities
+  resolveSchema,          // Resolve schema name with validation
+  qualifyTableName,       // Create qualified table name
+  // Multi-tenant utilities
+  getTenantSchemaName,    // Generate tenant schema name
+  parseTenantSchemaName,  // Extract tenant ID from schema name
+  isTenantSchema,         // Check if schema is a tenant schema
+  filterTenantSchemas,    // Filter array to tenant schemas only
+  extractTenantIds,       // Extract tenant IDs from schema array
+  // Error detection utilities
+  extractErrorInfo,       // Extract normalized error info
+  createErrorMatcher,     // Create custom error matcher
+  errorMatchers           // Pre-built error matchers
 } from './helpers'
 ```
 
@@ -183,7 +215,8 @@ The `DialectAdapter` interface provides a unified API for dialect-specific opera
 
 ```typescript
 interface DialectAdapter {
-  readonly dialect: DatabaseDialect
+  readonly dialect: Dialect
+  readonly defaultSchema: string
 
   // Port and formatting
   getDefaultPort(): number | null
@@ -196,24 +229,43 @@ interface DialectAdapter {
   isForeignKeyError(error: unknown): boolean
   isNotNullError(error: unknown): boolean
 
-  // Introspection
-  tableExists(db: Kysely<any>, tableName: string): Promise<boolean>
-  getTableColumns(db: Kysely<any>, tableName: string): Promise<string[]>
-  getTables(db: Kysely<any>): Promise<string[]>
+  // Introspection (with optional schema support)
+  tableExists(db: Kysely<any>, tableName: string, options?: SchemaOptions): Promise<boolean>
+  getTableColumns(db: Kysely<any>, tableName: string, options?: SchemaOptions): Promise<string[]>
+  getTables(db: Kysely<any>, options?: SchemaOptions): Promise<string[]>
 
-  // Testing utilities
+  // Testing utilities (with optional schema support)
   getDatabaseSize(db: Kysely<any>, databaseName?: string): Promise<number>
-  truncateTable(db: Kysely<any>, tableName: string): Promise<void>
-  truncateAllTables(db: Kysely<any>, exclude?: string[]): Promise<void>
+  truncateTable(db: Kysely<any>, tableName: string, options?: SchemaOptions): Promise<boolean>
+  truncateAllTables(db: Kysely<any>, exclude?: string[], options?: SchemaOptions): Promise<void>
 }
 ```
 
-**Benefits:**
+### SchemaOptions Interface
 
-- Single API for all databases
-- Type-safe dialect operations
-- Extensible (register custom adapters)
-- Zero runtime dependencies
+Options for schema-aware database operations:
+
+```typescript
+interface SchemaOptions {
+  /**
+   * Schema name for the operation.
+   * - PostgreSQL: Defaults to 'public' if not specified
+   * - MySQL: Uses DATABASE() (schema = database in MySQL)
+   * - SQLite: Not supported (single schema only)
+   * - MSSQL: Defaults to 'dbo' if not specified
+   */
+  schema?: string
+}
+```
+
+**Example:**
+```typescript
+// Query tables in specific schema
+await adapter.tableExists(db, 'users', { schema: 'auth' })
+
+// Multi-tenant usage
+await adapter.getTables(db, { schema: `tenant_${tenantId}` })
+```
 
 ## API Reference
 
@@ -224,114 +276,38 @@ interface DialectAdapter {
 Get a singleton adapter instance for the specified dialect.
 
 ```typescript
-function getAdapter(dialect: DatabaseDialect): DialectAdapter
+function getAdapter(dialect: Dialect): DialectAdapter
 
 // Example
 const adapter = getAdapter('postgres')
-console.log(adapter.getDefaultPort()) // 5432
+console.log(adapter.getDefaultPort())   // 5432
+console.log(adapter.defaultSchema)      // 'public'
 ```
 
 **Supported dialects:** `postgres`, `mysql`, `sqlite`, `mssql`
 
-#### `createDialectAdapter(dialect)`
+#### `createDialectAdapter(dialect, options?)`
 
-Create a new adapter instance (useful for testing or customization).
+Create a new adapter instance with custom options.
 
 ```typescript
-function createDialectAdapter(dialect: DatabaseDialect): DialectAdapter
+function createDialectAdapter(dialect: Dialect, options?: DialectAdapterOptions): DialectAdapter
 
-// Example
-const adapter = createDialectAdapter('mysql')
+// Example - custom default schema
+const adapter = createDialectAdapter('postgres', { defaultSchema: 'auth' })
+console.log(adapter.defaultSchema)  // 'auth'
 ```
 
 #### `registerAdapter(adapter)`
 
-Register a custom dialect adapter.
+Register a custom dialect adapter, replacing the default instance.
 
 ```typescript
 function registerAdapter(adapter: DialectAdapter): void
 
 // Example
-class CustomAdapter implements DialectAdapter {
-  readonly dialect = 'postgres' as const
-  // ... implement all methods
-}
-
-registerAdapter(new CustomAdapter())
-```
-
-### Adapter Interface
-
-Each adapter implements the full `DialectAdapter` interface:
-
-#### Port and Formatting Methods
-
-```typescript
-// Get default port
-adapter.getDefaultPort()
-// postgres: 5432, mysql: 3306, sqlite: null, mssql: 1433
-
-// Get current timestamp SQL expression
-adapter.getCurrentTimestamp()
-// postgres/mysql: 'CURRENT_TIMESTAMP', sqlite: "datetime('now')"
-
-// Escape identifier
-adapter.escapeIdentifier('my-table')
-// postgres: "my-table", mysql: `my-table`, sqlite: "my-table"
-
-// Format date for database
-adapter.formatDate(new Date('2024-01-15T10:30:00Z'))
-// postgres: '2024-01-15T10:30:00.000Z'
-// mysql: '2024-01-15 10:30:00'
-// sqlite: '2024-01-15T10:30:00.000Z'
-```
-
-#### Error Detection Methods
-
-```typescript
-// Check unique constraint violation
-adapter.isUniqueConstraintError(error)
-// postgres: code === '23505'
-// mysql: code === 'ER_DUP_ENTRY'
-// sqlite: message includes 'UNIQUE constraint failed'
-
-// Check foreign key violation
-adapter.isForeignKeyError(error)
-// postgres: code === '23503'
-// mysql: code === 'ER_NO_REFERENCED_ROW_2'
-// sqlite: message includes 'FOREIGN KEY constraint failed'
-
-// Check not-null violation
-adapter.isNotNullError(error)
-// postgres: code === '23502'
-// mysql: code === 'ER_BAD_NULL_ERROR'
-// sqlite: message includes 'NOT NULL constraint failed'
-```
-
-#### Introspection Methods
-
-```typescript
-// Check if table exists
-await adapter.tableExists(db, 'users')
-// Returns: boolean
-
-// Get table columns
-await adapter.getTableColumns(db, 'users')
-// Returns: ['id', 'name', 'email', 'created_at']
-
-// Get all tables
-await adapter.getTables(db)
-// Returns: ['users', 'posts', 'comments']
-
-// Get database size in bytes
-await adapter.getDatabaseSize(db, 'mydb')
-// Returns: number (bytes)
-
-// Truncate single table
-await adapter.truncateTable(db, 'users')
-
-// Truncate all tables (exclude migrations)
-await adapter.truncateAllTables(db, ['kysely_migrations'])
+const customAdapter = new PostgresAdapter({ defaultSchema: 'custom' })
+registerAdapter(customAdapter)
 ```
 
 ### Connection Utilities
@@ -345,34 +321,10 @@ function parseConnectionUrl(url: string): ConnectionConfig
 
 // Examples
 const config1 = parseConnectionUrl('postgresql://user:pass@localhost:5432/mydb?ssl=true')
-// {
-//   host: 'localhost',
-//   port: 5432,
-//   database: 'mydb',
-//   user: 'user',
-//   password: 'pass',
-//   ssl: true
-// }
+// { host: 'localhost', port: 5432, database: 'mydb', user: 'user', password: 'pass', ssl: true }
 
 const config2 = parseConnectionUrl('mysql://localhost/testdb')
-// {
-//   host: 'localhost',
-//   port: undefined,
-//   database: 'testdb',
-//   user: undefined,
-//   password: undefined,
-//   ssl: false
-// }
-
-const config3 = parseConnectionUrl('sqlite://./data/app.db')
-// {
-//   host: '.',
-//   port: undefined,
-//   database: 'data/app.db',
-//   user: undefined,
-//   password: undefined,
-//   ssl: false
-// }
+// { host: 'localhost', database: 'testdb' }
 ```
 
 #### `buildConnectionUrl(dialect, config)`
@@ -380,10 +332,10 @@ const config3 = parseConnectionUrl('sqlite://./data/app.db')
 Build connection URL from configuration object.
 
 ```typescript
-function buildConnectionUrl(dialect: DatabaseDialect, config: ConnectionConfig): string
+function buildConnectionUrl(dialect: Dialect, config: ConnectionConfig): string
 
 // Examples
-const url1 = buildConnectionUrl('postgres', {
+const url = buildConnectionUrl('postgres', {
   host: 'localhost',
   database: 'mydb',
   user: 'admin',
@@ -391,147 +343,696 @@ const url1 = buildConnectionUrl('postgres', {
   ssl: true
 })
 // 'postgresql://admin:secret@localhost:5432/mydb?ssl=true'
-
-const url2 = buildConnectionUrl('mysql', {
-  host: 'db.example.com',
-  port: 3307,
-  database: 'production'
-})
-// 'mysql://db.example.com:3307/production'
-
-const url3 = buildConnectionUrl('sqlite', {
-  database: './data/app.db'
-})
-// 'sqlite://localhost/./data/app.db'
 ```
-
-**Features:**
-
-- Auto-fills default ports
-- Supports optional authentication
-- Handles SSL configuration
-- Protocol mapping (postgres → postgresql)
 
 #### `getDefaultPort(dialect)`
 
 Get default port for a dialect.
 
 ```typescript
-function getDefaultPort(dialect: DatabaseDialect): number | null
-
-getDefaultPort('postgres') // 5432
-getDefaultPort('mysql') // 3306
-getDefaultPort('sqlite') // null
-getDefaultPort('mssql') // 1433
+getDefaultPort('postgres')  // 5432
+getDefaultPort('mysql')     // 3306
+getDefaultPort('sqlite')    // null
+getDefaultPort('mssql')     // 1433
 ```
 
-### Helper Functions
+---
 
-All helper functions accept `dialect` as the last parameter for backward compatibility:
+## Multi-Tenant Utilities
+
+Utilities for managing schema-per-tenant multi-tenancy patterns.
+
+### `getTenantSchemaName(tenantId, config?)`
+
+Generates a tenant schema name from a tenant ID.
 
 ```typescript
-// Introspection
-await tableExists(db, 'users', 'postgres')
-await getTableColumns(db, 'users', 'mysql')
-await getTables(db, 'sqlite')
+function getTenantSchemaName(tenantId: string, config?: TenantSchemaConfig): string
 
-// Formatting
-escapeIdentifier('my-table', 'postgres') // "my-table"
-getCurrentTimestamp('mysql') // 'CURRENT_TIMESTAMP'
-formatDate(new Date(), 'sqlite') // '2024-01-15T10:30:00.000Z'
-
-// Error detection
-isUniqueConstraintError(error, 'postgres')
-isForeignKeyError(error, 'mysql')
-isNotNullError(error, 'sqlite')
-
-// Testing utilities
-await getDatabaseSize(db, 'postgres', 'mydb')
-await truncateAllTables(db, 'postgres', ['kysely_migrations'])
+// Examples
+getTenantSchemaName('123')                        // 'tenant_123'
+getTenantSchemaName('acme')                       // 'tenant_acme'
+getTenantSchemaName('corp', { prefix: 'org_' })   // 'org_corp'
 ```
 
-:::tip Recommendation
-Use the adapter interface (`getAdapter()`) instead of helper functions for better type safety and performance (avoids repeated adapter lookups).
-:::
+**Throws:** Error if resulting schema name is invalid
 
-## Types
+### `parseTenantSchemaName(schemaName, config?)`
 
-### `Dialect`
-
-Supported database dialects. Imported from `@kysera/core`.
+Extracts tenant ID from a tenant schema name.
 
 ```typescript
-type Dialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql'
+function parseTenantSchemaName(schemaName: string, config?: TenantSchemaConfig): string | null
+
+// Examples
+parseTenantSchemaName('tenant_123')                       // '123'
+parseTenantSchemaName('tenant_acme')                      // 'acme'
+parseTenantSchemaName('public')                           // null
+parseTenantSchemaName('org_corp', { prefix: 'org_' })     // 'corp'
 ```
 
-### `DatabaseDialect` (Deprecated)
+### `isTenantSchema(schemaName, config?)`
 
-:::warning Deprecated
-Use `Dialect` from `@kysera/core` instead. `DatabaseDialect` is kept for backwards compatibility.
-:::
+Checks if a schema name matches the tenant schema pattern.
 
 ```typescript
-/** @deprecated Use Dialect from @kysera/core */
-type DatabaseDialect = Dialect
+function isTenantSchema(schemaName: string, config?: TenantSchemaConfig): boolean
+
+// Examples
+isTenantSchema('tenant_123')                       // true
+isTenantSchema('public')                           // false
+isTenantSchema('org_corp', { prefix: 'org_' })     // true
 ```
 
-### `ConnectionConfig`
+### `filterTenantSchemas(schemas, config?)`
 
-Database connection configuration.
+Filters an array of schema names to only tenant schemas.
 
 ```typescript
-interface ConnectionConfig {
-  host?: string | undefined
-  port?: number | undefined
-  database: string
-  user?: string | undefined
-  password?: string | undefined
-  ssl?: boolean | undefined
+function filterTenantSchemas(schemas: string[], config?: TenantSchemaConfig): string[]
+
+// Example
+filterTenantSchemas(['public', 'tenant_1', 'tenant_2', 'auth'])
+// ['tenant_1', 'tenant_2']
+```
+
+### `extractTenantIds(schemas, config?)`
+
+Extracts tenant IDs from an array of schema names.
+
+```typescript
+function extractTenantIds(schemas: string[], config?: TenantSchemaConfig): string[]
+
+// Example
+extractTenantIds(['public', 'tenant_1', 'tenant_2', 'auth'])
+// ['1', '2']
+```
+
+### `TenantSchemaConfig` Interface
+
+```typescript
+interface TenantSchemaConfig {
+  /** Prefix for tenant schema names (default: 'tenant_') */
+  prefix?: string
 }
 ```
 
-### `DialectAdapter`
+---
 
-Interface for dialect-specific operations (see [Adapter Pattern](#adapter-pattern) above).
+## Error Detection Utilities
 
-### `DatabaseErrorLike`
+Utilities for detecting and handling database constraint errors.
 
-Error object shape for database error detection.
+### `extractErrorInfo(error)`
+
+Extracts and normalizes error information from a database error.
 
 ```typescript
-interface DatabaseErrorLike {
-  message?: string
-  code?: string
+function extractErrorInfo(error: unknown): ExtractedErrorInfo
+
+// Example
+try {
+  await db.insertInto('users').values(data).execute()
+} catch (error) {
+  const info = extractErrorInfo(error)
+  console.log(info.code)            // '23505'
+  console.log(info.message)         // 'unique constraint violation' (lowercase)
+  console.log(info.originalMessage) // 'Unique constraint violation'
+  console.log(info.number)          // undefined (or MSSQL error number)
 }
 ```
+
+### `ExtractedErrorInfo` Interface
+
+```typescript
+interface ExtractedErrorInfo {
+  code: string                  // Error code (e.g., '23505')
+  message: string               // Lowercase message for matching
+  originalMessage: string       // Original error message
+  number: number | undefined    // MSSQL error number
+}
+```
+
+### `createErrorMatcher(config)`
+
+Creates a custom error matcher function.
+
+```typescript
+function createErrorMatcher(config: ErrorMatcherConfig): (error: unknown) => boolean
+
+// Example - create a unique constraint matcher
+const isUniqueConstraint = createErrorMatcher({
+  codes: ['23505'],
+  messages: ['unique constraint']
+})
+
+if (isUniqueConstraint(error)) {
+  console.log('Duplicate value!')
+}
+```
+
+### `ErrorMatcherConfig` Interface
+
+```typescript
+interface ErrorMatcherConfig {
+  codes?: string[]      // PostgreSQL/MySQL error codes
+  numbers?: number[]    // MSSQL error numbers
+  messages?: string[]   // Message substrings (case-insensitive)
+}
+```
+
+### `errorMatchers` Object
+
+Pre-built error matchers for all dialects:
+
+```typescript
+const errorMatchers = {
+  postgres: {
+    uniqueConstraint: (error) => boolean,  // code '23505'
+    foreignKey: (error) => boolean,        // code '23503'
+    notNull: (error) => boolean            // code '23502'
+  },
+  mysql: {
+    uniqueConstraint: (error) => boolean,  // code 'ER_DUP_ENTRY' or '1062'
+    foreignKey: (error) => boolean,        // code 'ER_NO_REFERENCED_ROW_2', 'ER_ROW_IS_REFERENCED_2', 'ER_ROW_IS_REFERENCED', 'ER_NO_REFERENCED_ROW', '1451', '1452'
+    notNull: (error) => boolean            // code 'ER_BAD_NULL_ERROR' or '1048'
+  },
+  sqlite: {
+    uniqueConstraint: (error) => boolean,  // message 'unique constraint failed'
+    foreignKey: (error) => boolean,        // message 'foreign key constraint failed'
+    notNull: (error) => boolean            // message 'not null constraint failed'
+  },
+  mssql: {
+    uniqueConstraint: (error) => boolean,  // number 2627, 2601
+    foreignKey: (error) => boolean,        // number 547
+    notNull: (error) => boolean            // number 515
+  }
+}
+```
+
+**Example:**
+```typescript
+import { errorMatchers } from '@kysera/dialects'
+
+try {
+  await db.insertInto('users').values(data).execute()
+} catch (error) {
+  if (errorMatchers.postgres.uniqueConstraint(error)) {
+    console.log('Duplicate email')
+  } else if (errorMatchers.postgres.foreignKey(error)) {
+    console.log('Invalid foreign key reference')
+  }
+}
+```
+
+---
+
+## Schema Utilities
+
+### `resolveSchema(defaultSchema, options?)`
+
+Resolves schema name with validation.
+
+```typescript
+function resolveSchema(defaultSchema: string, options?: SchemaOptions): string
+
+// Examples
+resolveSchema('public', { schema: 'auth' })  // 'auth'
+resolveSchema('public', {})                  // 'public'
+resolveSchema('public')                      // 'public'
+```
+
+**Throws:** Error if schema name is invalid
+
+### `qualifyTableName(schema, tableName, escapeIdentifierFn)`
+
+Creates a qualified table name with schema prefix.
+
+```typescript
+function qualifyTableName(
+  schema: string,
+  tableName: string,
+  escapeIdentifierFn: (id: string) => string
+): string
+
+// Examples
+qualifyTableName('auth', 'users', (id) => `"${id}"`)
+// PostgreSQL: "auth"."users"
+
+qualifyTableName('app', 'users', (id) => `\`${id}\``)
+// MySQL: `app`.`users`
+```
+
+### `validateIdentifier(name)`
+
+Validates a SQL identifier (table name, column name, schema name).
+
+```typescript
+function validateIdentifier(name: string): boolean
+
+// Examples
+validateIdentifier('users')           // true
+validateIdentifier('public.users')    // true
+validateIdentifier('_private_table')  // true
+validateIdentifier('123invalid')      // false (starts with number)
+validateIdentifier('table-name')      // false (contains hyphen)
+validateIdentifier('')                // false (empty)
+```
+
+**Rules:**
+- Must start with letter or underscore
+- Can contain letters, numbers, underscores, and dots
+- Maximum 128 characters
+
+### `assertValidIdentifier(name, context?)`
+
+Asserts that an identifier is valid, throwing an error if not.
+
+```typescript
+function assertValidIdentifier(name: string, context?: string): void
+
+// Examples
+assertValidIdentifier('users', 'table name')     // passes
+assertValidIdentifier('123bad', 'table name')    // throws: "Invalid table name: 123bad"
+```
+
+---
+
+## PostgreSQL Adapter
+
+### PostgresAdapterOptions
+
+```typescript
+interface PostgresAdapterOptions extends DialectAdapterOptions {
+  logger?: KyseraLogger
+}
+```
+
+### Creating an Adapter
+
+```typescript
+import { createPostgresAdapter } from '@kysera/dialects'
+
+// Default (public schema)
+const adapter = createPostgresAdapter()
+
+// Custom default schema
+const authAdapter = createPostgresAdapter({ defaultSchema: 'auth' })
+
+// With logger
+const adapter = createPostgresAdapter({
+  defaultSchema: 'app',
+  logger: myLogger
+})
+```
+
+### Schema Management Methods
+
+PostgreSQL adapter provides full schema management capabilities:
+
+#### `schemaExists(db, schemaName)`
+
+Checks if a schema exists.
+
+```typescript
+const exists = await adapter.schemaExists(db, 'auth')
+```
+
+#### `getSchemas(db)`
+
+Gets all schemas (excludes system schemas: `pg_%`, `information_schema`).
+
+```typescript
+const schemas = await adapter.getSchemas(db)
+// ['public', 'auth', 'admin', 'tenant_1', 'tenant_2']
+```
+
+#### `createSchema(db, schemaName, options?)`
+
+Creates a new schema.
+
+```typescript
+// Basic usage
+await adapter.createSchema(db, 'tenant_123')
+
+// With IF NOT EXISTS
+await adapter.createSchema(db, 'tenant_123', { ifNotExists: true })
+```
+
+**Returns:** `true` if created, `false` if already exists
+
+#### `dropSchema(db, schemaName, options?)`
+
+Drops a schema.
+
+```typescript
+// Basic usage
+await adapter.dropSchema(db, 'tenant_123')
+
+// With IF EXISTS
+await adapter.dropSchema(db, 'tenant_123', { ifExists: true })
+
+// With CASCADE (drops all contained objects)
+await adapter.dropSchema(db, 'tenant_123', { ifExists: true, cascade: true })
+```
+
+**Protected schemas** (cannot drop):
+- `public`
+- `pg_catalog`
+- `information_schema`
+
+### Schema Inspection Methods
+
+#### `getSchemaInfo(db, schemaName)`
+
+Gets detailed information about a schema.
+
+```typescript
+const info = await adapter.getSchemaInfo(db, 'tenant_123')
+// {
+//   name: 'tenant_123',
+//   tableCount: 15,
+//   owner: 'app_user',
+//   sizeBytes: 1048576
+// }
+```
+
+#### `getSchemaIndexes(db, options?)`
+
+Gets index information for all tables in a schema.
+
+```typescript
+const indexes = await adapter.getSchemaIndexes(db, { schema: 'auth' })
+// [
+//   {
+//     tableName: 'users',
+//     indexName: 'users_pkey',
+//     indexType: 'btree',
+//     isUnique: true,
+//     isPrimary: true,
+//     columns: ['id']
+//   },
+//   {
+//     tableName: 'users',
+//     indexName: 'users_email_idx',
+//     indexType: 'btree',
+//     isUnique: true,
+//     isPrimary: false,
+//     columns: ['email']
+//   }
+// ]
+```
+
+#### `getSchemaForeignKeys(db, options?)`
+
+Gets foreign key relationships in a schema.
+
+```typescript
+const fks = await adapter.getSchemaForeignKeys(db, { schema: 'public' })
+// [
+//   {
+//     constraintName: 'posts_user_id_fkey',
+//     tableName: 'posts',
+//     columnName: 'user_id',
+//     referencedSchema: 'public',
+//     referencedTable: 'users',
+//     referencedColumn: 'id',
+//     onDelete: 'CASCADE',
+//     onUpdate: 'CASCADE'
+//   }
+// ]
+```
+
+### Search Path Management
+
+#### `getSearchPath(db)`
+
+Gets the current search_path setting.
+
+```typescript
+const path = await adapter.getSearchPath(db)
+// ['public', 'tenant_123']
+```
+
+#### `setSearchPath(db, schemas)`
+
+Sets the search_path for the current session.
+
+```typescript
+await adapter.setSearchPath(db, ['tenant_123', 'public'])
+```
+
+#### `withSearchPath(db, schemas, fn)`
+
+Executes a function with a temporary search_path, then restores the original.
+
+```typescript
+const result = await adapter.withSearchPath(db, ['tenant_123'], async () => {
+  // All queries here use tenant_123 schema by default
+  return await db.selectFrom('users').selectAll().execute()
+})
+// Search path is automatically restored after execution
+```
+
+### Schema Cloning Methods
+
+#### `cloneSchema(db, sourceSchema, targetSchema, options?)`
+
+Clones a schema's structure (tables, indexes, constraints) to a new schema.
+
+```typescript
+// Clone structure only
+await adapter.cloneSchema(db, 'template', 'tenant_456')
+
+// Clone with data
+await adapter.cloneSchema(db, 'template', 'tenant_456', { includeData: true })
+
+// Exclude certain tables
+await adapter.cloneSchema(db, 'template', 'tenant_456', { excludeTables: ['logs'] })
+
+// Include only specific tables
+await adapter.cloneSchema(db, 'template', 'tenant_456', { includeTables: ['users', 'settings'] })
+```
+
+**Options:**
+- `includeData` - Include table data (default: `false`)
+- `excludeTables` - Tables to exclude from cloning
+- `includeTables` - Tables to include (if specified, only these are copied)
+
+#### `compareSchemas(db, schema1, schema2)`
+
+Compares two schemas and returns the differences.
+
+```typescript
+const diff = await adapter.compareSchemas(db, 'template', 'tenant_123')
+// {
+//   onlyInFirst: ['archived_users'],
+//   onlyInSecond: ['custom_settings'],
+//   inBoth: ['users', 'posts']
+// }
+```
+
+---
+
+## MySQL Adapter
+
+### MySQLAdapterOptions
+
+```typescript
+interface MySQLAdapterOptions extends DialectAdapterOptions {
+  logger?: KyseraLogger
+}
+```
+
+:::note MySQL Schema Behavior
+In MySQL, "schema" and "database" are synonymous. The `schema` option maps to the current database context. Empty string means use current database (`DATABASE()`).
+:::
+
+### Creating an Adapter
+
+```typescript
+import { createMySQLAdapter } from '@kysera/dialects'
+
+// Default (current database)
+const adapter = createMySQLAdapter()
+
+// Specific database as default
+const adapter = createMySQLAdapter({ defaultSchema: 'my_database' })
+```
+
+### Dialect-Specific Behavior
+
+```typescript
+const adapter = getAdapter('mysql')
+
+adapter.getDefaultPort()                    // 3306
+adapter.getCurrentTimestamp()               // 'CURRENT_TIMESTAMP'
+adapter.escapeIdentifier('my-table')        // `my-table`
+adapter.formatDate(new Date())              // 'YYYY-MM-DD HH:MM:SS'
+adapter.isUniqueConstraintError(e)          // code 'ER_DUP_ENTRY' or '1062'
+adapter.isForeignKeyError(e)                // code '1451', '1452'
+adapter.isNotNullError(e)                   // code 'ER_BAD_NULL_ERROR' or '1048'
+```
+
+---
+
+## SQLite Adapter
+
+### SQLiteAdapterOptions
+
+```typescript
+interface SQLiteAdapterOptions extends DialectAdapterOptions {
+  logger?: KyseraLogger
+}
+```
+
+:::note SQLite Schema Behavior
+SQLite has no schema support (single schema only). SchemaOptions are accepted for interface compatibility but are ignored. The `defaultSchema` is `'main'`.
+:::
+
+### Creating an Adapter
+
+```typescript
+import { createSQLiteAdapter } from '@kysera/dialects'
+
+const adapter = createSQLiteAdapter()
+```
+
+### Dialect-Specific Behavior
+
+```typescript
+const adapter = getAdapter('sqlite')
+
+adapter.getDefaultPort()                    // null (file-based)
+adapter.getCurrentTimestamp()               // "datetime('now')"
+adapter.escapeIdentifier('my-table')        // "my-table"
+adapter.formatDate(new Date())              // ISO string
+adapter.isUniqueConstraintError(e)          // message 'UNIQUE constraint failed'
+adapter.isForeignKeyError(e)                // message 'FOREIGN KEY constraint failed'
+adapter.isNotNullError(e)                   // message 'NOT NULL constraint failed'
+```
+
+---
+
+## MSSQL Adapter
+
+### MSSQLAdapterOptions
+
+```typescript
+interface MSSQLAdapterOptions extends DialectAdapterOptions {
+  logger?: KyseraLogger
+}
+```
+
+Supports SQL Server 2017+, Azure SQL Database, and Azure SQL Edge.
+
+### Creating an Adapter
+
+```typescript
+import { createMSSQLAdapter } from '@kysera/dialects'
+
+// Default (dbo schema)
+const adapter = createMSSQLAdapter()
+
+// Custom default schema
+const adapter = createMSSQLAdapter({ defaultSchema: 'app' })
+```
+
+### Schema Management Methods
+
+MSSQL adapter provides schema management similar to PostgreSQL:
+
+```typescript
+// Check if schema exists
+const exists = await adapter.schemaExists(db, 'auth')
+
+// Get all schemas (excludes system schemas)
+const schemas = await adapter.getSchemas(db)
+// ['dbo', 'auth', 'admin', ...]
+
+// Create a new schema
+await adapter.createSchema(db, 'auth')
+
+// Drop a schema
+await adapter.dropSchema(db, 'auth')
+```
+
+**Protected schemas** (cannot drop):
+- `dbo`
+- `sys`
+- `INFORMATION_SCHEMA`
+- `guest`
+
+### Dialect-Specific Behavior
+
+```typescript
+const adapter = getAdapter('mssql')
+
+adapter.getDefaultPort()                    // 1433
+adapter.getCurrentTimestamp()               // 'GETDATE()'
+adapter.escapeIdentifier('my-table')        // [my-table]
+adapter.formatDate(new Date())              // 'YYYY-MM-DD HH:MM:SS.mmm'
+adapter.defaultSchema                       // 'dbo'
+adapter.isUniqueConstraintError(e)          // number 2627 or 2601
+adapter.isForeignKeyError(e)                // number 547
+adapter.isNotNullError(e)                   // number 515
+```
+
+**MSSQL-specific error codes:**
+- `2627` - Unique constraint violation (PRIMARY KEY)
+- `2601` - Unique constraint violation (UNIQUE INDEX)
+- `547` - Foreign key constraint violation
+- `515` - NOT NULL constraint violation
+
+---
 
 ## Use Cases and Examples
 
-### 1. Multi-Database Application
+### 1. Multi-Tenant SaaS Application
 
-Support multiple databases in a single application:
+Schema-per-tenant isolation pattern:
 
 ```typescript
-import { getAdapter, DatabaseDialect } from '@kysera/dialects'
+import {
+  createPostgresAdapter,
+  getTenantSchemaName,
+  filterTenantSchemas,
+  extractTenantIds
+} from '@kysera/dialects'
 
-async function setupDatabase(db: Kysely<any>, dialect: DatabaseDialect) {
-  const adapter = getAdapter(dialect)
+const adapter = createPostgresAdapter()
 
-  // Check if migrations table exists
-  const hasMigrations = await adapter.tableExists(db, 'kysely_migrations')
-  if (!hasMigrations) {
-    console.log('Running first-time setup...')
-  }
+// Tenant provisioning
+async function createTenant(db: Kysely<any>, tenantId: string) {
+  const schema = getTenantSchemaName(tenantId)  // 'tenant_acme'
 
-  // Get all existing tables
-  const tables = await adapter.getTables(db)
-  console.log(`Found ${tables.length} tables`)
+  // Create tenant schema from template
+  await adapter.createSchema(db, schema)
+  await adapter.cloneSchema(db, 'template', schema)
+
+  return schema
 }
 
-// Works with any dialect
-await setupDatabase(postgresDb, 'postgres')
-await setupDatabase(mysqlDb, 'mysql')
-await setupDatabase(sqliteDb, 'sqlite')
+// List all tenants
+async function listTenants(db: Kysely<any>) {
+  const schemas = await adapter.getSchemas(db)
+  return extractTenantIds(schemas)  // ['acme', 'globex', '123']
+}
+
+// Tenant cleanup
+async function deleteTenant(db: Kysely<any>, tenantId: string) {
+  const schema = getTenantSchemaName(tenantId)
+  await adapter.dropSchema(db, schema, { cascade: true })
+}
+
+// Query within tenant context
+async function getTenantUsers(db: Kysely<any>, tenantId: string) {
+  const schema = getTenantSchemaName(tenantId)
+
+  return adapter.withSearchPath(db, [schema], async () => {
+    return db.selectFrom('users').selectAll().execute()
+  })
+}
 ```
 
 ### 2. Graceful Error Handling
@@ -539,79 +1040,96 @@ await setupDatabase(sqliteDb, 'sqlite')
 Detect and handle database constraint violations:
 
 ```typescript
-import { getAdapter } from '@kysera/dialects'
+import { getAdapter, errorMatchers, extractErrorInfo } from '@kysera/dialects'
 
-async function createUser(db: Kysely<Database>, email: string, dialect: DatabaseDialect) {
-  const adapter = getAdapter(dialect)
-
+async function createUser(db: Kysely<Database>, data: UserInput) {
   try {
-    const user = await db
-      .insertInto('users')
-      .values({ email, name: 'New User' })
-      .returningAll()
-      .executeTakeFirstOrThrow()
-
-    return { success: true, user }
+    return await db.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
   } catch (error) {
-    if (adapter.isUniqueConstraintError(error)) {
-      return { success: false, error: 'Email already exists' }
+    const info = extractErrorInfo(error)
+
+    if (errorMatchers.postgres.uniqueConstraint(error)) {
+      throw new ConflictError(`User with email ${data.email} already exists`)
     }
-    if (adapter.isForeignKeyError(error)) {
-      return { success: false, error: 'Invalid reference' }
+    if (errorMatchers.postgres.foreignKey(error)) {
+      throw new BadRequestError('Invalid organization reference')
     }
-    if (adapter.isNotNullError(error)) {
-      return { success: false, error: 'Required field missing' }
+    if (errorMatchers.postgres.notNull(error)) {
+      throw new BadRequestError(`Missing required field: ${info.originalMessage}`)
     }
-    throw error // Unknown error
+
+    throw error  // Unknown error
   }
 }
 ```
 
-### 3. Dynamic SQL Generation
+### 3. Database Schema Validation
 
-Generate dialect-specific SQL:
-
-```typescript
-import { getAdapter } from '@kysera/dialects'
-
-function buildTimestampQuery(dialect: DatabaseDialect) {
-  const adapter = getAdapter(dialect)
-
-  return `
-    INSERT INTO logs (message, created_at)
-    VALUES ('System started', ${adapter.getCurrentTimestamp()})
-  `
-}
-
-// postgres/mysql: VALUES ('System started', CURRENT_TIMESTAMP)
-// sqlite: VALUES ('System started', datetime('now'))
-```
-
-### 4. Database Introspection
-
-Inspect database schema:
+Validate migration state and schema consistency:
 
 ```typescript
-import { getAdapter } from '@kysera/dialects'
+import { createPostgresAdapter } from '@kysera/dialects'
 
-async function inspectDatabase(db: Kysely<any>, dialect: DatabaseDialect) {
-  const adapter = getAdapter(dialect)
+async function validateDatabase(db: Kysely<any>) {
+  const adapter = createPostgresAdapter()
 
-  const tables = await adapter.getTables(db)
-
-  const schema: Record<string, string[]> = {}
-  for (const table of tables) {
-    schema[table] = await adapter.getTableColumns(db, table)
+  // Check migrations table
+  const hasMigrations = await adapter.tableExists(db, 'kysely_migrations')
+  if (!hasMigrations) {
+    throw new Error('Migrations table not found. Run migrations first.')
   }
 
-  return schema
-}
+  // Validate required tables
+  const requiredTables = ['users', 'posts', 'comments']
+  const existingTables = await adapter.getTables(db)
 
-// Returns:
-// {
-//   users: ['id', 'name', 'email', 'created_at'],
-//   posts: ['id', 'user_id', 'title', 'content', 'created_at']
-// }
+  const missingTables = requiredTables.filter(t => !existingTables.includes(t))
+  if (missingTables.length > 0) {
+    throw new Error(`Missing tables: ${missingTables.join(', ')}`)
+  }
+
+  // Validate indexes exist
+  const indexes = await adapter.getSchemaIndexes(db)
+  const requiredIndexes = ['users_email_idx', 'posts_user_id_idx']
+
+  const indexNames = indexes.map(i => i.indexName)
+  const missingIndexes = requiredIndexes.filter(i => !indexNames.includes(i))
+
+  if (missingIndexes.length > 0) {
+    console.warn(`Missing indexes: ${missingIndexes.join(', ')}`)
+  }
+
+  console.log('✓ Database validation passed')
+}
+```
+
+### 4. Schema Drift Detection
+
+Compare schemas to detect drift:
+
+```typescript
+import { createPostgresAdapter } from '@kysera/dialects'
+
+async function detectSchemaDrift(db: Kysely<any>, tenantId: string) {
+  const adapter = createPostgresAdapter()
+  const tenantSchema = `tenant_${tenantId}`
+
+  const diff = await adapter.compareSchemas(db, 'template', tenantSchema)
+
+  if (diff.onlyInFirst.length > 0) {
+    console.warn(`Tables missing in tenant schema: ${diff.onlyInFirst.join(', ')}`)
+  }
+
+  if (diff.onlyInSecond.length > 0) {
+    console.info(`Custom tables in tenant schema: ${diff.onlyInSecond.join(', ')}`)
+  }
+
+  return {
+    hasDrift: diff.onlyInFirst.length > 0,
+    missingTables: diff.onlyInFirst,
+    extraTables: diff.onlyInSecond
+  }
+}
 ```
 
 ### 5. Testing Utilities
@@ -637,204 +1155,32 @@ describe('User Repository', () => {
 })
 ```
 
-### 6. Connection URL Management
+### 6. Database Monitoring
 
-Parse and build connection URLs:
-
-```typescript
-import { parseConnectionUrl, buildConnectionUrl } from '@kysera/dialects'
-
-// Parse from environment variable
-const config = parseConnectionUrl(process.env.DATABASE_URL!)
-console.log(`Connecting to ${config.host}:${config.port}`)
-
-// Build for different environments
-const devUrl = buildConnectionUrl('postgres', {
-  host: 'localhost',
-  database: 'myapp_dev',
-  user: 'dev',
-  password: 'dev'
-})
-
-const prodUrl = buildConnectionUrl('postgres', {
-  host: 'db.production.com',
-  database: 'myapp_prod',
-  user: 'app',
-  password: process.env.DB_PASSWORD!,
-  ssl: true
-})
-```
-
-### 7. Database Migration Validation
-
-Validate migration state:
+Monitor database and schema sizes:
 
 ```typescript
-import { getAdapter } from '@kysera/dialects'
+import { createPostgresAdapter, filterTenantSchemas } from '@kysera/dialects'
 
-async function validateMigrations(db: Kysely<any>, dialect: DatabaseDialect) {
-  const adapter = getAdapter(dialect)
+async function monitorDatabase(db: Kysely<any>) {
+  const adapter = createPostgresAdapter()
 
-  const hasMigrationsTable = await adapter.tableExists(db, 'kysely_migrations')
-  if (!hasMigrationsTable) {
-    throw new Error('Migrations table not found. Run migrations first.')
-  }
+  // Total database size
+  const totalSize = await adapter.getDatabaseSize(db)
+  console.log(`Total database size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`)
 
-  const requiredTables = ['users', 'posts', 'comments']
-  const existingTables = await adapter.getTables(db)
+  // Per-schema sizes
+  const schemas = await adapter.getSchemas(db)
+  const tenantSchemas = filterTenantSchemas(schemas)
 
-  const missingTables = requiredTables.filter(table => !existingTables.includes(table))
-
-  if (missingTables.length > 0) {
-    throw new Error(`Missing tables: ${missingTables.join(', ')}`)
-  }
-
-  console.log('✓ All required tables exist')
-}
-```
-
-### 8. Database Size Monitoring
-
-Monitor database growth:
-
-```typescript
-import { getAdapter } from '@kysera/dialects'
-
-async function monitorDatabaseSize(db: Kysely<any>, dialect: DatabaseDialect) {
-  const adapter = getAdapter(dialect)
-
-  const sizeBytes = await adapter.getDatabaseSize(db)
-  const sizeMB = (sizeBytes / 1024 / 1024).toFixed(2)
-
-  console.log(`Database size: ${sizeMB} MB`)
-
-  if (sizeBytes > 1024 * 1024 * 1024) {
-    // 1 GB
-    console.warn('Database exceeds 1 GB, consider archiving old data')
+  for (const schema of tenantSchemas) {
+    const info = await adapter.getSchemaInfo(db, schema)
+    console.log(`${schema}: ${info.tableCount} tables, ${(info.sizeBytes / 1024).toFixed(2)} KB`)
   }
 }
 ```
 
-## Dialect-Specific Behavior
-
-### PostgreSQL
-
-```typescript
-const adapter = getAdapter('postgres')
-
-adapter.getDefaultPort() // 5432
-adapter.getCurrentTimestamp() // 'CURRENT_TIMESTAMP'
-adapter.escapeIdentifier('my-table') // "my-table"
-adapter.formatDate(new Date()) // ISO string
-adapter.isUniqueConstraintError(e) // code === '23505'
-adapter.isForeignKeyError(e) // code === '23503'
-adapter.isNotNullError(e) // code === '23502'
-
-// Uses information_schema.tables for introspection
-// Uses pg_database_size() for database size
-// TRUNCATE with RESTART IDENTITY CASCADE
-// Error handling: Gracefully handles permission errors during truncate
-```
-
-### MySQL
-
-```typescript
-const adapter = getAdapter('mysql')
-
-adapter.getDefaultPort() // 3306
-adapter.getCurrentTimestamp() // 'CURRENT_TIMESTAMP'
-adapter.escapeIdentifier('my-table') // `my-table`
-adapter.formatDate(new Date()) // 'YYYY-MM-DD HH:MM:SS'
-adapter.isUniqueConstraintError(e) // code === 'ER_DUP_ENTRY'
-adapter.isForeignKeyError(e) // code === 'ER_NO_REFERENCED_ROW_2'
-adapter.isNotNullError(e) // code === 'ER_BAD_NULL_ERROR'
-
-// Uses information_schema.tables for introspection
-// Uses SUM(data_length + index_length) for database size
-// TRUNCATE with foreign key checks disabled
-// Error handling: Gracefully handles permission errors during truncate
-```
-
-### SQLite
-
-```typescript
-const adapter = getAdapter('sqlite')
-
-adapter.getDefaultPort() // null
-adapter.getCurrentTimestamp() // "datetime('now')"
-adapter.escapeIdentifier('my-table') // "my-table"
-adapter.formatDate(new Date()) // ISO string
-adapter.isUniqueConstraintError(e) // message includes 'UNIQUE constraint'
-adapter.isForeignKeyError(e) // message includes 'FOREIGN KEY constraint'
-adapter.isNotNullError(e) // message includes 'NOT NULL constraint'
-
-// Uses sqlite_master for introspection
-// Uses page_count * page_size for database size
-// DELETE FROM for truncation (SQLite has no TRUNCATE)
-// Error handling: Gracefully handles permission errors during truncate
-```
-
-### MSSQL (SQL Server)
-
-```typescript
-const adapter = getAdapter('mssql')
-
-adapter.getDefaultPort() // 1433
-adapter.getCurrentTimestamp() // 'CURRENT_TIMESTAMP'
-adapter.escapeIdentifier('my-table') // [my-table]
-adapter.formatDate(new Date()) // ISO string
-adapter.isUniqueConstraintError(e) // number === 2627 or 2601
-adapter.isForeignKeyError(e) // number === 547
-adapter.isNotNullError(e) // number === 515
-
-// Uses INFORMATION_SCHEMA.TABLES for introspection
-// Uses sp_spaceused for database size
-// TRUNCATE TABLE with IDENTITY reset
-// Error handling: Uses error numbers instead of string codes
-```
-
-**MSSQL-specific error codes:**
-
-- `2627` - Unique constraint violation (PRIMARY KEY)
-- `2601` - Unique constraint violation (UNIQUE INDEX)
-- `547` - Foreign key constraint violation
-- `515` - NOT NULL constraint violation
-
-## Integration with Other Packages
-
-### Used by @kysera/executor
-
-```typescript
-// Executor uses dialects for error detection
-import { createExecutor } from '@kysera/executor'
-import { getAdapter } from '@kysera/dialects'
-
-const executor = await createExecutor(db, [], {
-  dialect: 'postgres' // Uses adapter internally
-})
-```
-
-### Used by @kysera/repository
-
-```typescript
-// Repository uses dialects for constraint error handling
-import { createORM } from '@kysera/repository'
-
-const orm = await createORM(db, [], {
-  dialect: 'mysql' // Uses adapter for error detection
-})
-```
-
-### Used by @kysera/dal
-
-```typescript
-// DAL uses dialects for cross-database compatibility
-import { createContext } from '@kysera/dal'
-
-const ctx = createContext(db, {
-  dialect: 'sqlite' // Uses adapter for introspection
-})
-```
+---
 
 ## Best Practices
 
@@ -855,41 +1201,47 @@ const ctx = createContext(db, {
 
    ```typescript
    // ✅ Good - single source of truth
-   const config = { dialect: 'postgres' as DatabaseDialect }
+   const config = { dialect: 'postgres' as Dialect }
    const adapter = getAdapter(config.dialect)
-
-   // ❌ Avoid - hardcoded dialect strings
-   const adapter = getAdapter('postgres')
    ```
 
-3. **Handle all constraint errors:**
+3. **Use pre-built error matchers:**
 
    ```typescript
-   // ✅ Good - comprehensive error handling
-   if (adapter.isUniqueConstraintError(e)) {
-     /* ... */
-   } else if (adapter.isForeignKeyError(e)) {
-     /* ... */
-   } else if (adapter.isNotNullError(e)) {
-     /* ... */
-   } else throw e
-   ```
+   // ✅ Good - consistent error handling
+   import { errorMatchers } from '@kysera/dialects'
 
-4. **Use connection URLs in production:**
-
-   ```typescript
-   // ✅ Good - single DATABASE_URL environment variable
-   const config = parseConnectionUrl(process.env.DATABASE_URL!)
-
-   // ❌ Avoid - multiple environment variables
-   const config = {
-     host: process.env.DB_HOST,
-     port: parseInt(process.env.DB_PORT!)
-     // ...
+   if (errorMatchers.postgres.uniqueConstraint(error)) {
+     // Handle duplicate
    }
    ```
 
-5. **Exclude migrations from truncation:**
+4. **Use multi-tenant utilities for schema naming:**
+
+   ```typescript
+   // ✅ Good - consistent naming
+   import { getTenantSchemaName } from '@kysera/dialects'
+   const schema = getTenantSchemaName(tenantId)
+
+   // ❌ Avoid - manual concatenation
+   const schema = `tenant_${tenantId}`
+   ```
+
+5. **Use withSearchPath for tenant context:**
+
+   ```typescript
+   // ✅ Good - automatic cleanup
+   await adapter.withSearchPath(db, [tenantSchema], async () => {
+     // Queries here
+   })
+
+   // ❌ Avoid - manual search path management
+   await adapter.setSearchPath(db, [tenantSchema])
+   // ... queries ...
+   await adapter.setSearchPath(db, originalPath)  // Easy to forget!
+   ```
+
+6. **Exclude migrations from truncation:**
 
    ```typescript
    // ✅ Good - preserve migration history
@@ -899,12 +1251,17 @@ const ctx = createContext(db, {
    await adapter.truncateAllTables(db)
    ```
 
+---
+
 ## Performance Considerations
 
 - **Adapter lookup is fast:** Singleton instances are cached
+- **Schema proxy caching:** `withSchema()` proxies are cached (up to 100 schemas)
 - **Introspection queries:** Use `information_schema` (fast for small schemas)
 - **Truncate operations:** Use database-specific optimizations (CASCADE, RESTART IDENTITY)
 - **Error detection:** String/code matching is fast (no regex)
+
+---
 
 ## Cross-Runtime Support
 
@@ -925,22 +1282,7 @@ import Database from 'better-sqlite3'
 const adapter = getAdapter('postgres')
 ```
 
-## Migration Guide
-
-If you were using internal Kysera utilities for dialect operations:
-
-```typescript
-// Before (internal utilities)
-import { detectDialect, isConstraintError } from '@kysera/core/internal'
-
-// After (dedicated package)
-import { getAdapter, isUniqueConstraintError } from '@kysera/dialects'
-
-const adapter = getAdapter('postgres')
-if (adapter.isUniqueConstraintError(error)) {
-  // Handle duplicate
-}
-```
+---
 
 ## Related Packages
 
@@ -948,3 +1290,4 @@ if (adapter.isUniqueConstraintError(error)) {
 - [@kysera/executor](/docs/api/executor) - Unified execution layer (uses dialects)
 - [@kysera/repository](/docs/api/repository) - Repository pattern (uses dialects)
 - [@kysera/dal](/docs/api/dal) - Functional data access layer (uses dialects)
+- [@kysera/rls](/docs/api/rls) - Row-Level Security with schema support

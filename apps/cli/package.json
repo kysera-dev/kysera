@@ -65,7 +65,7 @@
     "handlebars": "^4.7.8",
     "fs-extra": "^11.3.2",
     "kysely": "^0.28.9",
-    "zod": "^4.2.1",
+    "zod": "^4.3.6",
     "dotenv": "^17.2.3",
     "cosmiconfig": "^9.0.0",
     "cosmiconfig-typescript-loader": "^6.2.0",
@@ -91,7 +91,7 @@
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^24.10.1",
+    "@types/node": "^25.2.1",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.16",

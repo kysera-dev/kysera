@@ -69,3 +69,11 @@ export {
 
 // Export InterceptedMethod type for advanced users
 export type { InterceptedMethod } from './executor.js'
+
+// Built-in plugins
+export {
+  schemaPlugin,
+  getResolvedSchema,
+  SchemaValidationError,
+  type SchemaPluginOptions
+} from './plugins/index.js'

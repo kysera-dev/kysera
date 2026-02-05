@@ -408,20 +408,52 @@ function buildOrderByAndPaginate<DB, TableName extends keyof DB>(
  * @param pkConfig - Primary key configuration
  * @param dialectConfig - Optional dialect configuration (recommended for production)
  */
+/**
+ * Options for creating table operations
+ */
+export interface TableOperationsOptions {
+  /**
+   * Database dialect type (optional, defaults to auto-detection)
+   */
+  dialect?: Dialect
+  /**
+   * PostgreSQL schema for queries.
+   * When set, all queries are scoped to this schema.
+   */
+  schema?: string
+}
+
 /* eslint-disable @typescript-eslint/no-deprecated -- DialectConfig kept for backwards compatibility */
 // eslint-disable-next-line max-lines-per-function -- Complex table operations
 export function createTableOperations<DB, TableName extends keyof DB & string>(
   db: Executor<DB>,
   tableName: TableName,
   pkConfig: PrimaryKeyConfig = { columns: 'id', type: 'number' },
-  dialectConfig?: DialectConfig
+  options?: TableOperationsOptions | DialectConfig
 ): TableOperations<DB[TableName]> {
-  /* eslint-enable @typescript-eslint/no-deprecated */
   type Table = DB[TableName]
   type SelectTable = Selectable<Table>
 
+  // Normalize options (support both old DialectConfig and new TableOperationsOptions)
+  // When options is DialectConfig, it has { dialect: Dialect }
+  // When options is TableOperationsOptions, it has { dialect?: Dialect, schema?: string }
+  const isDialectConfig = (opt: unknown): opt is DialectConfig =>
+    typeof opt === 'object' && opt !== null && 'dialect' in opt && typeof (opt as DialectConfig).dialect === 'string'
+
+  const opts: TableOperationsOptions = options
+    ? isDialectConfig(options) && !('schema' in options)
+      ? { dialect: options.dialect }
+      : (options as TableOperationsOptions)
+    : {}
+
+  const dialectConfig: DialectConfig | undefined = opts.dialect ? { dialect: opts.dialect } : undefined
+  /* eslint-enable @typescript-eslint/no-deprecated */
+
+  // Apply schema if provided - all queries will use this schema
+  const dbWithSchema = opts.schema ? db.withSchema(opts.schema) : db
+
   // Cache database type detection at initialization (not per-query)
-  const usesMySQL = requiresMySQLBehavior(db, dialectConfig)
+  const usesMySQL = requiresMySQLBehavior(dbWithSchema, dialectConfig)
 
   // Cache primary key columns at initialization
   const pkColumns = getPrimaryKeyColumns(pkConfig.columns)
@@ -430,13 +462,13 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
 
   return {
     async selectAll(): Promise<SelectTable[]> {
-      const result = await db.selectFrom(tableName).selectAll().execute()
+      const result = await dbWithSchema.selectFrom(tableName).selectAll().execute()
 
       return castResults<SelectTable[]>(result)
     },
 
     async selectById(id: PrimaryKeyInput): Promise<SelectTable | undefined> {
-      const baseQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
+      const baseQuery = dbWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
       const query = buildWherePrimaryKey(baseQuery, pkConfig, id)
       const result = await query.executeTakeFirst()
 
@@ -446,7 +478,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     async selectByIds(ids: PrimaryKeyInput[]): Promise<SelectTable[]> {
       if (ids.length === 0) return []
 
-      const baseQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
+      const baseQuery = dbWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
       const query = buildWherePrimaryKeyIn(baseQuery, pkConfig, ids)
       const result = await query.execute()
 
@@ -454,7 +486,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     },
 
     async selectWhere(conditions: Record<string, unknown>): Promise<SelectTable[]> {
-      const baseQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
+      const baseQuery = dbWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
       const query = buildDynamicWhere(baseQuery, conditions, pkConfig)
       const result = await query.execute()
 
@@ -462,7 +494,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     },
 
     async selectOneWhere(conditions: Record<string, unknown>): Promise<SelectTable | undefined> {
-      const baseQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
+      const baseQuery = dbWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
       const query = buildDynamicWhere(baseQuery, conditions, pkConfig)
       const result = await query.executeTakeFirst()
 
@@ -472,7 +504,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     async insert(data: unknown): Promise<SelectTable> {
       if (usesMySQL) {
         // MySQL doesn't support RETURNING, use insertId
-        const result = await db
+        const result = await dbWithSchema
           .insertInto(tableName)
           .values(data as Parameters<InsertQueryBuilder<DB, TableName, unknown>['values']>[0])
           .executeTakeFirst()
@@ -495,7 +527,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
         }
 
         // Fetch the inserted record
-        const selectQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<
+        const selectQuery = dbWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<
           DB,
           TableName
         >
@@ -509,7 +541,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
         return castResults<SelectTable>(record)
       } else {
         // PostgreSQL and SQLite support RETURNING
-        const result = await db
+        const result = await dbWithSchema
           .insertInto(tableName)
           .values(data as Parameters<InsertQueryBuilder<DB, TableName, unknown>['values']>[0])
           .returningAll()
@@ -551,7 +583,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
           }
 
           // Fetch the inserted record
-          const selectQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<
+          const selectQuery = dbWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<
             DB,
             TableName
           >
@@ -566,7 +598,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
         return results
       } else {
         // PostgreSQL and SQLite support RETURNING
-        const result = await db
+        const result = await dbWithSchema
           .insertInto(tableName)
           .values(data as Parameters<InsertQueryBuilder<DB, TableName, unknown>['values']>[0])
           .returningAll()
@@ -615,7 +647,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
         set: (data: unknown) => UpdateQueryBuilder
       }
 
-      const baseQuery = db.updateTable(tableName) as unknown as UpdateQuery
+      const baseQuery = dbWithSchema.updateTable(tableName) as unknown as UpdateQuery
 
       let query: UpdateQueryBuilder = baseQuery.set(data)
 
@@ -629,7 +661,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
         await query.execute()
 
         // Fetch the updated record
-        const selectQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<
+        const selectQuery = dbWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<
           DB,
           TableName
         >
@@ -646,7 +678,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     },
 
     async deleteById(id: PrimaryKeyInput): Promise<boolean> {
-      const baseQuery = db.deleteFrom(tableName) as DynamicDeleteQuery<DB, TableName>
+      const baseQuery = dbWithSchema.deleteFrom(tableName) as DynamicDeleteQuery<DB, TableName>
       const query = buildDeleteWherePrimaryKey(baseQuery, pkConfig, id)
       const result = await query.execute()
 
@@ -660,7 +692,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     async deleteByIds(ids: PrimaryKeyInput[]): Promise<number> {
       if (ids.length === 0) return 0
 
-      const baseQuery = db.deleteFrom(tableName) as DynamicDeleteQuery<DB, TableName>
+      const baseQuery = dbWithSchema.deleteFrom(tableName) as DynamicDeleteQuery<DB, TableName>
       const query = buildDeleteWherePrimaryKeyIn(baseQuery, pkConfig, ids)
       const result = await query.execute()
 
@@ -705,9 +737,9 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
         select: (countExpression: unknown) => CountQueryBuilder
       }
 
-      const baseQuery = db.selectFrom(tableName) as unknown as CountQuery
+      const baseQuery = dbWithSchema.selectFrom(tableName) as unknown as CountQuery
 
-      let query: CountQueryBuilder = baseQuery.select(db.fn.countAll().as('count'))
+      let query: CountQueryBuilder = baseQuery.select(dbWithSchema.fn.countAll().as('count'))
 
       if (conditions) {
         for (const [key, value] of Object.entries(conditions)) {
@@ -729,7 +761,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     }): Promise<SelectTable[]> {
       const { limit, offset, orderBy, orderDirection } = options
 
-      const baseQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
+      const baseQuery = dbWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
       const query = buildOrderByAndPaginate(baseQuery, orderBy, orderDirection, limit, offset)
       const result = await query.execute()
 
@@ -747,7 +779,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     }): Promise<SelectTable[]> {
       const { limit, cursor, orderBy, orderDirection } = options
 
-      let query = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
+      let query = dbWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
 
       // Apply keyset pagination using WHERE clause
       if (cursor) {

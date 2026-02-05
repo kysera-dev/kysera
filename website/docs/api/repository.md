@@ -61,6 +61,7 @@ export type { BaseRepository, RepositoryConfig, TableOperations } from './base-r
 
 // Table operations
 export { createTableOperations } from './table-operations'
+export type { TableOperationsOptions } from './table-operations'
 
 // Context-aware repository
 export { ContextAwareRepository } from './context-aware'
@@ -98,8 +99,19 @@ type Executor<DB> = Kysely<DB> | Transaction<DB>
 ```typescript
 interface RepositoryConfig<TableName, Entity, PK = number> {
   tableName: TableName
+  /**
+   * PostgreSQL schema for this repository.
+   * When set, all queries are scoped to this schema.
+   * @example 'auth', 'admin', 'tenant_123'
+   */
+  schema?: string
   primaryKey?: PrimaryKeyColumn // Default: 'id'
   primaryKeyType?: PrimaryKeyTypeHint // Default: 'number'
+  /**
+   * Database dialect configuration.
+   * Recommended for production to avoid relying on Kysely internals.
+   */
+  dialect?: DialectConfig
   mapRow: (row: Selectable<DB[TableName]>) => Entity
   schemas: {
     entity?: ValidationSchema<Entity> // Optional result validation
@@ -113,6 +125,33 @@ interface RepositoryConfig<TableName, Entity, PK = number> {
 // Primary key types
 type PrimaryKeyColumn = string | string[] // Single: 'id', Composite: ['tenant_id', 'user_id']
 type PrimaryKeyTypeHint = 'number' | 'string' | 'uuid'
+
+// Dialect configuration
+interface DialectConfig {
+  dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql'
+}
+```
+
+**Schema Option:**
+
+The `schema` option enables PostgreSQL schema support for multi-tenant applications or domain separation:
+
+```typescript
+// Multi-tenant pattern
+const tenantUserRepo = factory.create({
+  tableName: 'users',
+  schema: `tenant_${tenantId}`, // All queries use this schema
+  mapRow: row => row,
+  schemas: { create: zodAdapter(CreateUserSchema) }
+})
+
+// Domain separation
+const authUserRepo = factory.create({
+  tableName: 'users',
+  schema: 'auth', // Queries use auth.users
+  mapRow: row => row,
+  schemas: { create: zodAdapter(CreateUserSchema) }
+})
 ```
 
 ### Example with Zod
@@ -848,8 +887,16 @@ Low-level interface for database operations. Used internally by `createBaseRepos
 function createTableOperations<DB, TableName extends keyof DB & string>(
   db: Executor<DB>,
   tableName: TableName,
-  pkConfig?: PrimaryKeyConfig
+  pkConfig?: PrimaryKeyConfig,
+  options?: TableOperationsOptions | DialectConfig
 ): TableOperations<DB[TableName]>
+
+interface TableOperationsOptions {
+  /** Database dialect type (optional, defaults to auto-detection) */
+  dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql'
+  /** PostgreSQL schema for queries. When set, all queries are scoped to this schema. */
+  schema?: string
+}
 
 interface TableOperations<Table> {
   selectAll(): Promise<Selectable<Table>[]>
@@ -868,6 +915,21 @@ interface TableOperations<Table> {
 }
 ```
 
+**Schema Support:**
+
+When `options.schema` is provided, all queries are automatically scoped to that PostgreSQL schema using Kysely's `.withSchema()`:
+
+```typescript
+const operations = createTableOperations(db, 'users', pkConfig, {
+  schema: 'auth',
+  dialect: 'postgres'
+})
+
+// All operations use auth.users
+const users = await operations.selectAll()
+// Executes: SELECT * FROM "auth"."users"
+```
+
 ### Example: Custom Repository
 
 ```typescript
@@ -882,6 +944,26 @@ const operations = createTableOperations(db, 'users', {
 const users = await operations.selectAll()
 const user = await operations.selectById(1)
 await operations.insert({ name: 'Alice', email: 'alice@example.com' })
+```
+
+### Example: Multi-Tenant with Schema
+
+```typescript
+import { createTableOperations } from '@kysera/repository'
+
+function createTenantOperations(tenantId: string) {
+  return createTableOperations(db, 'users', { columns: 'id', type: 'number' }, {
+    schema: `tenant_${tenantId}`,
+    dialect: 'postgres'
+  })
+}
+
+// Each tenant's operations are scoped to their schema
+const tenant1Ops = createTenantOperations('acme')
+const tenant2Ops = createTenantOperations('globex')
+
+const acmeUsers = await tenant1Ops.selectAll() // FROM "tenant_acme"."users"
+const globexUsers = await tenant2Ops.selectAll() // FROM "tenant_globex"."users"
 ```
 
 ## BaseRepository Interface

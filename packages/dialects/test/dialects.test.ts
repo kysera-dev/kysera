@@ -579,7 +579,24 @@ describe('Helper Functions', () => {
 // Validation Functions Tests
 // ============================================================================
 
-import { validateIdentifier, assertValidIdentifier, getDatabaseSize } from '../src/index.js'
+import {
+  validateIdentifier,
+  assertValidIdentifier,
+  getDatabaseSize,
+  // Multi-tenant utilities
+  getTenantSchemaName,
+  parseTenantSchemaName,
+  isTenantSchema,
+  filterTenantSchemas,
+  extractTenantIds,
+  // Schema utilities
+  resolveSchema,
+  qualifyTableName,
+  // Error detection utilities
+  extractErrorInfo,
+  createErrorMatcher,
+  errorMatchers
+} from '../src/index.js'
 
 describe('Validation Functions', () => {
   describe('validateIdentifier', () => {
@@ -651,6 +668,310 @@ describe('Validation Functions', () => {
       const size = await getDatabaseSize(db, 'sqlite')
       expect(typeof size).toBe('number')
       expect(size).toBeGreaterThanOrEqual(0)
+    })
+  })
+})
+
+// ============================================================================
+// Multi-tenant Schema Utilities Tests
+// ============================================================================
+
+describe('Multi-tenant Schema Utilities', () => {
+  describe('getTenantSchemaName', () => {
+    it('should generate tenant schema name with default prefix', () => {
+      expect(getTenantSchemaName('123')).toBe('tenant_123')
+      expect(getTenantSchemaName('acme')).toBe('tenant_acme')
+      expect(getTenantSchemaName('corp_inc')).toBe('tenant_corp_inc')
+    })
+
+    it('should generate tenant schema name with custom prefix', () => {
+      expect(getTenantSchemaName('123', { prefix: 'org_' })).toBe('org_123')
+      expect(getTenantSchemaName('acme', { prefix: 'customer_' })).toBe('customer_acme')
+    })
+
+    it('should throw for invalid resulting schema name', () => {
+      expect(() => getTenantSchemaName('123-bad')).toThrow('Invalid tenant schema name')
+      expect(() => getTenantSchemaName('')).toThrow('Invalid tenant schema name')
+    })
+  })
+
+  describe('parseTenantSchemaName', () => {
+    it('should extract tenant ID from schema name with default prefix', () => {
+      expect(parseTenantSchemaName('tenant_123')).toBe('123')
+      expect(parseTenantSchemaName('tenant_acme')).toBe('acme')
+      expect(parseTenantSchemaName('tenant_corp_inc')).toBe('corp_inc')
+    })
+
+    it('should extract tenant ID with custom prefix', () => {
+      expect(parseTenantSchemaName('org_123', { prefix: 'org_' })).toBe('123')
+      expect(parseTenantSchemaName('customer_acme', { prefix: 'customer_' })).toBe('acme')
+    })
+
+    it('should return null for non-tenant schemas', () => {
+      expect(parseTenantSchemaName('public')).toBeNull()
+      expect(parseTenantSchemaName('auth')).toBeNull()
+      expect(parseTenantSchemaName('org_123')).toBeNull() // default prefix doesn't match
+    })
+
+    it('should return null for prefix-only schema', () => {
+      expect(parseTenantSchemaName('tenant_')).toBeNull()
+      expect(parseTenantSchemaName('org_', { prefix: 'org_' })).toBeNull()
+    })
+  })
+
+  describe('isTenantSchema', () => {
+    it('should return true for tenant schemas', () => {
+      expect(isTenantSchema('tenant_123')).toBe(true)
+      expect(isTenantSchema('tenant_acme')).toBe(true)
+    })
+
+    it('should return true with custom prefix', () => {
+      expect(isTenantSchema('org_123', { prefix: 'org_' })).toBe(true)
+    })
+
+    it('should return false for non-tenant schemas', () => {
+      expect(isTenantSchema('public')).toBe(false)
+      expect(isTenantSchema('auth')).toBe(false)
+      expect(isTenantSchema('tenant_')).toBe(false)
+    })
+  })
+
+  describe('filterTenantSchemas', () => {
+    it('should filter to only tenant schemas', () => {
+      const schemas = ['public', 'tenant_1', 'tenant_2', 'auth', 'tenant_acme']
+      const result = filterTenantSchemas(schemas)
+      expect(result).toEqual(['tenant_1', 'tenant_2', 'tenant_acme'])
+    })
+
+    it('should filter with custom prefix', () => {
+      const schemas = ['public', 'org_1', 'org_2', 'tenant_3']
+      const result = filterTenantSchemas(schemas, { prefix: 'org_' })
+      expect(result).toEqual(['org_1', 'org_2'])
+    })
+
+    it('should return empty array when no tenant schemas exist', () => {
+      const schemas = ['public', 'auth', 'admin']
+      expect(filterTenantSchemas(schemas)).toEqual([])
+    })
+  })
+
+  describe('extractTenantIds', () => {
+    it('should extract tenant IDs from schema names', () => {
+      const schemas = ['public', 'tenant_1', 'tenant_2', 'auth', 'tenant_acme']
+      const result = extractTenantIds(schemas)
+      expect(result).toEqual(['1', '2', 'acme'])
+    })
+
+    it('should extract with custom prefix', () => {
+      const schemas = ['public', 'org_alpha', 'org_beta', 'tenant_1']
+      const result = extractTenantIds(schemas, { prefix: 'org_' })
+      expect(result).toEqual(['alpha', 'beta'])
+    })
+
+    it('should return empty array when no tenant schemas exist', () => {
+      const schemas = ['public', 'auth']
+      expect(extractTenantIds(schemas)).toEqual([])
+    })
+  })
+})
+
+// ============================================================================
+// Schema Utilities Tests
+// ============================================================================
+
+describe('Schema Utilities', () => {
+  describe('resolveSchema', () => {
+    it('should return default schema when no options provided', () => {
+      expect(resolveSchema('public')).toBe('public')
+      expect(resolveSchema('dbo')).toBe('dbo')
+    })
+
+    it('should return default schema when options.schema is undefined', () => {
+      expect(resolveSchema('public', {})).toBe('public')
+      expect(resolveSchema('public', { schema: undefined })).toBe('public')
+    })
+
+    it('should return overridden schema from options', () => {
+      expect(resolveSchema('public', { schema: 'auth' })).toBe('auth')
+      expect(resolveSchema('dbo', { schema: 'tenant_123' })).toBe('tenant_123')
+    })
+
+    it('should throw for invalid schema name', () => {
+      expect(() => resolveSchema('public', { schema: '' })).toThrow('Invalid schema name')
+      expect(() => resolveSchema('public', { schema: '123bad' })).toThrow('Invalid schema name')
+      expect(() => resolveSchema('public', { schema: 'bad-name' })).toThrow('Invalid schema name')
+    })
+  })
+
+  describe('qualifyTableName', () => {
+    it('should qualify table name with schema using postgres escaping', () => {
+      const escapePostgres = (id: string) => `"${id.replace(/"/g, '""')}"`
+      expect(qualifyTableName('public', 'users', escapePostgres)).toBe('"public"."users"')
+      expect(qualifyTableName('auth', 'sessions', escapePostgres)).toBe('"auth"."sessions"')
+    })
+
+    it('should qualify table name with schema using mysql escaping', () => {
+      const escapeMySQL = (id: string) => `\`${id.replace(/`/g, '``')}\``
+      expect(qualifyTableName('mydb', 'users', escapeMySQL)).toBe('`mydb`.`users`')
+    })
+
+    it('should handle special characters in identifiers', () => {
+      const escapePostgres = (id: string) => `"${id.replace(/"/g, '""')}"`
+      expect(qualifyTableName('my"schema', 'user"table', escapePostgres)).toBe(
+        '"my""schema"."user""table"'
+      )
+    })
+  })
+})
+
+// ============================================================================
+// Error Detection Utilities Tests
+// ============================================================================
+
+describe('Error Detection Utilities', () => {
+  describe('extractErrorInfo', () => {
+    it('should extract error info from standard error object', () => {
+      const error = { code: '23505', message: 'Unique constraint violation' }
+      const info = extractErrorInfo(error)
+      expect(info.code).toBe('23505')
+      expect(info.message).toBe('unique constraint violation')
+      expect(info.originalMessage).toBe('Unique constraint violation')
+      expect(info.number).toBeUndefined()
+    })
+
+    it('should extract error info with MSSQL number', () => {
+      const error = { code: '2627', message: 'Cannot insert duplicate key', number: 2627 }
+      const info = extractErrorInfo(error)
+      expect(info.code).toBe('2627')
+      expect(info.number).toBe(2627)
+    })
+
+    it('should handle missing fields gracefully', () => {
+      const info = extractErrorInfo({})
+      expect(info.code).toBe('')
+      expect(info.message).toBe('')
+      expect(info.originalMessage).toBe('')
+      expect(info.number).toBeUndefined()
+    })
+
+    it('should handle non-object errors', () => {
+      const info = extractErrorInfo(null)
+      expect(info.code).toBe('')
+      expect(info.message).toBe('')
+    })
+  })
+
+  describe('createErrorMatcher', () => {
+    it('should match by error code', () => {
+      const matcher = createErrorMatcher({ codes: ['23505', '23000'] })
+      expect(matcher({ code: '23505' })).toBe(true)
+      expect(matcher({ code: '23000' })).toBe(true)
+      expect(matcher({ code: '00000' })).toBe(false)
+    })
+
+    it('should match by MSSQL error number', () => {
+      const matcher = createErrorMatcher({ numbers: [2627, 2601] })
+      expect(matcher({ number: 2627 })).toBe(true)
+      expect(matcher({ number: 2601 })).toBe(true)
+      expect(matcher({ number: 547 })).toBe(false)
+    })
+
+    it('should match by message substring (case-insensitive)', () => {
+      const matcher = createErrorMatcher({ messages: ['unique constraint', 'duplicate key'] })
+      expect(matcher({ message: 'UNIQUE CONSTRAINT violation' })).toBe(true)
+      expect(matcher({ message: 'Cannot insert Duplicate Key' })).toBe(true)
+      expect(matcher({ message: 'some other error' })).toBe(false)
+    })
+
+    it('should combine multiple match types (OR logic)', () => {
+      const matcher = createErrorMatcher({
+        codes: ['23505'],
+        numbers: [2627],
+        messages: ['unique']
+      })
+      expect(matcher({ code: '23505' })).toBe(true)
+      expect(matcher({ number: 2627 })).toBe(true)
+      expect(matcher({ message: 'Unique constraint' })).toBe(true)
+      expect(matcher({ code: '00000', message: 'other error' })).toBe(false)
+    })
+
+    it('should return false for empty config', () => {
+      const matcher = createErrorMatcher({})
+      expect(matcher({ code: '23505' })).toBe(false)
+    })
+  })
+
+  describe('errorMatchers (pre-built)', () => {
+    describe('postgres', () => {
+      it('should detect unique constraint errors', () => {
+        expect(errorMatchers.postgres.uniqueConstraint({ code: '23505' })).toBe(true)
+        expect(errorMatchers.postgres.uniqueConstraint({ message: 'unique constraint' })).toBe(true)
+      })
+
+      it('should detect foreign key errors', () => {
+        expect(errorMatchers.postgres.foreignKey({ code: '23503' })).toBe(true)
+        expect(errorMatchers.postgres.foreignKey({ message: 'foreign key constraint' })).toBe(true)
+      })
+
+      it('should detect not-null errors', () => {
+        expect(errorMatchers.postgres.notNull({ code: '23502' })).toBe(true)
+        expect(errorMatchers.postgres.notNull({ message: 'not-null constraint' })).toBe(true)
+      })
+    })
+
+    describe('mysql', () => {
+      it('should detect unique constraint errors', () => {
+        expect(errorMatchers.mysql.uniqueConstraint({ code: 'ER_DUP_ENTRY' })).toBe(true)
+        expect(errorMatchers.mysql.uniqueConstraint({ code: '1062' })).toBe(true)
+        expect(errorMatchers.mysql.uniqueConstraint({ message: 'Duplicate entry' })).toBe(true)
+      })
+
+      it('should detect foreign key errors', () => {
+        expect(errorMatchers.mysql.foreignKey({ code: 'ER_ROW_IS_REFERENCED' })).toBe(true)
+        expect(errorMatchers.mysql.foreignKey({ code: '1451' })).toBe(true)
+        expect(errorMatchers.mysql.foreignKey({ code: '1452' })).toBe(true)
+      })
+
+      it('should detect not-null errors', () => {
+        expect(errorMatchers.mysql.notNull({ code: 'ER_BAD_NULL_ERROR' })).toBe(true)
+        expect(errorMatchers.mysql.notNull({ code: '1048' })).toBe(true)
+      })
+    })
+
+    describe('sqlite', () => {
+      it('should detect unique constraint errors by message', () => {
+        expect(errorMatchers.sqlite.uniqueConstraint({ message: 'UNIQUE constraint failed' })).toBe(
+          true
+        )
+      })
+
+      it('should detect foreign key errors by message', () => {
+        expect(errorMatchers.sqlite.foreignKey({ message: 'FOREIGN KEY constraint failed' })).toBe(
+          true
+        )
+      })
+
+      it('should detect not-null errors by message', () => {
+        expect(errorMatchers.sqlite.notNull({ message: 'NOT NULL constraint failed' })).toBe(true)
+      })
+    })
+
+    describe('mssql', () => {
+      it('should detect unique constraint errors by code and number', () => {
+        expect(errorMatchers.mssql.uniqueConstraint({ code: '2627' })).toBe(true)
+        expect(errorMatchers.mssql.uniqueConstraint({ number: 2627 })).toBe(true)
+        expect(errorMatchers.mssql.uniqueConstraint({ number: 2601 })).toBe(true)
+      })
+
+      it('should detect foreign key errors by code and number', () => {
+        expect(errorMatchers.mssql.foreignKey({ code: '547' })).toBe(true)
+        expect(errorMatchers.mssql.foreignKey({ number: 547 })).toBe(true)
+      })
+
+      it('should detect not-null errors by code and number', () => {
+        expect(errorMatchers.mssql.notNull({ code: '515' })).toBe(true)
+        expect(errorMatchers.mssql.notNull({ number: 515 })).toBe(true)
+      })
     })
   })
 })

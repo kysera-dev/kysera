@@ -126,7 +126,15 @@ export { PluginValidationError } from '@kysera/executor'
 export { TransactionRequiredError } from './errors.js'
 
 // Context
-export { createContext, withTransaction, withContext, isInTransaction, type TransactionOptionsWithLogger } from './context.js'
+export {
+  createContext,
+  createSchemaContext,
+  withTransaction,
+  withContext,
+  isInTransaction,
+  type TransactionOptionsWithLogger,
+  type CreateContextOptions
+} from './context.js'
 
 // Query creation
 export { createQuery, createTransactionalQuery } from './query.js'

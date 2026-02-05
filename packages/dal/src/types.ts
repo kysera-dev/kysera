@@ -38,6 +38,18 @@ export interface DbContext<DB = Record<string, unknown>> {
   readonly db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>
   /** Whether the context is within a transaction */
   readonly isTransaction: boolean
+  /**
+   * Current PostgreSQL schema context.
+   * When set, queries use this schema instead of the default.
+   * undefined means using the default schema (typically 'public').
+   *
+   * @example
+   * ```typescript
+   * const ctx = createSchemaContext(executor, 'tenant_123')
+   * // All queries through ctx.db will use the 'tenant_123' schema
+   * ```
+   */
+  readonly schema?: string
 }
 
 /**

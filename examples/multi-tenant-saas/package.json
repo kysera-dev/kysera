@@ -22,7 +22,7 @@
     "@kysera/debug": "workspace:*",
     "kysely": "^0.28.9",
     "pg": "^8.16.3",
-    "zod": "^4.2.1",
+    "zod": "^4.3.6",
     "dotenv": "^17.2.3"
   },
   "devDependencies": {
