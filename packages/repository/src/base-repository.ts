@@ -13,6 +13,7 @@ import { NotFoundError, getEnv } from '@kysera/core'
 import type { ValidationSchema } from './validation-adapter.js'
 import { extractPrimaryKey } from './primary-key-utils.js'
 import { withTransaction } from '@kysera/dal'
+import type { FindOptions, WhereClause } from './operators.js'
 
 /**
  * Core repository interface
@@ -29,10 +30,88 @@ export interface BaseRepository<DB, Entity, PK = number> {
   bulkCreate(inputs: unknown[]): Promise<Entity[]>
   bulkUpdate(updates: { id: PK; data: unknown }[]): Promise<Entity[]>
   bulkDelete(ids: PK[]): Promise<number>
-  find(options?: { where?: Record<string, unknown> }): Promise<Entity[]>
-  findOne(options?: { where?: Record<string, unknown> }): Promise<Entity | null>
-  count(options?: { where?: Record<string, unknown> }): Promise<number>
-  exists(options?: { where?: Record<string, unknown> }): Promise<boolean>
+
+  /**
+   * Find entities matching the given options.
+   *
+   * Supports MongoDB-style query operators for advanced filtering:
+   * - Comparison: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`
+   * - Array: `$in`, `$nin`
+   * - String: `$like`, `$ilike`, `$contains`, `$startsWith`, `$endsWith`
+   * - Null: `$isNull`, `$isNotNull`
+   * - Range: `$between`
+   * - Logical: `$or`, `$and`
+   *
+   * @example
+   * ```typescript
+   * // Simple equality (backwards compatible)
+   * await repo.find({ where: { status: 'active' } })
+   *
+   * // With operators
+   * await repo.find({
+   *   where: {
+   *     age: { $gte: 18, $lte: 65 },
+   *     status: { $in: ['active', 'pending'] },
+   *     email: { $like: '%@example.com' }
+   *   },
+   *   orderBy: 'createdAt',
+   *   orderDirection: 'desc',
+   *   limit: 10
+   * })
+   *
+   * // With column selection
+   * await repo.find({
+   *   where: { active: true },
+   *   select: ['id', 'name', 'email']
+   * })
+   * ```
+   */
+  find<Cols extends keyof Entity = keyof Entity>(
+    options?: FindOptions<Entity, Cols>
+  ): Promise<[Cols] extends [keyof Entity] ? Pick<Entity, Cols>[] : Entity[]>
+
+  /**
+   * Find a single entity matching the given options.
+   * Returns null if no entity matches.
+   */
+  findOne<Cols extends keyof Entity = keyof Entity>(
+    options?: FindOptions<Entity, Cols>
+  ): Promise<([Cols] extends [keyof Entity] ? Pick<Entity, Cols> : Entity) | null>
+
+  /**
+   * Count entities matching the given where clause.
+   * Supports the same operators as find().
+   */
+  count(options?: { where?: WhereClause<Entity> | Record<string, unknown> }): Promise<number>
+
+  /**
+   * Check if any entity matches the given where clause.
+   */
+  exists(options?: { where?: WhereClause<Entity> | Record<string, unknown> }): Promise<boolean>
+
+  /**
+   * Find entities and return both items and total count.
+   * Useful for pagination UI that needs to show total pages.
+   *
+   * @example
+   * ```typescript
+   * const { items, total } = await repo.findAndCount({
+   *   where: { status: 'active' },
+   *   orderBy: 'createdAt',
+   *   orderDirection: 'desc',
+   *   limit: 10,
+   *   offset: 0
+   * })
+   * console.log(`Showing ${items.length} of ${total} results`)
+   * ```
+   */
+  findAndCount<Cols extends keyof Entity = keyof Entity>(
+    options?: FindOptions<Entity, Cols>
+  ): Promise<{
+    items: [Cols] extends [keyof Entity] ? Pick<Entity, Cols>[] : Entity[]
+    total: number
+  }>
+
   transaction<R>(fn: (trx: Transaction<DB>) => Promise<R>): Promise<R>
   paginate(options: {
     limit: number
@@ -153,6 +232,30 @@ export interface TableOperations<Table> {
     orderBy: string
     orderDirection: 'asc' | 'desc'
   }): Promise<Selectable<Table>[]>
+
+  /**
+   * Select with advanced query options (operators, sorting, column selection).
+   * @internal Used by BaseRepository.find()
+   */
+  selectWithOptions<Cols extends string>(
+    options: FindOptions<Selectable<Table>, Cols & keyof Selectable<Table>>
+  ): Promise<Selectable<Table>[]>
+
+  /**
+   * Select one with advanced query options.
+   * @internal Used by BaseRepository.findOne()
+   */
+  selectOneWithOptions<Cols extends string>(
+    options: FindOptions<Selectable<Table>, Cols & keyof Selectable<Table>>
+  ): Promise<Selectable<Table> | undefined>
+
+  /**
+   * Count with operator-aware where clause.
+   * @internal Used by BaseRepository.count() and findAndCount()
+   */
+  countWithOptions(
+    options: Pick<FindOptions<Selectable<Table>>, 'where'>
+  ): Promise<number>
 }
 
 /**
@@ -295,30 +398,122 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
       return operations.deleteByIds(ids.map(toPrimaryKeyInput))
     },
 
-    async find(options?: { where?: Record<string, unknown> }): Promise<Entity[]> {
-      const rows = options?.where
-        ? await operations.selectWhere(options.where)
-        : await operations.selectAll()
-      return processRows(rows)
-    },
+    async find<Cols extends keyof Entity = keyof Entity>(
+      options?: FindOptions<Entity, Cols>
+    ): Promise<[Cols] extends [keyof Entity] ? Pick<Entity, Cols>[] : Entity[]> {
+      // Check if we have any advanced options (operators, sorting, select, limit, offset)
+      const hasAdvancedOptions = options && (
+        options.orderBy !== undefined ||
+        options.orderDirection !== undefined ||
+        options.sort !== undefined ||
+        options.select !== undefined ||
+        options.limit !== undefined ||
+        options.offset !== undefined ||
+        (options.where && (
+          // Check for logical operators at the top level ($or, $and)
+          Object.keys(options.where).some(k => k.startsWith('$')) ||
+          // Check for operator objects in values (e.g., { $gte: 18 })
+          Object.values(options.where).some(v =>
+            v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).some(k => k.startsWith('$'))
+          )
+        ))
+      )
 
-    async findOne(options?: { where?: Record<string, unknown> }): Promise<Entity | null> {
-      if (!options?.where) {
-        const rows = await operations.selectAll()
-        return rows[0] ? processRow(rows[0]) : null
+      if (hasAdvancedOptions) {
+        // Use the new selectWithOptions method
+        // Type assertion through unknown is safe here because:
+        // 1. Entity and Selectable<Table> have the same runtime structure
+        // 2. FindOptions only affects the query building, not the actual data
+        const rows = await operations.selectWithOptions(
+          options as unknown as FindOptions<Selectable<Table>, string & keyof Selectable<Table>>
+        )
+        return processRows(rows) as [Cols] extends [keyof Entity] ? Pick<Entity, Cols>[] : Entity[]
       }
 
-      const row = await operations.selectOneWhere(options.where)
-      return row ? processRow(row) : null
+      // Backwards compatible path for simple equality conditions
+      const rows = options?.where
+        ? await operations.selectWhere(options.where as Record<string, unknown>)
+        : await operations.selectAll()
+      return processRows(rows) as [Cols] extends [keyof Entity] ? Pick<Entity, Cols>[] : Entity[]
     },
 
-    async count(options?: { where?: Record<string, unknown> }): Promise<number> {
-      return operations.count(options?.where)
+    async findOne<Cols extends keyof Entity = keyof Entity>(
+      options?: FindOptions<Entity, Cols>
+    ): Promise<([Cols] extends [keyof Entity] ? Pick<Entity, Cols> : Entity) | null> {
+      // Check if we have any advanced options
+      const hasAdvancedOptions = options && (
+        options.orderBy !== undefined ||
+        options.orderDirection !== undefined ||
+        options.sort !== undefined ||
+        options.select !== undefined ||
+        (options.where && (
+          // Check for logical operators at the top level ($or, $and)
+          Object.keys(options.where).some(k => k.startsWith('$')) ||
+          // Check for operator objects in values (e.g., { $gte: 18 })
+          Object.values(options.where).some(v =>
+            v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).some(k => k.startsWith('$'))
+          )
+        ))
+      )
+
+      if (hasAdvancedOptions) {
+        // Use the new selectOneWithOptions method
+        const row = await operations.selectOneWithOptions(
+          options as unknown as FindOptions<Selectable<Table>, string & keyof Selectable<Table>>
+        )
+        return row ? processRow(row) as ([Cols] extends [keyof Entity] ? Pick<Entity, Cols> : Entity) : null
+      }
+
+      // Backwards compatible path
+      if (!options?.where) {
+        const rows = await operations.selectAll()
+        return rows[0] ? processRow(rows[0]) as ([Cols] extends [keyof Entity] ? Pick<Entity, Cols> : Entity) : null
+      }
+
+      const row = await operations.selectOneWhere(options.where as Record<string, unknown>)
+      return row ? processRow(row) as ([Cols] extends [keyof Entity] ? Pick<Entity, Cols> : Entity) : null
     },
 
-    async exists(options?: { where?: Record<string, unknown> }): Promise<boolean> {
-      const count = await operations.count(options?.where)
-      return count > 0
+    async count(options?: { where?: WhereClause<Entity> | Record<string, unknown> }): Promise<number> {
+      // Check if where has operators
+      const hasOperatorsInWhere = options?.where && (
+        // Check for logical operators at the top level ($or, $and)
+        Object.keys(options.where).some(k => k.startsWith('$')) ||
+        // Check for operator objects in values (e.g., { $gte: 18 })
+        Object.values(options.where).some(v =>
+          v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).some(k => k.startsWith('$'))
+        )
+      )
+
+      if (hasOperatorsInWhere) {
+        return operations.countWithOptions({ where: options?.where as Record<string, unknown> })
+      }
+
+      return operations.count(options?.where as Record<string, unknown>)
+    },
+
+    async exists(options?: { where?: WhereClause<Entity> | Record<string, unknown> }): Promise<boolean> {
+      const countResult = await this.count(options)
+      return countResult > 0
+    },
+
+    async findAndCount<Cols extends keyof Entity = keyof Entity>(
+      options?: FindOptions<Entity, Cols>
+    ): Promise<{
+      items: [Cols] extends [keyof Entity] ? Pick<Entity, Cols>[] : Entity[]
+      total: number
+    }> {
+      // Run both queries in parallel for efficiency
+      const whereClause = options?.where
+      const [items, total] = await Promise.all([
+        this.find(options),
+        this.count(whereClause ? { where: whereClause } : undefined)
+      ])
+
+      return {
+        items: items as [Cols] extends [keyof Entity] ? Pick<Entity, Cols>[] : Entity[],
+        total
+      }
     },
 
     async transaction<R>(fn: (trx: Transaction<DB>) => Promise<R>): Promise<R> {

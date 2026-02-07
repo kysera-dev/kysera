@@ -63,6 +63,38 @@ export type { BaseRepository, RepositoryConfig, TableOperations } from './base-r
 export { createTableOperations } from './table-operations'
 export type { TableOperationsOptions } from './table-operations'
 
+// Query operators
+export {
+  isOperatorObject,
+  isValidOperator,
+  isLogicalOperator,
+  hasOperators,
+  validateOperators,
+  extractColumns,
+  applyCondition,
+  applyWhereClause,
+  InvalidOperatorError,
+  ALL_OPERATORS,
+  COMPARISON_OPERATORS,
+  ARRAY_OPERATORS,
+  STRING_OPERATORS,
+  NULL_OPERATORS,
+  RANGE_OPERATORS,
+  LOGICAL_OPERATORS
+} from './operators'
+export type {
+  FindOptions,
+  WhereClause,
+  SortSpec,
+  ComparisonOperators,
+  ArrayOperators,
+  StringOperators,
+  NullOperators,
+  RangeOperator,
+  FieldOperators,
+  ConditionValue
+} from './operators'
+
 // Context-aware repository
 export { ContextAwareRepository } from './context-aware'
 
@@ -292,17 +324,181 @@ async bulkDelete(ids: PK[]): Promise<number>
 // Find all
 async findAll(): Promise<Entity[]>
 
-// Find with conditions
+// Find with conditions (simple equality)
 async find(options?: { where?: Record<string, unknown> }): Promise<Entity[]>
 
+// Find with advanced operators, sorting, and column selection
+async find<Cols extends keyof Entity>(options?: FindOptions<Entity, Cols>): Promise<Pick<Entity, Cols>[]>
+
 // Find one
-async findOne(options?: { where?: Record<string, unknown> }): Promise<Entity | null>
+async findOne<Cols extends keyof Entity>(options?: FindOptions<Entity, Cols>): Promise<Pick<Entity, Cols> | null>
 
 // Count
-async count(options?: { where?: Record<string, unknown> }): Promise<number>
+async count(options?: { where?: WhereClause<Entity> | Record<string, unknown> }): Promise<number>
 
 // Exists
-async exists(options?: { where?: Record<string, unknown> }): Promise<boolean>
+async exists(options?: { where?: WhereClause<Entity> | Record<string, unknown> }): Promise<boolean>
+
+// Find with count (for pagination UI)
+async findAndCount<Cols extends keyof Entity>(options?: FindOptions<Entity, Cols>): Promise<{
+  items: Pick<Entity, Cols>[]
+  total: number
+}>
+```
+
+### Enhanced find() with Operators
+
+The `find()` method supports MongoDB-style query operators for advanced filtering, sorting, and column selection:
+
+```typescript
+import type { FindOptions, WhereClause } from '@kysera/repository'
+
+interface FindOptions<Entity, Cols extends keyof Entity = keyof Entity> {
+  where?: WhereClause<Entity>
+  orderBy?: keyof Entity
+  orderDirection?: 'asc' | 'desc'
+  sort?: Array<{ column: keyof Entity; direction: 'asc' | 'desc' }>
+  select?: Cols[]
+  limit?: number
+  offset?: number
+}
+```
+
+**Supported Operators:**
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `$eq` | Equal to | `{ status: { $eq: 'active' } }` |
+| `$ne` | Not equal to | `{ status: { $ne: 'deleted' } }` |
+| `$gt` | Greater than | `{ age: { $gt: 18 } }` |
+| `$gte` | Greater than or equal | `{ age: { $gte: 18 } }` |
+| `$lt` | Less than | `{ price: { $lt: 100 } }` |
+| `$lte` | Less than or equal | `{ price: { $lte: 100 } }` |
+| `$in` | Value in array | `{ status: { $in: ['active', 'pending'] } }` |
+| `$nin` | Value not in array | `{ role: { $nin: ['admin', 'super'] } }` |
+| `$like` | SQL LIKE pattern | `{ email: { $like: '%@example.com' } }` |
+| `$ilike` | Case-insensitive LIKE (PostgreSQL) | `{ name: { $ilike: '%john%' } }` |
+| `$contains` | Contains substring | `{ title: { $contains: 'hello' } }` |
+| `$startsWith` | Starts with | `{ code: { $startsWith: 'PRE_' } }` |
+| `$endsWith` | Ends with | `{ filename: { $endsWith: '.pdf' } }` |
+| `$between` | Value between range | `{ price: { $between: [10, 100] } }` |
+| `$isNull` | Is NULL | `{ deletedAt: { $isNull: true } }` |
+| `$isNotNull` | Is NOT NULL | `{ email: { $isNotNull: true } }` |
+| `$or` | Logical OR | `{ $or: [{ status: 'a' }, { status: 'b' }] }` |
+| `$and` | Logical AND | `{ $and: [{ age: { $gte: 18 } }, { age: { $lte: 65 } }] }` |
+
+**Examples:**
+
+```typescript
+// Simple equality (backwards compatible)
+const activeUsers = await userRepo.find({ where: { status: 'active' } })
+
+// With comparison operators
+const adults = await userRepo.find({
+  where: {
+    age: { $gte: 18, $lte: 65 },
+    status: { $in: ['active', 'verified'] }
+  }
+})
+
+// With string operators
+const exampleEmails = await userRepo.find({
+  where: {
+    email: { $like: '%@example.com' }
+  }
+})
+
+// With logical operators
+const relevantUsers = await userRepo.find({
+  where: {
+    $or: [
+      { role: 'admin' },
+      { role: 'moderator' },
+      { $and: [{ role: 'user' }, { verified: true }] }
+    ]
+  }
+})
+
+// With sorting
+const recentUsers = await userRepo.find({
+  where: { status: 'active' },
+  orderBy: 'createdAt',
+  orderDirection: 'desc',
+  limit: 10
+})
+
+// With multiple sort columns
+const sortedUsers = await userRepo.find({
+  sort: [
+    { column: 'lastName', direction: 'asc' },
+    { column: 'firstName', direction: 'asc' }
+  ]
+})
+
+// With column selection
+const userEmails = await userRepo.find({
+  where: { status: 'active' },
+  select: ['id', 'email', 'name']
+})
+// Returns Pick<User, 'id' | 'email' | 'name'>[]
+
+// findAndCount for pagination UI
+const { items, total } = await userRepo.findAndCount({
+  where: { status: 'active' },
+  orderBy: 'createdAt',
+  orderDirection: 'desc',
+  limit: 10,
+  offset: 0
+})
+console.log(`Showing ${items.length} of ${total} results`)
+```
+
+**Null Handling:**
+
+```typescript
+// Find users with no deleted_at (not soft-deleted)
+const activeUsers = await userRepo.find({
+  where: { deletedAt: { $isNull: true } }
+})
+
+// Find users with verified email
+const verifiedUsers = await userRepo.find({
+  where: { emailVerifiedAt: { $isNotNull: true } }
+})
+
+// Direct null comparison
+const nullNameUsers = await userRepo.find({
+  where: { middleName: null }  // Uses IS NULL
+})
+```
+
+**Combining Operators:**
+
+```typescript
+// Multiple operators on same field
+const priceRange = await productRepo.find({
+  where: {
+    price: { $gte: 10, $lte: 100 },
+    category: { $in: ['electronics', 'books'] },
+    description: { $contains: 'sale' }
+  }
+})
+
+// Nested logical conditions
+const complexQuery = await userRepo.find({
+  where: {
+    status: 'active',
+    $or: [
+      { role: 'admin' },
+      {
+        $and: [
+          { role: 'user' },
+          { createdAt: { $gte: oneMonthAgo } }
+        ]
+      }
+    ]
+  }
+})
 ```
 
 ### Pagination
@@ -985,11 +1181,25 @@ interface BaseRepository<DB, Entity, PK = number> {
   bulkUpdate(updates: { id: PK; data: unknown }[]): Promise<Entity[]>
   bulkDelete(ids: PK[]): Promise<number>
 
-  // Query operations
-  find(options?: { where?: Record<string, unknown> }): Promise<Entity[]>
-  findOne(options?: { where?: Record<string, unknown> }): Promise<Entity | null>
-  count(options?: { where?: Record<string, unknown> }): Promise<number>
-  exists(options?: { where?: Record<string, unknown> }): Promise<boolean>
+  // Query operations with operator support
+  find<Cols extends keyof Entity = keyof Entity>(
+    options?: FindOptions<Entity, Cols>
+  ): Promise<Cols extends keyof Entity ? Pick<Entity, Cols>[] : Entity[]>
+
+  findOne<Cols extends keyof Entity = keyof Entity>(
+    options?: FindOptions<Entity, Cols>
+  ): Promise<(Cols extends keyof Entity ? Pick<Entity, Cols> : Entity) | null>
+
+  count(options?: { where?: WhereClause<Entity> | Record<string, unknown> }): Promise<number>
+
+  exists(options?: { where?: WhereClause<Entity> | Record<string, unknown> }): Promise<boolean>
+
+  findAndCount<Cols extends keyof Entity = keyof Entity>(
+    options?: FindOptions<Entity, Cols>
+  ): Promise<{
+    items: Cols extends keyof Entity ? Pick<Entity, Cols>[] : Entity[]
+    total: number
+  }>
 
   // Pagination
   paginate(options: PaginateOptions): Promise<PaginateResult<Entity>>

@@ -44,6 +44,7 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         'guides/best-practices',
+        'guides/querying',
         'guides/testing',
         'guides/migrations',
         'guides/pagination',
@@ -100,6 +101,7 @@ const sidebars: SidebarsConfig = {
             'api/repository',
             'api/repository/factory',
             'api/repository/validation',
+            'api/repository/operators',
             'api/repository/types'
           ]
         },
