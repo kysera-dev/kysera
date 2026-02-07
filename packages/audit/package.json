@@ -1,6 +1,6 @@
 {
   "name": "@kysera/audit",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "description": "Audit logging plugin for Kysely repositories",
   "type": "module",
   "exports": {
