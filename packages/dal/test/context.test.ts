@@ -344,3 +344,54 @@ describe('createContext with schema options', () => {
     expect('schema' in ctx).toBe(false)
   })
 })
+
+describe('Multi-tenant patterns', () => {
+  it('should support per-request schema context (middleware pattern)', () => {
+    // Simulates Express middleware pattern from documentation
+    const schemaDbMock = { selectFrom: vi.fn() } as unknown as Kysely<TestDB>
+    const withSchemaMock = vi.fn().mockReturnValue(schemaDbMock)
+    const mockExecutor = createMockKysely({
+      withSchema: withSchemaMock
+    })
+
+    // Middleware creates schema-scoped context per request
+    const createTenantContext = (tenantId: string) => {
+      const tenantSchema = `tenant_${tenantId}`
+      return createSchemaContext(mockExecutor, tenantSchema)
+    }
+
+    // Request 1: tenant_abc
+    const ctx1 = createTenantContext('abc')
+    expect(ctx1.schema).toBe('tenant_abc')
+    expect(withSchemaMock).toHaveBeenCalledWith('tenant_abc')
+
+    // Request 2: tenant_xyz
+    const ctx2 = createTenantContext('xyz')
+    expect(ctx2.schema).toBe('tenant_xyz')
+    expect(withSchemaMock).toHaveBeenCalledWith('tenant_xyz')
+
+    // Different contexts, isolated schemas
+    expect(ctx1.schema).not.toBe(ctx2.schema)
+  })
+
+  it('should work with createQuery pattern for multi-tenant queries', () => {
+    const schemaDbMock = { selectFrom: vi.fn().mockReturnThis() } as unknown as Kysely<TestDB>
+    const withSchemaMock = vi.fn().mockReturnValue(schemaDbMock)
+    const mockExecutor = createMockKysely({
+      withSchema: withSchemaMock
+    })
+
+    // DAL createQuery pattern
+    const getUsers = (ctx: DbContext<TestDB>) => {
+      return ctx.db.selectFrom('users' as keyof TestDB)
+    }
+
+    // Create schema context and run query
+    const ctx = createSchemaContext(mockExecutor, 'tenant_123')
+    getUsers(ctx)
+
+    // Verify the schema-scoped db was used
+    expect(ctx.db).toBe(schemaDbMock)
+    expect(schemaDbMock.selectFrom).toHaveBeenCalledWith('users')
+  })
+})
