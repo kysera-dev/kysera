@@ -11,13 +11,16 @@
  * ])
  *
  * @example
- * // Multi-tenant with dynamic schema resolution
+ * // Multi-tenant with withSchema()
  * const executor = await createExecutor(db, [
  *   schemaPlugin({
- *     resolveSchema: (ctx) => ctx.metadata.tenantSchema as string,
- *     allowedSchemas: ['tenant_a', 'tenant_b', 'tenant_c']
+ *     defaultSchema: 'public',
+ *     allowedSchemas: ['public', 'tenant_a', 'tenant_b', 'tenant_c']
  *   })
  * ])
+ * // Use withSchema() to set tenant schema per-request
+ * const tenantDb = executor.withSchema(`tenant_${tenantId}`)
+ * const users = await tenantDb.selectFrom('users').selectAll().execute()
  */
 
 import type { Plugin, QueryBuilderContext } from '../types.js'
@@ -38,19 +41,22 @@ export interface SchemaPluginOptions {
    * Called for each query to determine the schema.
    * If returns undefined, defaultSchema is used.
    *
-   * @param context - Query builder context with operation, table, and metadata
+   * The resolver receives `context.schema` which is set when `withSchema()` is called.
+   * This allows you to add validation or transformation logic on top of withSchema().
+   *
+   * @param context - Query builder context with operation, table, schema, and metadata
    * @returns Schema name or undefined to use default
    *
    * @example
-   * // Resolve schema from metadata
-   * resolveSchema: (ctx) => ctx.metadata.tenantSchema as string
+   * // Use schema set by withSchema() with fallback
+   * resolveSchema: (ctx) => ctx.schema ?? 'public'
    *
    * @example
-   * // Schema based on table name
+   * // Schema based on table name (auto-routing)
    * resolveSchema: (ctx) => {
    *   if (ctx.table.startsWith('auth_')) return 'auth'
    *   if (ctx.table.startsWith('admin_')) return 'admin'
-   *   return undefined // use default
+   *   return ctx.schema // use withSchema() value or default
    * }
    */
   resolveSchema?: (context: QueryBuilderContext) => string | undefined
@@ -120,17 +126,20 @@ export class SchemaValidationError extends Error {
  * ])
  *
  * @example
- * // Multi-tenant application
+ * // Multi-tenant application with schema validation
  * const executor = await createExecutor(db, [
  *   schemaPlugin({
  *     defaultSchema: 'public',
- *     resolveSchema: (ctx) => {
- *       const tenantId = ctx.metadata.tenantId as string
- *       return tenantId ? `tenant_${tenantId}` : undefined
- *     },
- *     allowedSchemas: ['public', 'tenant_a', 'tenant_b']
+ *     allowedSchemas: ['public', 'tenant_a', 'tenant_b', 'tenant_c'],
+ *     strictValidation: true // throws if schema not in whitelist
  *   })
  * ])
+ *
+ * // Per-request: use withSchema() to set tenant context
+ * app.use((req, res, next) => {
+ *   req.db = executor.withSchema(`tenant_${req.tenantId}`)
+ *   next()
+ * })
  */
 export function schemaPlugin(options: SchemaPluginOptions = {}): Plugin {
   const {

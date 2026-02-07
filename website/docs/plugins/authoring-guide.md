@@ -53,9 +53,15 @@ interface Plugin {
 interface QueryBuilderContext {
   readonly operation: 'select' | 'insert' | 'update' | 'delete'
   readonly table: string
-  readonly metadata: Record<string, unknown>
+  readonly schema?: string // Set when withSchema() was called
+  readonly metadata: Record<string, unknown> // For plugin-to-plugin communication
 }
 ```
+
+**Context Properties:**
+
+- **`schema`**: Set when user calls `executor.withSchema('schema_name')`. Use this to access user-specified schema in multi-tenant applications.
+- **`metadata`**: For plugin-to-plugin communication only. Plugins can write values that other plugins read. Not settable from application code.
 
 ### Intercepted Methods
 

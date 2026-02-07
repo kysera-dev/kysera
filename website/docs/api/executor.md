@@ -577,6 +577,12 @@ interceptQuery: (qb, context) => {
 
 **Metadata Usage:**
 
+The `metadata` object is for **plugin-to-plugin communication only**. It cannot be set from application code before queries run. Plugins can write values that other plugins in the chain can read:
+
+:::note
+If you need to pass user-controlled values to plugins, use `withSchema()` for schema context, or create a custom plugin that reads from a request-scoped store (e.g., AsyncLocalStorage).
+:::
+
 Plugins can use `context.metadata` to communicate:
 
 ```typescript
@@ -1279,19 +1285,57 @@ const users = await executor.withSchema('auth').selectFrom('users').selectAll().
 const data = await executor.withSchema('private').selectFrom('data').selectAll().execute()
 ```
 
-**Dynamic schema resolution (multi-tenant):**
+**Multi-tenant with schema whitelist:**
+
+```typescript
+const executor = await createExecutor(db, [
+  schemaPlugin({
+    defaultSchema: 'public',
+    allowedSchemas: ['public', 'tenant_a', 'tenant_b', 'tenant_c'],
+    strictValidation: true // throws SchemaValidationError for unknown schemas
+  })
+])
+
+// Per-request: use withSchema() to set tenant context
+app.use((req, res, next) => {
+  const tenantSchema = `tenant_${req.tenantId}`
+  req.db = executor.withSchema(tenantSchema)
+  next()
+})
+
+// In route handlers - automatically uses tenant schema
+app.get('/users', async (req, res) => {
+  const users = await req.db.selectFrom('users').selectAll().execute()
+  res.json(users)
+})
+```
+
+**Dynamic schema resolution (table-based routing):**
+
+Use `resolveSchema` when you need automatic schema routing based on table names:
 
 ```typescript
 const executor = await createExecutor(db, [
   schemaPlugin({
     defaultSchema: 'public',
     resolveSchema: (context) => {
-      // Resolve from metadata (set by RLS or other plugins)
-      const tenantSchema = context.metadata['tenantSchema'] as string | undefined
-      return tenantSchema ?? 'public'
+      // Route tables to specific schemas automatically
+      if (context.table.startsWith('auth_')) return 'auth'
+      if (context.table.startsWith('admin_')) return 'admin'
+      // Use schema from withSchema() if set, otherwise default
+      return context.schema
     }
   })
 ])
+
+// auth_users -> 'auth' schema (automatic)
+await executor.selectFrom('auth_users').selectAll().execute()
+
+// admin_settings -> 'admin' schema (automatic)
+await executor.selectFrom('admin_settings').selectAll().execute()
+
+// users -> 'public' schema (default)
+await executor.selectFrom('users').selectAll().execute()
 ```
 
 **With schema validation:**

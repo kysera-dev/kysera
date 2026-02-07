@@ -230,6 +230,139 @@ describe('SchemaPlugin', () => {
       expect(capturedContextSchema).toBe('tenant_1')
       expect(capturedResolvedSchema).toBe('tenant_1')
     })
+
+    it('should allow resolveSchema to read from context.schema', async () => {
+      let capturedResolvedSchema: string | undefined
+
+      const executor = await createExecutor(db, [
+        schemaPlugin({
+          defaultSchema: 'public',
+          // Documented pattern: use context.schema (set by withSchema) as fallback
+          resolveSchema: (ctx) => ctx.schema ?? 'public'
+        }),
+        {
+          name: 'test-capture',
+          version: '1.0.0',
+          interceptQuery: (qb, ctx) => {
+            capturedResolvedSchema = ctx.metadata['__resolvedSchema'] as string
+            return qb
+          }
+        }
+      ])
+
+      // Without withSchema - should use default
+      await executor.selectFrom('users').selectAll().execute()
+      expect(capturedResolvedSchema).toBe('public')
+
+      // With withSchema - resolveSchema reads context.schema
+      try {
+        await executor.withSchema('tenant_abc').selectFrom('users').selectAll().execute()
+      } catch {
+        // SQLite doesn't support schemas
+      }
+      expect(capturedResolvedSchema).toBe('tenant_abc')
+    })
+
+    it('should support table-based routing with context.schema fallback', async () => {
+      const capturedSchemas: string[] = []
+
+      const executor = await createExecutor(db, [
+        schemaPlugin({
+          defaultSchema: 'public',
+          // Table-based auto-routing pattern from documentation
+          resolveSchema: (ctx) => {
+            if (ctx.table.startsWith('auth_')) return 'auth'
+            if (ctx.table.startsWith('admin_')) return 'admin'
+            return ctx.schema // fallback to withSchema() value
+          }
+        }),
+        {
+          name: 'test-capture',
+          version: '1.0.0',
+          interceptQuery: (qb, ctx) => {
+            capturedSchemas.push(ctx.metadata['__resolvedSchema'] as string)
+            return qb
+          }
+        }
+      ])
+
+      // Regular table without withSchema - falls through to default
+      await executor.selectFrom('users').selectAll().execute()
+      expect(capturedSchemas[0]).toBe('public')
+
+      // auth_ prefixed table - auto-routes to 'auth' schema
+      try {
+        await executor.selectFrom('auth_tokens' as 'users').selectAll().execute()
+      } catch {
+        // Table doesn't exist - but interceptor still runs
+      }
+      expect(capturedSchemas[1]).toBe('auth')
+
+      // Regular table with withSchema - uses context.schema
+      try {
+        await executor.withSchema('tenant_123').selectFrom('users').selectAll().execute()
+      } catch {
+        // SQLite doesn't support schemas
+      }
+      expect(capturedSchemas[2]).toBe('tenant_123')
+    })
+
+    it('should follow resolution priority: resolveSchema > context.schema > defaultSchema', async () => {
+      const capturedSchemas: string[] = []
+
+      // Priority test: resolveSchema returns explicit value
+      const executor1 = await createExecutor(db, [
+        schemaPlugin({
+          defaultSchema: 'default',
+          resolveSchema: () => 'resolved' // Always returns 'resolved'
+        }),
+        {
+          name: 'test-capture',
+          version: '1.0.0',
+          interceptQuery: (qb, ctx) => {
+            capturedSchemas.push(ctx.metadata['__resolvedSchema'] as string)
+            return qb
+          }
+        }
+      ])
+
+      // resolveSchema takes priority over both context.schema and defaultSchema
+      try {
+        await executor1.withSchema('from_withSchema').selectFrom('users').selectAll().execute()
+      } catch {
+        // SQLite doesn't support schemas
+      }
+      expect(capturedSchemas[0]).toBe('resolved')
+
+      // Priority test: resolveSchema returns undefined, falls back to context.schema
+      capturedSchemas.length = 0
+      const executor2 = await createExecutor(db, [
+        schemaPlugin({
+          defaultSchema: 'default',
+          resolveSchema: () => undefined // Returns undefined
+        }),
+        {
+          name: 'test-capture',
+          version: '1.0.0',
+          interceptQuery: (qb, ctx) => {
+            capturedSchemas.push(ctx.metadata['__resolvedSchema'] as string)
+            return qb
+          }
+        }
+      ])
+
+      try {
+        await executor2.withSchema('from_withSchema').selectFrom('users').selectAll().execute()
+      } catch {
+        // SQLite doesn't support schemas
+      }
+      expect(capturedSchemas[0]).toBe('from_withSchema')
+
+      // Priority test: resolveSchema returns undefined, no withSchema, falls back to default
+      capturedSchemas.length = 0
+      await executor2.selectFrom('users').selectAll().execute()
+      expect(capturedSchemas[0]).toBe('default')
+    })
   })
 
   describe('getResolvedSchema helper', () => {
