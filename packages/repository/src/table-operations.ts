@@ -18,6 +18,8 @@ import { DatabaseError } from '@kysera/core'
 import { extractPrimaryKey } from './primary-key-utils.js'
 import type { ColumnValidationOptions } from './column-validation.js'
 import { validateConditions } from './column-validation.js'
+import type { FindOptions } from './operators.js'
+import { applyWhereClause, hasOperators, validateOperators, extractColumns } from './operators.js'
 
 /**
  * Type helper to convert unknown results to typed results.
@@ -827,6 +829,125 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       const result = await query.execute()
 
       return castResults<SelectTable[]>(result)
+    },
+
+    async selectWithOptions<Cols extends string = string>(
+      options: FindOptions<SelectTable, Cols & keyof SelectTable>
+    ): Promise<SelectTable[]> {
+      const { where, orderBy, orderDirection = 'asc', sort, select: selectCols, limit, offset } = options
+
+      // Start building the query
+      let query: DynamicSelectQuery<DB, TableName>
+
+      // Handle column selection
+      if (selectCols && selectCols.length > 0) {
+        // Validate select columns
+        const validatedCols = validateConditions(
+          Object.fromEntries(selectCols.map(c => [c, true])),
+          pkConfig
+        )
+        const colNames = Object.keys(validatedCols)
+        // Type assertion needed: Dynamic column selection can't be fully typed
+        // Runtime safety: Column names validated by validateConditions above
+        const baseQuery = dbWithSchema.selectFrom(tableName)
+        query = (baseQuery as unknown as { select: (cols: string[]) => DynamicSelectQuery<DB, TableName> })
+          .select(colNames)
+      } else {
+        query = dbWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
+      }
+
+      // Apply where conditions
+      if (where && Object.keys(where).length > 0) {
+        // Validate operators if present
+        if (hasOperators(where as Record<string, unknown>)) {
+          validateOperators(where as Record<string, unknown>)
+          // Validate column names
+          const columns = extractColumns(where as Record<string, unknown>)
+          validateConditions(Object.fromEntries(columns.map(c => [c, true])), pkConfig)
+
+          // Apply operator-aware where clause
+          query = query.where((eb: ExpressionBuilder<DB, TableName>) =>
+            applyWhereClause(eb, where as Record<string, unknown>)
+          ) as DynamicSelectQuery<DB, TableName>
+        } else {
+          // Simple equality conditions - use existing buildDynamicWhere
+          query = buildDynamicWhere(query, where as Record<string, unknown>, pkConfig)
+        }
+      }
+
+      // Apply sorting
+      if (sort && sort.length > 0) {
+        // Multiple sort columns
+        for (const s of sort) {
+          // Validate sort column
+          validateConditions({ [s.column as string]: true }, pkConfig)
+          query = query.orderBy(s.column as never, s.direction) as DynamicSelectQuery<DB, TableName>
+        }
+      } else if (orderBy) {
+        // Single sort column
+        const orderByStr = String(orderBy)
+        validateConditions({ [orderByStr]: true }, pkConfig)
+        query = query.orderBy(orderByStr as never, orderDirection) as DynamicSelectQuery<DB, TableName>
+      }
+
+      // Apply pagination
+      if (limit !== undefined) {
+        query = query.limit(limit) as DynamicSelectQuery<DB, TableName>
+      }
+      if (offset !== undefined) {
+        query = query.offset(offset) as DynamicSelectQuery<DB, TableName>
+      }
+
+      const result = await query.execute()
+      return castResults<SelectTable[]>(result)
+    },
+
+    async selectOneWithOptions<Cols extends string = string>(
+      options: FindOptions<SelectTable, Cols & keyof SelectTable>
+    ): Promise<SelectTable | undefined> {
+      const results = await this.selectWithOptions({ ...options, limit: 1 })
+      return results[0]
+    },
+
+    async countWithOptions(
+      options: Pick<FindOptions<SelectTable>, 'where'>
+    ): Promise<number> {
+      const { where } = options
+
+      type CountQueryBuilder = {
+        where: (fn: (eb: ExpressionBuilder<DB, TableName>) => unknown) => CountQueryBuilder
+        executeTakeFirst: () => Promise<{ count: number | bigint } | undefined>
+      }
+
+      type CountQuery = {
+        select: (countExpression: unknown) => CountQueryBuilder
+      }
+
+      let query = (dbWithSchema.selectFrom(tableName) as unknown as CountQuery)
+        .select(dbWithSchema.fn.countAll().as('count'))
+
+      // Apply where conditions with operator support
+      if (where && Object.keys(where).length > 0) {
+        if (hasOperators(where as Record<string, unknown>)) {
+          validateOperators(where as Record<string, unknown>)
+          const columns = extractColumns(where as Record<string, unknown>)
+          validateConditions(Object.fromEntries(columns.map(c => [c, true])), pkConfig)
+
+          query = query.where((eb: ExpressionBuilder<DB, TableName>) =>
+            applyWhereClause(eb, where as Record<string, unknown>)
+          )
+        } else {
+          // Simple equality - use inline where
+          for (const [key, value] of Object.entries(where)) {
+            query = query.where((eb: ExpressionBuilder<DB, TableName>) =>
+              eb(key as never, '=', value as never)
+            )
+          }
+        }
+      }
+
+      const result = await query.executeTakeFirst()
+      return result?.count ? Number(result.count) : 0
     }
   }
 }
