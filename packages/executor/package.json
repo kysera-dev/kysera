@@ -1,6 +1,6 @@
 {
   "name": "@kysera/executor",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "description": "Unified Execution Layer for Kysera - Plugin-aware Kysely wrapper",
   "type": "module",
   "main": "./dist/index.js",
