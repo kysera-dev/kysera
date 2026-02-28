@@ -1,9 +1,8 @@
 import type { Plugin, QueryBuilderContext, BaseRepositoryLike } from '@kysera/executor'
 import { getRawDb, isRepositoryLike } from '@kysera/executor'
 import type { SelectQueryBuilder } from 'kysely'
-import { sql } from 'kysely'
-import { NotFoundError, silentLogger } from '@kysera/core'
-import type { KyseraLogger } from '@kysera/core'
+import { NotFoundError, silentLogger, formatTimestampForDb, detectDialect } from '@kysera/core'
+import type { KyseraLogger, Dialect } from '@kysera/core'
 import { VERSION } from './version.js'
 
 /**
@@ -313,46 +312,29 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
       // Get raw db for queries that need to bypass interceptors
       const rawDb = getRawDb(baseRepo.executor)
+      const dbDialect: Dialect = detectDialect(rawDb)
 
       const extendedRepo = {
         ...baseRepo,
 
-        // Override findAll() and findById() to support custom primaryKeyColumn
-        // We use rawDb to bypass the interceptor and manually apply filtering here.
-        // This is intentional - there is NO duplicate filtering because:
-        // - rawDb bypasses the interceptor (no filter #1)
-        // - We manually add WHERE deleted_at IS NULL (filter #2)
-        // Result: Only ONE filter is applied, which is correct.
-        // Alternative approach (using baseRepo.executor) would apply interceptor
-        // but wouldn't support custom primaryKeyColumn option.
+        // Override findAll() and findById() to use executor for transaction safety.
+        // The interceptQuery already handles soft-delete filtering:
+        // - If includeDeleted: false (default): interceptor adds WHERE deleted_at IS NULL
+        // - If includeDeleted: true: interceptor skips the filter
+        // Using baseRepo.executor ensures queries go through the interceptor AND
+        // respect transaction context (H-9 fix: rawDb breaks transaction isolation).
         async findAll(): Promise<unknown[]> {
-          if (!includeDeleted) {
-            // Use rawDb + manual filter (avoids double filtering from interceptor)
-            const result = await rawDb
-              .selectFrom(baseRepo.tableName)
-              .selectAll()
-              .where(deletedAtColumn as never, 'is', null)
-              .execute()
-            return result as unknown[]
-          }
-          // Include deleted: return all records
-          const result = await rawDb.selectFrom(baseRepo.tableName).selectAll().execute()
+          // Use executor to respect transaction context and go through interceptors
+          const result = await baseRepo.executor
+            .selectFrom(baseRepo.tableName)
+            .selectAll()
+            .execute()
           return result as unknown[]
         },
 
         async findById(id: number | string): Promise<unknown> {
-          if (!includeDeleted) {
-            // Use rawDb + manual filter (avoids double filtering from interceptor)
-            const result = await rawDb
-              .selectFrom(baseRepo.tableName)
-              .selectAll()
-              .where(primaryKeyColumn as never, '=', id as never)
-              .where(deletedAtColumn as never, 'is', null)
-              .executeTakeFirst()
-            return result ?? null
-          }
-          // Include deleted: find by id regardless of deleted status
-          const result = await rawDb
+          // Use executor to respect transaction context and go through interceptors
+          const result = await baseRepo.executor
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(primaryKeyColumn as never, '=', id as never)
@@ -365,7 +347,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           // Use rawDb to bypass interceptors (UPDATE doesn't need filtering anyway)
           await rawDb
             .updateTable(baseRepo.tableName)
-            .set({ [deletedAtColumn]: sql`CURRENT_TIMESTAMP` } as never)
+            .set({ [deletedAtColumn]: formatTimestampForDb(undefined, dbDialect) } as never)
             .where(primaryKeyColumn as never, '=', id as never)
             .execute()
 
@@ -450,7 +432,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
           await rawDb
             .updateTable(baseRepo.tableName)
-            .set({ [deletedAtColumn]: sql`CURRENT_TIMESTAMP` } as never)
+            .set({ [deletedAtColumn]: formatTimestampForDb(undefined, dbDialect) } as never)
             .where(primaryKeyColumn as never, 'in', ids as never)
             .execute()
 
@@ -464,8 +446,11 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           if (records.length !== ids.length) {
             const foundIds = records.map((r: Record<string, unknown>) => r[primaryKeyColumn])
             const missingIds = ids.filter(id => !foundIds.includes(id))
+            // H-10 fix: Downgrade from throw to warning. The UPDATE for existing
+            // records already executed successfully, so throwing here is misleading -
+            // it suggests the operation failed when it actually partially succeeded.
+            // Callers can check the returned array length to detect missing records.
             logger.warn(`Some records not found for soft delete: ${missingIds.join(', ')}`)
-            throw new NotFoundError('Records', { ids: missingIds })
           }
 
           return records as unknown[]

@@ -31,6 +31,12 @@ describe('logger', () => {
       expect(consoleLogger.error).toBeDefined()
     })
 
+    it('should log trace message with prefix', () => {
+      consoleLogger.trace('test message')
+
+      expect(consoleDebugSpy).toHaveBeenCalledWith('[kysera:trace] test message')
+    })
+
     it('should log debug message with prefix', () => {
       consoleLogger.debug('test message')
 
@@ -81,6 +87,27 @@ describe('logger', () => {
       consoleLogger.error('message', error)
 
       expect(consoleErrorSpy).toHaveBeenCalledWith('[kysera:error] message', error)
+    })
+
+    it('should log fatal message with FATAL prefix', () => {
+      consoleLogger.fatal('critical failure')
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith('[kysera:fatal] FATAL: critical failure')
+    })
+
+    it('should pass additional arguments to trace', () => {
+      consoleLogger.trace('message', 'arg1', { key: 'value' })
+
+      expect(consoleDebugSpy).toHaveBeenCalledWith('[kysera:trace] message', 'arg1', {
+        key: 'value'
+      })
+    })
+
+    it('should pass additional arguments to fatal', () => {
+      const error = new Error('fatal error')
+      consoleLogger.fatal('message', error)
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith('[kysera:fatal] FATAL: message', error)
     })
   })
 
@@ -158,6 +185,14 @@ describe('logger', () => {
       }
     })
 
+    it('should create logger with prefix for trace', () => {
+      const prefixed = createPrefixedLogger('mymodule', mockLogger)
+
+      prefixed.trace('test message')
+
+      expect(mockLogger.trace).toHaveBeenCalledWith('[mymodule] test message')
+    })
+
     it('should create logger with prefix for debug', () => {
       const prefixed = createPrefixedLogger('mymodule', mockLogger)
 
@@ -188,6 +223,14 @@ describe('logger', () => {
       prefixed.error('test message')
 
       expect(mockLogger.error).toHaveBeenCalledWith('[mymodule] test message')
+    })
+
+    it('should create logger with prefix for fatal', () => {
+      const prefixed = createPrefixedLogger('mymodule', mockLogger)
+
+      prefixed.fatal('test message')
+
+      expect(mockLogger.fatal).toHaveBeenCalledWith('[mymodule] test message')
     })
 
     it('should pass additional arguments through', () => {

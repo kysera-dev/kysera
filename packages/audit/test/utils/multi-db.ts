@@ -242,15 +242,9 @@ export async function initializeSchema(
     .addColumn('new_values', 'text')
     .addColumn('changed_by', 'varchar(255)')
 
-  if (type === 'sqlite') {
-    auditTable = auditTable.addColumn('changed_at', 'text', col =>
-      col.notNull().defaultTo('CURRENT_TIMESTAMP')
-    )
-  } else {
-    auditTable = auditTable.addColumn('changed_at', 'timestamp', col =>
-      col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`)
-    )
-  }
+  // Use TEXT type for changed_at across all databases to match the audit plugin's
+  // own table creation (it stores ISO 8601 strings, not native timestamps)
+  auditTable = auditTable.addColumn('changed_at', 'text', col => col.notNull())
 
   auditTable = auditTable.addColumn('metadata', 'text')
 

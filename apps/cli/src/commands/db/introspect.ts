@@ -81,7 +81,7 @@ async function introspectDatabase(
           console.log('')
         }
       } else {
-        const summaryData = []
+        const summaryData: Record<string, string | number>[] = []
         for (const tblName of tables) {
           try {
             const info = await introspector.getTableInfo(tblName)

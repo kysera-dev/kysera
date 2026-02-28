@@ -23,7 +23,36 @@ v0.8 removes all deprecated APIs from v0.7. If you haven't migrated away from de
 
 ## What's Changed in v0.8
 
-### 1. RLS Plugin: `requireContext` Now Defaults to `true`
+### 1. Cursor Pagination Functions Are Now Async
+
+The `encodeCursor` and `decodeCursor` functions now return Promises because cursor security features (signing/encryption) are lazy-loaded to avoid pulling in `node:crypto` for all consumers. This means `paginateCursor` and `paginateCursorSimple` remain async (as before), but if you were calling `encodeCursor`/`decodeCursor` directly, you must now `await` them.
+
+**Before (v0.7.x):**
+```typescript
+const cursor = encodeCursor(orderBy, lastRow)
+const decoded = decodeCursor(cursor)
+```
+
+**After (v0.8.x):**
+```typescript
+const cursor = await encodeCursor(orderBy, lastRow)
+const decoded = await decodeCursor(cursor)
+```
+
+### 2. Cursor Crypto Available as Subpath Export
+
+Cursor signing and encryption functions are now available via a dedicated subpath export to avoid pulling in `node:crypto` for consumers who don't need it:
+
+```typescript
+// Import cursor crypto functions directly
+import { signCursor, verifyCursor, encryptCursor, decryptCursor } from '@kysera/core/cursor-crypto'
+```
+
+The `CursorSecurityOptions` type is still re-exported from the main `@kysera/core` entry point.
+
+### 3. RLS Plugin: `requireContext` Now Defaults to `true`
+
+**Impact:** This is a security improvement.
 
 The RLS plugin now enforces context by default for improved security. Previously, queries without RLS context would run unfiltered, which could lead to accidental data leaks in multi-tenant applications.
 
@@ -31,13 +60,13 @@ The RLS plugin now enforces context by default for improved security. Previously
 - Wrap them in `rlsContext.asSystemAsync()` (recommended)
 - Or explicitly set `requireContext: false` in the plugin options
 
-### 2. RLS Plugin: `skipTables` Option Removed
+### 4. RLS Plugin: `skipTables` Option Removed
 
 The deprecated `skipTables` option in the RLS plugin has been completely removed. This option was deprecated in v0.7.x in favor of the more descriptive `excludeTables` option.
 
 **Impact:** If you're still using `skipTables`, your code will break in v0.8.
 
-### 3. `DatabaseDialect` Type Alias Removed
+### 5. `DatabaseDialect` Type Alias Removed
 
 The `DatabaseDialect` type alias has been removed from multiple packages:
 - `@kysera/dialects`
@@ -46,7 +75,7 @@ The `DatabaseDialect` type alias has been removed from multiple packages:
 
 **Impact:** If you're importing `DatabaseDialect` instead of `Dialect`, TypeScript will report errors.
 
-### 4. Cleaner Package Exports
+### 6. Cleaner Package Exports
 
 v0.8 removes legacy re-exports and standardizes the public API surface across all packages.
 
@@ -58,7 +87,7 @@ v0.8 removes legacy re-exports and standardizes the public API surface across al
 All deprecated APIs from v0.7 have been removed. You must update your code before upgrading to v0.8.
 :::
 
-### 1. RLS Plugin: `requireContext` Now Defaults to `true`
+### 3. RLS Plugin: `requireContext` Now Defaults to `true`
 
 **What Changed:**
 The `requireContext` option now defaults to `true` instead of `false`. This is a security improvement that prevents accidental data leaks.
@@ -96,7 +125,7 @@ const executor = await createExecutor(db, [
 2. Wrap them in `rlsContext.asSystemAsync()` for explicit privileged access
 3. Or set `requireContext: false` if you need the old behavior (not recommended)
 
-### 2. RLS Plugin: `skipTables` Removed
+### 4. RLS Plugin: `skipTables` Removed
 
 **What Changed:**
 The `skipTables` option is no longer available in the RLS plugin configuration.
@@ -136,7 +165,7 @@ const executor = await createExecutor(db, [
 grep -r "skipTables" --include="*.ts" --include="*.js"
 ```
 
-### 3. `DatabaseDialect` Type Alias Removed
+### 5. `DatabaseDialect` Type Alias Removed
 
 **What Changed:**
 The `DatabaseDialect` type alias has been removed. Use `Dialect` from `@kysera/core` instead.
@@ -211,16 +240,16 @@ Update all Kysera packages to v0.8.x:
 
 ```bash
 # Update all packages
-pnpm add @kysera/core@^0.8.0 \
-         @kysera/executor@^0.8.0 \
-         @kysera/repository@^0.8.0 \
-         @kysera/dal@^0.8.0 \
-         @kysera/soft-delete@^0.8.0 \
-         @kysera/rls@^0.8.0 \
-         @kysera/audit@^0.8.0 \
-         @kysera/timestamps@^0.8.0 \
-         @kysera/dialects@^0.8.0 \
-         @kysera/testing@^0.8.0
+pnpm add @kysera/core@^0.8.5 \
+         @kysera/executor@^0.8.5 \
+         @kysera/repository@^0.8.5 \
+         @kysera/dal@^0.8.5 \
+         @kysera/soft-delete@^0.8.5 \
+         @kysera/rls@^0.8.5 \
+         @kysera/audit@^0.8.5 \
+         @kysera/timestamps@^0.8.5 \
+         @kysera/dialects@^0.8.5 \
+         @kysera/testing@^0.8.5
 ```
 
 **Peer Dependencies:**
@@ -510,6 +539,13 @@ async function setupDatabase() {
 
 This is the complete list of breaking changes in v0.8.0:
 
+### @kysera/core
+
+| Change                             | Previous Behavior            | New Behavior                                        |
+| ---------------------------------- | ---------------------------- | --------------------------------------------------- |
+| `encodeCursor` / `decodeCursor`    | Synchronous (returns value)  | **Async** (returns Promise) - lazy-loads crypto      |
+| Cursor crypto subpath              | Not available                | Available via `@kysera/core/cursor-crypto`           |
+
 ### @kysera/rls
 
 | Change                           | Previous Behavior         | New Behavior                                      |
@@ -686,16 +722,16 @@ find . -name "*.ts" -not -path "*/node_modules/*" -exec sed -i '' 's/DatabaseDia
 
 # 3. Update package.json
 echo "📦 Updating dependencies..."
-pnpm add @kysera/core@^0.8.0 \
-         @kysera/executor@^0.8.0 \
-         @kysera/repository@^0.8.0 \
-         @kysera/dal@^0.8.0 \
-         @kysera/soft-delete@^0.8.0 \
-         @kysera/rls@^0.8.0 \
-         @kysera/audit@^0.8.0 \
-         @kysera/timestamps@^0.8.0 \
-         @kysera/dialects@^0.8.0 \
-         @kysera/testing@^0.8.0
+pnpm add @kysera/core@^0.8.5 \
+         @kysera/executor@^0.8.5 \
+         @kysera/repository@^0.8.5 \
+         @kysera/dal@^0.8.5 \
+         @kysera/soft-delete@^0.8.5 \
+         @kysera/rls@^0.8.5 \
+         @kysera/audit@^0.8.5 \
+         @kysera/timestamps@^0.8.5 \
+         @kysera/dialects@^0.8.5 \
+         @kysera/testing@^0.8.5
 
 # 4. Clear cache and rebuild
 echo "🧹 Clearing cache..."

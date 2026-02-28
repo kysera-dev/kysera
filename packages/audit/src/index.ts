@@ -1,5 +1,4 @@
 import type { Kysely } from 'kysely'
-import { sql } from 'kysely'
 import type { Plugin, BaseRepositoryLike } from '@kysera/executor'
 import { isRepositoryLike } from '@kysera/executor'
 import { NotFoundError, BadRequestError, type KyseraLogger, silentLogger } from '@kysera/core'
@@ -192,10 +191,10 @@ export interface AuditFilters extends AuditPaginationOptions {
   operation?: string
   /** Filter by user ID (changed_by field) */
   userId?: string
-  /** Filter by start date (inclusive) */
-  startDate?: Date | string
-  /** Filter by end date (inclusive) */
-  endDate?: Date | string
+  /** Filter by start date (inclusive) - accepts Date, ISO string, or unix timestamp (ms) */
+  startDate?: Date | string | number
+  /** Filter by end date (inclusive) - accepts Date, ISO string, or unix timestamp (ms) */
+  endDate?: Date | string | number
 }
 
 /**
@@ -299,10 +298,12 @@ interface ExtendedRepositoryInternal<T = unknown>
 // ============================================================================
 
 /**
- * Global lock for audit table creation to prevent race conditions
- * Key: auditTable name, Value: Promise that resolves when table creation is complete
+ * Per-executor lock for audit table creation to prevent race conditions.
+ * Outer key: Kysely executor instance (WeakMap for automatic cleanup on GC).
+ * Inner key: audit table name, Value: Promise that resolves when table creation is complete.
  */
-const auditTableCreationLocks = new Map<string, Promise<void>>()
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const auditTableCreationLocks = new WeakMap<object, Map<string, Promise<void>>>()
 
 /**
  * Check if audit table exists
@@ -349,11 +350,60 @@ async function createAuditTable<DB>(executor: Kysely<DB>, auditTable: string): P
 }
 
 /**
+ * Ensure the audit table exists, using a lock to prevent race conditions.
+ * The lock map acts as both a mutex and a "verified" cache:
+ * - If a promise exists for this executor+table, we just await it (table already created or in progress).
+ * - Otherwise we create the promise, store it synchronously, then await it.
+ * The promise is intentionally never removed so subsequent calls take the fast path.
+ */
+async function ensureAuditTable<DB>(executor: Kysely<DB>, auditTable: string): Promise<void> {
+  let tableLocks = auditTableCreationLocks.get(executor)
+  if (!tableLocks) {
+    tableLocks = new Map<string, Promise<void>>()
+    auditTableCreationLocks.set(executor, tableLocks)
+  }
+
+  // Fast path: table already verified (or creation in progress)
+  if (tableLocks.has(auditTable)) {
+    await tableLocks.get(auditTable)
+    return
+  }
+
+  const promise = (async () => {
+    const exists = await checkAuditTableExists(executor, auditTable)
+    if (!exists) {
+      await createAuditTable(executor, auditTable)
+    }
+  })()
+
+  tableLocks.set(auditTable, promise)
+  await promise
+}
+
+/**
  * Get audit timestamp from options
  */
 function getAuditTimestamp(options: AuditOptions): string {
   const timestamp = options.getTimestamp ? options.getTimestamp() : new Date()
   return typeof timestamp === 'string' ? timestamp : timestamp.toISOString()
+}
+
+/**
+ * Format a date value for use in audit log queries.
+ * Handles Date objects, ISO strings, and unix timestamps (milliseconds).
+ *
+ * @param date - Date value to format
+ * @returns ISO 8601 formatted string (audit table uses TEXT columns)
+ */
+function formatDateForQuery(date: Date | string | number): string {
+  if (typeof date === 'number') {
+    // Unix timestamp (milliseconds)
+    return new Date(date).toISOString()
+  }
+  if (typeof date === 'string') {
+    return new Date(date).toISOString()
+  }
+  return date.toISOString()
 }
 
 /**
@@ -372,7 +422,10 @@ function safeParseJSON<T>(
   try {
     return JSON.parse(value) as T
   } catch (error) {
-    logger.warn('Failed to parse JSON in audit log:', value.substring(0, 100), error)
+    logger.warn(
+      `[Kysera Audit] Failed to parse JSON in audit log (data may be corrupted): ${value.substring(0, 100)}`,
+      error
+    )
     return defaultValue
   }
 }
@@ -380,21 +433,18 @@ function safeParseJSON<T>(
 /**
  * Serialize values for audit log
  */
-function serializeAuditValues(values: unknown): string | null {
+function serializeAuditValues(values: unknown, logger: KyseraLogger = silentLogger): string | null {
   if (values === null || values === undefined) return null
 
   try {
     return JSON.stringify(values)
   } catch (error) {
-    // Safe conversion for non-JSON values (e.g., circular references)
-    silentLogger.debug('Failed to stringify audit values', {
-      error: error instanceof Error ? error.message : String(error)
-    })
-    if (typeof values === 'object') {
-      // For objects that can't be stringified, use toString()
-      return '[Object]'
-    }
-    return String(values)
+    logger.warn(
+      '[Kysera Audit] Failed to stringify audit values (possible circular reference). ' +
+      'Audit data will be stored as "[Circular]" placeholder.',
+      { error: error instanceof Error ? error.message : String(error) }
+    )
+    return '[Circular]'
   }
 }
 
@@ -411,10 +461,8 @@ async function createAuditLogEntry<DB>(
   newValues: unknown,
   options: AuditOptions
 ): Promise<void> {
-  // Use SQL CURRENT_TIMESTAMP for database-native timestamp handling
-  // This avoids timezone issues between client and server
-  // If user provides custom getTimestamp, respect it but they need to ensure proper format
-  const timestamp = options.getTimestamp ? getAuditTimestamp(options) : sql`CURRENT_TIMESTAMP`
+  // Use ISO string timestamp for cross-database compatibility (CRIT-1: SQLite doesn't support CURRENT_TIMESTAMP in VALUES)
+  const timestamp = options.getTimestamp ? getAuditTimestamp(options) : new Date().toISOString()
 
   // Cast to DynamicQueryBuilder for runtime table access
   const dynamicExecutor = executor as unknown as DynamicQueryBuilder
@@ -424,8 +472,8 @@ async function createAuditLogEntry<DB>(
       table_name: entityType,
       entity_id: String(entityId),
       operation,
-      old_values: serializeAuditValues(oldValues),
-      new_values: serializeAuditValues(newValues),
+      old_values: serializeAuditValues(oldValues, options.logger ?? silentLogger),
+      new_values: serializeAuditValues(newValues, options.logger ?? silentLogger),
       changed_by: options.getUserId ? options.getUserId() : null,
       changed_at: timestamp,
       metadata: options.metadata ? JSON.stringify(options.metadata()) : null
@@ -546,14 +594,14 @@ function prepareAuditEntry(
   newValues: unknown,
   options: AuditOptions
 ): Record<string, unknown> {
-  const timestamp = options.getTimestamp ? getAuditTimestamp(options) : sql`CURRENT_TIMESTAMP`
+  const timestamp = options.getTimestamp ? getAuditTimestamp(options) : new Date().toISOString()
 
   return {
     table_name: tableName,
     entity_id: String(entityId),
     operation,
-    old_values: serializeAuditValues(oldValues),
-    new_values: serializeAuditValues(newValues),
+    old_values: serializeAuditValues(oldValues, options.logger ?? silentLogger),
+    new_values: serializeAuditValues(newValues, options.logger ?? silentLogger),
     changed_by: options.getUserId ? options.getUserId() : null,
     changed_at: timestamp,
     metadata: options.metadata ? JSON.stringify(options.metadata()) : null
@@ -1030,21 +1078,11 @@ function addAuditQueryMethods<T = unknown>(
       query = query.where('changed_by', '=', filters.userId)
     }
     if (filters?.startDate) {
-      const startDate =
-        typeof filters.startDate === 'string' ? new Date(filters.startDate) : filters.startDate
-      const formattedStart = startDate
-        .toISOString()
-        .replace('T', ' ')
-        .replace(/\.\d{3}Z$/, '')
+      const formattedStart = formatDateForQuery(filters.startDate)
       query = query.where('changed_at', '>=', formattedStart)
     }
     if (filters?.endDate) {
-      const endDate =
-        typeof filters.endDate === 'string' ? new Date(filters.endDate) : filters.endDate
-      const formattedEnd = endDate
-        .toISOString()
-        .replace('T', ' ')
-        .replace(/\.\d{3}Z$/, '')
+      const formattedEnd = formatDateForQuery(filters.endDate)
       query = query.where('changed_at', '<=', formattedEnd)
     }
 
@@ -1228,45 +1266,25 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
     logger = silentLogger
   } = options
 
+  // Track the executor so onDestroy can clean up the correct lock entry
+  let lastExecutor: object | null = null
+
   return {
     name: '@kysera/audit',
     version: VERSION,
     priority: -100, // Run last to audit after all other transformations
 
     async onInit<DB>(executor: Kysely<DB>): Promise<void> {
-      // Check if another initialization is already in progress for this table
-      const existingLock = auditTableCreationLocks.get(auditTable)
-      if (existingLock) {
-        // Wait for the ongoing initialization to complete
-        await existingLock
-        return
-      }
-
-      // Create a lock promise IMMEDIATELY to prevent race conditions
-      // The lock is set BEFORE any async work to ensure only one initialization proceeds
-      const lockPromise = (async () => {
-        try {
-          // Check if table exists (inside the lock)
-          const exists = await checkAuditTableExists(executor, auditTable)
-          if (!exists) {
-            await createAuditTable(executor, auditTable)
-          }
-        } finally {
-          // Clean up lock after completion
-          auditTableCreationLocks.delete(auditTable)
-        }
-      })()
-
-      // Store the lock SYNCHRONOUSLY before any await
-      auditTableCreationLocks.set(auditTable, lockPromise)
-
-      // Wait for creation to complete
-      await lockPromise
+      lastExecutor = executor
+      await ensureAuditTable(executor, auditTable)
     },
 
     onDestroy(): Promise<void> {
-      // Clean up any remaining locks
-      auditTableCreationLocks.clear()
+      // Clean up locks for the executor this plugin was initialised with
+      if (lastExecutor) {
+        auditTableCreationLocks.delete(lastExecutor)
+        lastExecutor = null
+      }
       logger.debug('Audit plugin destroyed, cleared table creation locks')
       return Promise.resolve()
     },

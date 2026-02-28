@@ -326,13 +326,18 @@ async softDeleteMany(ids: (number | string)[]): Promise<T[]>
 
 **Returns:** Array of soft-deleted records
 
-**Throws:** `NotFoundError` if any record doesn't exist
+**Note:** If some IDs are not found, a warning is logged and partial results are returned. The operation does not throw for missing records -- callers can check the returned array length to detect missing records.
 
 **Example:**
 
 ```typescript
 const deleted = await userRepo.softDeleteMany([1, 2, 3, 4, 5])
 console.log(`Soft-deleted ${deleted.length} users`)
+
+// Check for missing records
+if (deleted.length < 5) {
+  console.warn('Some records were not found')
+}
 ```
 
 ### restoreMany

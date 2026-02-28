@@ -39,18 +39,35 @@ export class MutationGuard<DB = unknown> {
   }
 
   /**
-   * Check if UPDATE operation is allowed
+   * Check if an UPDATE operation is allowed by RLS policies.
    *
-   * @param table - Table name
-   * @param existingRow - Current row data
-   * @param data - Data being updated
-   * @throws RLSPolicyViolation if access is denied
+   * IMPORTANT: To prevent TOCTOU race conditions, always call this method
+   * within the same transaction as the actual update operation. The existingRow
+   * should be fetched with SELECT FOR UPDATE within the transaction.
+   *
+   * Without proper transaction isolation, the existingRow could be modified by
+   * a concurrent operation between the time it was fetched and the time this
+   * check runs, leading to policy decisions based on stale data.
+   *
+   * @param table - Target table name
+   * @param existingRow - Current row data (should be fetched within same transaction)
+   * @param data - New data being applied
+   * @throws RLSPolicyViolation if the operation is not allowed
    *
    * @example
    * ```typescript
-   * const guard = new MutationGuard(registry);
-   * const existingPost = await db.selectFrom('posts').where('id', '=', 1).selectAll().executeTakeFirst();
-   * await guard.checkUpdate('posts', existingPost, { title: 'Updated' });
+   * // RECOMMENDED: Use within a transaction with row locking
+   * await db.transaction().execute(async (trx) => {
+   *   const existingPost = await trx
+   *     .selectFrom('posts')
+   *     .where('id', '=', 1)
+   *     .forUpdate()
+   *     .selectAll()
+   *     .executeTakeFirst();
+   *
+   *   await guard.checkUpdate('posts', existingPost, { title: 'Updated' });
+   *   await trx.updateTable('posts').set({ title: 'Updated' }).where('id', '=', 1).execute();
+   * });
    * ```
    */
   async checkUpdate(
@@ -62,17 +79,35 @@ export class MutationGuard<DB = unknown> {
   }
 
   /**
-   * Check if DELETE operation is allowed
+   * Check if a DELETE operation is allowed by RLS policies.
    *
-   * @param table - Table name
-   * @param existingRow - Row to be deleted
-   * @throws RLSPolicyViolation if access is denied
+   * IMPORTANT: To prevent TOCTOU race conditions, always call this method
+   * within the same transaction as the actual delete operation. The existingRow
+   * should be fetched with SELECT FOR UPDATE within the transaction.
+   *
+   * Without proper transaction isolation, the existingRow could be modified by
+   * a concurrent operation between the time it was fetched and the time this
+   * check runs, leading to policy decisions based on stale data (e.g., a row's
+   * ownership could change, allowing an unauthorized delete).
+   *
+   * @param table - Target table name
+   * @param existingRow - Current row data (should be fetched within same transaction)
+   * @throws RLSPolicyViolation if the operation is not allowed
    *
    * @example
    * ```typescript
-   * const guard = new MutationGuard(registry);
-   * const existingPost = await db.selectFrom('posts').where('id', '=', 1).selectAll().executeTakeFirst();
-   * await guard.checkDelete('posts', existingPost);
+   * // RECOMMENDED: Use within a transaction with row locking
+   * await db.transaction().execute(async (trx) => {
+   *   const existingPost = await trx
+   *     .selectFrom('posts')
+   *     .where('id', '=', 1)
+   *     .forUpdate()
+   *     .selectAll()
+   *     .executeTakeFirst();
+   *
+   *   await guard.checkDelete('posts', existingPost);
+   *   await trx.deleteFrom('posts').where('id', '=', 1).execute();
+   * });
    * ```
    */
   async checkDelete(table: string, existingRow: Record<string, unknown>): Promise<void> {

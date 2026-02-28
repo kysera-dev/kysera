@@ -257,7 +257,7 @@ describe.skipIf(!POSTGRES_AVAILABLE)('DAL - PostgreSQL Schema Integration', () =
       const executor = await createExecutor(db, [])
       const ctx = createSchemaContext(executor, TENANT_SCHEMA_1)
 
-      const result = await withTransaction(ctx.db, async (txCtx) => {
+      const result = await withTransaction(ctx, async (txCtx) => {
         // Schema should be preserved
         expect(txCtx.schema).toBe(TENANT_SCHEMA_1)
 
@@ -275,7 +275,7 @@ describe.skipIf(!POSTGRES_AVAILABLE)('DAL - PostgreSQL Schema Integration', () =
       const executor = await createExecutor(db, [])
       const ctx = createSchemaContext(executor, TENANT_SCHEMA_1)
 
-      await withTransaction(ctx.db, async (txCtx) => {
+      await withTransaction(ctx, async (txCtx) => {
         await createUser(txCtx, { name: 'NewUser', email: 'new@tenant1.com' })
       })
 
@@ -295,7 +295,7 @@ describe.skipIf(!POSTGRES_AVAILABLE)('DAL - PostgreSQL Schema Integration', () =
       const countBefore = await getUserCount(ctx)
 
       try {
-        await withTransaction(ctx.db, async (txCtx) => {
+        await withTransaction(ctx, async (txCtx) => {
           await createUser(txCtx, { name: 'WillRollback', email: 'rollback@test.com' })
           throw new Error('Force rollback')
         })
@@ -312,7 +312,7 @@ describe.skipIf(!POSTGRES_AVAILABLE)('DAL - PostgreSQL Schema Integration', () =
       const executor = await createExecutor(db, [createTestSoftDeletePlugin()])
       const ctx = createSchemaContext(executor, TENANT_SCHEMA_1)
 
-      await withTransaction(ctx.db, async (txCtx) => {
+      await withTransaction(ctx, async (txCtx) => {
         // Soft-delete filter should be applied
         const users = await getUsers(txCtx)
         expect(users.length).toBe(2) // Deleted user excluded
@@ -323,11 +323,11 @@ describe.skipIf(!POSTGRES_AVAILABLE)('DAL - PostgreSQL Schema Integration', () =
       const executor = await createExecutor(db, [])
       const ctx = createSchemaContext(executor, TENANT_SCHEMA_1)
 
-      await withTransaction(ctx.db, async (outerCtx) => {
+      await withTransaction(ctx, async (outerCtx) => {
         await createUser(outerCtx, { name: 'OuterUser', email: 'outer@test.com' })
 
         try {
-          await withTransaction(outerCtx.db, async (innerCtx) => {
+          await withTransaction(outerCtx, async (innerCtx) => {
             // Schema should still be preserved in nested transaction
             expect(innerCtx.schema).toBe(TENANT_SCHEMA_1)
 
@@ -446,7 +446,7 @@ describe.skipIf(!POSTGRES_AVAILABLE)('DAL - PostgreSQL Schema Integration', () =
       const executor = await createExecutor(db, [])
       const ctx = createSchemaContext(executor, TENANT_SCHEMA_1)
 
-      await withTransaction(ctx.db, async (txCtx) => {
+      await withTransaction(ctx, async (txCtx) => {
         // Create user and orders atomically
         const user = await createUser(txCtx, { name: 'NewCustomer', email: 'customer@test.com' })
 
@@ -475,14 +475,14 @@ describe.skipIf(!POSTGRES_AVAILABLE)('DAL - PostgreSQL Schema Integration', () =
       const countBefore = await getUserCount(ctx)
 
       await expect(
-        withTransaction(ctx.db, async (txCtx) => {
+        withTransaction(ctx, async (txCtx) => {
           // This should succeed
           await createUser(txCtx, { name: 'User1', email: 'user1@test.com' })
 
-          // This should fail (assuming email is not unique, but id reference fails)
+          // This should fail due to NOT NULL constraint on title
           await txCtx.db.insertInto('posts').values({
-            user_id: 999999, // Invalid user_id
-            title: 'Bad Post'
+            user_id: 1,
+            title: null as unknown as string // NOT NULL violation
           }).execute()
         })
       ).rejects.toThrow()

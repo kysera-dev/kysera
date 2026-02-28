@@ -193,7 +193,7 @@ await withTransaction(executor, async (txCtx) => {
 - **Runtime**: Node.js >=20.0.0, Bun >=1.0.0, or Deno (experimental)
 - **TypeScript**: ^5.9.2 (recommended for best type inference)
 - **Kysely**: >=0.28.9 (peer dependency)
-- **Validation library** (optional): Zod ^4.1.13, Valibot, TypeBox, or none
+- **Validation library** (optional): Zod ^4.3.6, Valibot, TypeBox, or none
 - **Module System**: ESM-only (no CommonJS)
 
 ## Database Support

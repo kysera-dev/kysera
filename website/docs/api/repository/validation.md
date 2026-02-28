@@ -107,15 +107,13 @@ if (shouldValidate({ mode: 'always' })) {
 
 ## createValidator
 
-Create a validation wrapper with multiple methods.
+Create a validation wrapper with multiple methods. Works with any `ValidationSchema`-compatible validator.
 
 ```typescript
-function createValidator<T>(schema: z.ZodType<T>, options?: ValidationOptions): Validator<T>
-
-interface Validator<T> {
-  validate(data: unknown): T // Throws on error
+function createValidator<T>(schema: ValidationSchema<T>, options?: ValidationOptions): {
+  validate(data: unknown): T          // Throws on error
   validateSafe(data: unknown): T | null // Returns null on error
-  isValid(data: unknown): boolean // Returns boolean
+  isValid(data: unknown): boolean      // Returns boolean
   validateConditional(data: unknown): T // Uses mode setting
 }
 ```
@@ -123,7 +121,7 @@ interface Validator<T> {
 ### Example
 
 ```typescript
-import { createValidator } from '@kysera/repository'
+import { createValidator, zodAdapter } from '@kysera/repository'
 import { z } from 'zod'
 
 const UserSchema = z.object({
@@ -132,9 +130,9 @@ const UserSchema = z.object({
   name: z.string()
 })
 
-const userValidator = createValidator(UserSchema)
+const userValidator = createValidator(zodAdapter(UserSchema))
 
-// Throws ZodError on failure
+// Throws on failure (uses schema.parse internally)
 const user = userValidator.validate(data)
 
 // Returns null on failure
@@ -151,15 +149,15 @@ const user = userValidator.validateConditional(data)
 
 ## safeParse
 
-Safe parsing with optional error handling.
+Safe parsing with optional error handling. Works with any `ValidationSchema`-compatible validator.
 
 ```typescript
 function safeParse<T>(
-  schema: z.ZodType<T>,
+  schema: ValidationSchema<T>,
   data: unknown,
   options?: {
-    logErrors?: boolean
     throwOnError?: boolean
+    logErrors?: boolean
     logger?: KyseraLogger
   }
 ): T | null
@@ -168,20 +166,22 @@ function safeParse<T>(
 ### Example
 
 ```typescript
-import { safeParse } from '@kysera/repository'
+import { safeParse, zodAdapter } from '@kysera/repository'
+
+const schema = zodAdapter(UserSchema)
 
 // Silent failure
-const result = safeParse(UserSchema, data)
+const result = safeParse(schema, data)
 if (result) {
   // Use validated data
 }
 
 // Log errors
-const result = safeParse(UserSchema, data, { logErrors: true })
+const result = safeParse(schema, data, { logErrors: true })
 
 // Throw on error
 try {
-  const result = safeParse(UserSchema, data, { throwOnError: true })
+  const result = safeParse(schema, data, { throwOnError: true })
 } catch (error) {
   // Handle validation error
 }
@@ -192,12 +192,16 @@ try {
 ### Input Validation (Always On)
 
 ```typescript
+import { zodAdapter } from '@kysera/repository'
+
 const userRepo = factory.create({
+  tableName: 'users',
+  mapRow: row => row,
   schemas: {
-    create: z.object({
+    create: zodAdapter(z.object({
       email: z.string().email(),
       name: z.string().min(1)
-    })
+    }))
   }
 })
 
@@ -208,11 +212,16 @@ await userRepo.create({ email: 'invalid' }) // Throws!
 ### Output Validation (Configurable)
 
 ```typescript
+import { zodAdapter } from '@kysera/repository'
+
 const userRepo = factory.create({
+  tableName: 'users',
+  mapRow: row => row,
   schemas: {
-    entity: UserSchema // For output validation
+    entity: zodAdapter(UserSchema), // For output validation
+    create: zodAdapter(CreateUserSchema)
   }
-  // Controlled via KYSERA_VALIDATION_MODE or NODE_ENV
+  // Output validation controlled via validateDbResults option or NODE_ENV
 })
 ```
 

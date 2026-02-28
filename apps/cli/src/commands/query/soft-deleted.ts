@@ -54,6 +54,8 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
     ])
   }
 
+  const tableName = options.table
+
   await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
     // Use schema-aware db for PostgreSQL
     const schemaDb = schema !== 'public' ? db.withSchema(schema) : db
@@ -65,7 +67,7 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
       querySpinner.start(`Restoring record ${options.restore}...`)
 
       await schemaDb
-        .updateTable(options.table)
+        .updateTable(tableName)
         .set({ [column]: null } as any)
         .where('id', '=', options.restore as any)
         .execute()
@@ -78,7 +80,7 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
       querySpinner.start('Counting soft-deleted records...')
 
       const countResult = await schemaDb
-        .selectFrom(options.table)
+        .selectFrom(tableName)
         .select(schemaDb.fn.countAll().as('count'))
         .where(column as any, 'is not', null)
         .executeTakeFirst()
@@ -94,7 +96,7 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
       if (!options.force) {
         const { confirm } = await import('@xec-sh/kit')
         const confirmed = await confirm({
-          message: `Permanently delete ${count} records from ${options.table}?`,
+          message: `Permanently delete ${count} records from ${tableName}?`,
           initialValue: false
         })
 
@@ -107,18 +109,18 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
       querySpinner.start('Purging soft-deleted records...')
 
       await schemaDb
-        .deleteFrom(options.table)
+        .deleteFrom(tableName)
         .where(column as any, 'is not', null)
         .execute()
 
-      querySpinner.succeed(`Purged ${count} records from ${options.table}`)
+      querySpinner.succeed(`Purged ${count} records from ${tableName}`)
       return
     }
 
-    querySpinner.start(`Querying soft-deleted records from ${options.table}...`)
+    querySpinner.start(`Querying soft-deleted records from ${tableName}...`)
 
     const results = await schemaDb
-      .selectFrom(options.table)
+      .selectFrom(tableName)
       .selectAll()
       .where(column as any, 'is not', null)
       .orderBy(column as any, 'desc')

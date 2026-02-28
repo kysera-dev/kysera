@@ -2,13 +2,19 @@ import type { SelectQueryBuilder, ExpressionBuilder } from 'kysely'
 import { sql } from 'kysely'
 import { BadRequestError } from './errors.js'
 import type { Dialect } from './types.js'
-import {
-  signCursor,
-  verifyCursor,
-  encryptCursor,
-  decryptCursor,
-  type CursorSecurityOptions
-} from './cursor-crypto.js'
+import type { CursorSecurityOptions } from './cursor-crypto.js'
+
+// Lazy-loaded cursor crypto functions to avoid pulling in node:crypto
+// unless cursor security features are actually used.
+// This preserves cross-runtime compatibility (Node.js, Bun, Deno)
+// for users who don't need cursor signing/encryption.
+let _cursorCrypto: typeof import('./cursor-crypto.js') | undefined
+
+async function getCursorCrypto(): Promise<typeof import('./cursor-crypto.js')> {
+  if (_cursorCrypto) return _cursorCrypto
+  _cursorCrypto = await import('./cursor-crypto.js')
+  return _cursorCrypto
+}
 
 /**
  * Pagination bounds constants
@@ -65,11 +71,11 @@ const decodeBase64 = (str: string): string => {
  * // Returns signed cursor: "Y3JlYXRlZF9hdA==:IjIwMjQtMDEtMDFUMDA6MDA6MDAuMDAwWiI=.signature"
  * ```
  */
-function encodeCursor<T>(
+async function encodeCursor<T>(
   orderBy: Array<{ column: keyof T & string }>,
   lastRow: T,
   security?: CursorSecurityOptions
-): string {
+): Promise<string> {
   if (orderBy.length === 1) {
     // Single column optimization: encode column and value separately
     const column = orderBy[0]!.column
@@ -81,12 +87,13 @@ function encodeCursor<T>(
       const cursorObj = { [column]: value }
       let cursor = encodeBase64(JSON.stringify(cursorObj))
 
-      // Apply security if configured
+      // Apply security if configured (lazy-load crypto only when needed)
       if (security) {
+        const crypto = await getCursorCrypto()
         if (security.encrypt) {
-          cursor = encryptCursor(cursor, security.secret)
+          cursor = crypto.encryptCursor(cursor, security.secret)
         }
-        cursor = signCursor(cursor, security.secret, security.algorithm)
+        cursor = crypto.signCursor(cursor, security.secret, security.algorithm)
       }
 
       return cursor
@@ -96,12 +103,13 @@ function encodeCursor<T>(
     const valueB64 = encodeBase64(JSON.stringify(value))
     let cursor = `${columnB64}:${valueB64}`
 
-    // Apply security if configured
+    // Apply security if configured (lazy-load crypto only when needed)
     if (security) {
+      const crypto = await getCursorCrypto()
       if (security.encrypt) {
-        cursor = encryptCursor(cursor, security.secret)
+        cursor = crypto.encryptCursor(cursor, security.secret)
       }
-      cursor = signCursor(cursor, security.secret, security.algorithm)
+      cursor = crypto.signCursor(cursor, security.secret, security.algorithm)
     }
 
     return cursor
@@ -118,14 +126,15 @@ function encodeCursor<T>(
 
   let cursor = encodeBase64(JSON.stringify(cursorObj))
 
-  // Apply security if configured
+  // Apply security if configured (lazy-load crypto only when needed)
   if (security) {
+    const crypto = await getCursorCrypto()
     if (security.encrypt) {
       // Encrypt first, then optionally sign
-      cursor = encryptCursor(cursor, security.secret)
+      cursor = crypto.encryptCursor(cursor, security.secret)
     }
     // Sign the cursor (or encrypted cursor)
-    cursor = signCursor(cursor, security.secret, security.algorithm)
+    cursor = crypto.signCursor(cursor, security.secret, security.algorithm)
   }
 
   return cursor
@@ -163,16 +172,17 @@ function encodeCursor<T>(
  * // Verifies signature and returns: { created_at: "2024-01-01T00:00:00.000Z" }
  * ```
  */
-function decodeCursor(cursor: string, security?: CursorSecurityOptions): Record<string, unknown> {
+async function decodeCursor(cursor: string, security?: CursorSecurityOptions): Promise<Record<string, unknown>> {
   let decodedCursor = cursor
 
-  // Apply security verification/decryption if configured
+  // Apply security verification/decryption if configured (lazy-load crypto only when needed)
   if (security) {
+    const crypto = await getCursorCrypto()
     // Verify signature first
-    decodedCursor = verifyCursor(decodedCursor, security.secret, security.algorithm)
+    decodedCursor = crypto.verifyCursor(decodedCursor, security.secret, security.algorithm)
     // Decrypt if encryption was enabled
     if (security.encrypt) {
-      decodedCursor = decryptCursor(decodedCursor, security.secret)
+      decodedCursor = crypto.decryptCursor(decodedCursor, security.secret)
     }
   }
 
@@ -423,7 +433,7 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
     // Decode and validate cursor
     let decoded: Record<string, unknown>
     try {
-      decoded = decodeCursor(cursor, security)
+      decoded = await decodeCursor(cursor, security)
     } catch (error) {
       throw new BadRequestError(
         `Invalid pagination cursor: unable to decode - ${error instanceof Error ? error.message : String(error)}`
@@ -527,11 +537,11 @@ export async function paginateCursor<DB, TB extends keyof DB, O>(
 
   // Encode cursors from first and last rows (optimized for single-column cursors)
   const nextCursor =
-    hasNext && data.length > 0 ? encodeCursor(orderBy, data[data.length - 1] as O, security) : undefined
+    hasNext && data.length > 0 ? await encodeCursor(orderBy, data[data.length - 1] as O, security) : undefined
 
   // prevCursor is the first row of current page - allows going back
   // Only set if we have a cursor (meaning we're not on first page) and we have data
-  const prevCursor = cursor && data.length > 0 ? encodeCursor(orderBy, data[0] as O, security) : undefined
+  const prevCursor = cursor && data.length > 0 ? await encodeCursor(orderBy, data[0] as O, security) : undefined
 
   const result: PaginatedResult<O> = {
     data,

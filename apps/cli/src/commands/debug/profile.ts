@@ -209,13 +209,13 @@ async function getQueryPlan(
   try {
     if (dialect === 'postgres') {
       const result = await db.executeQuery(db.raw(`EXPLAIN ANALYZE ${query}`))
-      return result.rows
+      return result.rows as PostgresExplainTextRow[]
     } else if (dialect === 'mysql') {
       const result = await db.executeQuery(db.raw(`EXPLAIN ${query}`))
-      return result.rows
+      return result.rows as MySQLPlan[]
     } else if (dialect === 'sqlite') {
       const result = await db.executeQuery(db.raw(`EXPLAIN QUERY PLAN ${query}`))
-      return result.rows
+      return result.rows as SQLitePlan[]
     }
     return null
   } catch (error) {

@@ -162,7 +162,7 @@ interface SoftDeleteMethods<T> {
 
 | Method                | Description                          | Returns                       | Throws                                      |
 | --------------------- | ------------------------------------ | ----------------------------- | ------------------------------------------- |
-| `softDeleteMany(ids)` | Soft deletes multiple records        | Array of soft-deleted records | `NotFoundError` if any record doesn't exist |
+| `softDeleteMany(ids)` | Soft deletes multiple records        | Array of soft-deleted records | Warns if any records not found (returns partial results) |
 | `restoreMany(ids)`    | Restores multiple records            | Array of restored records     | N/A                                         |
 | `hardDeleteMany(ids)` | Permanently deletes multiple records | void                          | N/A                                         |
 

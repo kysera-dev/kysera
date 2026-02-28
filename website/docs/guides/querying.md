@@ -107,6 +107,12 @@ const nameSearch = await userRepo.find({
 })
 ```
 
+:::info LIKE Pattern Escaping
+The `$contains`, `$startsWith`, and `$endsWith` operators automatically escape special LIKE characters (`%`, `_`, `\`) in user input and add an `ESCAPE '\'` clause to the generated SQL. This prevents unintended wildcard matching when user input contains these characters.
+
+The `$like` and `$ilike` operators pass the pattern through as-is, so you control the wildcards yourself.
+:::
+
 ### NULL Checks
 
 ```typescript

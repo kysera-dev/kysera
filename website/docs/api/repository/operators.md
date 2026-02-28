@@ -123,40 +123,49 @@ const allMatch = await repo.find({
 |----------|---------------|-------------|
 | `$like` | `LIKE` | SQL LIKE pattern (use `%` for wildcards) |
 | `$ilike` | `ILIKE` | Case-insensitive LIKE (PostgreSQL only) |
-| `$contains` | `LIKE '%...%'` | Contains substring |
-| `$startsWith` | `LIKE '...%'` | Starts with value |
-| `$endsWith` | `LIKE '%...'` | Ends with value |
+| `$contains` | `LIKE '%...%' ESCAPE '\'` | Contains substring (auto-escaped) |
+| `$startsWith` | `LIKE '...%' ESCAPE '\'` | Starts with value (auto-escaped) |
+| `$endsWith` | `LIKE '%...' ESCAPE '\'` | Ends with value (auto-escaped) |
+
+**LIKE Escaping:**
+
+The `$contains`, `$startsWith`, and `$endsWith` operators automatically escape special LIKE characters (`%`, `_`, `\`) in the provided value. This prevents user input from being interpreted as wildcard patterns. The generated SQL uses an `ESCAPE '\'` clause.
+
+For example, `{ title: { $contains: '100%' } }` will match the literal string `100%` rather than treating `%` as a wildcard.
+
+The `$like` and `$ilike` operators do **not** escape special characters, allowing you to use `%` and `_` as wildcards intentionally.
 
 ```typescript
-// LIKE pattern
+// LIKE pattern (no escaping - wildcards work)
 const gmailUsers = await repo.find({
   where: {
     email: { $like: '%@gmail.com' }
   }
 })
 
-// Case-insensitive search (PostgreSQL only)
+// Case-insensitive search (PostgreSQL only, no escaping)
 const johns = await repo.find({
   where: {
     name: { $ilike: '%john%' }
   }
 })
 
-// Contains substring
+// Contains substring (special characters are escaped)
 const searchResults = await repo.find({
   where: {
     title: { $contains: 'typescript' }
   }
 })
 
-// Starts with
+// Starts with (special characters are escaped)
 const prefixedCodes = await repo.find({
   where: {
     code: { $startsWith: 'PRE_' }
+    // Matches literal 'PRE_...', does NOT treat _ as wildcard
   }
 })
 
-// Ends with
+// Ends with (special characters are escaped)
 const pdfFiles = await repo.find({
   where: {
     filename: { $endsWith: '.pdf' }

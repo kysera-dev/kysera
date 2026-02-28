@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createTestDatabase, seedTestData } from './setup/database.js'
-import { applyOffset, applyDateRange } from '../src/helpers.js'
+import { applyOffset, applyDateRange, formatTimestampForDb } from '../src/helpers.js'
 import type { Kysely } from 'kysely'
 import type { TestDatabase } from './setup/database.js'
 
@@ -417,6 +417,58 @@ describe('Query Helpers', () => {
       expect(result2[0]).toHaveProperty('id')
       expect(result2[0]).toHaveProperty('title')
       expect(result2[0]).not.toHaveProperty('content') // Not selected
+    })
+  })
+
+  describe('formatTimestampForDb', () => {
+    it('should return ISO string for postgres dialect', () => {
+      const date = new Date('2024-01-15T10:30:00.000Z')
+      const result = formatTimestampForDb(date, 'postgres')
+      expect(result).toBe('2024-01-15T10:30:00.000Z')
+    })
+
+    it('should return ISO string for sqlite dialect', () => {
+      const date = new Date('2024-01-15T10:30:00.000Z')
+      const result = formatTimestampForDb(date, 'sqlite')
+      expect(result).toBe('2024-01-15T10:30:00.000Z')
+    })
+
+    it('should return MySQL-compatible format for mysql dialect', () => {
+      const date = new Date('2024-01-15T10:30:00.000Z')
+      const result = formatTimestampForDb(date, 'mysql')
+      expect(result).toBe('2024-01-15 10:30:00.000')
+    })
+
+    it('should return MySQL-compatible format for mssql dialect', () => {
+      const date = new Date('2024-01-15T10:30:00.000Z')
+      const result = formatTimestampForDb(date, 'mssql')
+      expect(result).toBe('2024-01-15 10:30:00.000')
+    })
+
+    it('should default to ISO string when no dialect specified', () => {
+      const date = new Date('2024-01-15T10:30:00.000Z')
+      const result = formatTimestampForDb(date)
+      expect(result).toBe('2024-01-15T10:30:00.000Z')
+    })
+
+    it('should use current date when no date provided', () => {
+      const before = new Date()
+      const result = formatTimestampForDb()
+      const after = new Date()
+      const resultDate = new Date(result)
+      expect(resultDate.getTime()).toBeGreaterThanOrEqual(before.getTime())
+      expect(resultDate.getTime()).toBeLessThanOrEqual(after.getTime())
+    })
+
+    it('should use current date with mysql dialect', () => {
+      const before = new Date()
+      const result = formatTimestampForDb(undefined, 'mysql')
+      const after = new Date()
+      expect(result).not.toContain('T')
+      expect(result).not.toContain('Z')
+      const resultDate = new Date(result.replace(' ', 'T') + 'Z')
+      expect(resultDate.getTime()).toBeGreaterThanOrEqual(before.getTime())
+      expect(resultDate.getTime()).toBeLessThanOrEqual(after.getTime())
     })
   })
 })

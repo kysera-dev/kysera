@@ -13,7 +13,7 @@ Implementing efficient pagination with Kysera.
 When you don't need total count, use `applyOffset` for a ~50% performance boost:
 
 ```typescript
-import { applyOffset, MAX_LIMIT } from '@kysera/core'
+import { applyOffset } from '@kysera/core'
 
 // Simple pagination without COUNT(*)
 const users = await applyOffset(db.selectFrom('users').selectAll().orderBy('id'), {
@@ -38,7 +38,7 @@ async function loadMore(offset: number) {
 **Key features:**
 
 - No COUNT(\*) query
-- Limit: 1-100 (auto-bounded via `MAX_LIMIT = 100`)
+- Limit: 1-100 (auto-bounded; `applyOffset` uses an internal max of 100)
 - Compatible with PostgreSQL, MySQL, SQLite, and MSSQL
 
 **Bounds checking:**
@@ -46,7 +46,7 @@ async function loadMore(offset: number) {
 ```typescript
 // Limit is automatically clamped to valid range
 applyOffset(query, { limit: 0 }) // Uses 1 (minimum)
-applyOffset(query, { limit: 20000 }) // Uses 100 (MAX_LIMIT)
+applyOffset(query, { limit: 20000 }) // Uses 100 (internal max for applyOffset)
 applyOffset(query, { limit: -5 }) // Uses 1 (minimum)
 ```
 
@@ -55,7 +55,7 @@ applyOffset(query, { limit: -5 }) // Uses 1 (minimum)
 Traditional page-based pagination with total count.
 
 ```typescript
-import { paginate, MAX_LIMIT } from '@kysera/core'
+import { paginate } from '@kysera/core'
 
 const result = await paginate(
   db.selectFrom('posts').selectAll().where('status', '=', 'published'),
@@ -86,9 +86,9 @@ paginate(query, { page: 0 }) // Uses page 1 (minimum)
 paginate(query, { page: 15000 }) // Uses page 15000 (no upper bound on pages)
 paginate(query, { page: -5 }) // Uses page 1 (minimum)
 
-// Limit bounds (MAX_LIMIT = 100)
-paginate(query, { page: 1, limit: 0 }) // Uses limit 1 (minimum)
-paginate(query, { page: 1, limit: 20000 }) // Uses limit 100 (MAX_LIMIT)
+// Limit bounds (internal max = 10,000 for paginate/paginateCursor)
+paginate(query, { page: 1, limit: 0 }) // Uses limit 0 (special case: no results)
+paginate(query, { page: 1, limit: 20000 }) // Uses limit 10,000 (max)
 paginate(query, { page: 1, limit: -10 }) // Uses limit 1 (minimum)
 
 // MSSQL requires ORDER BY for offset pagination
@@ -114,14 +114,14 @@ paginate(
 | Simple to implement | O(n) at high pages             |
 | Page numbers        | Inconsistent with data changes |
 | Jump to any page    | Performance degrades           |
-| Built-in bounds     | Max limit of 100 rows per page |
+| Built-in bounds     | Max limit of 10,000 rows per page |
 
 ## Cursor Pagination
 
 Efficient keyset-based pagination.
 
 ```typescript
-import { paginateCursor, MAX_LIMIT } from '@kysera/core'
+import { paginateCursor } from '@kysera/core'
 
 // First page
 const page1 = await paginateCursor(db.selectFrom('posts').selectAll(), {
@@ -148,11 +148,9 @@ const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
 Cursor pagination also enforces limit bounds for safety:
 
 ```typescript
-import { MAX_LIMIT } from '@kysera/core' // MAX_LIMIT = 100
-
-// Limit bounds automatically enforced
-paginateCursor(query, { orderBy: [...], limit: 0 }) // Uses 1 (minimum)
-paginateCursor(query, { orderBy: [...], limit: 20000 }) // Uses 100 (MAX_LIMIT)
+// Limit bounds automatically enforced (internal max = 10,000)
+paginateCursor(query, { orderBy: [...], limit: 0 }) // Uses 0 (special case: no results)
+paginateCursor(query, { orderBy: [...], limit: 20000 }) // Uses 10,000 (max)
 paginateCursor(query, { orderBy: [...], limit: -10 }) // Uses 1 (minimum)
 
 // No page limit - cursor pagination scales to any dataset size

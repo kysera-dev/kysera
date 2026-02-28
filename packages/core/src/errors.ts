@@ -481,9 +481,10 @@ export class SoftDeleteError extends DatabaseError {
    *
    * @param message - Human-readable error message
    * @param detail - Optional additional context about the error
+   * @param code - Optional error code override for subclasses (defaults to SOFT_DELETE_ERROR)
    */
-  constructor(message: string, detail?: string) {
-    super(message, ErrorCodes.SOFT_DELETE_ERROR, detail)
+  constructor(message: string, detail?: string, code?: string) {
+    super(message, code ?? ErrorCodes.SOFT_DELETE_ERROR, detail)
     this.name = 'SoftDeleteError'
   }
 }
@@ -531,9 +532,7 @@ export class RecordNotDeletedError extends SoftDeleteError {
   ) {
     const tableInfo = tableName ? ` in table ${tableName}` : ''
     const message = `Record ${recordId} is not deleted${tableInfo}`
-    super(message, undefined)
-    // Override the code from parent class
-    ;(this as { code: string }).code = ErrorCodes.RECORD_NOT_DELETED
+    super(message, undefined, ErrorCodes.RECORD_NOT_DELETED)
     this.name = 'RecordNotDeletedError'
   }
 
@@ -576,9 +575,10 @@ export class AuditError extends DatabaseError {
    *
    * @param message - Human-readable error message
    * @param detail - Optional additional context about the error
+   * @param code - Optional error code override for subclasses (defaults to AUDIT_ERROR)
    */
-  constructor(message: string, detail?: string) {
-    super(message, ErrorCodes.AUDIT_ERROR, detail)
+  constructor(message: string, detail?: string, code?: string) {
+    super(message, code ?? ErrorCodes.AUDIT_ERROR, detail)
     this.name = 'AuditError'
   }
 }
@@ -629,9 +629,7 @@ export class AuditRestoreError extends AuditError {
     public readonly reason: string
   ) {
     const message = `Cannot restore audit ${auditId} (${operation}): ${reason}`
-    super(message, undefined)
-    // Override the code from parent class
-    ;(this as { code: string }).code = ErrorCodes.AUDIT_RESTORE_ERROR
+    super(message, undefined, ErrorCodes.AUDIT_RESTORE_ERROR)
     this.name = 'AuditRestoreError'
   }
 
@@ -681,9 +679,7 @@ export class AuditMissingValuesError extends AuditError {
    */
   constructor(public readonly auditId: number) {
     const message = `Audit log ${auditId} is missing old_values required for restoration`
-    super(message, undefined)
-    // Override the code from parent class
-    ;(this as { code: string }).code = ErrorCodes.AUDIT_MISSING_VALUES
+    super(message, undefined, ErrorCodes.AUDIT_MISSING_VALUES)
     this.name = 'AuditMissingValuesError'
   }
 
@@ -725,9 +721,10 @@ export class TimestampsError extends DatabaseError {
    *
    * @param message - Human-readable error message
    * @param detail - Optional additional context about the error
+   * @param code - Optional error code override for subclasses (defaults to TIMESTAMPS_ERROR)
    */
-  constructor(message: string, detail?: string) {
-    super(message, ErrorCodes.TIMESTAMPS_ERROR, detail)
+  constructor(message: string, detail?: string, code?: string) {
+    super(message, code ?? ErrorCodes.TIMESTAMPS_ERROR, detail)
     this.name = 'TimestampsError'
   }
 }
@@ -773,9 +770,7 @@ export class TimestampColumnMissingError extends TimestampsError {
     public readonly columnName: string
   ) {
     const message = `Table ${tableName} is missing required timestamp column: ${columnName}`
-    super(message, undefined)
-    // Override the code from parent class
-    ;(this as { code: string }).code = ErrorCodes.TIMESTAMP_COLUMN_MISSING
+    super(message, undefined, ErrorCodes.TIMESTAMP_COLUMN_MISSING)
     this.name = 'TimestampColumnMissingError'
   }
 
@@ -1046,11 +1041,35 @@ function parseMSSQLError(dbError: RawDatabaseError): DatabaseError {
  * }
  * ```
  */
+function hasMessageProperty(error: unknown): error is { message: string } {
+  return typeof error === 'object' && error !== null && 'message' in error
+}
+
+function isRawDatabaseError(error: object): error is RawDatabaseError {
+  return (
+    'message' in error ||
+    'code' in error ||
+    'sqlMessage' in error ||
+    'detail' in error ||
+    'constraint' in error
+  )
+}
+
 export function parseDatabaseError(
   error: unknown,
   dialect: Dialect = 'postgres'
 ): DatabaseError {
   if (!error || typeof error !== 'object' || Array.isArray(error)) {
+    return new DatabaseError('Unknown database error', ErrorCodes.DB_UNKNOWN)
+  }
+
+  // SQLite errors only use the message string, so handle before property validation
+  if (dialect === 'sqlite') {
+    const message = hasMessageProperty(error) ? error.message : ''
+    return parseSQLiteError(message)
+  }
+
+  if (!isRawDatabaseError(error)) {
     return new DatabaseError('Unknown database error', ErrorCodes.DB_UNKNOWN)
   }
 
@@ -1062,10 +1081,6 @@ export function parseDatabaseError(
 
   if (dialect === 'mysql' && dbError.code) {
     return parseMySQLError(dbError)
-  }
-
-  if (dialect === 'sqlite') {
-    return parseSQLiteError(dbError.message ?? '')
   }
 
   if (dialect === 'mssql') {

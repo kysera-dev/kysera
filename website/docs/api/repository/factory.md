@@ -26,14 +26,16 @@ interface RepositoryFactory<DB> {
 ### Usage
 
 ```typescript
+import { createRepositoryFactory, zodAdapter } from '@kysera/repository'
+
 const factory = createRepositoryFactory(db)
 
 const userRepo = factory.create({
   tableName: 'users',
   mapRow: row => row,
   schemas: {
-    create: CreateUserSchema,
-    update: UpdateUserSchema
+    create: zodAdapter(CreateUserSchema),
+    update: zodAdapter(UpdateUserSchema)
   }
 })
 ```
@@ -76,18 +78,19 @@ await db.transaction().execute(async (trx) => {
 
 ## createSimpleRepository
 
-Create a basic repository without factory pattern.
+Create a basic repository without factory pattern. Uses `nativeAdapter` (no validation) by default.
 
 ```typescript
-function createSimpleRepository<DB, TableName extends keyof DB, Entity, PK = number>(
+function createSimpleRepository<DB, TableName extends keyof DB & string, Entity, PK = number>(
   executor: Executor<DB>,
   tableName: TableName,
   mapRow: (row: Selectable<DB[TableName]>) => Entity,
   options?: {
-    primaryKey?: string | string[]
-    primaryKeyType?: 'number' | 'string' | 'uuid'
+    primaryKey?: PrimaryKeyColumn
+    primaryKeyType?: PrimaryKeyTypeHint
+    dialect?: DialectConfig
   }
-): SimpleRepository<Entity, PK>
+): Repository<Entity, DB, PK>
 ```
 
 ### Usage
@@ -101,23 +104,29 @@ const userRepo = createSimpleRepository(db, 'users', row => row, { primaryKey: '
 ### RepositoryConfig
 
 ```typescript
-interface RepositoryConfig<Table, Entity, PK = number> {
+interface RepositoryConfig<Table, Entity> {
   // Required
   tableName: string
   mapRow: (row: Selectable<Table>) => Entity
   schemas: {
-    create: z.ZodType
-    update?: z.ZodType
-    entity?: z.ZodType<Entity>
+    create: ValidationSchema            // Required input validation
+    update?: ValidationSchema           // Optional (uses create.partial() if omitted)
+    entity?: ValidationSchema<Entity>   // Optional result validation
   }
 
   // Optional
-  primaryKey?: string | string[] // Default: 'id'
-  primaryKeyType?: 'number' | 'string' | 'uuid'
-  validationStrategy?: 'none' | 'strict' // Default: 'strict'
-  // Output validation controlled via KYSERA_VALIDATION_MODE or NODE_ENV
+  schema?: string                              // PostgreSQL schema (e.g., 'auth', 'tenant_123')
+  primaryKey?: PrimaryKeyColumn                // Default: 'id'
+  primaryKeyType?: PrimaryKeyTypeHint          // Default: 'number'
+  dialect?: DialectConfig                      // Database dialect config
+  validationStrategy?: 'none' | 'strict'       // Default: 'strict'
+  validateDbResults?: boolean                   // Default: NODE_ENV === 'development'
 }
 ```
+
+:::info ValidationSchema
+The `schemas` property uses the `ValidationSchema` interface, not raw Zod types. Wrap Zod schemas with `zodAdapter()`, Valibot schemas with `valibotAdapter()`, TypeBox schemas with `typeboxAdapter()`, or use `nativeAdapter()` for no validation. See the [Validation API](/docs/api/repository/validation) for details.
+:::
 
 ### Row Mapping
 

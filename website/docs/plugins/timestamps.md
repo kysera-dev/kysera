@@ -149,20 +149,20 @@ timestampsPlugin({
 
 ### Batch Operations
 
-| Method                   | Description                      |
-| ------------------------ | -------------------------------- |
-| `createMany(inputs)`     | Create with automatic timestamps |
-| `updateMany(ids, input)` | Update with automatic timestamps |
-| `touchMany(ids)`         | Update only timestamps           |
+| Method                   | Description                      | Returns |
+| ------------------------ | -------------------------------- | ------- |
+| `createMany(inputs)`     | Create with automatic timestamps | `T[]`   |
+| `updateMany(ids, input)` | Update with automatic timestamps | `T[]`   |
+| `touchMany(ids)`         | Update only timestamps           | `void`  |
 
 ### Utilities
 
-| Method                              | Description             |
-| ----------------------------------- | ----------------------- |
-| `touch(id)`                         | Update only updated_at  |
-| `createWithoutTimestamps(input)`    | Create bypassing plugin |
-| `updateWithoutTimestamp(id, input)` | Update bypassing plugin |
-| `getTimestampColumns()`             | Get column names        |
+| Method                              | Description             | Returns                             |
+| ----------------------------------- | ----------------------- | ----------------------------------- |
+| `touch(id)`                         | Update only updated_at  | `void`                              |
+| `createWithoutTimestamps(input)`    | Create bypassing plugin | `T`                                 |
+| `updateWithoutTimestamp(id, input)` | Update bypassing plugin | `T`                                 |
+| `getTimestampColumns()`             | Get column names        | `{ createdAt: string; updatedAt: string }` |
 
 ## Usage Examples
 
@@ -215,8 +215,8 @@ const posts = await postRepo.createMany([
   { title: 'Post 3', content: '...' }
 ])
 
-// Update many - respects primaryKeyColumn configuration
-await postRepo.updateMany([1, 2, 3], { status: 'published' })
+// Update many - respects primaryKeyColumn configuration, returns updated records
+const updated = await postRepo.updateMany([1, 2, 3], { status: 'published' })
 
 // Touch many - respects primaryKeyColumn configuration
 await postRepo.touchMany([1, 2, 3, 4, 5])

@@ -92,6 +92,10 @@ async function getCircuitBreakers(config: any): Promise<Map<string, CircuitBreak
   // Check for circuit breaker state in a dedicated table or Redis
   const db = await getDatabaseConnection(config.database)
 
+  if (!db) {
+    return breakers
+  }
+
   try {
     // Check if circuit_breaker_state table exists
     const tables = await db
@@ -461,6 +465,10 @@ async function persistCircuitBreakerState(
     const config = await loadConfig()
     if (config?.database) {
       const db = await getDatabaseConnection(config.database)
+
+      if (!db) {
+        return
+      }
 
       for (const breaker of breakers.values()) {
         await db

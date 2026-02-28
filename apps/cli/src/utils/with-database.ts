@@ -2,7 +2,13 @@ import { Kysely } from 'kysely'
 import { loadConfig } from '../config/loader.js'
 import { getDatabaseConnection, type Database } from './database.js'
 import { CLIError } from './errors.js'
-import type { KyseraConfig } from '../config/schema.js'
+import type { KyseraConfig, DatabaseConfig } from '../config/schema.js'
+
+/**
+ * KyseraConfig with database guaranteed to be defined.
+ * Used in withDatabase handler where database config has been validated.
+ */
+export type KyseraConfigWithDatabase = KyseraConfig & { database: DatabaseConfig }
 import type { DatabaseInstance } from '../types/index.js'
 
 /**
@@ -54,7 +60,7 @@ export interface DatabaseContext {
 
 export async function withDatabase<T>(
   options: WithDatabaseOptions,
-  handler: (db: DatabaseInstance, config: KyseraConfig, schema: string) => Promise<T>
+  handler: (db: DatabaseInstance, config: KyseraConfigWithDatabase, schema: string) => Promise<T>
 ): Promise<T> {
   const config = await loadConfig(options.config)
 
@@ -65,7 +71,9 @@ export async function withDatabase<T>(
     ])
   }
 
-  const db = await getDatabaseConnection(config.database)
+  const validatedConfig = config as KyseraConfigWithDatabase
+
+  const db = await getDatabaseConnection(validatedConfig.database)
 
   if (!db) {
     throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
@@ -75,11 +83,11 @@ export async function withDatabase<T>(
   }
 
   // Determine schema: CLI option > config > default 'public'
-  const schema = options.schema || config.database.schema || 'public'
+  const schema = options.schema || validatedConfig.database.schema || 'public'
 
   try {
     // Cast to DatabaseInstance - the db has these methods at runtime
-    return await handler(db as DatabaseInstance, config, schema)
+    return await handler(db as DatabaseInstance, validatedConfig, schema)
   } finally {
     await db.destroy()
   }

@@ -19,7 +19,7 @@ npm install @kysera/core
 ## Overview
 
 **Dependencies:** None (peer: kysely >=0.28.8)
-**Database Support:** PostgreSQL, MySQL, SQLite
+**Database Support:** PostgreSQL, MySQL, SQLite, MSSQL
 
 ## Exports
 
@@ -38,8 +38,9 @@ export * from './helpers'
 export * from './types'
 export * from './logger'
 
-// Cursor Security
-export * from './cursor-crypto'
+// Cursor Security (only the type is re-exported from main entry)
+export type { CursorSecurityOptions } from './cursor-crypto'
+// Functions available via '@kysera/core/cursor-crypto' subpath import
 
 // Dialect Detection
 export * from './dialect-detection'
@@ -92,7 +93,7 @@ const result = await paginateCursor(query, {
 ```
 
 **Pagination Bounds:**
-- `MAX_PAGE`: 10,000 (maximum page number)
+- `MAX_PAGE`: 1,000,000 (maximum page number)
 - `MAX_LIMIT`: 10,000 (maximum items per page)
 - Default limit: 20 items
 - These bounds prevent excessive database load and memory usage
@@ -141,7 +142,7 @@ const myLogger = createPrefixedLogger('[myapp]', consoleLogger)
 Cryptographic functions for securing pagination cursors with HMAC signing and AES-256-GCM encryption.
 
 ```typescript
-import { signCursor, verifyCursor, encryptCursor, decryptCursor } from '@kysera/core'
+import { signCursor, verifyCursor, encryptCursor, decryptCursor } from '@kysera/core/cursor-crypto'
 
 // Sign a cursor with HMAC
 const signed = signCursor(cursor, 'my-secret-key')
@@ -237,7 +238,7 @@ interface KyseraLogger {
 
 ```typescript
 interface OffsetOptions {
-  /** Maximum rows to return (default: 20, max: 10,000) */
+  /** Maximum rows to return (default: 20, max: 100) */
   limit?: number
   /** Rows to skip (default: 0) */
   offset?: number
@@ -267,7 +268,7 @@ function applyOffset<DB, TB, O>(
 **Features:**
 
 - No COUNT(\*) query (~50% faster than paginate on large tables)
-- Limit bounds: 1-10,000 (prevents accidental large queries)
+- Limit bounds: 1-100 (prevents accidental large queries)
 - Offset must be non-negative
 - SQLite compatible (auto-adds LIMIT when OFFSET is used)
 
@@ -334,13 +335,13 @@ const countsByStatus = await executeGroupedCount(db.selectFrom('users'), 'status
 
 ### paginateCursorSimple
 
-Simple cursor-based pagination without complex ordering requirements.
+Simple cursor-based pagination that uses `id` column in ascending order. A convenience wrapper around `paginateCursor`.
 
 ```typescript
 async function paginateCursorSimple<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
-  options: SimpleCursorOptions
-): Promise<CursorPaginatedResult<O>>
+  options?: PaginationOptions
+): Promise<PaginatedResult<O>>
 ```
 
 **Example:**
@@ -350,10 +351,9 @@ import { paginateCursorSimple } from '@kysera/core'
 
 const result = await paginateCursorSimple(db.selectFrom('posts').selectAll(), {
   limit: 20,
-  cursor: lastCursor,
-  cursorColumn: 'id'
+  cursor: lastCursor
 })
-// { items: [...], nextCursor: '...', hasMore: true }
+// { data: [...], pagination: { limit: 20, hasNext: true, hasPrev: true, nextCursor: '...', prevCursor: '...' } }
 ```
 
 ## Plugin Base Utilities

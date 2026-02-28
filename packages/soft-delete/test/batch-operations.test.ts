@@ -96,14 +96,15 @@ describe('Soft Delete Plugin - Batch Operations', () => {
       expect(allUsers).toHaveLength(3)
     })
 
-    it('should throw error if any record not found', async () => {
+    it('should warn and return partial results if any record not found', async () => {
       const allUsers = await userRepo.findAll()
       const validId = allUsers[0]!.id
       const invalidId = 99999
 
-      await expect(userRepo.softDeleteMany([validId, invalidId])).rejects.toThrow(
-        'Records not found'
-      )
+      // H-10: softDeleteMany no longer throws on missing records, returns partial results
+      const result = await userRepo.softDeleteMany([validId, invalidId])
+      expect(result).toHaveLength(1)
+      expect(result[0]!.id).toBe(validId)
     })
 
     it('should support both numeric and string IDs', async () => {
@@ -335,16 +336,9 @@ describe('Soft Delete Plugin - Batch Operations', () => {
       const allUsers = await userRepo.findAll()
       const aliceId = allUsers.find((u: TestUser) => u.name === 'Alice')!.id
 
-      // Soft delete with duplicate IDs - IN clause handles duplicates automatically
-      // This will only match one record even though ID appears multiple times
-      // We expect this to fail because softDeleteMany verifies count matches
-      await expect(userRepo.softDeleteMany([aliceId, aliceId, aliceId])).rejects.toThrow(
-        'Records not found'
-      )
-
-      // Better approach: deduplicate before calling
-      const uniqueIds = Array.from(new Set([aliceId, aliceId, aliceId]))
-      const deletedUsers = await userRepo.softDeleteMany(uniqueIds)
+      // H-10: softDeleteMany no longer throws on count mismatch, just warns
+      // IN clause deduplicates automatically, so 3 duplicates → 1 result
+      const deletedUsers = await userRepo.softDeleteMany([aliceId, aliceId, aliceId])
 
       expect(deletedUsers).toHaveLength(1)
       expect(deletedUsers[0]!.name).toBe('Alice')

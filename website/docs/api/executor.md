@@ -149,8 +149,8 @@ await destroyExecutor(executor)
 
 - Calls `onDestroy()` hook for each plugin in reverse order (dependencies last)
 - Ignores plugins without `onDestroy` hook
-- Errors in cleanup hooks are logged but don't throw (best-effort cleanup)
-- Safe to call multiple times (no-op after first call)
+- Errors in `onDestroy` hooks propagate (not caught internally)
+- Calling multiple times will invoke `onDestroy` hooks again -- ensure you only call it once
 
 ### createExecutorSync
 
@@ -498,6 +498,16 @@ interface Plugin {
 }
 ```
 
+**Error Wrapping in interceptQuery:**
+
+If a plugin's `interceptQuery` throws an error, the executor wraps it with context information:
+
+```
+Plugin "my-plugin" threw during interceptQuery for select on "users": <original error message>
+```
+
+This applies both to automatic interception (via the proxy) and manual `applyPlugins()` calls.
+
 **Plugin Hooks:**
 
 | Hook               | When Called                                   | Use Case                                |
@@ -812,15 +822,28 @@ extendRepository<T extends object>(repo: T): T {
 The executor intercepts these Kysely methods to apply plugins:
 
 ```typescript
-const INTERCEPTED_METHODS = {
-  selectFrom: 'select',
-  insertInto: 'insert',
-  updateTable: 'update',
-  deleteFrom: 'delete',
-  replaceInto: 'replace',  // MySQL REPLACE
-  mergeInto: 'merge'       // SQL MERGE (Kysely 0.28.x)
-} as const
+const INTERCEPTED_METHODS = [
+  'selectFrom',
+  'insertInto',
+  'updateTable',
+  'deleteFrom',
+  'replaceInto', // MySQL REPLACE
+  'mergeInto'    // SQL MERGE (Kysely 0.28.x)
+] as const
+
+type InterceptedMethod = (typeof INTERCEPTED_METHODS)[number]
 ```
+
+The method-to-operation mapping is handled internally:
+
+| Method           | Operation   |
+| ---------------- | ----------- |
+| `selectFrom`     | `'select'`  |
+| `insertInto`     | `'insert'`  |
+| `updateTable`    | `'update'`  |
+| `deleteFrom`     | `'delete'`  |
+| `replaceInto`    | `'replace'` |
+| `mergeInto`      | `'merge'`   |
 
 **Method Interception:**
 
@@ -850,13 +873,13 @@ const executor = await createExecutor(db, [softDeletePlugin()])
 const users = await executor.selectFrom('users').selectAll().execute()
 // WHERE deleted_at IS NULL is added
 
-// ❌ Plugin NOT intercepted (starting with .with, not selectFrom)
+// ✅ Plugin intercepted inside CTE (.with() is intercepted)
 const result = await executor
   .with('active_users', qb => qb.selectFrom('users').selectAll())
   .selectFrom('active_users')
   .selectAll()
   .execute()
-// No deleted_at filter added (limitation - see below)
+// soft-delete filter applied inside CTE definition
 ```
 
 ## Limitations
@@ -883,34 +906,29 @@ const users = await executor.selectFrom('users').selectAll().execute()
 
 ### 2. CTEs (Common Table Expressions)
 
-Queries starting with `.with()` are not intercepted:
+CTEs using `.with()` and `.withRecursive()` **are** intercepted. The executor wraps the callback so that queries inside the CTE definition go through the plugin proxy, and the result of `.with()` is also wrapped:
 
 ```typescript
 const executor = await createExecutor(db, [softDeletePlugin()])
 
-// ❌ NO plugin filtering on CTE definition
+// ✅ Plugin filtering applied inside CTE
 const result = await executor
   .with('active_users', qb =>
-    qb.selectFrom('users').selectAll() // No soft-delete filter here!
+    qb.selectFrom('users').selectAll() // soft-delete filter applied here
   )
   .selectFrom('active_users')
   .selectAll()
   .execute()
 
-// ✅ Workaround: Apply plugins manually in CTE
+// ✅ Recursive CTEs also intercepted
 const result = await executor
-  .with('active_users', qb =>
-    qb
-      .selectFrom('users')
-      .selectAll()
-      .where('deleted_at', 'is', null) // Manual filter
+  .withRecursive('tree', qb =>
+    qb.selectFrom('categories').selectAll() // plugins applied
   )
-  .selectFrom('active_users')
+  .selectFrom('tree')
   .selectAll()
   .execute()
 ```
-
-**Workaround:** Manually apply filters in CTE definitions or use `applyPlugins()` helper.
 
 ### 3. Dynamic Query Building
 

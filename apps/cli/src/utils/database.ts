@@ -610,7 +610,10 @@ class ConnectionPool {
     if (typeof config.connection === 'string') {
       return config.connection
     }
-    return `${config.connection.host}:${config.connection.port}/${config.connection.database}`
+    if (config.connection) {
+      return `${config.connection.host}:${config.connection.port}/${config.connection.database}`
+    }
+    return config.database ?? 'default'
   }
 }
 

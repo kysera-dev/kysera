@@ -338,7 +338,14 @@ function createInterceptedMethod<DB>(
 
     for (const plugin of interceptors) {
       if (plugin.interceptQuery) {
-        qb = plugin.interceptQuery(qb, context)
+        try {
+          qb = plugin.interceptQuery(qb, context)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          throw new Error(
+            `Plugin "${plugin.name}" threw during interceptQuery for ${context.operation} on "${context.table}": ${message}`
+          )
+        }
       }
     }
 
@@ -828,7 +835,14 @@ export function applyPlugins<QB>(
   let result = qb
   for (const plugin of plugins) {
     if (plugin.interceptQuery) {
-      result = plugin.interceptQuery(result, context)
+      try {
+        result = plugin.interceptQuery(result, context)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        throw new Error(
+          `Plugin "${plugin.name}" threw during interceptQuery for ${context.operation} on "${context.table}": ${message}`
+        )
+      }
     }
   }
   return result

@@ -175,29 +175,8 @@ describe('withTransaction', () => {
     expect(setIsolationLevelMock).toHaveBeenCalledWith('serializable')
   })
 
-  it.skip('should handle nested transactions with savepoints (requires real DB)', async () => {
-    // Note: Nested transaction support with savepoints requires real database connection
-    // because sql template literals need an executor provider.
-    // This is tested in integration tests with actual database instances.
-    const mockTrx = createMockTransaction()
-    // Mark as already in transaction
-    ;(mockTrx as unknown as Record<symbol, boolean>)[IN_TRANSACTION_SYMBOL] = true
-    const mockDb = createMockDbWithTransaction(mockTrx)
-
-    let nestedCalled = false
-    let nestedIsTransaction = false
-
-    await withTransaction(mockDb, async ctx => {
-      // Simulate a nested withTransaction call
-      await withTransaction(ctx.db, async nestedCtx => {
-        nestedCalled = true
-        nestedIsTransaction = nestedCtx.isTransaction
-      })
-    })
-
-    expect(nestedCalled).toBe(true)
-    expect(nestedIsTransaction).toBe(true)
-  })
+  // Nested transactions with savepoints are tested in postgres-schema.integration.test.ts
+  // with real database connections (sql template literals require an executor provider).
 
   it('should accept DbContext as first argument', async () => {
     const mockTrx = createMockTransaction()

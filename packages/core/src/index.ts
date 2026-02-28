@@ -24,8 +24,10 @@ export * from './error-codes.js'
 // Pagination
 export * from './pagination.js'
 
-// Cursor cryptography
-export * from './cursor-crypto.js'
+// Cursor cryptography - available via '@kysera/core/cursor-crypto' subpath import
+// Not re-exported here to avoid pulling in node:crypto for all consumers.
+// The CursorSecurityOptions type IS re-exported since it's used by pagination options.
+export type { CursorSecurityOptions } from './cursor-crypto.js'
 
 // Dialect detection
 export * from './dialect-detection.js'

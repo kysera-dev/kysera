@@ -281,13 +281,12 @@ const CreateUserSchema = z.object({
 
 // Method 1: Use safe validation (recommended)
 const validator = createValidator(zodAdapter(CreateUserSchema))
-const result = validator.validateSafe(userData)
+const user = validator.validateSafe(userData)
 
-if (!result.success) {
-  console.log(result.error) // ValidationError interface
-  // Return 400 Bad Request with error details
+if (!user) {
+  // Validation failed - return 400 Bad Request
 } else {
-  await userRepo.create(result.data)
+  await userRepo.create(user)
 }
 
 // Method 2: Use schema's safeParse directly

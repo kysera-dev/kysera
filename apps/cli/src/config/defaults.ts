@@ -85,22 +85,22 @@ export function mergeConfig(
     migrations: {
       ...defaults.migrations,
       ...userConfig.migrations
-    },
+    } as KyseraConfig['migrations'],
     plugins: {
       ...defaults.plugins,
       ...userConfig.plugins,
       audit: {
         ...defaults.plugins?.audit,
         ...userConfig.plugins?.audit
-      },
+      } as NonNullable<KyseraConfig['plugins']>['audit'],
       softDelete: {
         ...defaults.plugins?.softDelete,
         ...userConfig.plugins?.softDelete
-      },
+      } as NonNullable<KyseraConfig['plugins']>['softDelete'],
       timestamps: {
         ...defaults.plugins?.timestamps,
         ...userConfig.plugins?.timestamps
-      }
+      } as NonNullable<KyseraConfig['plugins']>['timestamps']
     },
     generate: {
       ...defaults.generate,
@@ -108,31 +108,31 @@ export function mergeConfig(
       style: {
         ...defaults.generate?.style,
         ...userConfig.generate?.style
-      }
-    },
+      } as NonNullable<KyseraConfig['generate']>['style']
+    } as KyseraConfig['generate'],
     health: {
       ...defaults.health,
       ...userConfig.health,
       alerts: {
         ...defaults.health?.alerts,
         ...userConfig.health?.alerts
-      }
-    },
+      } as NonNullable<KyseraConfig['health']>['alerts']
+    } as KyseraConfig['health'],
     testing: {
       ...defaults.testing,
       ...userConfig.testing,
       isolation: {
         ...defaults.testing?.isolation,
         ...userConfig.testing?.isolation
-      }
-    },
+      } as NonNullable<KyseraConfig['testing']>['isolation']
+    } as KyseraConfig['testing'],
     logging: {
       ...defaults.logging,
       ...userConfig.logging,
       queries: {
         ...defaults.logging?.queries,
         ...userConfig.logging?.queries
-      }
-    }
+      } as NonNullable<KyseraConfig['logging']>['queries']
+    } as KyseraConfig['logging']
   }
 }

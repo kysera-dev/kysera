@@ -84,8 +84,9 @@ async function configurePlugin(
     const config = (await loadConfig(options.config)) || {}
 
     if (!config.plugins) {
-      config.plugins = {}
+      config.plugins = {} as NonNullable<typeof config.plugins>
     }
+    const pluginsRecord = config.plugins as Record<string, PluginConfig | undefined>
 
     // Handle import first
     if (options.import) {
@@ -110,17 +111,17 @@ async function configurePlugin(
         options: plugins.map(p => ({
           label: p,
           value: p,
-          hint: config.plugins[p].enabled ? 'Enabled' : 'Disabled'
+          hint: pluginsRecord[p]?.enabled ? 'Enabled' : 'Disabled'
         }))
       })) as string
     }
 
     // Initialize plugin config if not exists
-    if (!config.plugins[name]) {
-      config.plugins[name] = { enabled: false }
+    if (!pluginsRecord[name]) {
+      pluginsRecord[name] = { enabled: false }
     }
 
-    const pluginConfig = config.plugins[name]
+    const pluginConfig = pluginsRecord[name]!
 
     // Handle export
     if (options.export) {
@@ -170,7 +171,7 @@ async function configurePlugin(
         options.json || (await confirm({ message: `Reset ${name} to default configuration?` }))
 
       if (shouldReset) {
-        config.plugins[name] = {
+        pluginsRecord[name] = {
           ...defaultConfig,
           enabled: pluginConfig.enabled
         }

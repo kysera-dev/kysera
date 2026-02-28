@@ -383,17 +383,16 @@ export function myPlugin(): Plugin {
 ### Use Bulk Operations
 
 ```typescript
-// Good: Bulk operations
+// Good: Bulk operations (validates all inputs, consistent error behavior)
 await userRepo.bulkUpdate([
   { id: 1, data: { status: 'active' } },
   { id: 2, data: { status: 'active' } }
 ])
-
-// Bad: Sequential operations
-for (const id of [1, 2]) {
-  await userRepo.update(id, { status: 'active' }) // Slow!
-}
 ```
+
+:::note
+`bulkUpdate` executes updates sequentially (one at a time) to ensure consistent ordering and predictable error behavior. For atomicity, wrap in a transaction: `await repo.transaction(async () => repo.bulkUpdate(updates))`. For true batch performance with many rows, consider using Kysely's raw query builder with a single UPDATE statement.
+:::
 
 ### Limit Debug Plugin Memory
 

@@ -54,6 +54,8 @@ async function queryByTimestamp(options: ByTimestampOptions): Promise<void> {
     ])
   }
 
+  const tableName = options.table
+
   await withDatabase({ config: options.config }, async (db, config) => {
     const querySpinner = spinner()
     const column = options.column || 'created_at'
@@ -115,9 +117,9 @@ async function queryByTimestamp(options: ByTimestampOptions): Promise<void> {
             ? `until ${toDate.toISOString()}`
             : 'all time'
 
-    querySpinner.start(`Querying ${options.table} ${timeRange}...`)
+    querySpinner.start(`Querying ${tableName} ${timeRange}...`)
 
-    let query = db.selectFrom(options.table).selectAll()
+    let query = db.selectFrom(tableName).selectAll()
 
     if (fromDate) {
       query = query.where(column as any, '>=', fromDate as any)

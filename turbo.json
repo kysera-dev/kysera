@@ -23,10 +23,12 @@
       "outputs": ["coverage/**"]
     },
     "lint": {
-      "dependsOn": []
+      "dependsOn": [],
+      "outputs": []
     },
     "typecheck": {
-      "dependsOn": ["^typecheck"]
+      "dependsOn": ["^typecheck"],
+      "outputs": []
     }
   }
 }

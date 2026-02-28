@@ -762,7 +762,10 @@ describe('Soft Delete Plugin - Bulk Operations', () => {
       const users = await db.selectFrom('users').selectAll().execute()
       const ids = [users[0]!.id, 99999]
 
-      await expect(repo.softDeleteMany(ids)).rejects.toThrow('not found')
+      // H-10: softDeleteMany no longer throws on missing records, returns partial results
+      const result = await repo.softDeleteMany(ids)
+      expect(result).toHaveLength(1)
+      expect((result[0] as TestUser).id).toBe(users[0]!.id)
     })
   })
 
@@ -1196,65 +1199,9 @@ describe('Soft Delete Plugin - Integration with Other Plugins', () => {
     })
   })
 
-  describe('Multiple soft delete plugins for different configurations', () => {
-    it.skip('should support multiple plugins with different configs - SKIPPED: Plugin validation now prevents duplicate names', async () => {
-      const userPlugin = softDeletePlugin({
-        tables: ['users'],
-        deletedAtColumn: 'deleted_at'
-      })
-
-      const postPlugin = softDeletePlugin({
-        tables: ['posts'],
-        deletedAtColumn: 'removed_at'
-      })
-
-      const orm = await createORM(db, [userPlugin, postPlugin])
-
-      const userRepo = orm.createRepository(executor => {
-        const base = createRepositoryFactory(executor)
-        return base.create({
-          tableName: 'users' as keyof ComprehensiveTestDatabase,
-          mapRow: row => row as TestUser,
-          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) }
-        })
-      }) as SoftDeleteRepository<TestUser, ComprehensiveTestDatabase>
-
-      const postRepo = orm.createRepository(executor => {
-        const base = createRepositoryFactory(executor)
-        return base.create({
-          tableName: 'posts' as keyof ComprehensiveTestDatabase,
-          mapRow: row => row as TestPost,
-          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) }
-        })
-      }) as SoftDeleteRepository<TestPost, ComprehensiveTestDatabase>
-
-      // Both repos should have soft delete
-      expect(userRepo.softDelete).toBeDefined()
-      expect(postRepo.softDelete).toBeDefined()
-
-      // Delete from both
-      const users = await db.selectFrom('users').selectAll().execute()
-      const posts = await db.selectFrom('posts').selectAll().execute()
-
-      await userRepo.softDelete(users[0]!.id)
-      await postRepo.softDelete(posts[0]!.id)
-
-      // Verify using correct columns
-      const deletedUser = await db
-        .selectFrom('users')
-        .selectAll()
-        .where('id', '=', users[0]!.id)
-        .executeTakeFirst()
-      expect(deletedUser?.deleted_at).not.toBeNull()
-
-      const deletedPost = await db
-        .selectFrom('posts')
-        .selectAll()
-        .where('id', '=', posts[0]!.id)
-        .executeTakeFirst()
-      expect(deletedPost?.removed_at).not.toBeNull()
-    })
-  })
+  // Note: Multiple soft-delete plugins with different configs per table are not supported.
+  // Plugin validation prevents duplicate plugin names. Use a single softDeletePlugin with
+  // the `tables` option to scope soft-delete to specific tables.
 })
 
 // =============================================================================

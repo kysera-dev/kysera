@@ -1,4 +1,5 @@
 import type { SelectQueryBuilder } from 'kysely'
+import type { Dialect } from './types.js'
 
 /**
  * SQLite maximum row limit (max 32-bit signed integer)
@@ -327,14 +328,14 @@ export function applyDateRange<DB, TB extends keyof DB, O>(
 
   // Apply start date filter (inclusive)
   if (options?.from) {
-    // Convert Date to ISO string for SQLite compatibility
+    // Convert Date to ISO string — Kysely drivers handle parameterization
     const fromValue = options.from instanceof Date ? options.from.toISOString() : options.from
     q = q.where(column as never, '>=', fromValue as never)
   }
 
   // Apply end date filter (inclusive)
   if (options?.to) {
-    // Convert Date to ISO string for SQLite compatibility
+    // Convert Date to ISO string — Kysely drivers handle parameterization
     const toValue = options.to instanceof Date ? options.to.toISOString() : options.to
     q = q.where(column as never, '<=', toValue as never)
   }
@@ -603,6 +604,35 @@ export interface TableFilterConfig {
  * }
  * ```
  */
+/**
+ * Format a Date as a database-compatible timestamp string.
+ *
+ * Produces dialect-appropriate format:
+ * - **mysql/mssql**: `YYYY-MM-DD HH:MM:SS.mmm` — MySQL/MSSQL DATETIME/TIMESTAMP
+ *   columns reject ISO 8601's `T` separator and `Z` suffix.
+ * - **postgres/sqlite** (default): ISO 8601 (`YYYY-MM-DDTHH:MM:SS.mmmZ`) — PostgreSQL
+ *   accepts ISO 8601 natively; SQLite stores as TEXT so any format works, and ISO 8601
+ *   is correctly parseable by `new Date()` as UTC.
+ *
+ * @param date - Date to format (defaults to `new Date()`)
+ * @param dialect - Target database dialect (defaults to 'postgres' → ISO 8601)
+ * @returns Formatted timestamp string
+ *
+ * @example
+ * ```typescript
+ * formatTimestampForDb() // '2024-01-15T10:30:00.000Z'
+ * formatTimestampForDb(new Date(), 'mysql') // '2024-01-15 10:30:00.000'
+ * formatTimestampForDb(new Date(), 'postgres') // '2024-01-15T10:30:00.000Z'
+ * ```
+ */
+export function formatTimestampForDb(date?: Date, dialect?: Dialect): string {
+  const d = date ?? new Date()
+  if (dialect === 'mysql' || dialect === 'mssql') {
+    return d.toISOString().replace('T', ' ').replace('Z', '')
+  }
+  return d.toISOString()
+}
+
 export function shouldApplyToTable(tableName: string, config: TableFilterConfig): boolean {
   // Whitelist takes precedence
   if (config.tables && config.tables.length > 0) {

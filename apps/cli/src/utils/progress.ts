@@ -142,7 +142,7 @@ export class ProgressTracker extends EventEmitter {
    * Format progress message
    */
   private formatMessage(message?: string, details?: string): string {
-    const parts = []
+    const parts: string[] = []
 
     if (message) {
       parts.push(message)
@@ -383,7 +383,7 @@ export async function batchWithProgress<T, R>(
   processor: (batch: T[]) => Promise<R[]>,
   options: ProgressOptions = {}
 ): Promise<R[]> {
-  const batches = []
+  const batches: T[][] = []
   for (let i = 0; i < items.length; i += batchSize) {
     batches.push(items.slice(i, i + batchSize))
   }

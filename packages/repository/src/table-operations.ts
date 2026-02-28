@@ -86,10 +86,9 @@ interface DatabaseExecutorWithAdapter {
 }
 
 /**
- * Detect database dialect from Kysely internals (fallback mechanism)
- *
- * @deprecated This function relies on Kysely's internal implementation details
- * which may change across versions. Use explicit `DialectConfig` instead.
+ * Detect dialect from Kysely internals.
+ * @deprecated Prefer providing explicit DialectConfig in repository configuration.
+ * This function relies on Kysely's internal adapter class names which may change.
  *
  * **Why this exists:**
  * Provides backward compatibility for code that doesn't pass `DialectConfig`.
@@ -111,9 +110,9 @@ interface DatabaseExecutorWithAdapter {
  * ```
  *
  * @param db - Kysely database executor
- * @returns Detected dialect or null if detection fails
+ * @returns Detected dialect or 'postgres' as default fallback
  */
-function detectDialectFromInternals<DB>(db: Executor<DB>): Dialect | null {
+function detectDialectFromInternals<DB>(db: Executor<DB>): Dialect {
   try {
     // Type assertion is necessary here because we need to access internal Kysely properties
     // that aren't part of the public API. This is safe because we handle all errors.
@@ -131,11 +130,21 @@ function detectDialectFromInternals<DB>(db: Executor<DB>): Dialect | null {
       if (adapterName.includes('sqlite')) return 'sqlite'
     }
 
-    return null
+    // If we can't detect, log a warning and default to postgres (safest for RETURNING support)
+    console.warn(
+      '[Kysera] Could not detect database dialect from Kysely internals. ' +
+      'Please provide explicit dialect config. Defaulting to PostgreSQL behavior.'
+    )
+    return 'postgres'
   } catch (_error) {
     // Expected failure when accessing internal Kysely properties
     // This is an expected code path when adapter detection is not possible
-    return null
+    // If we can't detect, log a warning and default to postgres (safest for RETURNING support)
+    console.warn(
+      '[Kysera] Could not detect database dialect from Kysely internals. ' +
+      'Please provide explicit dialect config. Defaulting to PostgreSQL behavior.'
+    )
+    return 'postgres'
   }
 }
 
@@ -560,44 +569,50 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     async insertMany(data: unknown[]): Promise<SelectTable[]> {
       if (usesMySQL) {
         // MySQL doesn't support RETURNING for bulk inserts
-        // We need to insert each row and fetch it back
-        const results: SelectTable[] = []
+        // Wrap in transaction to prevent partial commits on failure
+        const schema = opts.schema
+        return db.transaction().execute(async (trx) => {
+          const results: SelectTable[] = []
+          const trxWithSchema = schema ? trx.withSchema(schema) : trx
 
-        for (const item of data) {
-          const result = await db
-            .insertInto(tableName)
-            .values(item as Parameters<InsertQueryBuilder<DB, TableName, unknown>['values']>[0])
-            .executeTakeFirst()
+          for (const item of data) {
+            const result = await trxWithSchema
+              .insertInto(tableName)
+              .values(item as Parameters<InsertQueryBuilder<DB, TableName, unknown>['values']>[0])
+              .executeTakeFirst()
 
-          // Type assertion needed: MySQL returns insertId which isn't in Kysely's type definitions
-          const insertResult = result as unknown as InsertResult
+            // Type assertion needed: MySQL returns insertId which isn't in Kysely's type definitions
+            const insertResult = result as unknown as InsertResult
 
-          let lookupKey: PrimaryKeyInput
+            let lookupKey: PrimaryKeyInput
 
-          if (
-            pkConfig.type === 'number' &&
-            !isCompositeKey(pkConfig.columns) &&
-            insertResult.insertId
-          ) {
-            lookupKey = Number(insertResult.insertId)
-          } else {
-            lookupKey = extractPrimaryKey(item, pkConfig)
-          }
+            if (
+              pkConfig.type === 'number' &&
+              !isCompositeKey(pkConfig.columns) &&
+              insertResult.insertId
+            ) {
+              lookupKey = Number(insertResult.insertId)
+            } else {
+              lookupKey = extractPrimaryKey(item, pkConfig)
+            }
 
-          // Fetch the inserted record
-          const selectQuery = dbWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<
-            DB,
-            TableName
-          >
-          const queryWithWhere = buildWherePrimaryKey(selectQuery, pkConfig, lookupKey)
-          const record = await queryWithWhere.executeTakeFirst()
+            // Fetch the inserted record
+            const selectQuery = trxWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<
+              DB,
+              TableName
+            >
+            const queryWithWhere = buildWherePrimaryKey(selectQuery, pkConfig, lookupKey)
+            const record = await queryWithWhere.executeTakeFirst()
 
-          if (record) {
+            if (!record) {
+              throw new DatabaseError('Failed to fetch created record', 'FETCH_FAILED', tableName)
+            }
+
             results.push(castResults<SelectTable>(record))
           }
-        }
 
-        return results
+          return results
+        })
       } else {
         // PostgreSQL and SQLite support RETURNING
         const result = await dbWithSchema
