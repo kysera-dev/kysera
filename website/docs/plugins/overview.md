@@ -95,6 +95,8 @@ interceptQuery(qb, context) {
 - `insertInto` → `'insert'`
 - `updateTable` → `'update'`
 - `deleteFrom` → `'delete'`
+- `replaceInto` → `'replace'` (MySQL REPLACE)
+- `mergeInto` → `'merge'` (SQL MERGE, Kysely 0.28.x)
 
 ### 2. Repository Extension (Repository only)
 
@@ -124,7 +126,7 @@ Plugins go through a complete lifecycle managed by the executor:
 
 1. **createORM** or **createExecutor** validates and initializes plugins
 2. **Executor** wraps Kysely with a Proxy that intercepts query-building methods
-3. **Query interception** applies to: `selectFrom`, `insertInto`, `updateTable`, `deleteFrom`
+3. **Query interception** applies to: `selectFrom`, `insertInto`, `updateTable`, `deleteFrom`, `replaceInto`, `mergeInto`
 4. **Repository extensions** add methods via `extendRepository()`
 5. **Transaction wrapping** preserves plugin behavior in transactions
 6. **Cleanup** happens via `onDestroy()` when executor is destroyed
@@ -132,12 +134,14 @@ Plugins go through a complete lifecycle managed by the executor:
 **Intercepted Methods:**
 
 ```typescript
-// From @kysera/executor/src/types.ts
+// From @kysera/executor/src/executor.ts
 const INTERCEPTED_METHODS = [
   'selectFrom',   // SELECT queries → 'select'
   'insertInto',   // INSERT queries → 'insert'
   'updateTable',  // UPDATE queries → 'update'
-  'deleteFrom'    // DELETE queries → 'delete'
+  'deleteFrom',   // DELETE queries → 'delete'
+  'replaceInto',  // MySQL REPLACE  → 'replace'
+  'mergeInto'     // SQL MERGE      → 'merge'
 ] as const
 ```
 
@@ -169,7 +173,7 @@ interface Plugin {
   /**
    * Query interception: Modify query builder before execution
    * Works in both Repository and DAL patterns
-   * Applied to: selectFrom, insertInto, updateTable, deleteFrom
+   * Applied to: selectFrom, insertInto, updateTable, deleteFrom, replaceInto, mergeInto
    */
   interceptQuery?<QB>(qb: QB, context: QueryBuilderContext): QB
 
@@ -187,11 +191,17 @@ interface Plugin {
 }
 
 interface QueryBuilderContext {
-  /** Type of operation: 'select' | 'insert' | 'update' | 'delete' */
-  readonly operation: 'select' | 'insert' | 'update' | 'delete'
+  /** Type of operation */
+  readonly operation: 'select' | 'insert' | 'update' | 'delete' | 'replace' | 'merge'
 
   /** Table name being queried */
   readonly table: string
+
+  /**
+   * Current schema context (if withSchema was called).
+   * undefined means default schema is being used.
+   */
+  readonly schema?: string
 
   /** Metadata shared across plugin chain */
   readonly metadata: Record<string, unknown>

@@ -452,46 +452,8 @@ describe('Soft Delete Plugin - Custom Primary Keys', () => {
   })
 
   describe('Mixed Primary Key Scenarios', () => {
-    it.skip('should handle different primary key types in same ORM - SKIPPED: Plugin validation now prevents duplicate names', async () => {
-      // Create plugins for different tables with different key columns
-      const productPlugin = softDeletePlugin({
-        primaryKeyColumn: 'uuid',
-        tables: ['products']
-      })
-
-      const customerPlugin = softDeletePlugin({
-        primaryKeyColumn: 'customer_id',
-        tables: ['customers']
-      })
-
-      const orderPlugin = softDeletePlugin({
-        primaryKeyColumn: 'id',
-        tables: ['orders']
-      })
-
-      // Create ORM with multiple plugins
-      const orm = await createORM(db, [productPlugin, customerPlugin, orderPlugin])
-
-      // Create repositories
-      const productRepo = orm.createRepository(executor => {
-        const base = createRepositoryFactory(executor)
-        return base.create({
-          tableName: 'products' as keyof CustomKeyDatabase,
-          mapRow: row => row as Product,
-          schemas: { create: zodAdapter(z.any()), update: zodAdapter(z.any()) }
-        })
-      }) as any
-
-      // Soft delete a product by UUID
-      await productRepo.softDelete('prod-003-uuid')
-
-      // Verify
-      const foundProduct = await productRepo.findById('prod-003-uuid')
-      expect(foundProduct).toBeNull()
-
-      const allProducts = await productRepo.findAll()
-      expect(allProducts).toHaveLength(2)
-    })
+    // Note: Multiple soft-delete plugins with different primary key columns are not supported.
+    // Plugin validation prevents duplicate plugin names. Use a single plugin per ORM instance.
 
     it('should not affect tables not in the configured list', async () => {
       const plugin = softDeletePlugin({

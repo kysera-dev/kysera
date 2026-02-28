@@ -14,7 +14,7 @@ Kysera provides **three transaction patterns** for different use cases, built on
 |---------|---------|----------|-----------|---------|
 | **DAL `withTransaction`** | `@kysera/dal` | Functional queries, nested transactions | ✅ Yes | ✅ Yes |
 | **Repository ORM `transaction()`** | `@kysera/repository` | Multiple repositories, complex flows | ✅ Yes (via DAL) | ✅ Yes |
-| **Base Repository `transaction()`** | `@kysera/repository` | Single repository operations | ✅ Yes (via DAL) | ✅ Yes |
+| **Base Repository `transaction()`** | `@kysera/repository` | Single repository operations | ✅ Yes (via DAL) | ✅ Yes (via DAL) |
 
 :::tip Recommendation
 Use **Pattern 1** (DAL `withTransaction`) or **Pattern 2** (ORM `transaction()`) for most use cases. They provide savepoint support, plugin propagation, and better composability.
@@ -400,12 +400,12 @@ await withTransaction(executor, async (ctx) => {
 
 ```typescript
 await repo.transaction(async (trx) => {
-  // Raw transaction, NO plugin filters
+  // Plugin filters are applied (delegates to DAL's withTransaction internally)
   const users = await trx
     .selectFrom('users')
     .selectAll()
     .execute()
-  // Must manually add: .where('deleted_at', 'is', null)
+  // Soft-delete filter applied automatically if executor has softDeletePlugin
 })
 ```
 
@@ -688,8 +688,8 @@ describe('User Repository', () => {
 ### Use Base Repository `transaction()` if:
 
 ✅ Single repository, simple operation
-✅ No plugin requirements
-✅ No nested transaction needs
+✅ Want automatic plugin propagation (delegates to DAL internally)
+✅ Want savepoint support (via DAL delegation)
 ✅ Isolated, self-contained work
 
 ## Migration Guide

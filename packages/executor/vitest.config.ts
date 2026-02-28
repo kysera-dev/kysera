@@ -5,6 +5,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    exclude: [
+      // Integration tests require real PostgreSQL (TEST_POSTGRES env var)
+      ...(process.env['TEST_POSTGRES'] ? [] : ['test/postgres-schema.integration.test.ts'])
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

@@ -317,6 +317,16 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
       return createSchema.partial()
     }
 
+    // Fallback: if no update schema and create schema doesn't support partial(),
+    // use create schema directly but warn in development mode
+    if (getEnv('NODE_ENV') === 'development') {
+      console.warn(
+        '[Kysera] No update schema provided and create schema does not support partial(). ' +
+        'Using full create schema for updates, which requires all fields. ' +
+        'Provide an explicit update schema to fix this.'
+      )
+    }
+
     return schemas.create
   }
 
@@ -375,11 +385,12 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
       if (updates.length === 0) return []
 
       const updateSchema = getUpdateSchema()
+      const results: Entity[] = []
 
-      // Execute updates in parallel for better performance
-      // Note: If transaction atomicity is required, wrap the bulkUpdate call
-      // in a transaction at the application level
-      const promises = updates.map(async ({ id, data }) => {
+      // Execute updates sequentially to ensure consistent ordering and
+      // predictable error behavior. For atomicity, wrap in a transaction:
+      //   await repo.transaction(async () => repo.bulkUpdate(updates))
+      for (const { id, data } of updates) {
         const validatedInput = validateInput(data, updateSchema)
         const row = await operations.updateById(toPrimaryKeyInput(id), validatedInput)
 
@@ -387,15 +398,22 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
           throw new NotFoundError('Record', { id })
         }
 
-        return processRow(row)
-      })
+        results.push(processRow(row))
+      }
 
-      return Promise.all(promises)
+      return results
     },
 
     async bulkDelete(ids: PK[]): Promise<number> {
       if (ids.length === 0) return 0
-      return operations.deleteByIds(ids.map(toPrimaryKeyInput))
+      const deleted = await operations.deleteByIds(ids.map(toPrimaryKeyInput))
+      if (getEnv('NODE_ENV') === 'development' && deleted !== ids.length) {
+        console.warn(
+          `[Kysera] bulkDelete: expected to delete ${ids.length} records, but deleted ${deleted}. ` +
+          'Some records may not exist.'
+        )
+      }
+      return deleted
     },
 
     async find<Cols extends keyof Entity = keyof Entity>(

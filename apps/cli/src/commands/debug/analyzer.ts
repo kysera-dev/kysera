@@ -191,11 +191,11 @@ async function analyzePostgresQuery(
     const result = await db.executeQuery(db.raw(explainQuery))
 
     if (result.rows && result.rows.length > 0) {
-      const plan = result.rows[0]['QUERY PLAN']
+      const plan = (result.rows[0] as Record<string, unknown>)['QUERY PLAN']
       if (typeof plan === 'string') {
         analysis.executionPlan = JSON.parse(plan)
-      } else {
-        analysis.executionPlan = plan
+      } else if (Array.isArray(plan)) {
+        analysis.executionPlan = plan as Array<PostgresExplainOutput | MySQLPlan | SQLitePlan>
       }
 
       // Extract metrics from plan

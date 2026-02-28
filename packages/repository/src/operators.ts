@@ -320,6 +320,17 @@ function applyArrayOperator<DB, TB extends keyof DB>(
 }
 
 /**
+ * Escape special LIKE pattern characters in a user-provided value.
+ * Used by $contains, $startsWith, $endsWith to prevent unintended wildcard matching.
+ */
+function escapeLikeValue(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/%/g, '\\%')
+    .replace(/_/g, '\\_')
+}
+
+/**
  * Apply string operators ($like, $ilike, $contains, $startsWith, $endsWith)
  * @internal
  */
@@ -339,13 +350,19 @@ function applyStringOperator<DB, TB extends keyof DB>(
       conditions.push(eb(column as never, 'ilike', strValue as never))
       break
     case '$contains':
-      conditions.push(eb(column as never, 'like', `%${strValue}%` as never))
+      conditions.push(
+        sql`${sql.ref(column)} LIKE ${`%${escapeLikeValue(strValue)}%`} ESCAPE ${'\\'}` as unknown as ReturnType<typeof eb>
+      )
       break
     case '$startsWith':
-      conditions.push(eb(column as never, 'like', `${strValue}%` as never))
+      conditions.push(
+        sql`${sql.ref(column)} LIKE ${`${escapeLikeValue(strValue)}%`} ESCAPE ${'\\'}` as unknown as ReturnType<typeof eb>
+      )
       break
     case '$endsWith':
-      conditions.push(eb(column as never, 'like', `%${strValue}` as never))
+      conditions.push(
+        sql`${sql.ref(column)} LIKE ${`%${escapeLikeValue(strValue)}`} ESCAPE ${'\\'}` as unknown as ReturnType<typeof eb>
+      )
       break
   }
 }

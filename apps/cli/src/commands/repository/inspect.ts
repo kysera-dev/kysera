@@ -118,7 +118,7 @@ async function inspectRepository(options: InspectRepositoryOptions): Promise<voi
   const inspectSpinner = spinner()
 
   try {
-    let filePath: string
+    let filePath: string | undefined
 
     // Determine which file to inspect
     if (options.file) {
@@ -174,6 +174,11 @@ async function inspectRepository(options: InspectRepositoryOptions): Promise<voi
 
       filePath = selected as string
       inspectSpinner.start(`Inspecting ${path.basename(filePath)}...`)
+    }
+
+    if (!filePath) {
+      inspectSpinner.fail('No file selected')
+      return
     }
 
     // Check if file exists
@@ -274,7 +279,7 @@ function parseEntity(content: string): RepositoryInspection['entity'] | undefine
   const name = entityMatch[1]
   const bodyContent = entityMatch[2]
 
-  const properties: RepositoryInspection['entity']['properties'] = []
+  const properties: NonNullable<RepositoryInspection['entity']>['properties'] = []
   const propMatches = bodyContent.matchAll(/\s*(\w+)(\?)?:\s*([^;\n]+)(?:;|$)/gm)
 
   for (const match of propMatches) {
@@ -437,7 +442,7 @@ function parseSchema(content: string): RepositoryInspection['schema'] | undefine
     const name = zodMatch[1]
     const schemaBody = zodMatch[2]
 
-    const properties: RepositoryInspection['schema']['properties'] = []
+    const properties: NonNullable<RepositoryInspection['schema']>['properties'] = []
     const propMatches = schemaBody.matchAll(/(\w+):\s*z\.(\w+)\(\)([^,\n}]*)/gm)
 
     for (const match of propMatches) {

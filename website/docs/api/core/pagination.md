@@ -23,8 +23,9 @@ async function paginate<DB, TB, O>(
 
 ```typescript
 interface PaginationOptions {
-  page?: number // Page number (default: 1)
-  limit?: number // Items per page (default: 20, max: 10000)
+  page?: number // Page number (default: 1, max: 1,000,000)
+  limit?: number // Items per page (default: 20, max: 10,000)
+  cursor?: string // Cursor string for cursor-based pagination
   dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql' // Database dialect (optional)
 }
 ```
@@ -35,12 +36,14 @@ interface PaginationOptions {
 interface PaginatedResult<T> {
   data: T[]
   pagination: {
-    page: number
-    limit: number
-    total: number
-    totalPages: number
+    page?: number
+    limit?: number
+    total?: number
+    totalPages?: number
     hasNext: boolean
-    hasPrev: boolean
+    hasPrev?: boolean
+    nextCursor?: string
+    prevCursor?: string
   }
 }
 ```
@@ -88,11 +91,16 @@ interface CursorOptions<O> {
     column: keyof O & string
     direction: 'asc' | 'desc'
   }>
-  limit?: number // Default: 20, max: 10000
-  cursor?: string | null // Cursor from previous page
+  limit?: number // Default: 20, max: 10,000
+  cursor?: string // Cursor from previous page
   dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql' // Database dialect (optional)
+  security?: CursorSecurityOptions // Security options for cursor signing/encryption
 }
 ```
+
+:::tip Cursor Security
+The `security` option enables HMAC signing and/or AES-256-GCM encryption for cursors to prevent tampering. See the [Cursor Security section in @kysera/core](/docs/api/core#cursor-security) for details.
+:::
 
 ### Example
 
@@ -190,16 +198,16 @@ CREATE INDEX idx_posts_cursor ON posts (created_at DESC, id DESC);
 
 ## paginateCursorSimple
 
-Simplified cursor pagination with fewer options.
+Simplified cursor pagination that uses `id` column in ascending order. A convenience wrapper around `paginateCursor`.
 
 ```typescript
-async function paginateCursorSimple<DB, TB, O>(
+async function paginateCursorSimple<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
   options?: PaginationOptions
 ): Promise<PaginatedResult<O>>
 ```
 
-Uses default ordering by primary key.
+Internally calls `paginateCursor` with `orderBy: [{ column: 'id', direction: 'asc' }]`. The table must have an `id` column.
 
 ## Best Practices
 
@@ -230,7 +238,7 @@ CREATE INDEX idx_posts_pagination ON posts (created_at DESC, id DESC);
 ### 3. Limit Maximum Page Size
 
 ```typescript
-const limit = Math.min(options.limit ?? 20, 10000) // Max 10000
+const limit = Math.min(options.limit ?? 20, 10_000) // Max 10,000
 ```
 
 ## Database-Specific Behavior

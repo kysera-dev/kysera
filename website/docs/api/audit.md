@@ -171,43 +171,46 @@ const plugin = auditPlugin({
 
 When a repository is extended by the audit plugin, the following methods are added:
 
-### AuditMethods Interface
+### AuditRepositoryExtensions Interface
 
 ```typescript
-interface AuditMethods<T> {
+interface AuditRepositoryExtensions<T> {
   /**
    * Get change history for an entity
+   * Returns parsed entries with old_values/new_values as objects
    */
   getAuditHistory(
     entityId: string | number,
-    options?: { limit?: number; offset?: number }
-  ): Promise<AuditLogEntry[]>
+    options?: AuditPaginationOptions
+  ): Promise<ParsedAuditLogEntry[]>
 
   /**
    * Alias for getAuditHistory
    */
   getAuditLogs(
     entityId: string | number,
-    options?: { limit?: number; offset?: number }
-  ): Promise<AuditLogEntry[]>
+    options?: AuditPaginationOptions
+  ): Promise<ParsedAuditLogEntry[]>
 
   /**
-   * Get a specific audit log entry by ID
+   * Get a specific audit log entry by ID (raw, unparsed)
    */
   getAuditLog(auditId: number): Promise<AuditLogEntry | null>
 
   /**
    * Get all audit logs for this table with optional filters
+   * Returns parsed entries with old_values/new_values as objects
    */
-  getTableAuditLogs(filters?: AuditFilters): Promise<AuditLogEntry[]>
+  getTableAuditLogs(filters?: AuditFilters): Promise<ParsedAuditLogEntry[]>
 
   /**
    * Get all changes made by a specific user
+   * Returns parsed entries with old_values/new_values as objects
    */
   getUserChanges(
-    userId: string | number,
-    options?: { limit?: number; offset?: number }
-  ): Promise<AuditLogEntry[]>
+    userId: string,
+    options?: AuditPaginationOptions
+  ): Promise<ParsedAuditLogEntry[]>
 
   /**
    * Restore entity to a previous state from an audit log
@@ -223,8 +226,8 @@ Get the change history for a specific entity.
 ```typescript
 async getAuditHistory(
   entityId: string | number,
-  options?: { limit?: number; offset?: number }
-): Promise<AuditLogEntry[]>
+  options?: AuditPaginationOptions
+): Promise<ParsedAuditLogEntry[]>
 ```
 
 **Parameters:**
@@ -233,7 +236,7 @@ async getAuditHistory(
 - `options.limit` - Maximum number of entries
 - `options.offset` - Number of entries to skip
 
-**Returns:** Array of audit log entries, most recent first
+**Returns:** Array of parsed audit log entries, most recent first. The `old_values`, `new_values`, and `metadata` fields are automatically parsed from JSON strings into objects.
 
 **Example:**
 
@@ -247,14 +250,14 @@ const history = await userRepo.getAuditHistory(userId, {
   offset: 0
 })
 
-// Access changes
+// Access changes - values are already parsed (no JSON.parse needed)
 history.forEach(entry => {
   console.log(`${entry.operation} by ${entry.changed_by} at ${entry.changed_at}`)
   if (entry.old_values) {
-    console.log('Before:', JSON.parse(entry.old_values))
+    console.log('Before:', entry.old_values) // Already an object
   }
   if (entry.new_values) {
-    console.log('After:', JSON.parse(entry.new_values))
+    console.log('After:', entry.new_values) // Already an object
   }
 })
 ```
@@ -266,8 +269,8 @@ Alias for `getAuditHistory`.
 ```typescript
 async getAuditLogs(
   entityId: string | number,
-  options?: { limit?: number; offset?: number }
-): Promise<AuditLogEntry[]>
+  options?: AuditPaginationOptions
+): Promise<ParsedAuditLogEntry[]>
 ```
 
 ### getAuditLog
@@ -299,14 +302,14 @@ if (entry) {
 Get all audit logs for the table with optional filters.
 
 ```typescript
-async getTableAuditLogs(filters?: AuditFilters): Promise<AuditLogEntry[]>
+async getTableAuditLogs(filters?: AuditFilters): Promise<ParsedAuditLogEntry[]>
 ```
 
 **Parameters:**
 
 - `filters` - Optional filters for the query
 
-**Returns:** Array of audit log entries matching the filters
+**Returns:** Array of parsed audit log entries matching the filters
 
 **Example:**
 
@@ -345,18 +348,18 @@ Get all changes made by a specific user across this table.
 
 ```typescript
 async getUserChanges(
-  userId: string | number,
-  options?: { limit?: number; offset?: number }
-): Promise<AuditLogEntry[]>
+  userId: string,
+  options?: AuditPaginationOptions
+): Promise<ParsedAuditLogEntry[]>
 ```
 
 **Parameters:**
 
-- `userId` - ID of the user whose changes to retrieve
+- `userId` - ID of the user whose changes to retrieve (string)
 - `options.limit` - Maximum number of entries
 - `options.offset` - Number of entries to skip
 
-**Returns:** Array of audit log entries for the user
+**Returns:** Array of parsed audit log entries for the user
 
 **Example:**
 
@@ -428,15 +431,18 @@ type AuditOperation = 'INSERT' | 'UPDATE' | 'DELETE'
 Filters for querying audit logs.
 
 ```typescript
-interface AuditFilters {
+interface AuditFilters extends AuditPaginationOptions {
   /** Filter by operation type */
   operation?: AuditOperation
   /** Filter by user who made the change */
   userId?: string
-  /** Filter changes from this date */
-  startDate?: Date | string
-  /** Filter changes until this date */
-  endDate?: Date | string
+  /** Filter changes from this date - accepts Date, ISO string, or unix timestamp (ms) */
+  startDate?: Date | string | number
+  /** Filter changes until this date - accepts Date, ISO string, or unix timestamp (ms) */
+  endDate?: Date | string | number
+}
+
+interface AuditPaginationOptions {
   /** Maximum number of entries to return */
   limit?: number
   /** Number of entries to skip */
@@ -444,21 +450,35 @@ interface AuditFilters {
 }
 ```
 
-### Parsed Values
+### ParsedAuditLogEntry
 
-When accessing `old_values` and `new_values`, parse them as JSON:
+The query methods (`getAuditHistory`, `getAuditLogs`, `getTableAuditLogs`, `getUserChanges`) return `ParsedAuditLogEntry[]` where `old_values`, `new_values`, and `metadata` are automatically parsed from JSON strings into objects:
+
+```typescript
+interface ParsedAuditLogEntry {
+  id: number
+  table_name: string
+  entity_id: string
+  operation: string
+  old_values: Record<string, unknown> | null  // Parsed from JSON
+  new_values: Record<string, unknown> | null  // Parsed from JSON
+  changed_by: string | null
+  changed_at: Date | string
+  metadata: Record<string, unknown> | null    // Parsed from JSON
+}
+```
 
 ```typescript
 const history = await userRepo.getAuditHistory(userId)
 
+// Values are already parsed -- no JSON.parse needed
 history.forEach(entry => {
-  const oldValues = entry.old_values ? JSON.parse(entry.old_values) : null
-  const newValues = entry.new_values ? JSON.parse(entry.new_values) : null
-
-  console.log('Changed from:', oldValues)
-  console.log('Changed to:', newValues)
+  console.log('Changed from:', entry.old_values) // Already an object or null
+  console.log('Changed to:', entry.new_values)   // Already an object or null
 })
 ```
+
+**Note:** The `getAuditLog(auditId)` method returns a raw `AuditLogEntry` (with JSON strings), not a `ParsedAuditLogEntry`.
 
 ## Automatic Audit Logging
 

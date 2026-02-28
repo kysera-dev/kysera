@@ -119,7 +119,7 @@ await executor.transaction().execute(async trx => {
 
 - **Enables Unified Plugin System** - Plugins work with both Repository and DAL patterns
 - **Query Interception** - Automatic filtering (soft-delete, RLS) without code changes
-- **Zero Dependencies** - Minimal, focused package that both `@kysera/dal` and `@kysera/repository` depend on
+- **Minimal Dependencies** - Focused package that both `@kysera/dal` and `@kysera/repository` depend on
 - **Transaction Propagation** - Plugins automatically work in nested transactions
 
 ### Layer 1.5: Infrastructure (Opt-in)

@@ -52,7 +52,7 @@ npm install @kysera/dal            # Functional DAL (~7KB)
 
 ```bash
 # Choose one validation library or none
-npm install zod@^4.1.13                    # Popular schema validation (recommended)
+npm install zod@^4.3.6                     # Popular schema validation (recommended)
 # OR: npm install valibot                  # Lightweight alternative
 # OR: npm install @sinclair/typebox        # JSON Schema based
 ```

@@ -36,9 +36,10 @@ Base error class for all database errors:
 
 ```typescript
 class DatabaseError extends Error {
-  code: string
-  detail?: string
-  originalError?: unknown
+  readonly code: string
+  readonly detail?: string
+
+  constructor(message: string, code: string, detail?: string)
 
   toJSON(): Record<string, unknown>
 }
@@ -91,7 +92,10 @@ Thrown when a NOT NULL constraint is violated:
 
 ```typescript
 class NotNullError extends DatabaseError {
-  column: string
+  readonly column: string
+  readonly table?: string
+
+  constructor(column: string, table?: string)
 }
 ```
 
@@ -101,7 +105,10 @@ Thrown when a CHECK constraint is violated:
 
 ```typescript
 class CheckConstraintError extends DatabaseError {
-  constraint: string
+  readonly constraint: string
+  readonly table?: string
+
+  constructor(constraint: string, table?: string)
 }
 ```
 
@@ -207,18 +214,33 @@ Kysera provides a unified error code system:
 'DB_TRANSACTION_FAILED'
 'DB_TIMEOUT'
 'DB_POOL_EXHAUSTED'
+'DB_UNKNOWN'
 
 // Validation errors
 'VALIDATION_UNIQUE_VIOLATION'
 'VALIDATION_FOREIGN_KEY_VIOLATION'
 'VALIDATION_NOT_NULL_VIOLATION'
 'VALIDATION_CHECK_VIOLATION'
+'VALIDATION_INVALID_INPUT'
+'VALIDATION_REQUIRED_FIELD'
+'VALIDATION_INVALID_TYPE'
 
 // Resource errors
 'RESOURCE_NOT_FOUND'
-'RESOURCE_BAD_REQUEST'
 'RESOURCE_ALREADY_EXISTS'
 'RESOURCE_CONFLICT'
+'RESOURCE_BAD_REQUEST'
+
+// Plugin errors
+'SOFT_DELETE_ERROR'
+'RECORD_NOT_DELETED'
+'TIMESTAMPS_ERROR'
+'TIMESTAMP_COLUMN_MISSING'
+
+// Audit errors
+'AUDIT_ERROR'
+'AUDIT_RESTORE_ERROR'
+'AUDIT_MISSING_VALUES'
 ```
 
 ## Error Handling Patterns
@@ -249,10 +271,9 @@ app.post('/users', async (req, res) => {
     const user = await userRepo.create(req.body)
     res.status(201).json(user)
   } catch (error) {
-    if (error instanceof ValidationError) {
+    if (error instanceof BadRequestError) {
       return res.status(400).json({
-        error: 'Validation failed',
-        details: error.errors
+        error: error.message
       })
     }
 

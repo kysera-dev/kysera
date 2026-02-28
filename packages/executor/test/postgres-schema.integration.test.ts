@@ -314,7 +314,8 @@ describe.skipIf(!POSTGRES_AVAILABLE)('KyseraExecutor - PostgreSQL Schema Integra
         }
       ])
 
-      await executor.selectFrom('users').selectAll().execute()
+      // Use withSchema to route the query to the correct schema on the DB side
+      await executor.withSchema(TEST_SCHEMA_1).selectFrom('users').selectAll().execute()
 
       expect(capturedResolvedSchema).toBe(TEST_SCHEMA_1)
     })
@@ -355,20 +356,15 @@ describe.skipIf(!POSTGRES_AVAILABLE)('KyseraExecutor - PostgreSQL Schema Integra
         }
       ])
 
-      // Query users - should resolve to schema 2
-      await executor.selectFrom('users').selectAll().execute()
+      // Query users - resolveSchema returns TEST_SCHEMA_2 for 'users' table
+      // Use withSchema so the actual SQL targets the correct schema
+      await executor.withSchema(TEST_SCHEMA_2).selectFrom('users').selectAll().execute()
       expect(capturedSchemas[0]).toBe(TEST_SCHEMA_2)
 
       capturedSchemas = []
 
-      // Create posts table in schema 1 for this test
-      await db.withSchema(TEST_SCHEMA_1).insertInto('posts').values({
-        user_id: 1,
-        title: 'Test Post'
-      }).execute()
-
       // Query posts - should use default schema 1
-      await executor.selectFrom('posts').selectAll().execute()
+      await executor.withSchema(TEST_SCHEMA_1).selectFrom('posts').selectAll().execute()
       expect(capturedSchemas[0]).toBe(TEST_SCHEMA_1)
     })
   })

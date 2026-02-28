@@ -23,10 +23,13 @@ type Executor<DB> = Kysely<DB> | Transaction<DB>
 Full repository interface with all methods.
 
 ```typescript
-interface Repository<Entity, DB, PK = number> {
+interface Repository<Entity, DB, PK = number> extends BaseRepository<DB, Entity, PK> {
   readonly executor: Executor<DB>
   readonly tableName: string
+  withTransaction(trx: Transaction<DB>): Repository<Entity, DB, PK>
+}
 
+interface BaseRepository<DB, Entity, PK = number> {
   // Single operations
   findById(id: PK): Promise<Entity | null>
   create(input: unknown): Promise<Entity>
@@ -39,12 +42,19 @@ interface Repository<Entity, DB, PK = number> {
   bulkUpdate(updates: Array<{ id: PK; data: unknown }>): Promise<Entity[]>
   bulkDelete(ids: PK[]): Promise<number>
 
-  // Query operations
+  // Query operations (with operator support)
   findAll(): Promise<Entity[]>
-  find(options?: QueryOptions): Promise<Entity[]>
-  findOne(options?: QueryOptions): Promise<Entity | null>
-  count(options?: QueryOptions): Promise<number>
-  exists(options?: QueryOptions): Promise<boolean>
+  find<Cols extends keyof Entity = keyof Entity>(
+    options?: FindOptions<Entity, Cols>
+  ): Promise<Pick<Entity, Cols>[] | Entity[]>
+  findOne<Cols extends keyof Entity = keyof Entity>(
+    options?: FindOptions<Entity, Cols>
+  ): Promise<Pick<Entity, Cols> | Entity | null>
+  count(options?: { where?: WhereClause<Entity> | Record<string, unknown> }): Promise<number>
+  exists(options?: { where?: WhereClause<Entity> | Record<string, unknown> }): Promise<boolean>
+  findAndCount<Cols extends keyof Entity = keyof Entity>(
+    options?: FindOptions<Entity, Cols>
+  ): Promise<{ items: Pick<Entity, Cols>[] | Entity[]; total: number }>
 
   // Pagination
   paginate(options: PaginateOptions): Promise<PaginatedItems<Entity>>
@@ -52,9 +62,8 @@ interface Repository<Entity, DB, PK = number> {
     options: CursorPaginateOptions<Entity, K, PK>
   ): Promise<CursorPaginatedItems<Entity, K, PK>>
 
-  // Transactions
+  // Transaction
   transaction<R>(fn: (trx: Transaction<DB>) => Promise<R>): Promise<R>
-  withTransaction(trx: Transaction<DB>): Repository<Entity, DB, PK>
 }
 ```
 
@@ -232,21 +241,23 @@ function isValidRow<T>(value: unknown): value is T
 
 ```typescript
 interface Plugin {
-  name: string
-  version: string
-  dependencies?: string[]
-  priority?: number
-  conflictsWith?: string[]
+  readonly name: string
+  readonly version: string
+  readonly dependencies?: readonly string[]
+  readonly priority?: number
+  readonly conflictsWith?: readonly string[]
 
-  onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
+  onInit?<DB>(db: Kysely<DB>): Promise<void> | void
+  onDestroy?(): Promise<void> | void
   interceptQuery?<QB>(qb: QB, context: QueryBuilderContext): QB
-  extendRepository?<T>(repo: T): T
+  extendRepository?<T extends object>(repo: T): T
 }
 
 interface QueryBuilderContext {
-  operation: 'select' | 'insert' | 'update' | 'delete'
-  table: string
-  metadata: Record<string, unknown>
+  readonly operation: 'select' | 'insert' | 'update' | 'delete' | 'replace' | 'merge'
+  readonly table: string
+  readonly schema?: string
+  readonly metadata: Record<string, unknown>
 }
 ```
 
@@ -274,8 +285,8 @@ const userRepo: Repository<User, Database, number> = factory.create({
   tableName: 'users',
   mapRow: (row): User => row,
   schemas: {
-    create: z.object({ email: z.string().email(), name: z.string() }),
-    update: z.object({ email: z.string().email(), name: z.string() }).partial()
+    create: zodAdapter(z.object({ email: z.string().email(), name: z.string() })),
+    update: zodAdapter(z.object({ email: z.string().email(), name: z.string() }).partial())
   }
 })
 ```

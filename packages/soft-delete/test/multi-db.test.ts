@@ -59,11 +59,10 @@ describe.each(getDatabaseTypes())('Soft Delete Multi-Database Tests (%s)', dbTyp
 
     orm = await createORM(db, [softDelete])
 
-    // Create repositories
-    const factory = createRepositoryFactory(db)
-
-    userRepo = orm.createRepository((_executor: any) =>
-      factory.create({
+    // Create repositories using executor from ORM (not raw db)
+    userRepo = orm.createRepository((executor: any) => {
+      const factory = createRepositoryFactory(executor)
+      return factory.create({
         tableName: 'users' as const,
         mapRow: (row: any) => row as User,
         schemas: {
@@ -82,10 +81,11 @@ describe.each(getDatabaseTypes())('Soft Delete Multi-Database Tests (%s)', dbTyp
           )
         }
       })
-    )
+    })
 
-    postRepo = orm.createRepository((_executor: any) =>
-      factory.create({
+    postRepo = orm.createRepository((executor: any) => {
+      const factory = createRepositoryFactory(executor)
+      return factory.create({
         tableName: 'posts' as const,
         mapRow: (row: any) => row as Post,
         schemas: {
@@ -106,7 +106,7 @@ describe.each(getDatabaseTypes())('Soft Delete Multi-Database Tests (%s)', dbTyp
           )
         }
       })
-    )
+    })
   })
 
   afterAll(async () => {

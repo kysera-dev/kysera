@@ -28,13 +28,19 @@ Infrastructure utilities (health, retry, debug, testing) are separate opt-in pac
 
 Everything else (repository pattern, plugins) is optional and tree-shakeable.
 
-### 2. Zero External Dependencies
+### 2. Minimal External Dependencies
 
-Core packages have zero runtime dependencies:
+Core packages have minimal runtime dependencies:
+
+- `@kysera/executor` has zero runtime dependencies (only `kysely` as a peer dependency)
+- `@kysera/core` depends on `@kysera/executor` for plugin base utilities
+- All other core packages depend only on internal Kysera packages
 
 ```json
 {
-  "dependencies": {},
+  "dependencies": {
+    "@kysera/executor": "workspace:*"
+  },
   "peerDependencies": {
     "kysely": ">=0.28.8"
   }
@@ -164,15 +170,15 @@ The modern architecture features **@kysera/executor** as the foundation layer:
 ### Dependency Flow
 
 ```
-@kysera/core (0 deps)
+@kysera/executor (0 runtime deps, kysely peer)
     ↓
-@kysera/executor (depends on: kysely)
+@kysera/core (depends on: executor)
     ↓
     ├── @kysera/dal (depends on: executor, core)
     └── @kysera/repository (depends on: executor, dal, core)
             ↓
             └── Plugins (soft-delete, audit, rls, timestamps)
-                (depend on: executor, core)
+                (depend on: core; executor as optional peer)
 ```
 
 ## Repository Factory Pattern
@@ -280,14 +286,14 @@ await userRepo.softDelete(1) // Extension method
 
 | Package            | Size        | Overhead                  | Dependencies |
 | ------------------ | ----------- | ------------------------- | ------------ |
-| @kysera/core       | ~8KB        | Minimal                   | 0            |
+| @kysera/core       | ~8KB        | Minimal                   | executor     |
 | @kysera/executor   | ~8KB        | &lt;0.1ms (no interceptors)  | 0            |
 |                    |             | &lt;0.2ms (with interceptors)| (kysely peer)|
 | @kysera/repository | ~12KB       | &lt;0.3ms per query          | executor, dal|
 | @kysera/dal        | ~7KB        | &lt;0.2ms per query          | executor     |
 | @kysera/infra      | ~12KB       | &lt;0.2ms per query          | core         |
 | @kysera/debug      | ~5KB        | &lt;0.1ms per query          | core         |
-| @kysera/testing    | ~6KB        | Dev-only                  | 0            |
+| @kysera/testing    | ~6KB        | Dev-only                  | core         |
 | Plugins            | 4-12KB each | &lt;0.1ms per query          | executor, core|
 
 ### Benchmarks

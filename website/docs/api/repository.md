@@ -318,6 +318,17 @@ async bulkUpdate(updates: Array<{ id: PK; data: unknown }>): Promise<Entity[]>
 async bulkDelete(ids: PK[]): Promise<number>
 ```
 
+**`bulkCreate` behavior:**
+
+- **PostgreSQL/SQLite:** Uses a single `INSERT ... RETURNING` query for efficiency.
+- **MySQL:** Inserts records one-by-one inside an automatic transaction (MySQL lacks `RETURNING` support). If any insert fails, the entire batch is rolled back.
+
+**`bulkUpdate` behavior:**
+
+- Updates are processed **sequentially** (one at a time, not in parallel).
+- If any record is not found, a `NotFoundError` is thrown immediately and remaining updates are skipped.
+- For atomicity, wrap in a transaction: `await repo.transaction(async () => repo.bulkUpdate(updates))`
+
 ### Query Operations
 
 ```typescript

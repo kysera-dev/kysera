@@ -57,7 +57,7 @@ async function listTables(options: TablesOptions): Promise<void> {
 
     if (options.json) {
       // JSON output
-      const tablesData = []
+      const tablesData: Record<string, unknown>[] = []
       for (const tableName of tables) {
         const info = await introspector.getTableInfo(tableName)
         const stats = await getTableStatistics(db, tableName, config.database!.dialect)
@@ -142,7 +142,7 @@ async function listTables(options: TablesOptions): Promise<void> {
       )
     } else {
       // Default table view
-      const tableData = []
+      const tableData: Record<string, string | number>[] = []
 
       for (const tableName of tables) {
         try {

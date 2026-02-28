@@ -61,6 +61,12 @@
     "@kysera/executor": "workspace:*"
   },
   "peerDependenciesMeta": {
+    "@kysera/executor": {
+      "optional": true
+    },
+    "@kysera/repository": {
+      "optional": true
+    },
     "zod": {
       "optional": true
     }

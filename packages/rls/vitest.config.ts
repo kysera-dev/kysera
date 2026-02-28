@@ -5,6 +5,13 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['test/**/*.test.ts'],
+    exclude: [
+      // Integration tests require real databases (TEST_POSTGRES, TEST_MYSQL env vars)
+      // Run with: TEST_POSTGRES=true TEST_MYSQL=true pnpm test
+      ...(process.env['TEST_POSTGRES'] || process.env['TEST_MYSQL']
+        ? []
+        : ['test/integration/postgres-rls.test.ts', 'test/integration/mysql-rls.test.ts', 'test/integration/postgres-new-features.test.ts'])
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

@@ -93,7 +93,7 @@ interface TimestampsOptions {
 
   /**
    * Name of the primary key column
-   * NOTE: Only affects touch() method. updateMany/touchMany use hardcoded 'id'
+   * Used by touch(), updateMany(), and touchMany() methods
    * @default 'id'
    */
   primaryKeyColumn?: string
@@ -145,7 +145,7 @@ const plugin = timestampsPlugin({
   setUpdatedAtOnInsert: true
 })
 
-// Custom primary key (only affects touch())
+// Custom primary key (affects touch(), updateMany(), touchMany(), createMany())
 const plugin = timestampsPlugin({
   primaryKeyColumn: 'user_id'
 })
@@ -171,13 +171,13 @@ interface TimestampsMethods<T> {
 
   // Batch operations
   createMany(inputs: unknown[]): Promise<T[]>
-  updateMany(ids: (number | string)[], input: unknown): Promise<void>
+  updateMany(ids: (number | string)[], input: unknown): Promise<T[]>
   touchMany(ids: (number | string)[]): Promise<void>
 
   // Utilities
-  touch(id: number | string): Promise<T>
+  touch(id: number): Promise<void>
   createWithoutTimestamps(input: unknown): Promise<T>
-  updateWithoutTimestamp(id: number | string, input: unknown): Promise<T>
+  updateWithoutTimestamp(id: number, input: unknown): Promise<T>
   getTimestampColumns(): { createdAt: string; updatedAt: string }
 }
 ```
@@ -309,52 +309,44 @@ const posts = await postRepo.createMany([
 
 #### updateMany
 
-Update multiple records with automatic updated_at.
+Update multiple records with automatic updated_at. Uses the configured `primaryKeyColumn` for the WHERE clause.
 
 ```typescript
-async updateMany(ids: (number | string)[], input: unknown): Promise<void>
+async updateMany(ids: (number | string)[], input: unknown): Promise<T[]>
 ```
 
-:::warning Primary Key Limitation
-`updateMany()` uses hardcoded `'id'` for the WHERE clause. For tables with custom primary keys, use individual `update()` calls.
-:::
+**Returns:** Array of updated records.
 
 **Example:**
 
 ```typescript
-// Requires primary key column named 'id'
-await postRepo.updateMany([1, 2, 3], { status: 'published' })
+const updated = await postRepo.updateMany([1, 2, 3], { status: 'published' })
+console.log(`Updated ${updated.length} posts`)
 ```
 
 #### touchMany
 
-Update only timestamps for multiple records.
+Update only timestamps for multiple records. Uses the configured `primaryKeyColumn` for the WHERE clause.
 
 ```typescript
 async touchMany(ids: (number | string)[]): Promise<void>
 ```
 
-:::warning Primary Key Limitation
-`touchMany()` uses hardcoded `'id'` for the WHERE clause. For tables with custom primary keys, use `touch()` in a loop.
-:::
-
 **Example:**
 
 ```typescript
-// Requires primary key column named 'id'
 await postRepo.touchMany([1, 2, 3, 4, 5])
 
-// For custom primary keys, use touch() in a loop:
-for (const userId of userIds) {
-  await userRepo.touch(userId)
-}
+// For UUID primary keys, configure primaryKeyColumn:
+// timestampsPlugin({ primaryKeyColumn: 'uuid' })
+await userRepo.touchMany(['uuid-1', 'uuid-2', 'uuid-3'])
 ```
 
 ### Utilities
 
 #### touch
 
-Update only the `updated_at` timestamp for a record.
+Update only the `updated_at` timestamp for a record. Uses the configured `primaryKeyColumn` for the WHERE clause.
 
 ```typescript
 async touch(id: number): Promise<void>
@@ -364,7 +356,7 @@ async touch(id: number): Promise<void>
 
 - `id` - Primary key of the record (numeric)
 
-**Returns:** Nothing (updates the record in place)
+**Returns:** void (updates the record in place)
 
 **Example:**
 
@@ -563,29 +555,18 @@ The timestamps plugin adds minimal overhead:
 | findRecentlyCreated | +0.2ms                      |
 | createMany          | &lt;1ms regardless of count |
 
-## Known Limitations
+## Primary Key Column Support
 
-### Primary Key Column
-
-The `primaryKeyColumn` option **only affects the `touch()` method**. The following methods use hardcoded `'id'`:
+The `primaryKeyColumn` option is used by all ID-based methods:
 
 | Method            | Respects `primaryKeyColumn`? |
 | ----------------- | ---------------------------- |
 | `create()`        | N/A                          |
 | `update()`        | N/A                          |
 | `touch(id)`       | ✅ Yes                       |
-| `updateMany(ids)` | ❌ No - uses `'id'`          |
-| `touchMany(ids)`  | ❌ No - uses `'id'`          |
-| `createMany()`    | N/A                          |
-
-**Workaround:**
-
-```typescript
-// For tables with custom primary keys
-for (const userId of userIds) {
-  await userRepo.touch(userId) // Respects primaryKeyColumn
-}
-```
+| `updateMany(ids)` | ✅ Yes                       |
+| `touchMany(ids)`  | ✅ Yes                       |
+| `createMany()`    | ✅ Yes (for MySQL fallback)  |
 
 ## Best Practices
 

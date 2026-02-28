@@ -129,14 +129,18 @@ interface AuditLogEntry {
 
 ## Added Methods
 
-| Method                                | Description                                    |
-| ------------------------------------- | ---------------------------------------------- |
-| `getAuditHistory(entityId, options?)` | Get change history for an entity               |
-| `getAuditLogs(entityId, options?)`    | Alias for getAuditHistory                      |
-| `getAuditLog(auditId)`                | Get specific audit log entry                   |
-| `getTableAuditLogs(filters?)`         | Query audit logs across the table with filters |
-| `getUserChanges(userId, options?)`    | Get all changes made by a specific user        |
-| `restoreFromAudit(auditId)`           | Restore entity to previous state               |
+| Method                                | Description                                    | Returns                  |
+| ------------------------------------- | ---------------------------------------------- | ------------------------ |
+| `getAuditHistory(entityId, options?)` | Get change history for an entity               | `ParsedAuditLogEntry[]`  |
+| `getAuditLogs(entityId, options?)`    | Alias for getAuditHistory                      | `ParsedAuditLogEntry[]`  |
+| `getAuditLog(auditId)`                | Get specific audit log entry (raw)             | `AuditLogEntry \| null`  |
+| `getTableAuditLogs(filters?)`         | Query audit logs across the table with filters | `ParsedAuditLogEntry[]`  |
+| `getUserChanges(userId, options?)`    | Get all changes made by a specific user        | `ParsedAuditLogEntry[]`  |
+| `restoreFromAudit(auditId)`           | Restore entity to previous state               | `T`                      |
+
+:::info Parsed vs Raw
+Most query methods return `ParsedAuditLogEntry[]` where `old_values`, `new_values`, and `metadata` are automatically parsed from JSON strings into objects. Only `getAuditLog()` returns the raw `AuditLogEntry` with JSON strings.
+:::
 
 ## Querying Audit Logs
 
@@ -153,9 +157,9 @@ const history = await userRepo.getAuditHistory(userId, {
 // Get specific audit entry
 const entry = await userRepo.getAuditLog(auditLogId)
 
-// Access parsed values
-console.log(history[0].old_values) // Parsed object
-console.log(history[0].new_values) // Parsed object
+// Values are already parsed from JSON -- no JSON.parse needed
+console.log(history[0].old_values) // Record<string, unknown> | null
+console.log(history[0].new_values) // Record<string, unknown> | null
 ```
 
 ### Table-Wide Queries
@@ -199,10 +203,10 @@ interface AuditFilters extends AuditPaginationOptions {
   operation?: 'INSERT' | 'UPDATE' | 'DELETE'
   /** Filter by user ID (changed_by field) */
   userId?: string
-  /** Filter by start date (inclusive) */
-  startDate?: Date | string
-  /** Filter by end date (inclusive) */
-  endDate?: Date | string
+  /** Filter by start date (inclusive) - accepts Date, ISO string, or unix timestamp (ms) */
+  startDate?: Date | string | number
+  /** Filter by end date (inclusive) - accepts Date, ISO string, or unix timestamp (ms) */
+  endDate?: Date | string | number
 }
 
 interface AuditPaginationOptions {

@@ -12,13 +12,13 @@
 
 import { Kysely, SqliteDialect, type Generated } from 'kysely'
 import Database from 'better-sqlite3'
+import { paginateCursor } from '../src/index.js'
 import {
-  paginateCursor,
   signCursor,
   verifyCursor,
   encryptCursor,
   decryptCursor
-} from '../src/index.js'
+} from '../src/cursor-crypto.js'
 
 interface TestDatabase {
   users: {

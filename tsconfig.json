@@ -2,11 +2,17 @@
   "extends": "./tsconfig.base.json",
   "references": [
     { "path": "./packages/core" },
+    { "path": "./packages/executor" },
+    { "path": "./packages/dal" },
     { "path": "./packages/repository" },
     { "path": "./packages/soft-delete" },
     { "path": "./packages/audit" },
     { "path": "./packages/timestamps" },
-    { "path": "./packages/migrations" }
+    { "path": "./packages/migrations" },
+    { "path": "./packages/rls" },
+    { "path": "./packages/debug" },
+    { "path": "./packages/infra" },
+    { "path": "./packages/testing" }
   ],
   "files": []
 }

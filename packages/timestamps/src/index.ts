@@ -1,8 +1,8 @@
 import type { Plugin } from '@kysera/executor'
 import type { Repository } from '@kysera/repository'
 import type { Kysely, SelectQueryBuilder } from 'kysely'
-import { silentLogger, detectDialect } from '@kysera/core'
-import type { KyseraLogger } from '@kysera/core'
+import { silentLogger, detectDialect, formatTimestampForDb } from '@kysera/core'
+import type { KyseraLogger, Dialect } from '@kysera/core'
 import { VERSION } from './version.js'
 
 /**
@@ -95,7 +95,7 @@ export type TimestampsRepository<Entity, DB> = Repository<Entity, DB> & Timestam
 /**
  * Get the current timestamp based on options
  */
-function getTimestamp(options: TimestampsOptions): Date | string | number {
+function getTimestamp(options: TimestampsOptions, dialect?: Dialect): Date | string | number {
   if (options.getTimestamp) {
     return options.getTimestamp()
   }
@@ -109,7 +109,7 @@ function getTimestamp(options: TimestampsOptions): Date | string | number {
       return now
     case 'iso':
     default:
-      return now.toISOString()
+      return formatTimestampForDb(now, dialect)
   }
 }
 
@@ -304,6 +304,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
       const originalCreate = baseRepo.create.bind(baseRepo)
       const originalUpdate = baseRepo.update.bind(baseRepo)
       const executor = baseRepo.executor as Kysely<Record<string, TimestampedTable>>
+      const dbDialect: Dialect = detectDialect(executor)
 
       const extendedRepo = {
         ...baseRepo,
@@ -311,7 +312,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
         // Override create to add timestamps
         async create(input: unknown): Promise<unknown> {
           const data = input as Record<string, unknown>
-          const timestamp = getTimestamp(options)
+          const timestamp = getTimestamp(options, dbDialect)
           const dataWithTimestamps: Record<string, unknown> = {
             ...data,
             [createdAtColumn]: data[createdAtColumn] ?? timestamp
@@ -328,7 +329,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
         // Override update to set updated_at
         async update(id: number, input: unknown): Promise<unknown> {
           const data = input as Record<string, unknown>
-          const timestamp = getTimestamp(options)
+          const timestamp = getTimestamp(options, dbDialect)
           const dataWithTimestamp: Record<string, unknown> = {
             ...data,
             [updatedAtColumn]: data[updatedAtColumn] ?? timestamp
@@ -427,7 +428,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
          * Touch a record (update its timestamp)
          */
         async touch(id: number): Promise<void> {
-          const timestamp = getTimestamp(options)
+          const timestamp = getTimestamp(options, dbDialect)
           const updateData = { [updatedAtColumn]: timestamp }
 
           logger.info(`Touching record ${id} in ${baseRepo.tableName}`)
@@ -459,7 +460,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             return []
           }
 
-          const timestamp = getTimestamp(options)
+          const timestamp = getTimestamp(options, dbDialect)
           const dataWithTimestamps = inputs.map(input => {
             const data = input as Record<string, unknown>
             const result: Record<string, unknown> = {
@@ -489,27 +490,44 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
 
             return result
           } else {
-            // Fallback for MySQL/MSSQL - insert then select
-            // This approach works for auto-increment primary keys
-            await executor
-              .insertInto(baseRepo.tableName as never)
-              .values(dataWithTimestamps as never)
-              .execute()
+            // Fallback for MySQL/MSSQL - insert individually and fetch by primary key
+            // Previous approach used bulk INSERT + SELECT by timestamp, which caused
+            // incorrect results when multiple records shared the same timestamp (H-8).
+            // This approach mirrors repository's table-operations.ts insertMany pattern.
+            const results: unknown[] = []
 
-            // Fetch inserted records by matching on unique columns
-            // For simplicity, we fetch the most recently created records
-            // This works well when created_at is set to the same timestamp
-            const insertedCount = dataWithTimestamps.length
-            const result = await executor
-              .selectFrom(baseRepo.tableName as never)
-              .selectAll()
-              .where(createdAtColumn as never, '=', timestamp as never)
-              .orderBy(primaryKeyColumn as never, 'desc')
-              .limit(insertedCount)
-              .execute()
+            for (const item of dataWithTimestamps) {
+              const insertResult = await executor
+                .insertInto(baseRepo.tableName as never)
+                .values(item as never)
+                .executeTakeFirst()
 
-            // Reverse to maintain insertion order
-            return result.reverse()
+              // For auto-increment PKs, use insertId to fetch the record
+              const result = insertResult as unknown as { insertId?: bigint | number }
+              let record: unknown
+
+              if (result.insertId) {
+                record = await executor
+                  .selectFrom(baseRepo.tableName as never)
+                  .selectAll()
+                  .where(primaryKeyColumn as never, '=', Number(result.insertId) as never)
+                  .executeTakeFirst()
+              } else {
+                // For non-auto-increment PKs, use the PK value from the input data
+                const pkValue = (item as Record<string, unknown>)[primaryKeyColumn]
+                record = await executor
+                  .selectFrom(baseRepo.tableName as never)
+                  .selectAll()
+                  .where(primaryKeyColumn as never, '=', pkValue as never)
+                  .executeTakeFirst()
+              }
+
+              if (record) {
+                results.push(record)
+              }
+            }
+
+            return results
           }
         },
 
@@ -524,7 +542,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
           }
 
           const data = input as Record<string, unknown>
-          const timestamp = getTimestamp(options)
+          const timestamp = getTimestamp(options, dbDialect)
           const dataWithTimestamp: Record<string, unknown> = {
             ...data,
             [updatedAtColumn]: data[updatedAtColumn] ?? timestamp
@@ -561,7 +579,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             return
           }
 
-          const timestamp = getTimestamp(options)
+          const timestamp = getTimestamp(options, dbDialect)
           const updateData = { [updatedAtColumn]: timestamp }
 
           logger.info(`Touching ${ids.length} records in ${baseRepo.tableName}`)

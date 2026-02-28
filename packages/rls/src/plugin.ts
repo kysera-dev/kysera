@@ -429,7 +429,12 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
         },
 
         /**
-         * Wrapped update with RLS check
+         * Wrapped update with RLS check.
+         *
+         * WARNING (TOCTOU): The existing row is fetched before the policy check.
+         * In concurrent environments, the row could be modified between fetch and
+         * check. For safety, call this method within a transaction. The underlying
+         * MutationGuard.checkUpdate documents this in detail.
          */
         async update(id: unknown, data: unknown): Promise<unknown> {
           if (!originalUpdate) {
@@ -499,7 +504,12 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
         },
 
         /**
-         * Wrapped delete with RLS check
+         * Wrapped delete with RLS check.
+         *
+         * WARNING (TOCTOU): The existing row is fetched before the policy check.
+         * In concurrent environments, the row could be modified between fetch and
+         * check. For safety, call this method within a transaction. The underlying
+         * MutationGuard.checkDelete documents this in detail.
          */
         async delete(id: unknown): Promise<unknown> {
           if (!originalDelete) {

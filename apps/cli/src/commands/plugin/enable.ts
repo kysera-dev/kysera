@@ -66,8 +66,9 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
 
     // Initialize plugins config if not exists
     if (!config.plugins) {
-      config.plugins = {}
+      config.plugins = {} as NonNullable<typeof config.plugins>
     }
+    const pluginsRecord = config.plugins as Record<string, { enabled?: boolean } | undefined>
 
     const results: EnableResult[] = []
 
@@ -137,7 +138,7 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
 
       // Filter out already enabled plugins
       const disabledPlugins = installedPlugins.filter(p => {
-        const pluginConfig = config.plugins[p]
+        const pluginConfig = pluginsRecord[p]
         return !pluginConfig || pluginConfig.enabled !== true
       })
 

@@ -5,6 +5,7 @@ import {
   createExecutor,
   createExecutorSync,
   isKyseraExecutor,
+  isRepositoryLike,
   getPlugins,
   getRawDb,
   validatePlugins,
@@ -1115,6 +1116,35 @@ describe('@kysera/executor - Additional Features', () => {
       ]
 
       expect(methods).toHaveLength(6)
+    })
+  })
+
+  describe('isRepositoryLike', () => {
+    it('should return true for repository-like objects', () => {
+      const repo = { tableName: 'users', executor: {} }
+      expect(isRepositoryLike(repo)).toBe(true)
+    })
+
+    it('should return false for null', () => {
+      expect(isRepositoryLike(null)).toBe(false)
+    })
+
+    it('should return false for non-objects', () => {
+      expect(isRepositoryLike('string')).toBe(false)
+      expect(isRepositoryLike(42)).toBe(false)
+      expect(isRepositoryLike(undefined)).toBe(false)
+    })
+
+    it('should return false for objects missing tableName', () => {
+      expect(isRepositoryLike({ executor: {} })).toBe(false)
+    })
+
+    it('should return false for objects missing executor', () => {
+      expect(isRepositoryLike({ tableName: 'users' })).toBe(false)
+    })
+
+    it('should return false if tableName is not a string', () => {
+      expect(isRepositoryLike({ tableName: 123, executor: {} })).toBe(false)
     })
   })
 })

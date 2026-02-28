@@ -79,7 +79,7 @@ await userRepo.restore(1)     // Extension method from plugin
 For simpler use cases without plugins:
 
 ```typescript
-import { createRepositoryFactory } from '@kysera/repository'
+import { createRepositoryFactory, zodAdapter } from '@kysera/repository'
 import { z } from 'zod'
 
 // Create factory
@@ -95,8 +95,8 @@ const userRepo = factory.create({
     createdAt: row.created_at
   }),
   schemas: {
-    create: CreateUserSchema,
-    update: UpdateUserSchema
+    create: zodAdapter(CreateUserSchema),
+    update: zodAdapter(UpdateUserSchema)
   }
 })
 ```
@@ -106,18 +106,24 @@ const userRepo = factory.create({
 ```typescript
 interface RepositoryConfig<Table, Entity> {
   tableName: string
-  primaryKey?: string | string[] // Default: 'id'
-  primaryKeyType?: 'number' | 'string' | 'uuid'
+  schema?: string                        // PostgreSQL schema (e.g., 'auth', 'tenant_123')
+  primaryKey?: PrimaryKeyColumn          // Default: 'id'
+  primaryKeyType?: PrimaryKeyTypeHint    // Default: 'number'
+  dialect?: DialectConfig                // Database dialect config
   mapRow: (row: Selectable<Table>) => Entity
   schemas: {
-    entity?: z.ZodType<Entity> // Optional result validation
-    create: z.ZodType // Required
-    update?: z.ZodType // Optional
+    entity?: ValidationSchema<Entity>    // Optional result validation
+    create: ValidationSchema             // Required input validation
+    update?: ValidationSchema            // Optional (uses create.partial() if omitted)
   }
-  // Validation controlled via KYSERA_VALIDATION_MODE environment variable
-  // or NODE_ENV fallback - see Validation guide
+  validateDbResults?: boolean            // Default: NODE_ENV === 'development'
+  validationStrategy?: 'none' | 'strict' // Default: 'strict'
 }
 ```
+
+:::info
+The `schemas` property uses the `ValidationSchema` interface. Wrap your schemas with `zodAdapter()`, `valibotAdapter()`, `typeboxAdapter()`, or use `nativeAdapter()` for no validation.
+:::
 
 ## Repository Methods
 
@@ -148,13 +154,13 @@ const deleted = await userRepo.delete(1)
 // Find multiple by IDs
 const users = await userRepo.findByIds([1, 2, 3])
 
-// Bulk create (efficient single query)
+// Bulk create (single query on PostgreSQL/SQLite; sequential inserts on MySQL)
 const newUsers = await userRepo.bulkCreate([
   { email: 'user1@example.com', name: 'User 1' },
   { email: 'user2@example.com', name: 'User 2' }
 ])
 
-// Bulk update
+// Bulk update (processed sequentially; throws NotFoundError if any record is missing)
 const updated = await userRepo.bulkUpdate([
   { id: 1, data: { status: 'active' } },
   { id: 2, data: { status: 'active' } }
@@ -210,7 +216,7 @@ const result = await userRepo.paginateCursor({
   orderBy: 'created_at',
   orderDirection: 'desc'
 })
-// Returns: { items: User[], nextCursor: string | null, hasMore: boolean }
+// Returns: { items: User[], nextCursor: { value: Entity[K]; id: PK } | null, hasMore: boolean }
 ```
 
 ## Repository Bundles
@@ -409,21 +415,23 @@ const user = await userRepo.findByIdWithValidationAndNotifications(userId)
 Separate schemas for different operations:
 
 ```typescript
+import { zodAdapter } from '@kysera/repository'
+
 const schemas = {
-  entity: z.object({
+  entity: zodAdapter(z.object({
     id: z.number(),
     email: z.string().email(),
     name: z.string(),
     created_at: z.date()
-  }),
-  create: z.object({
+  })),
+  create: zodAdapter(z.object({
     email: z.string().email(),
     name: z.string().min(1)
-  }),
-  update: z.object({
+  })),
+  update: zodAdapter(z.object({
     email: z.string().email().optional(),
     name: z.string().min(1).optional()
-  })
+  }))
 }
 ```
 

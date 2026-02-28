@@ -9,6 +9,7 @@ import { withDatabase } from '../../utils/with-database.js'
 import { DatabaseIntrospector, type TableInfo } from './introspector.js'
 import { execa } from 'execa'
 import { toCamelCase, toPascalCase, toKebabCase } from '../../utils/templates.js'
+import { validatePath } from '../../utils/fs.js'
 
 export interface CrudOptions {
   table: string
@@ -78,6 +79,10 @@ async function generateCrud(tableName: string, options: CrudOptions): Promise<vo
     generateSpinner.succeed(`Found table '${tableName}' with ${tableInfo.columns.length} columns`)
 
     const outputDir = options.outputDir || './src'
+
+    // Validate output directory to prevent path traversal
+    validatePath(outputDir)
+
     const filesToGenerate = [
       {
         type: 'Model',

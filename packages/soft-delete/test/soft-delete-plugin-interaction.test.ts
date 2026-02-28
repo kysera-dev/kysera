@@ -305,71 +305,8 @@ describe('Soft Delete Plugin - Plugin Interaction', () => {
     })
   })
 
-  describe('Multiple Soft Delete Plugins', () => {
-    it.skip('should handle multiple soft delete plugins for different tables - SKIPPED: Plugin validation now prevents duplicate names', async () => {
-      const userSoftDelete = softDeletePlugin({
-        tables: ['users'],
-        deletedAtColumn: 'deleted_at'
-      })
-
-      const postSoftDelete = softDeletePlugin({
-        tables: ['posts'],
-        deletedAtColumn: 'deleted_at'
-      })
-
-      const orm = await createORM(db, [userSoftDelete, postSoftDelete])
-
-      // User repository
-      const userRepo = orm.createRepository(executor => {
-        const base = createRepositoryFactory(executor)
-        return base.create({
-          tableName: 'users' as keyof TestDatabase,
-          mapRow: row => row as TestUser,
-          schemas: {
-            create: zodAdapter(z.any()),
-            update: zodAdapter(z.any())
-          }
-        })
-      }) as any
-
-      // Post repository
-      const postRepo = orm.createRepository(executor => {
-        const base = createRepositoryFactory(executor)
-        return base.create({
-          tableName: 'posts' as keyof TestDatabase,
-          mapRow: row => row as TestPost,
-          schemas: {
-            create: zodAdapter(z.any()),
-            update: zodAdapter(z.any())
-          }
-        })
-      }) as any
-
-      // Both should have soft delete
-      expect(userRepo.softDelete).toBeDefined()
-      expect(postRepo.softDelete).toBeDefined()
-
-      // Get IDs
-      const users = await db.selectFrom('users').selectAll().execute()
-      const posts = await db.selectFrom('posts').selectAll().execute()
-
-      const userId = users[0]?.id
-      const postId = posts[0]?.id
-
-      expect(userId).toBeDefined()
-      expect(postId).toBeDefined()
-
-      // Soft delete should work independently
-      await userRepo.softDelete(userId)
-      await postRepo.softDelete(postId)
-
-      const userResult = await userRepo.findAll()
-      const postResult = await postRepo.findAll()
-
-      expect(userResult.length).toBe(users.length - 1)
-      expect(postResult.length).toBe(posts.length - 1)
-    })
-  })
+  // Note: Multiple soft-delete plugins are not supported — plugin validation prevents
+  // duplicate plugin names. Use a single plugin with `tables` option to scope by table.
 
   describe('Plugin Conflict Resolution', () => {
     it('should handle plugins that modify same methods', async () => {

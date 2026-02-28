@@ -19,8 +19,8 @@ npm install @kysera/rls
 | Metric                | Value                                                  |
 | --------------------- | ------------------------------------------------------ |
 | **Bundle Size**       | ~10 KB (minified)                                      |
-| **Dependencies**      | @kysera/core (workspace), @kysera/executor (workspace) |
-| **Peer Dependencies** | kysely >=0.28.8                                        |
+| **Dependencies**      | @kysera/core (workspace)                               |
+| **Peer Dependencies** | kysely >=0.28.8, @kysera/executor (optional), @kysera/repository (optional), zod ^4.3.6 (optional) |
 
 ## Exports
 
@@ -109,6 +109,13 @@ interface RLSPluginOptions<DB = unknown> {
    * Custom handler for policy violations
    */
   onViolation?: (violation: RLSPolicyViolation) => void
+
+  /**
+   * Primary key column name for row lookups
+   * Used when fetching existing rows for update/delete policy checks
+   * @default 'id'
+   */
+  primaryKeyColumn?: string
 }
 ```
 
@@ -580,31 +587,35 @@ interface PolicyEvaluationContext<TAuth = unknown, TRow = unknown, TData = unkno
 
 ## Policy Precedence
 
-Policies are evaluated in this order:
+Policies are evaluated differently based on the operation type.
 
-1. **`deny`** policies - evaluated first, any match denies access
-2. **`allow`** policies - evaluated next, any match grants access
-3. **`filter`** policies - add WHERE conditions to queries
-4. **`validate`** policies - check input data
-5. **`defaultDeny`** - determines behavior when no policy matches
+**For SELECT queries (via `interceptQuery`):**
+- **`filter`** policies add WHERE conditions to the query builder
+
+**For mutations (create/update/delete via `extendRepository`):**
+
+1. **`deny`** policies - evaluated first; if ANY deny condition returns `true`, access is denied
+2. **`validate`** policies - evaluated next (create/update only); ALL must return `true`
+3. **`allow`** policies - evaluated last; at least ONE must return `true`
+4. **`defaultDeny`** - if `true` and no allow policies exist, access is denied
 
 ```typescript
 const rlsSchema = defineRLSSchema({
   posts: {
     policies: [
-      // 1. Deny takes precedence
+      // 1. Deny evaluated first (takes precedence)
       deny('delete', ctx => ctx.row?.is_pinned === true),
 
-      // 2. Allow grants access
+      // 2. Validate evaluated next (for create/update)
+      validate('create', ctx => ctx.data?.author_id === ctx.auth.userId),
+
+      // 3. Allow evaluated last (at least one must match)
       allow(['update', 'delete'], ctx => ctx.auth.userId === ctx.row?.author_id),
 
-      // 3. Filter adds WHERE conditions
-      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-
-      // 4. Validate checks input
-      validate('create', ctx => ctx.data?.author_id === ctx.auth.userId)
+      // Filter is only for SELECT queries (not part of mutation evaluation)
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
     ],
-    defaultDeny: true // 5. Deny if nothing matches
+    defaultDeny: true // 4. Deny if no allow policies match
   }
 })
 ```

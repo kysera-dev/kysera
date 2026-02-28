@@ -268,7 +268,7 @@ async function getTimeBasedStats(db: any, baseQuery: any, period: string): Promi
   const periodMs = parsePeriod(period)
   const intervals = getTimeIntervals(periodMs)
 
-  const stats = []
+  const stats: { period: string; count: number }[] = []
   for (const interval of intervals) {
     const count = await baseQuery
       .where('created_at', '>=', interval.start)
@@ -308,7 +308,7 @@ function parsePeriod(period: string): number {
 }
 
 function getTimeIntervals(periodMs: number): Array<{ start: Date; end: Date; label: string }> {
-  const intervals = []
+  const intervals: { start: Date; end: Date; label: string }[] = []
   const now = new Date()
   const bucketCount = 10
 

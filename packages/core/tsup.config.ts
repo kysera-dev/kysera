@@ -10,10 +10,10 @@ const packageJson = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'ut
 const version = packageJson.version
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/cursor-crypto.ts'],
   format: ['esm'], // ESM only!
   dts: true,
-  splitting: false,
+  splitting: true, // Required for lazy-loading cursor-crypto via dynamic import
   sourcemap: true,
   clean: true,
   minify: true,

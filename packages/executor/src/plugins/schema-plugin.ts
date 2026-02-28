@@ -172,7 +172,7 @@ export function schemaPlugin(options: SchemaPluginOptions = {}): Plugin {
 
       // Validate allowed schemas if whitelist is provided
       if (allowedSet && !allowedSet.has(defaultSchema)) {
-        const allowedList = allowedSchemas ? allowedSchemas.join(', ') : ''
+        const allowedList = allowedSchemas!.join(', ')
         throw new SchemaValidationError(
           `Default schema "${defaultSchema}" is not in allowed list: [${allowedList}]`,
           defaultSchema,
@@ -188,7 +188,7 @@ export function schemaPlugin(options: SchemaPluginOptions = {}): Plugin {
       // Validate against whitelist
       if (allowedSet && !allowedSet.has(schema)) {
         if (strictValidation) {
-          const allowedList = allowedSchemas ? allowedSchemas.join(', ') : ''
+          const allowedList = allowedSchemas!.join(', ')
           throw new SchemaValidationError(
             `Schema "${schema}" is not in allowed list: [${allowedList}]`,
             schema,

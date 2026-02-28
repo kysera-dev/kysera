@@ -577,7 +577,7 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
       await expect(productRepo.softDelete(99999)).rejects.toThrow('Record not found')
     })
 
-    it('should throw error when soft deleting many with non-existent IDs', async () => {
+    it('should return partial results when soft deleting many with non-existent IDs', async () => {
       const plugin = softDeletePlugin({
         primaryKeyColumn: 'product_id'
       })
@@ -608,8 +608,10 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
         })
       }) as SoftDeleteRepository<Product, CustomPKDatabase>
 
-      // Try to soft delete with some non-existent IDs
-      await expect(productRepo.softDeleteMany([1, 99999])).rejects.toThrow('not found')
+      // H-10: softDeleteMany no longer throws on missing records, returns partial results
+      const result = await productRepo.softDeleteMany([1, 99999])
+      expect(result).toHaveLength(1)
+      expect((result[0] as Product).product_id).toBe(1)
     })
   })
 })
