@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'website/**'
+      - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
     inputs:
       version:
