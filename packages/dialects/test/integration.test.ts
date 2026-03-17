@@ -9,7 +9,6 @@ import { Kysely, SqliteDialect, sql } from 'kysely'
 import Database from 'better-sqlite3'
 import {
   SQLiteAdapter,
-  sqliteAdapter,
   PostgresAdapter,
   MySQLAdapter,
   getDatabaseSize,
@@ -111,11 +110,6 @@ describe('SQLiteAdapter - Database Integration', () => {
     })
 
     it('should rethrow unexpected errors', async () => {
-      // Mock the raw sql to throw an unexpected error
-      const mockDb = {
-        ...db
-      }
-
       // Create a situation that throws an unexpected error
       const errorAdapter = new SQLiteAdapter()
 

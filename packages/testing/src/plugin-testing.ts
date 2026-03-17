@@ -350,10 +350,11 @@ export function createPluginTestHarness<DB>(options: {
 
       // Import and create executor dynamically
       const { createExecutor } = await import('@kysera/executor')
-      executor = await createExecutor(db, options.plugins)
+      // KyseraExecutor structurally extends Kysely - cast is safe
+      executor = (await createExecutor(db as Kysely<unknown>, options.plugins)) as unknown as Kysely<DB>
 
       if (options.seedData) {
-        await options.seedData(executor)
+        await options.seedData(executor!)
       }
     },
 

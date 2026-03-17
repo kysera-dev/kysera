@@ -5,7 +5,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { Kysely, Transaction } from 'kysely'
 import type { DbContext } from '../src/types.js'
-import { DB_CONTEXT_SYMBOL, IN_TRANSACTION_SYMBOL } from '../src/types.js'
+import { DB_CONTEXT_SYMBOL } from '../src/types.js'
 import { createContext, createSchemaContext, isInTransaction, withTransaction, withContext } from '../src/context.js'
 
 // Mock database type

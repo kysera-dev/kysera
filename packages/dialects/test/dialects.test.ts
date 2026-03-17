@@ -788,7 +788,7 @@ describe('Schema Utilities', () => {
 
     it('should return default schema when options.schema is undefined', () => {
       expect(resolveSchema('public', {})).toBe('public')
-      expect(resolveSchema('public', { schema: undefined })).toBe('public')
+      expect(resolveSchema('public', {} as { schema?: string })).toBe('public')
     })
 
     it('should return overridden schema from options', () => {

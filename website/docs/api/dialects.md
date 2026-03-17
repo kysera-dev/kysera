@@ -16,7 +16,7 @@ npm install @kysera/dialects kysely
 
 ## Overview
 
-**Dependencies:** None (peer: kysely >=0.28.8)
+**Dependencies:** None (peer: kysely >=0.28.9)
 **Database Support:** PostgreSQL, MySQL, SQLite, MSSQL
 
 :::info Package Type

@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
-import { Kysely, PostgresDialect, sql } from 'kysely'
+import { Kysely, PostgresDialect, sql, type Generated } from 'kysely'
 import pg from 'pg'
 import {
   PostgresAdapter,
@@ -24,27 +24,27 @@ import {
 const { Pool } = pg
 
 // Skip tests if PostgreSQL is not available
-const POSTGRES_AVAILABLE = process.env.CI || process.env.POSTGRES_HOST
+const POSTGRES_AVAILABLE = process.env['CI'] || process.env['POSTGRES_HOST']
 
 interface TestDB {
   users: {
-    id: number
+    id: Generated<number>
     name: string
     email: string
   }
   posts: {
-    id: number
-    user_id: number
+    id: Generated<number>
+    user_id: Generated<number>
     title: string
   }
 }
 
 const getConnectionConfig = () => ({
-  host: process.env.POSTGRES_HOST ?? 'localhost',
-  port: parseInt(process.env.POSTGRES_PORT ?? '5432', 10),
-  user: process.env.POSTGRES_USER ?? 'test',
-  password: process.env.POSTGRES_PASSWORD ?? 'test',
-  database: process.env.POSTGRES_DATABASE ?? 'kysera_test'
+  host: process.env['POSTGRES_HOST'] ?? 'localhost',
+  port: parseInt(process.env['POSTGRES_PORT'] ?? '5432', 10),
+  user: process.env['POSTGRES_USER'] ?? 'test',
+  password: process.env['POSTGRES_PASSWORD'] ?? 'test',
+  database: process.env['POSTGRES_DATABASE'] ?? 'kysera_test'
 })
 
 describe.skipIf(!POSTGRES_AVAILABLE)('PostgresAdapter - Schema Integration', () => {

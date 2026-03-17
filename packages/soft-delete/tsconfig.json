@@ -1,13 +1,17 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
+    "rootDir": "../..",
     "outDir": "./dist",
     "baseUrl": ".",
     "composite": true,
     "types": ["vitest/globals", "node"],
     "skipLibCheck": true
   },
-  "include": ["src/**/*", "test/**/*", "*.config.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*", "test/**/*", "*.config.ts",
+    "../executor/src/**/*", "../repository/src/**/*", "../timestamps/src/**/*",
+    "../core/src/**/*", "../dal/src/**/*"
+  ],
+  "exclude": ["node_modules", "dist", "test/multi-db.test.ts"]
 }

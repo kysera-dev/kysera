@@ -23,7 +23,7 @@ npm install @kysera/soft-delete @kysera/rls @kysera/audit
 
 ## Overview
 
-**Dependencies:** `@kysera/core`, `@kysera/executor` (peer: kysely >=0.28.8)
+**Dependencies:** `@kysera/core`, `@kysera/executor` (peer: kysely >=0.28.9)
 
 `@kysera/dal` provides a functional approach to database access as an alternative to traditional repository patterns. Instead of classes and methods, you write **query functions** that are composable, type-safe, and easy to test.
 

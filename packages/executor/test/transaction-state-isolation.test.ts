@@ -4,8 +4,6 @@ import BetterSqlite3 from 'better-sqlite3'
 import {
   createExecutor,
   wrapTransaction,
-  isKyseraExecutor,
-  getPlugins,
   getRawDb,
   type Plugin,
   type QueryBuilderContext,

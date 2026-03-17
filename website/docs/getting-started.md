@@ -21,11 +21,11 @@ Get up and running with Kysera in 5 minutes.
 
 ```bash
 # Install Kysely (peer dependency) and database driver
-npm install kysely@^0.28.9 pg
+npm install kysely@^0.28.12 pg
 
 # For other databases:
-# npm install kysely@^0.28.9 mysql2      # MySQL
-# npm install kysely@^0.28.9 better-sqlite3  # SQLite
+# npm install kysely@^0.28.12 mysql2      # MySQL
+# npm install kysely@^0.28.12 better-sqlite3  # SQLite
 ```
 
 ### Step 2: Install Kysera Foundation

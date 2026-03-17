@@ -16,7 +16,7 @@ npm install @kysera/executor kysely
 
 ## Overview
 
-**Dependencies:** None (peer: kysely >=0.28.8)
+**Dependencies:** None (peer: kysely >=0.28.9)
 
 `@kysera/executor` provides a unified plugin system that works seamlessly with both Repository and DAL patterns. It wraps Kysely instances with plugin interception capabilities while maintaining full type safety and zero overhead when plugins aren't active.
 

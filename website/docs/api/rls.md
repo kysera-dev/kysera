@@ -20,7 +20,7 @@ npm install @kysera/rls
 | --------------------- | ------------------------------------------------------ |
 | **Bundle Size**       | ~10 KB (minified)                                      |
 | **Dependencies**      | @kysera/core (workspace)                               |
-| **Peer Dependencies** | kysely >=0.28.8, @kysera/executor (optional), @kysera/repository (optional), zod ^4.3.6 (optional) |
+| **Peer Dependencies** | kysely >=0.28.9, @kysera/executor (optional), @kysera/repository (optional), zod ^4.3.6 (optional) |
 
 ## Exports
 

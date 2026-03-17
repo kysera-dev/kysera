@@ -7,7 +7,7 @@
  * - Edge cases for error parsing
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { getEnv } from '../src/helpers.js'
 import {
   ErrorCodes,
