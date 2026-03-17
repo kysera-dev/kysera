@@ -126,15 +126,6 @@ describe('PostgresAdapter - Database Methods (Mocked)', () => {
 
   describe('getDatabaseSize', () => {
     it('should return database size with current database', async () => {
-      // Create a more complete mock for sql template tag
-      const mockSqlExecute = vi.fn().mockResolvedValue({
-        rows: [{ size: 1024000 }]
-      })
-
-      const mockDbWithSql = {
-        ...mockDb.db
-      }
-
       // We need to test this differently since it uses sql template
       // Just verify the adapter method exists and handles the result properly
       expect(typeof adapter.getDatabaseSize).toBe('function')
@@ -149,13 +140,8 @@ describe('PostgresAdapter - Database Methods (Mocked)', () => {
 
   describe('truncateTable', () => {
     it('should return true on successful truncate', async () => {
-      // Create mock that tracks raw SQL execution
-      const mockRawExecute = vi.fn().mockResolvedValue(undefined)
-
-      // We need a mock that handles sql.raw()
       // The actual implementation uses sql.raw which is harder to mock
       // Focus on testing the error handling paths
-
       expect(typeof adapter.truncateTable).toBe('function')
     })
 
@@ -515,10 +501,8 @@ describe('Schema Support Tests', () => {
 
   describe('SQLiteAdapter - Schema Options', () => {
     const adapter = new SQLiteAdapter()
-    let mockDb: ReturnType<typeof createMockDb>
 
     beforeEach(() => {
-      mockDb = createMockDb()
       vi.clearAllMocks()
     })
 

@@ -61,19 +61,19 @@
     "bun": ">=1.0.0"
   },
   "dependencies": {
-    "commander": "^14.0.2",
+    "commander": "^14.0.3",
     "handlebars": "^4.7.8",
-    "fs-extra": "^11.3.2",
-    "kysely": "^0.28.9",
+    "fs-extra": "^11.3.4",
+    "kysely": "^0.28.12",
     "zod": "^4.3.6",
-    "dotenv": "^17.2.3",
-    "cosmiconfig": "^9.0.0",
+    "dotenv": "^17.3.1",
+    "cosmiconfig": "^9.0.1",
     "cosmiconfig-typescript-loader": "^6.2.0",
     "execa": "^9.6.1",
-    "glob": "^13.0.0",
-    "pg": "^8.16.3",
-    "mysql2": "^3.16.0",
-    "better-sqlite3": "^12.5.0",
+    "glob": "^13.0.6",
+    "pg": "^8.20.0",
+    "mysql2": "^3.20.0",
+    "better-sqlite3": "^12.8.0",
     "@faker-js/faker": "^10.1.0",
     "js-yaml": "^4.1.1",
     "@kysera/core": "workspace:*",
@@ -92,13 +92,13 @@
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^25.2.1",
+    "@types/node": "^25.5.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.16",
-    "@vitest/coverage-v8": "^4.0.16",
-    "eslint": "^9.39.1",
-    "prettier": "^3.7.4"
+    "vitest": "^4.1.0",
+    "@vitest/coverage-v8": "^4.1.0",
+    "eslint": "^9.39.2",
+    "prettier": "^3.8.1"
   },
   "sideEffects": false
 }

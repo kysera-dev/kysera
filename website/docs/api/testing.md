@@ -18,7 +18,7 @@ npm install --save-dev @kysera/testing
 
 ## Overview
 
-**Dependencies:** None (peer: kysely >=0.28.8)
+**Dependencies:** None (peer: kysely >=0.28.9)
 
 :::info Package Type
 This is a **utility package** for testing. It's not part of the Repository/DAL pattern - it provides testing helpers that work with Kysely instances directly.

@@ -52,11 +52,11 @@ kysera/
 | @kysera/executor   | 0.8.0    |
 | @kysera/dal        | 0.8.0    |
 | @kysera/repository | 0.8.0    |
-| Kysely (peer)      | >=0.28.9 |
-| TypeScript         | ^5.9.2   |
-| Turbo              | ^2.6.3   |
-| Vitest             | ^4.0.15  |
-| Zod (optional)     | ^4.1.13  |
+| Kysely (peer)      | >=0.28.9 (dev: ^0.28.12) |
+| TypeScript         | ^5.9.3   |
+| Turbo              | ^2.8.17  |
+| Vitest             | ^4.1.0   |
+| Zod (optional)     | ^4.3.6   |
 | pnpm               | >=10.0.0 |
 | Node.js            | >=20.0.0 |
 | Bun                | >=1.0.0  |

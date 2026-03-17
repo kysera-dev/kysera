@@ -16,7 +16,7 @@ npm install @kysera/debug
 
 ## Overview
 
-**Dependencies:** @kysera/core (peer: kysely >=0.28.8)
+**Dependencies:** @kysera/core (peer: kysely >=0.28.9)
 
 :::info Package Type
 This is a **utility package** providing debug and monitoring features. It's not part of the Repository/DAL pattern - it wraps Kysely instances directly.

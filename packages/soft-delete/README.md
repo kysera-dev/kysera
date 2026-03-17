@@ -31,7 +31,7 @@ bun add @kysera/soft-delete
 ```json
 {
   "@kysera/executor": ">=0.7.0",
-  "kysely": ">=0.28.8",
+  "kysely": ">=0.28.9",
   "zod": ">=4.1.13"
 }
 ```

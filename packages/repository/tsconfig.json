@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
+    "rootDir": "../..",
     "outDir": "./dist",
     "baseUrl": ".",
     "composite": true,
@@ -11,6 +11,6 @@
     "noPropertyAccessFromIndexSignature": false,
     "noUncheckedIndexedAccess": false
   },
-  "include": ["src/**/*", "test/**/*", "*.config.ts"],
+  "include": ["src/**/*", "test/**/*", "*.config.ts", "../audit/src/version.ts", "../soft-delete/src/version.ts", "../timestamps/src/version.ts"],
   "exclude": ["node_modules", "dist", "test/multi-db.test.ts", "test/operators.integration.test.ts"]
 }
