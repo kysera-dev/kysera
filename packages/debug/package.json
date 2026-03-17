@@ -1,6 +1,6 @@
 {
   "name": "@kysera/debug",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "description": "Debug utilities for Kysely - query logging, profiling, SQL formatting",
   "type": "module",
   "main": "./dist/index.js",
@@ -24,7 +24,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
-  "peerDependencies": { 
+  "peerDependencies": {
     "kysely": ">=0.28.9"
   },
   "dependencies": {
