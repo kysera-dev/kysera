@@ -20,7 +20,7 @@
     "src"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node ../../scripts/fix-node-imports.cjs ./dist async_hooks",
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest watch",

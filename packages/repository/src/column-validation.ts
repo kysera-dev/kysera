@@ -9,6 +9,7 @@
 
 import type { PrimaryKeyConfig } from './types.js'
 import { getPrimaryKeyColumns } from './types.js'
+import { getEnv } from '@kysera/core'
 
 /**
  * Validate that all column names in conditions exist in a whitelist.
@@ -106,8 +107,7 @@ export function validateConditions(
   pkConfig: PrimaryKeyConfig,
   options: ColumnValidationOptions = {}
 ): Record<string, unknown> {
-  // eslint-disable-next-line @typescript-eslint/dot-notation
-  const { enabled = process.env['NODE_ENV'] === 'development', allowedColumns } = options
+  const { enabled = getEnv('NODE_ENV') === 'development', allowedColumns } = options
 
   if (!enabled) {
     return conditions

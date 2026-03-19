@@ -14,7 +14,7 @@ import type {
 } from './types.js'
 import type { DialectConfig } from './types.js'
 import { getPrimaryKeyColumns, normalizePrimaryKeyInput, isCompositeKey } from './types.js'
-import { DatabaseError } from '@kysera/core'
+import { DatabaseError, getEnv } from '@kysera/core'
 import { extractPrimaryKey } from './primary-key-utils.js'
 import type { ColumnValidationOptions } from './column-validation.js'
 import { validateConditions } from './column-validation.js'
@@ -43,8 +43,7 @@ import { applyWhereClause, hasOperators, validateOperators, extractColumns } fro
  */
 function castResults<T>(results: unknown): T {
   // Development mode: runtime validation
-  // eslint-disable-next-line @typescript-eslint/dot-notation
-  if (process.env['NODE_ENV'] === 'development') {
+  if (getEnv('NODE_ENV') === 'development') {
     // Validate non-null results are objects or arrays
     if (results !== null && results !== undefined) {
       if (Array.isArray(results)) {

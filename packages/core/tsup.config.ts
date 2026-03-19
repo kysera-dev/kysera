@@ -18,12 +18,12 @@ export default defineConfig({
   clean: true,
   minify: true,
   treeshake: true,
-  external: ['kysely'],
+  external: ['kysely', 'node:crypto'],
   target: 'esnext', // Latest JavaScript for Bun/Deno
   platform: 'neutral', // Platform-agnostic
   tsconfig: './tsconfig.build.json',
   // Replace __VERSION__ placeholder at build time
   define: {
     '__VERSION__': JSON.stringify(version)
-  }
+  },
 })
