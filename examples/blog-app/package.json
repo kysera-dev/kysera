@@ -1,6 +1,6 @@
 {
   "name": "blog-app-example",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "private": true,
   "type": "module",
   "description": "Blog application example using Kysera",
