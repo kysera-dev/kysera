@@ -107,15 +107,24 @@ export class QueryProfiler {
       }
     }
 
-    const totalDuration = orderedQueries.reduce((sum, q) => sum + q.duration, 0)
-    const sorted = [...orderedQueries].sort((a, b) => b.duration - a.duration)
+    let totalDuration = 0
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- length > 0 checked above
+    const first = orderedQueries[0]!
+    let slowest = first
+    let fastest = first
+
+    for (const q of orderedQueries) {
+      totalDuration += q.duration
+      if (q.duration > slowest.duration) slowest = q
+      if (q.duration < fastest.duration) fastest = q
+    }
 
     return {
       totalQueries: orderedQueries.length,
       totalDuration,
       averageDuration: totalDuration / orderedQueries.length,
-      slowestQuery: sorted[0] ?? null,
-      fastestQuery: sorted[sorted.length - 1] ?? null,
+      slowestQuery: slowest,
+      fastestQuery: fastest,
       queries: orderedQueries
     }
   }

@@ -1,5 +1,8 @@
 {
   "compilerOptions": {
+    // Silence TS6 deprecation warnings from tsup DTS worker (sets baseUrl internally)
+    "ignoreDeprecations": "6.0",
+
     // Target and Module
     "target": "ES2022",
     "module": "ESNext",
@@ -47,8 +50,6 @@
     "sourceMap": true,
     "removeComments": false,
     "importHelpers": false,
-    "importsNotUsedAsValues": "remove",
-    "downlevelIteration": false,
     "preserveConstEnums": true,
 
     // Advanced

@@ -1,7 +1,8 @@
 import type { Kysely } from 'kysely'
 import type { Plugin, BaseRepositoryLike } from '@kysera/executor'
 import { isRepositoryLike } from '@kysera/executor'
-import { NotFoundError, BadRequestError, type KyseraLogger, silentLogger } from '@kysera/core'
+import { NotFoundError, AuditError, AuditRestoreError, AuditMissingValuesError, shouldApplyToTable, type KyseraLogger, silentLogger, formatTimestampForDb, detectDialect } from '@kysera/core'
+import type { Dialect } from '@kysera/core'
 import { VERSION } from './version.js'
 
 // ============================================================================
@@ -381,11 +382,12 @@ async function ensureAuditTable<DB>(executor: Kysely<DB>, auditTable: string): P
 }
 
 /**
- * Get audit timestamp from options
+ * Get audit timestamp from options, formatted for the detected dialect.
  */
-function getAuditTimestamp(options: AuditOptions): string {
+function getAuditTimestamp(options: AuditOptions, dialect?: Dialect): string {
   const timestamp = options.getTimestamp ? options.getTimestamp() : new Date()
-  return typeof timestamp === 'string' ? timestamp : timestamp.toISOString()
+  if (typeof timestamp === 'string') return timestamp
+  return formatTimestampForDb(timestamp, dialect)
 }
 
 /**
@@ -393,17 +395,17 @@ function getAuditTimestamp(options: AuditOptions): string {
  * Handles Date objects, ISO strings, and unix timestamps (milliseconds).
  *
  * @param date - Date value to format
- * @returns ISO 8601 formatted string (audit table uses TEXT columns)
+ * @param dialect - Database dialect for correct timestamp formatting
+ * @returns Formatted timestamp string appropriate for the dialect
  */
-function formatDateForQuery(date: Date | string | number): string {
+function formatDateForQuery(date: Date | string | number, dialect?: Dialect): string {
   if (typeof date === 'number') {
-    // Unix timestamp (milliseconds)
-    return new Date(date).toISOString()
+    return formatTimestampForDb(new Date(date), dialect)
   }
   if (typeof date === 'string') {
-    return new Date(date).toISOString()
+    return formatTimestampForDb(new Date(date), dialect)
   }
-  return date.toISOString()
+  return formatTimestampForDb(date, dialect)
 }
 
 /**
@@ -459,10 +461,11 @@ async function createAuditLogEntry<DB>(
   operation: string,
   oldValues: unknown,
   newValues: unknown,
-  options: AuditOptions
+  options: AuditOptions,
+  dialect?: Dialect
 ): Promise<void> {
-  // Use ISO string timestamp for cross-database compatibility (CRIT-1: SQLite doesn't support CURRENT_TIMESTAMP in VALUES)
-  const timestamp = options.getTimestamp ? getAuditTimestamp(options) : new Date().toISOString()
+  // Use dialect-aware timestamp formatting (CRIT-1: SQLite doesn't support CURRENT_TIMESTAMP in VALUES)
+  const timestamp = options.getTimestamp ? getAuditTimestamp(options, dialect) : formatTimestampForDb(new Date(), dialect)
 
   // Cast to DynamicQueryBuilder for runtime table access
   const dynamicExecutor = executor as unknown as DynamicQueryBuilder
@@ -578,7 +581,7 @@ function extractPrimaryKey(entity: unknown, primaryKeyColumn: string): string | 
   const record = entity as Record<string, unknown>
   const pkValue = record[primaryKeyColumn]
   if (pkValue === undefined || pkValue === null) {
-    throw new BadRequestError(`Primary key '${primaryKeyColumn}' not found in entity`)
+    throw new AuditError(`Primary key '${primaryKeyColumn}' not found in entity`)
   }
   return pkValue as string | number
 }
@@ -592,9 +595,10 @@ function prepareAuditEntry(
   operation: string,
   oldValues: unknown,
   newValues: unknown,
-  options: AuditOptions
+  options: AuditOptions,
+  dialect?: Dialect
 ): Record<string, unknown> {
-  const timestamp = options.getTimestamp ? getAuditTimestamp(options) : new Date().toISOString()
+  const timestamp = options.getTimestamp ? getAuditTimestamp(options, dialect) : formatTimestampForDb(new Date(), dialect)
 
   return {
     table_name: tableName,
@@ -640,7 +644,8 @@ function wrapCreateMethod<T = unknown>(
   primaryKeyColumn: string,
   captureNewValues: boolean,
   skipSystemOperations: boolean,
-  options: AuditOptions
+  options: AuditOptions,
+  dialect?: Dialect
 ): void {
   if (!baseRepo.create) return
 
@@ -659,7 +664,8 @@ function wrapCreateMethod<T = unknown>(
         'INSERT',
         null,
         captureNewValues ? result : null,
-        options
+        options,
+        dialect
       )
     }
 
@@ -679,7 +685,8 @@ function wrapUpdateMethod<T = unknown>(
   captureOldValues: boolean,
   captureNewValues: boolean,
   skipSystemOperations: boolean,
-  options: AuditOptions
+  options: AuditOptions,
+  dialect?: Dialect
 ): void {
   if (!baseRepo.update) return
 
@@ -702,7 +709,8 @@ function wrapUpdateMethod<T = unknown>(
         'UPDATE',
         oldValues,
         captureNewValues ? result : null,
-        options
+        options,
+        dialect
       )
     }
 
@@ -721,7 +729,8 @@ function wrapDeleteMethod<T = unknown>(
   primaryKeyColumn: string,
   captureOldValues: boolean,
   skipSystemOperations: boolean,
-  options: AuditOptions
+  options: AuditOptions,
+  dialect?: Dialect
 ): void {
   if (!baseRepo.delete) return
 
@@ -744,7 +753,8 @@ function wrapDeleteMethod<T = unknown>(
         'DELETE',
         oldValues,
         null,
-        options
+        options,
+        dialect
       )
     }
 
@@ -768,7 +778,8 @@ function wrapBulkCreateMethod<T = unknown>(
   primaryKeyColumn: string,
   captureNewValues: boolean,
   skipSystemOperations: boolean,
-  options: AuditOptions
+  options: AuditOptions,
+  dialect?: Dialect
 ): void {
   if (!baseRepo.bulkCreate) return
 
@@ -786,7 +797,8 @@ function wrapBulkCreateMethod<T = unknown>(
           'INSERT',
           null,
           captureNewValues ? result : null,
-          options
+          options,
+          dialect
         )
       })
 
@@ -815,7 +827,8 @@ function wrapBulkUpdateMethod<T = unknown>(
   captureOldValues: boolean,
   captureNewValues: boolean,
   skipSystemOperations: boolean,
-  options: AuditOptions
+  options: AuditOptions,
+  dialect?: Dialect
 ): void {
   if (!baseRepo.bulkUpdate) return
 
@@ -847,7 +860,8 @@ function wrapBulkUpdateMethod<T = unknown>(
           'UPDATE',
           oldValuesMap.get(pkValue) ?? null,
           captureNewValues ? result : null,
-          options
+          options,
+          dialect
         )
       })
 
@@ -875,7 +889,8 @@ function wrapBulkDeleteMethod<T = unknown>(
   primaryKeyColumn: string,
   captureOldValues: boolean,
   skipSystemOperations: boolean,
-  options: AuditOptions
+  options: AuditOptions,
+  dialect?: Dialect
 ): void {
   if (!baseRepo.bulkDelete) return
 
@@ -897,7 +912,7 @@ function wrapBulkDeleteMethod<T = unknown>(
     if (!skipSystemOperations && ids.length > 0) {
       // Prepare all audit entries in memory
       const auditEntries = ids.map(id =>
-        prepareAuditEntry(tableName, id, 'DELETE', oldValuesMap.get(id) ?? null, null, options)
+        prepareAuditEntry(tableName, id, 'DELETE', oldValuesMap.get(id) ?? null, null, options, dialect)
       )
 
       // Batch insert all audit entries in one query
@@ -946,19 +961,16 @@ function addRestoreMethod<T = unknown>(
     // For DELETE operations, restore using old_values (the entity before deletion)
     if (log.operation === 'DELETE') {
       if (!log.old_values) {
-        throw new BadRequestError(
-          `Cannot restore from DELETE audit log ${String(auditId)}: old_values not captured. ` +
-            `Ensure captureOldValues is enabled when creating the audit plugin.`
-        )
+        throw new AuditMissingValuesError(auditId)
       }
 
       const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values, null, logger)
       if (!parsedValues) {
-        throw new BadRequestError(`Failed to parse old_values from audit log ${String(auditId)}`)
+        throw new AuditMissingValuesError(auditId)
       }
 
       if (!baseRepo.create) {
-        throw new BadRequestError('Repository does not support create operation')
+        throw new AuditRestoreError(auditId, 'DELETE', 'Repository does not support create operation')
       }
 
       return await baseRepo.create(parsedValues as Partial<T>)
@@ -967,35 +979,35 @@ function addRestoreMethod<T = unknown>(
     // For UPDATE operations, restore using old_values (revert the update)
     if (log.operation === 'UPDATE') {
       if (!log.old_values) {
-        throw new BadRequestError(
-          `Cannot revert UPDATE from audit log ${String(auditId)}: old_values not captured. ` +
-            `Ensure captureOldValues is enabled when creating the audit plugin.`
-        )
+        throw new AuditMissingValuesError(auditId)
       }
 
       const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values, null, logger)
       if (!parsedValues) {
-        throw new BadRequestError(`Failed to parse old_values from audit log ${String(auditId)}`)
+        throw new AuditMissingValuesError(auditId)
       }
 
       const entityId = parsedValues[primaryKeyColumn]
       if (entityId === undefined || entityId === null) {
-        throw new BadRequestError(
+        throw new AuditRestoreError(
+          auditId,
+          'UPDATE',
           `Primary key '${primaryKeyColumn}' not found in audit log old_values`
         )
       }
 
       if (!baseRepo.update) {
-        throw new BadRequestError('Repository does not support update operation')
+        throw new AuditRestoreError(auditId, 'UPDATE', 'Repository does not support update operation')
       }
 
       return await baseRepo.update(entityId as number | string, parsedValues as Partial<T>)
     }
 
     // INSERT operations cannot be restored (the entity already exists)
-    throw new BadRequestError(
-      `Cannot restore from ${log.operation} operation. ` +
-        `Only DELETE (re-creates entity) and UPDATE (reverts to old values) operations can be restored.`
+    throw new AuditRestoreError(
+      auditId,
+      log.operation,
+      'Cannot restore INSERT operations. Only DELETE (re-creates entity) and UPDATE (reverts to old values) operations can be restored.'
     )
   }
 }
@@ -1010,7 +1022,8 @@ function addAuditQueryMethods<T = unknown>(
   auditTable: string,
   tableName: string,
   primaryKeyColumn: string,
-  logger: KyseraLogger
+  logger: KyseraLogger,
+  dialect?: Dialect
 ): void {
   // Get audit history for a specific entity (returns parsed entries)
   extendedRepo.getAuditHistory = async function (
@@ -1078,11 +1091,11 @@ function addAuditQueryMethods<T = unknown>(
       query = query.where('changed_by', '=', filters.userId)
     }
     if (filters?.startDate) {
-      const formattedStart = formatDateForQuery(filters.startDate)
+      const formattedStart = formatDateForQuery(filters.startDate, dialect)
       query = query.where('changed_at', '>=', formattedStart)
     }
     if (filters?.endDate) {
-      const formattedEnd = formatDateForQuery(filters.endDate)
+      const formattedEnd = formatDateForQuery(filters.endDate, dialect)
       query = query.where('changed_at', '<=', formattedEnd)
     }
 
@@ -1268,25 +1281,27 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
 
   // Track the executor so onDestroy can clean up the correct lock entry
   let lastExecutor: object | null = null
+  // Detected dialect, set in onInit for dialect-aware timestamp formatting
+  let detectedDialect: Dialect | undefined
 
   return {
     name: '@kysera/audit',
     version: VERSION,
-    priority: -100, // Run last to audit after all other transformations
+    priority: 50, // AUDIT plugin: runs after security (1000), filters (500), and transforms (100)
 
     async onInit<DB>(executor: Kysely<DB>): Promise<void> {
       lastExecutor = executor
+      detectedDialect = detectDialect(executor)
       await ensureAuditTable(executor, auditTable)
     },
 
-    onDestroy(): Promise<void> {
+    onDestroy() {
       // Clean up locks for the executor this plugin was initialised with
       if (lastExecutor) {
         auditTableCreationLocks.delete(lastExecutor)
         lastExecutor = null
       }
       logger.debug('Audit plugin destroyed, cleared table creation locks')
-      return Promise.resolve()
     },
 
     extendRepository<T extends object>(repo: T): T {
@@ -1304,15 +1319,7 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
       }
 
       // Check if this table should be audited
-      const { tables, excludeTables } = options
-
-      // If whitelist exists, only audit tables in the whitelist
-      if (tables && tables.length > 0 && !tables.includes(tableName)) {
-        return repo
-      }
-
-      // If blacklist exists, skip tables in the blacklist
-      if (excludeTables?.includes(tableName)) {
+      if (!shouldApplyToTable(tableName, { tables: options.tables, excludeTables: options.excludeTables })) {
         return repo
       }
 
@@ -1328,7 +1335,8 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         primaryKeyColumn,
         captureNewValues,
         skipSystemOperations,
-        options
+        options,
+        detectedDialect
       )
       wrapUpdateMethod(
         mutableRepo,
@@ -1339,7 +1347,8 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         captureOldValues,
         captureNewValues,
         skipSystemOperations,
-        options
+        options,
+        detectedDialect
       )
       wrapDeleteMethod(
         mutableRepo,
@@ -1349,7 +1358,8 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         primaryKeyColumn,
         captureOldValues,
         skipSystemOperations,
-        options
+        options,
+        detectedDialect
       )
       wrapBulkCreateMethod(
         mutableRepo,
@@ -1359,7 +1369,8 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         primaryKeyColumn,
         captureNewValues,
         skipSystemOperations,
-        options
+        options,
+        detectedDialect
       )
       wrapBulkUpdateMethod(
         mutableRepo,
@@ -1370,7 +1381,8 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         captureOldValues,
         captureNewValues,
         skipSystemOperations,
-        options
+        options,
+        detectedDialect
       )
       wrapBulkDeleteMethod(
         mutableRepo,
@@ -1380,7 +1392,8 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         primaryKeyColumn,
         captureOldValues,
         skipSystemOperations,
-        options
+        options,
+        detectedDialect
       )
 
       // Add audit query methods
@@ -1392,7 +1405,8 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         auditTable,
         tableName,
         primaryKeyColumn,
-        logger
+        logger,
+        detectedDialect
       )
 
       return repo
@@ -1407,67 +1421,33 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
 /**
  * PostgreSQL-specific audit plugin
  *
- * Uses PostgreSQL-specific features like:
- * - JSONB columns for storing old/new values
- * - Native timestamp types
- *
+ * @deprecated Use `auditPlugin()` instead. Dialect is now auto-detected via `detectDialect()`.
  * @param options Audit plugin options
  * @returns Plugin instance configured for PostgreSQL
  */
 export function auditPluginPostgreSQL(options: AuditOptions = {}): Plugin {
-  // For now, use the same implementation as the generic plugin
-  // In future, we can add PostgreSQL-specific optimizations
-  return auditPlugin({
-    ...options,
-    getTimestamp: options.getTimestamp ?? (() => new Date().toISOString())
-  })
+  return auditPlugin(options)
 }
 
 /**
  * MySQL-specific audit plugin
  *
- * Uses MySQL-specific features like:
- * - JSON columns for storing old/new values
- * - DATETIME types for timestamps
- *
+ * @deprecated Use `auditPlugin()` instead. Dialect is now auto-detected via `detectDialect()`,
+ * and timestamps are automatically formatted for MySQL (YYYY-MM-DD HH:MM:SS.mmm).
  * @param options Audit plugin options
  * @returns Plugin instance configured for MySQL
  */
 export function auditPluginMySQL(options: AuditOptions = {}): Plugin {
-  // MySQL-specific timestamp formatting
-  // MySQL DATETIME doesn't accept ISO 8601 format, needs 'YYYY-MM-DD HH:MM:SS'
-  const mysqlTimestamp = (): string => {
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-    const day = String(now.getDate()).padStart(2, '0')
-    const hours = String(now.getHours()).padStart(2, '0')
-    const minutes = String(now.getMinutes()).padStart(2, '0')
-    const seconds = String(now.getSeconds()).padStart(2, '0')
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
-  }
-
-  return auditPlugin({
-    ...options,
-    getTimestamp: options.getTimestamp ?? mysqlTimestamp
-  })
+  return auditPlugin(options)
 }
 
 /**
  * SQLite-specific audit plugin
  *
- * Uses SQLite-specific features like:
- * - TEXT columns for JSON data
- * - ISO8601 string timestamps
- *
+ * @deprecated Use `auditPlugin()` instead. Dialect is now auto-detected via `detectDialect()`.
  * @param options Audit plugin options
  * @returns Plugin instance configured for SQLite
  */
 export function auditPluginSQLite(options: AuditOptions = {}): Plugin {
-  // For now, use the same implementation as the generic plugin
-  // In future, we can add SQLite-specific optimizations
-  return auditPlugin({
-    ...options,
-    getTimestamp: options.getTimestamp ?? (() => new Date().toISOString())
-  })
+  return auditPlugin(options)
 }

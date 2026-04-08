@@ -16,7 +16,7 @@ npm install @kysera/executor kysely
 
 ## Overview
 
-**Dependencies:** None (peer: kysely >=0.28.9)
+**Dependencies:** None (peer: kysely >=0.28.14)
 
 `@kysera/executor` provides a unified plugin system that works seamlessly with both Repository and DAL patterns. It wraps Kysely instances with plugin interception capabilities while maintaining full type safety and zero overhead when plugins aren't active.
 
@@ -443,13 +443,13 @@ import { resolvePluginOrder } from '@kysera/executor'
 
 const sorted = resolvePluginOrder([
   { name: 'audit', version: '1.0.0', priority: 0 },
-  { name: 'rls', version: '1.0.0', priority: 50 },
+  { name: 'rls', version: '1.0.0', priority: 1000 },
   { name: 'soft-delete', version: '1.0.0', priority: 0 }
 ])
 
 console.log(sorted.map(p => p.name))
 // ['rls', 'audit', 'soft-delete']
-// (rls first due to priority 50, then alphabetical)
+// (rls first due to priority 1000 (SECURITY), then alphabetical)
 ```
 
 **Ordering Algorithm:**
@@ -1091,7 +1091,7 @@ import type { Plugin, QueryBuilderContext } from '@kysera/executor'
 const tenantPlugin = (tenantId: string): Plugin => ({
   name: '@myapp/tenant-filter',
   version: '1.0.0',
-  priority: 50, // High priority - run before other plugins
+  priority: 1000, // SECURITY plugin - runs first
 
   interceptQuery: (qb, context) => {
     // Only apply to SELECT queries

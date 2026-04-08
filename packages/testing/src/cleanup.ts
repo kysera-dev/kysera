@@ -6,7 +6,7 @@
 
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
-import { silentLogger, type Dialect, type KyseraLogger } from '@kysera/core'
+import { silentLogger, detectDialect as coreDetectDialect, type Dialect, type KyseraLogger } from '@kysera/core'
 
 /**
  * Database cleanup strategies.
@@ -143,196 +143,14 @@ async function cleanUsingDelete<DB>(db: Kysely<DB>, tables: string[]): Promise<v
 }
 
 /**
- * Internal interface for database executors with adapter access
- * This provides a type-safe way to access internal Kysely properties
- * @internal
- * @deprecated Use explicit dialect parameter instead of relying on Kysely internals
- */
-interface DatabaseExecutorWithAdapter {
-  getExecutor?: () => {
-    adapter?: {
-      dialect?: {
-        constructor?: {
-          name?: string
-        }
-      }
-    }
-  }
-}
-
-/**
- * Detect database dialect from Kysely internals (fallback mechanism)
- *
- * @deprecated This function relies on Kysely's internal implementation details
- * which may change across versions. Use explicit `dialect` parameter instead.
- *
- * **Why this exists:**
- * Provides backward compatibility for code that doesn't pass explicit dialect.
- * This allows cleanup utilities to work out-of-the-box while we encourage
- * migration to explicit configuration.
- *
- * **Risks:**
- * - Kysely may change internal adapter structure in future versions
- * - Constructor name detection is fragile and could fail silently
- * - May not work correctly with custom adapters or proxies
- *
- * **Migration path:**
- * ```typescript
- * // Old (relies on detection):
- * await cleanDatabase(db, 'truncate', ['users']);
- *
- * // New (explicit configuration - recommended):
- * await cleanDatabase(db, 'truncate', { dialect: 'postgres', tables: ['users'] });
- * ```
- *
+ * Resolve dialect — uses explicit parameter or auto-detects via @kysera/core.
+ * Delegates to the stable SQL-generation-based detectDialect from @kysera/core,
+ * eliminating the 120+ lines of fragile constructor-name-based detection.
  * @internal
  */
-function detectDialect<DB>(
-  db: Kysely<DB>,
-  providedDialect?: Dialect,
-  logger: KyseraLogger = silentLogger
-): Dialect {
-  // Use provided dialect if available (recommended approach)
-  if (providedDialect) {
-    return providedDialect
-  }
-
-  // Warn about deprecated internal API usage
-  logger.warn(
-    'Dialect detection via Kysely internals is deprecated and may fail in future versions. ' +
-      'Please provide dialect option explicitly in CleanupOptions: { dialect: "postgres", tables: [...] }'
-  )
-
-  try {
-    // Attempt multiple detection strategies for robustness
-    const detected = tryMultipleDetectionStrategies(db)
-    if (detected) {
-      return detected
-    }
-
-    // If all detection strategies fail, fall back to SQLite as safe default
-    logger.warn(
-      'Could not detect database dialect, falling back to SQLite. ' +
-        'For better reliability, provide explicit dialect in CleanupOptions: { dialect: "postgres"|"mysql"|"sqlite"|"mssql", tables: [...] }'
-    )
-    return 'sqlite'
-  } catch (error) {
-    // For unexpected errors, fall back to SQLite with warning
-    logger.warn(
-      'Error during dialect detection, falling back to SQLite: ' +
-        (error instanceof Error ? error.message : String(error))
-    )
-    return 'sqlite'
-  }
-}
-
-/**
- * Try multiple strategies to detect database dialect
- * @internal
- */
-function tryMultipleDetectionStrategies<DB>(db: Kysely<DB>): Dialect | null {
-  // Strategy 1: Check via getExecutor() method (most common)
-  const strategy1 = tryGetExecutorStrategy(db)
-  if (strategy1) return strategy1
-
-  // Strategy 2: Check for dialect-specific methods/properties
-  const strategy2 = tryDialectMethodsStrategy(db)
-  if (strategy2) return strategy2
-
-  // All strategies failed
-  return null
-}
-
-/**
- * Strategy 1: Detect via getExecutor() accessor
- * @internal
- */
-function tryGetExecutorStrategy<DB>(db: Kysely<DB>): Dialect | null {
-  try {
-    // Type assertion is necessary for accessing internal Kysely properties
-    // eslint-disable-next-line @typescript-eslint/no-deprecated
-    const dbWithAdapter = db as unknown as DatabaseExecutorWithAdapter
-    const executor = dbWithAdapter.getExecutor?.()
-    const adapter = executor?.adapter
-    const dialect = adapter?.dialect
-
-    if (!dialect?.constructor?.name) {
-      return null
-    }
-
-    const dialectName = dialect.constructor.name.toLowerCase()
-    if (dialectName.includes('postgres') || dialectName.includes('pg')) {
-      return 'postgres'
-    }
-    if (dialectName.includes('mysql')) {
-      return 'mysql'
-    }
-    if (dialectName.includes('sqlite')) {
-      return 'sqlite'
-    }
-    if (dialectName.includes('mssql') || dialectName.includes('sqlserver')) {
-      return 'mssql'
-    }
-
-    return null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Strategy 2: Detect via introspection of db object properties
- * @internal
- */
-function tryDialectMethodsStrategy<DB>(db: Kysely<DB>): Dialect | null {
-  try {
-    // Check if db has any dialect-specific internal properties
-    // This is a more defensive fallback strategy
-    const dbObj = db as unknown as Record<string, unknown>
-
-    // Look for common internal property patterns
-    for (const key of Object.keys(dbObj)) {
-      const detected = checkPropertyForDialect(dbObj[key])
-      if (detected) {
-        return detected
-      }
-    }
-
-    return null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Check a single property for dialect indicators
- * @internal
- */
-function checkPropertyForDialect(value: unknown): Dialect | null {
-  if (!value || typeof value !== 'object') {
-    return null
-  }
-
-  const constructorName = (value as { constructor?: { name?: string } }).constructor?.name
-  if (!constructorName) {
-    return null
-  }
-
-  const stringified = constructorName.toLowerCase()
-  if (stringified.includes('postgres') || stringified.includes('pg')) {
-    return 'postgres'
-  }
-  if (stringified.includes('mysql')) {
-    return 'mysql'
-  }
-  if (stringified.includes('sqlite')) {
-    return 'sqlite'
-  }
-  if (stringified.includes('mssql') || stringified.includes('sqlserver')) {
-    return 'mssql'
-  }
-
-  return null
+function resolveDialect<DB>(db: Kysely<DB>, providedDialect?: Dialect): Dialect {
+  if (providedDialect) return providedDialect
+  return coreDetectDialect(db)
 }
 
 /**
@@ -373,10 +191,9 @@ async function cleanUsingTruncate<DB>(
   db: Kysely<DB>,
   tables: string[],
   providedDialect?: Dialect,
-  logger: KyseraLogger = silentLogger
+  _logger: KyseraLogger = silentLogger
 ): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-deprecated
-  const dialect = detectDialect(db, providedDialect, logger)
+  const dialect = resolveDialect(db, providedDialect)
 
   switch (dialect) {
     case 'postgres':
@@ -403,14 +220,14 @@ async function cleanUsingTruncate<DB>(
  * @internal
  */
 async function cleanPostgres<DB>(db: Kysely<DB>, tables: string[]): Promise<void> {
-  // PostgreSQL: Disable FK checks, truncate, re-enable
   await sql.raw('SET session_replication_role = replica').execute(db)
-
-  for (const table of tables) {
-    await truncateTableCascade(db, table)
+  try {
+    for (const table of tables) {
+      await truncateTableCascade(db, table)
+    }
+  } finally {
+    await sql.raw('SET session_replication_role = DEFAULT').execute(db)
   }
-
-  await sql.raw('SET session_replication_role = DEFAULT').execute(db)
 }
 
 /**
@@ -418,14 +235,14 @@ async function cleanPostgres<DB>(db: Kysely<DB>, tables: string[]): Promise<void
  * @internal
  */
 async function cleanMysql<DB>(db: Kysely<DB>, tables: string[]): Promise<void> {
-  // MySQL: Disable FK checks, truncate, re-enable
   await sql.raw('SET FOREIGN_KEY_CHECKS = 0').execute(db)
-
-  for (const table of tables) {
-    await truncateTableMySQL(db, table)
+  try {
+    for (const table of tables) {
+      await truncateTableMySQL(db, table)
+    }
+  } finally {
+    await sql.raw('SET FOREIGN_KEY_CHECKS = 1').execute(db)
   }
-
-  await sql.raw('SET FOREIGN_KEY_CHECKS = 1').execute(db)
 }
 
 /**
@@ -468,16 +285,14 @@ async function truncateTableMssql<DB>(db: Kysely<DB>, tableName: string): Promis
  * @internal
  */
 async function cleanMssql<DB>(db: Kysely<DB>, tables: string[]): Promise<void> {
-  // MSSQL: Disable FK checks globally, truncate, re-enable
-  // Note: NOCHECK CONSTRAINT ALL is supported in MSSQL 2005+
   await sql.raw('EXEC sp_MSforeachtable "ALTER TABLE ? NOCHECK CONSTRAINT ALL"').execute(db)
-
-  for (const table of tables) {
-    await truncateTableMssql(db, table)
+  try {
+    for (const table of tables) {
+      await truncateTableMssql(db, table)
+    }
+  } finally {
+    await sql.raw('EXEC sp_MSforeachtable "ALTER TABLE ? WITH CHECK CHECK CONSTRAINT ALL"').execute(db)
   }
-
-  // Re-enable all constraints
-  await sql.raw('EXEC sp_MSforeachtable "ALTER TABLE ? WITH CHECK CHECK CONSTRAINT ALL"').execute(db)
 }
 
 /**

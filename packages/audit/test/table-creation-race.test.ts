@@ -189,7 +189,7 @@ describe('M-8: Audit table creation race condition', () => {
 
     // Destroy should cleanup locks
     if (plugin.onDestroy) {
-      await expect(plugin.onDestroy()).resolves.not.toThrow()
+      expect(() => plugin.onDestroy!()).not.toThrow()
     }
 
     // Should be able to reinitialize safely

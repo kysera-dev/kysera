@@ -14,18 +14,18 @@ Get up and running with Kysera in 5 minutes.
 ### Prerequisites
 
 - **Runtime**: Node.js >=20.0.0, Bun >=1.0.0, or Deno (experimental)
-- **TypeScript**: ^5.9.2 (recommended)
+- **TypeScript**: ^6.0.2 (recommended)
 - **Module System**: ESM-only (no CommonJS)
 
 ### Step 1: Install Core Dependencies
 
 ```bash
 # Install Kysely (peer dependency) and database driver
-npm install kysely@^0.28.12 pg
+npm install kysely@^0.28.15 pg
 
 # For other databases:
-# npm install kysely@^0.28.12 mysql2      # MySQL
-# npm install kysely@^0.28.12 better-sqlite3  # SQLite
+# npm install kysely@^0.28.15 mysql2      # MySQL
+# npm install kysely@^0.28.15 better-sqlite3  # SQLite
 ```
 
 ### Step 2: Install Kysera Foundation

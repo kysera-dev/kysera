@@ -381,10 +381,8 @@ describe('Soft Delete Plugin - Core Methods', () => {
       // Record was never deleted
       expect(diana.deleted_at).toBeNull()
 
-      // Restore should not throw and should return the record
-      const result = await repo.restore(diana.id)
-      expect(result.deleted_at).toBeNull()
-      expect(result.name).toBe('Diana')
+      // Restore should throw RecordNotDeletedError for non-deleted record
+      await expect(repo.restore(diana.id)).rejects.toThrow('is not deleted')
     })
 
     it('should throw NotFoundError for non-existent record', async () => {

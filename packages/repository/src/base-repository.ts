@@ -9,7 +9,7 @@ import type {
   DialectConfig
 } from './types.js'
 import { normalizePrimaryKeyConfig, getPrimaryKeyColumns } from './types.js'
-import { NotFoundError, getEnv } from '@kysera/core'
+import { NotFoundError, getEnv, type KyseraLogger, silentLogger } from '@kysera/core'
 import type { ValidationSchema } from './validation-adapter.js'
 import { extractPrimaryKey } from './primary-key-utils.js'
 import { withTransaction } from '@kysera/dal'
@@ -199,6 +199,11 @@ export interface RepositoryConfig<Table, Entity> {
   }
   validateDbResults?: boolean
   validationStrategy?: 'none' | 'strict'
+  /**
+   * Logger for repository warnings and diagnostics.
+   * @default silentLogger
+   */
+  logger?: KyseraLogger
 }
 
 /**
@@ -271,6 +276,7 @@ function extractPrimaryKeyFromEntity<Entity, PK>(entity: Entity, pkConfig: Prima
  * Create a base repository implementation
  * This function creates a repository with full CRUD operations
  */
+// eslint-disable-next-line max-lines-per-function
 export function createBaseRepository<DB, Table, Entity, PK = number>(
   operations: TableOperations<Table>,
   config: RepositoryConfig<Table, Entity>,
@@ -282,7 +288,8 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
     primaryKey,
     primaryKeyType,
     validateDbResults = getEnv('NODE_ENV') === 'development',
-    validationStrategy = 'strict'
+    validationStrategy = 'strict',
+    logger = silentLogger
   } = config
 
   const pkConfig = normalizePrimaryKeyConfig(primaryKey, primaryKeyType)
@@ -320,7 +327,7 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
     // Fallback: if no update schema and create schema doesn't support partial(),
     // use create schema directly but warn in development mode
     if (getEnv('NODE_ENV') === 'development') {
-      console.warn(
+      logger.warn(
         '[Kysera] No update schema provided and create schema does not support partial(). ' +
         'Using full create schema for updates, which requires all fields. ' +
         'Provide an explicit update schema to fix this.'
@@ -333,6 +340,27 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
   // Convert PK type to PrimaryKeyInput for table operations
   const toPrimaryKeyInput = (pk: PK): PrimaryKeyInput => {
     return pk as unknown as PrimaryKeyInput
+  }
+
+  // Helper: check if FindOptions contain any advanced features beyond simple where equality
+  function needsAdvancedQuery<T>(options?: FindOptions<T>): boolean {
+    if (!options) return false
+    if (
+      options.orderBy !== undefined ||
+      options.orderDirection !== undefined ||
+      options.sort !== undefined ||
+      options.select !== undefined ||
+      options.limit !== undefined ||
+      options.offset !== undefined
+    ) return true
+    if (options.where) {
+      const w = options.where as Record<string, unknown>
+      if (Object.keys(w).some(k => k.startsWith('$'))) return true
+      if (Object.values(w).some(v =>
+        v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).some(k => k.startsWith('$'))
+      )) return true
+    }
+    return false
   }
 
   return {
@@ -408,7 +436,7 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
       if (ids.length === 0) return 0
       const deleted = await operations.deleteByIds(ids.map(toPrimaryKeyInput))
       if (getEnv('NODE_ENV') === 'development' && deleted !== ids.length) {
-        console.warn(
+        logger.warn(
           `[Kysera] bulkDelete: expected to delete ${ids.length} records, but deleted ${deleted}. ` +
           'Some records may not exist.'
         )
@@ -419,25 +447,7 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
     async find<Cols extends keyof Entity = keyof Entity>(
       options?: FindOptions<Entity, Cols>
     ): Promise<[Cols] extends [keyof Entity] ? Pick<Entity, Cols>[] : Entity[]> {
-      // Check if we have any advanced options (operators, sorting, select, limit, offset)
-      const hasAdvancedOptions = options && (
-        options.orderBy !== undefined ||
-        options.orderDirection !== undefined ||
-        options.sort !== undefined ||
-        options.select !== undefined ||
-        options.limit !== undefined ||
-        options.offset !== undefined ||
-        (options.where && (
-          // Check for logical operators at the top level ($or, $and)
-          Object.keys(options.where).some(k => k.startsWith('$')) ||
-          // Check for operator objects in values (e.g., { $gte: 18 })
-          Object.values(options.where).some(v =>
-            v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).some(k => k.startsWith('$'))
-          )
-        ))
-      )
-
-      if (hasAdvancedOptions) {
+      if (needsAdvancedQuery(options)) {
         // Use the new selectWithOptions method
         // Type assertion through unknown is safe here because:
         // 1. Entity and Selectable<Table> have the same runtime structure
@@ -458,23 +468,7 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
     async findOne<Cols extends keyof Entity = keyof Entity>(
       options?: FindOptions<Entity, Cols>
     ): Promise<([Cols] extends [keyof Entity] ? Pick<Entity, Cols> : Entity) | null> {
-      // Check if we have any advanced options
-      const hasAdvancedOptions = options && (
-        options.orderBy !== undefined ||
-        options.orderDirection !== undefined ||
-        options.sort !== undefined ||
-        options.select !== undefined ||
-        (options.where && (
-          // Check for logical operators at the top level ($or, $and)
-          Object.keys(options.where).some(k => k.startsWith('$')) ||
-          // Check for operator objects in values (e.g., { $gte: 18 })
-          Object.values(options.where).some(v =>
-            v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).some(k => k.startsWith('$'))
-          )
-        ))
-      )
-
-      if (hasAdvancedOptions) {
+      if (needsAdvancedQuery(options)) {
         // Use the new selectOneWithOptions method
         const row = await operations.selectOneWithOptions(
           options as unknown as FindOptions<Selectable<Table>, string & keyof Selectable<Table>>
@@ -493,20 +487,9 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
     },
 
     async count(options?: { where?: WhereClause<Entity> | Record<string, unknown> }): Promise<number> {
-      // Check if where has operators
-      const hasOperatorsInWhere = options?.where && (
-        // Check for logical operators at the top level ($or, $and)
-        Object.keys(options.where).some(k => k.startsWith('$')) ||
-        // Check for operator objects in values (e.g., { $gte: 18 })
-        Object.values(options.where).some(v =>
-          v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).some(k => k.startsWith('$'))
-        )
-      )
-
-      if (hasOperatorsInWhere) {
+      if (needsAdvancedQuery({ where: options?.where } as FindOptions<Entity>)) {
         return operations.countWithOptions({ where: options?.where as Record<string, unknown> })
       }
-
       return operations.count(options?.where as Record<string, unknown>)
     },
 

@@ -146,7 +146,7 @@ interface SoftDeleteMethods<T> {
 | Method                | Description                              | Returns             | Throws                                  |
 | --------------------- | ---------------------------------------- | ------------------- | --------------------------------------- |
 | `softDelete(id)`      | Sets deleted_at to CURRENT_TIMESTAMP     | Soft-deleted record | `NotFoundError` if record doesn't exist |
-| `restore(id)`         | Sets deleted_at to NULL                  | Restored record     | `NotFoundError` if record doesn't exist |
+| `restore(id)`         | Sets deleted_at to NULL                  | Restored record     | `NotFoundError` if not found, `RecordNotDeletedError` if not deleted |
 | `hardDelete(id)`      | Permanently deletes record (real DELETE) | void                | N/A                                     |
 | `findWithDeleted(id)` | Finds by ID including soft-deleted       | Record or null      | N/A                                     |
 

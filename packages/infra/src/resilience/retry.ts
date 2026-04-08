@@ -219,6 +219,7 @@ function calculateDelay(
  * );
  * ```
  */
+// eslint-disable-next-line complexity
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const {
     maxAttempts = 3,
@@ -230,7 +231,13 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
     onRetry
   } = options
 
-  // Validate maxDelayMs is not less than delayMs
+  // Validate options
+  if (maxAttempts < 1) {
+    throw new Error(
+      'maxAttempts must be at least 1, got ' + String(maxAttempts)
+    )
+  }
+
   if (maxDelayMs < delayMs) {
     throw new Error(
       'maxDelayMs (' + String(maxDelayMs) + ') must be greater than or equal to delayMs (' + String(delayMs) + ')'

@@ -129,6 +129,7 @@ export { TransactionRequiredError } from './errors.js'
 export {
   createContext,
   createSchemaContext,
+  toContext,
   withTransaction,
   withContext,
   isInTransaction,

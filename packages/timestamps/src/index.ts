@@ -1,7 +1,8 @@
 import type { Plugin } from '@kysera/executor'
+import { isRepositoryLike } from '@kysera/executor'
 import type { Repository } from '@kysera/repository'
 import type { Kysely, SelectQueryBuilder } from 'kysely'
-import { silentLogger, detectDialect, formatTimestampForDb } from '@kysera/core'
+import { silentLogger, detectDialect, formatTimestampForDb, shouldApplyToTable } from '@kysera/core'
 import type { KyseraLogger, Dialect } from '@kysera/core'
 import { VERSION } from './version.js'
 
@@ -114,18 +115,12 @@ function getTimestamp(options: TimestampsOptions, dialect?: Dialect): Date | str
 }
 
 /**
- * Check if a table should have timestamps
+ * Check if a table should have timestamps.
+ * Delegates to shouldApplyToTable from @kysera/core for consistent
+ * whitelist > blacklist > allow-all semantics across all plugins.
  */
 function shouldApplyTimestamps(tableName: string, options: TimestampsOptions): boolean {
-  if (options.excludeTables?.includes(tableName)) {
-    return false
-  }
-
-  if (options.tables) {
-    return options.tables.includes(tableName)
-  }
-
-  return true
+  return shouldApplyToTable(tableName, { tables: options.tables, excludeTables: options.excludeTables })
 }
 
 /**
@@ -172,11 +167,7 @@ function createTimestampQuery(
  * @param executor - Kysely database executor
  * @returns true if RETURNING clause is supported
  */
-function supportsReturning<DB>(executor: Kysely<DB>): boolean {
-  const dialect = detectDialect(executor)
-  // Return false for MySQL (doesn't support RETURNING)
-  // Return false for MSSQL (uses OUTPUT, not RETURNING)
-  // Return true for PostgreSQL and SQLite
+function supportsReturning(dialect: Dialect): boolean {
   return dialect !== 'mysql' && dialect !== 'mssql'
 }
 
@@ -260,7 +251,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
   return {
     name: '@kysera/timestamps',
     version: VERSION,
-    priority: 50, // Run in the middle, after filtering but before audit
+    priority: 100, // TRANSFORM plugin: runs after security (1000) and filters (500), before audit (50)
 
     /**
      * Lifecycle: No initialization needed for timestamps plugin
@@ -272,24 +263,21 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
     /**
      * Lifecycle: Cleanup resources when executor is destroyed
      */
-    onDestroy(): Promise<void> {
-      // No cleanup required - timestamps plugin has no persistent resources
+    onDestroy() {
       logger.debug('Timestamps plugin destroyed')
-      return Promise.resolve()
     },
 
     extendRepository<T extends object>(repo: T): T {
-      // Check if it's actually a repository (has required properties)
-      if (!('tableName' in repo) || !('executor' in repo)) {
+      // Use shared type guard from @kysera/executor (consistent with soft-delete, audit, rls)
+      if (!isRepositoryLike(repo)) {
         return repo
       }
 
-      // Type assertion is safe here as we've checked for properties
       const baseRepo = repo as T & {
         tableName: string
-        executor: unknown
-        create: Function
-        update: Function
+        executor: Kysely<Record<string, TimestampedTable>>
+        create: (input: unknown) => Promise<unknown>
+        update: (id: unknown, input: unknown) => Promise<unknown>
       }
 
       // Skip if table doesn't support timestamps
@@ -303,8 +291,14 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
       // Save original methods
       const originalCreate = baseRepo.create.bind(baseRepo)
       const originalUpdate = baseRepo.update.bind(baseRepo)
-      const executor = baseRepo.executor as Kysely<Record<string, TimestampedTable>>
-      const dbDialect: Dialect = detectDialect(executor)
+      const executor = baseRepo.executor
+
+      // Cache dialect detection (detectDialect compiles a test SQL query)
+      let cachedDialect: Dialect | undefined
+      const getDialect = (): Dialect => {
+        cachedDialect ??= detectDialect(executor)
+        return cachedDialect
+      }
 
       const extendedRepo = {
         ...baseRepo,
@@ -312,7 +306,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
         // Override create to add timestamps
         async create(input: unknown): Promise<unknown> {
           const data = input as Record<string, unknown>
-          const timestamp = getTimestamp(options, dbDialect)
+          const timestamp = getTimestamp(options, getDialect())
           const dataWithTimestamps: Record<string, unknown> = {
             ...data,
             [createdAtColumn]: data[createdAtColumn] ?? timestamp
@@ -329,7 +323,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
         // Override update to set updated_at
         async update(id: number, input: unknown): Promise<unknown> {
           const data = input as Record<string, unknown>
-          const timestamp = getTimestamp(options, dbDialect)
+          const timestamp = getTimestamp(options, getDialect())
           const dataWithTimestamp: Record<string, unknown> = {
             ...data,
             [updatedAtColumn]: data[updatedAtColumn] ?? timestamp
@@ -344,7 +338,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
          */
         async findCreatedAfter(date: Date | string | number): Promise<unknown[]> {
           const query = createTimestampQuery(executor, baseRepo.tableName, createdAtColumn)
-          const result = await query.where('>', String(date)).selectAll().execute()
+          const result = await query.where('>', formatTimestampForDb(date instanceof Date ? date : new Date(String(date)), getDialect())).selectAll().execute()
           return result
         },
 
@@ -353,7 +347,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
          */
         async findCreatedBefore(date: Date | string | number): Promise<unknown[]> {
           const query = createTimestampQuery(executor, baseRepo.tableName, createdAtColumn)
-          const result = await query.where('<', String(date)).selectAll().execute()
+          const result = await query.where('<', formatTimestampForDb(date instanceof Date ? date : new Date(String(date)), getDialect())).selectAll().execute()
           return result
         },
 
@@ -364,11 +358,14 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
           startDate: Date | string | number,
           endDate: Date | string | number
         ): Promise<unknown[]> {
+          const dialect = getDialect()
+          const start = formatTimestampForDb(startDate instanceof Date ? startDate : new Date(String(startDate)), dialect)
+          const end = formatTimestampForDb(endDate instanceof Date ? endDate : new Date(String(endDate)), dialect)
           const result = await executor
             .selectFrom(baseRepo.tableName as never)
             .selectAll()
-            .where(createdAtColumn as never, '>=', startDate as never)
-            .where(createdAtColumn as never, '<=', endDate as never)
+            .where(createdAtColumn as never, '>=', start as never)
+            .where(createdAtColumn as never, '<=', end as never)
             .execute()
           return result
         },
@@ -378,7 +375,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
          */
         async findUpdatedAfter(date: Date | string | number): Promise<unknown[]> {
           const query = createTimestampQuery(executor, baseRepo.tableName, updatedAtColumn)
-          const result = await query.where('>', String(date)).selectAll().execute()
+          const result = await query.where('>', formatTimestampForDb(date instanceof Date ? date : new Date(String(date)), getDialect())).selectAll().execute()
           return result
         },
 
@@ -428,7 +425,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
          * Touch a record (update its timestamp)
          */
         async touch(id: number): Promise<void> {
-          const timestamp = getTimestamp(options, dbDialect)
+          const timestamp = getTimestamp(options, getDialect())
           const updateData = { [updatedAtColumn]: timestamp }
 
           logger.info(`Touching record ${id} in ${baseRepo.tableName}`)
@@ -460,7 +457,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             return []
           }
 
-          const timestamp = getTimestamp(options, dbDialect)
+          const timestamp = getTimestamp(options, getDialect())
           const dataWithTimestamps = inputs.map(input => {
             const data = input as Record<string, unknown>
             const result: Record<string, unknown> = {
@@ -480,7 +477,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
           )
 
           // Check if dialect supports RETURNING
-          if (supportsReturning(executor)) {
+          if (supportsReturning(getDialect())) {
             // Use RETURNING for PostgreSQL/SQLite - most efficient
             const result = await executor
               .insertInto(baseRepo.tableName as never)
@@ -542,7 +539,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
           }
 
           const data = input as Record<string, unknown>
-          const timestamp = getTimestamp(options, dbDialect)
+          const timestamp = getTimestamp(options, getDialect())
           const dataWithTimestamp: Record<string, unknown> = {
             ...data,
             [updatedAtColumn]: data[updatedAtColumn] ?? timestamp
@@ -579,7 +576,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             return
           }
 
-          const timestamp = getTimestamp(options, dbDialect)
+          const timestamp = getTimestamp(options, getDialect())
           const updateData = { [updatedAtColumn]: timestamp }
 
           logger.info(`Touching ${ids.length} records in ${baseRepo.tableName}`)

@@ -243,6 +243,9 @@ describe('Plugin System', () => {
 
       const repo = await withPlugins(factory, db, [countingPlugin])
 
+      // Reset count after initialization (dialect detection may trigger interceptQuery)
+      queryCount = 0
+
       await repo.findAll()
       await repo.findById(1)
 

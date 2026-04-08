@@ -297,15 +297,11 @@ describe.each(getDatabaseTypes())('Soft Delete Multi-Database Tests (%s)', dbTyp
       await expect(userRepo.restore(99999)).rejects.toThrow()
     })
 
-    it('should handle restore of non-deleted record', async () => {
+    it('should throw RecordNotDeletedError when restoring non-deleted record', async () => {
       const user = await userRepo.create({ email: 'test@example.com', name: 'Test User' })
 
-      // Restoring a non-deleted record should not throw
-      await userRepo.restore(user.id)
-
-      const found = await userRepo.findById(user.id)
-      expect(found).not.toBeNull()
-      expect(found.deleted_at).toBeNull()
+      // Restoring a non-deleted record should throw RecordNotDeletedError
+      await expect(userRepo.restore(user.id)).rejects.toThrow('is not deleted')
     })
 
     it('should handle multiple soft deletes without restore', async () => {

@@ -39,7 +39,7 @@ class MockQueryBuilder {
 
   where(
     columnOrFilter: string | Record<string, unknown>,
-    operator?: string,
+    _operator?: string,
     value?: unknown
   ): this {
     if (typeof columnOrFilter === 'string') {
@@ -81,19 +81,19 @@ describe('rlsPlugin', () => {
       posts: {
         policies: [
           // Filter by tenant
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
           // Allow authors to do anything
-          allow('all', ctx => ctx.auth.userId === ctx.row?.author_id),
+          allow('all', ctx => ctx.auth!.userId === ctx.row?.['author_id']),
           // Allow admins to do anything
-          allow('all', ctx => ctx.auth.roles.includes('admin')),
+          allow('all', ctx => ctx.auth!.roles.includes('admin')),
           // Deny deletion of published posts
-          deny('delete', ctx => ctx.row?.status === 'published')
+          deny('delete', ctx => ctx.row?.['status'] === 'published')
         ]
       },
       comments: {
         policies: [
-          allow('all', ctx => ctx.auth.roles.includes('moderator')),
-          allow('all', ctx => ctx.auth.userId === ctx.row?.author_id)
+          allow('all', ctx => ctx.auth!.roles.includes('moderator')),
+          allow('all', ctx => ctx.auth!.userId === ctx.row?.['author_id'])
         ]
       }
     })
@@ -110,7 +110,7 @@ describe('rlsPlugin', () => {
     it('should have correct priority', () => {
       const plugin = rlsPlugin({ schema })
 
-      expect(plugin.priority).toBe(50)
+      expect(plugin.priority).toBe(1000)
     })
 
     it('should have empty dependencies', () => {
@@ -286,7 +286,7 @@ describe('rlsPlugin', () => {
       expect(qb.getWhereCalls()).toHaveLength(0)
     })
 
-    it('should skip for system users (ctx.auth.isSystem)', async () => {
+    it('should skip for system users (ctx.auth!.isSystem)', async () => {
       const ctx = createRLSContext({
         auth: { userId: 1, roles: [], isSystem: true }
       })

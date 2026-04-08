@@ -7,7 +7,7 @@
 
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
-import { silentLogger, type KyseraLogger } from '@kysera/core'
+import { silentLogger, formatTimestampForDb, type KyseraLogger } from '@kysera/core'
 import type { DialectAdapter, DialectAdapterOptions, SchemaOptions } from '../types.js'
 import {
   assertValidIdentifier,
@@ -47,7 +47,7 @@ export class PostgresAdapter implements DialectAdapter {
   }
 
   formatDate(date: Date): string {
-    return date.toISOString()
+    return formatTimestampForDb(date, 'postgres')
   }
 
   isUniqueConstraintError(error: unknown): boolean {
@@ -176,9 +176,23 @@ export class PostgresAdapter implements DialectAdapter {
     exclude: string[] = [],
     options?: SchemaOptions
   ): Promise<void> {
+    const schema = this.resolveSchema(options)
     const tables = await this.getTables(db, options)
-    for (const table of tables) {
-      if (!exclude.includes(table)) {
+    const targetTables = tables.filter(t => !exclude.includes(t))
+
+    if (targetTables.length === 0) return
+
+    // PostgreSQL supports multi-table TRUNCATE in a single statement
+    const qualifiedTables = targetTables
+      .map(t => qualifyTableName(schema, t, this.escapeIdentifier.bind(this)))
+      .join(', ')
+
+    try {
+      await sql.raw(`TRUNCATE TABLE ${qualifiedTables} RESTART IDENTITY CASCADE`).execute(db)
+    } catch (error) {
+      // Fallback to sequential truncation if batch fails
+      this.logger.warn('Batch TRUNCATE failed, falling back to sequential:', error)
+      for (const table of targetTables) {
         await this.truncateTable(db, table, options)
       }
     }

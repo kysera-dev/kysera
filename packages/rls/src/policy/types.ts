@@ -219,8 +219,9 @@ export interface RLSContext<TUser = unknown, TMeta = unknown> {
   /**
    * Context creation timestamp
    * Used for temporal policies and audit trails
+   * @default new Date() (auto-set when not provided)
    */
-  timestamp: Date
+  timestamp?: Date
 }
 
 // ============================================================================
@@ -800,6 +801,16 @@ export interface PolicyActivationContext {
    * Custom metadata for activation decisions
    */
   meta?: Record<string, unknown>
+
+  /**
+   * Authentication context for auth-based policy activation
+   */
+  auth?: {
+    userId?: string
+    roles?: string[]
+    isSystem?: boolean
+    [key: string]: unknown
+  }
 }
 
 /**

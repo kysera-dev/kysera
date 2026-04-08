@@ -93,10 +93,12 @@ function isGroupedCountRow(
  * Ideal for infinite scroll, simple "Load More" buttons, or when total count is expensive.
  */
 export interface OffsetOptions {
-  /** Maximum number of rows to return (default: 20, max: 100) */
+  /** Maximum number of rows to return (max: 100) */
   limit?: number
   /** Number of rows to skip before starting to return rows (default: 0) */
   offset?: number
+  /** Database dialect — needed to apply SQLite-specific OFFSET workaround */
+  dialect?: Dialect
 }
 
 /**
@@ -201,9 +203,12 @@ export function applyOffset<DB, TB extends keyof DB, O>(
     const boundedLimit = Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, options.limit))
     q = q.limit(boundedLimit)
   } else if (options?.offset !== undefined) {
-    // SQLite requires LIMIT when OFFSET is used
-    // If no limit was specified but offset was, use SQLite max rows constant
-    q = q.limit(SQLITE_MAX_ROWS)
+    // SQLite requires LIMIT when OFFSET is used. Apply workaround for SQLite and
+    // when dialect is unknown (safe default). Skip only for known non-SQLite dialects.
+    const dialect = options.dialect
+    if (!dialect || dialect === 'sqlite') {
+      q = q.limit(SQLITE_MAX_ROWS)
+    }
   }
 
   return q
@@ -500,9 +505,9 @@ export async function executeGroupedCount<DB, TB extends keyof DB, O>(
  */
 export interface TableFilterConfig {
   /** Whitelist of tables to include (takes precedence) */
-  tables?: string[]
+  tables?: string[] | undefined
   /** Blacklist of tables to exclude */
-  excludeTables?: string[]
+  excludeTables?: string[] | undefined
 }
 
 /**

@@ -20,7 +20,7 @@ npm install @kysera/timestamps
 | --------------------- | ----------------------------------- |
 | **Bundle Size**       | ~4 KB (minified)                    |
 | **Dependencies**      | @kysera/core (workspace)            |
-| **Peer Dependencies** | kysely >=0.28.9, @kysera/repository |
+| **Peer Dependencies** | kysely >=0.28.14, @kysera/repository |
 
 ## Exports
 

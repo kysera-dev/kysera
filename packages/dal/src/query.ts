@@ -7,8 +7,7 @@
 import type { Kysely } from 'kysely'
 import type { KyseraExecutor } from '@kysera/executor'
 import type { DbContext, QueryFunction } from './types.js'
-import { isDbContext } from './types.js'
-import { createContext } from './context.js'
+import { toContext } from './context.js'
 import { TransactionRequiredError } from './errors.js'
 
 /**
@@ -73,8 +72,7 @@ export function createQuery<DB, TArgs extends readonly unknown[], TResult>(
     dbOrCtx: Kysely<DB> | KyseraExecutor<DB> | DbContext<DB>,
     ...args: TArgs
   ): Promise<TResult> => {
-    // Use Symbol-based detection for reliable context identification
-    const ctx: DbContext<DB> = isDbContext<DB>(dbOrCtx) ? dbOrCtx : createContext(dbOrCtx)
+    const ctx: DbContext<DB> = toContext(dbOrCtx)
 
     return queryFn(ctx, ...args)
   }

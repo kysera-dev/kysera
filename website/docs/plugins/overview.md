@@ -217,25 +217,29 @@ Plugin order is determined by the `resolvePluginOrder` algorithm:
 3. **Tie-breaking**: Alphabetical by name for stability
 
 ```typescript
-// Plugins are automatically sorted
+// Plugins are automatically sorted by priority (higher = runs first)
 const orm = await createORM(db, [
-  auditPlugin(), // priority: 0
-  softDeletePlugin(), // priority: 0
-  rlsPlugin({ schema }), // priority: 50 (runs first!)
-  timestampsPlugin() // priority: 0
+  auditPlugin(),        // priority: 50  (AUDIT)
+  softDeletePlugin(),   // priority: 500 (FILTER)
+  rlsPlugin({ schema }),// priority: 1000 (SECURITY - runs first!)
+  timestampsPlugin()    // priority: 100 (TRANSFORM)
 ])
 
-// Actual execution order:
-// 1. RLS (priority 50)
-// 2. audit, softDelete, timestamps (priority 0, alphabetical)
+// Actual execution order (highest priority first):
+// 1. RLS        (1000) - Security: enforce access policies
+// 2. Soft-delete (500) - Filter: exclude deleted records
+// 3. Timestamps  (100) - Transform: inject timestamps
+// 4. Audit        (50) - Audit: log final state of operations
 ```
 
 :::tip Priority Guidelines
 
-- **50**: Security plugins (RLS) - must filter before other plugins see data
-- **10**: Validation plugins - validate early
-- **0**: Standard plugins (default)
-- **-10**: Logging/audit plugins - capture final state
+- **1000**: Security plugins (RLS) - must enforce access policies before anything else
+- **500**: Filter plugins (soft-delete) - filter records after security
+- **100**: Transform plugins (timestamps) - modify data
+- **50**: Audit plugins - capture final state after all transformations
+- **0**: Default priority
+- **-100**: Debug plugins - logging, profiling (runs last)
   :::
 
 ## Plugin Validation

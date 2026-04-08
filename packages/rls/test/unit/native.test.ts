@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { PostgresRLSGenerator, syncContextToPostgres } from '../../src/native/postgres.js'
 import { RLSMigrationGenerator } from '../../src/native/migration.js'
 import { defineRLSSchema } from '../../src/policy/index.js'
-import type { RLSSchema, PolicyDefinition } from '../../src/policy/types.js'
-import { sql } from 'kysely'
+import type { RLSSchema } from '../../src/policy/types.js'
+import { sql as _sql } from 'kysely'
 
 // Test database schema
 interface TestDB {
@@ -49,8 +49,8 @@ describe('PostgresRLSGenerator', () => {
 
       // Should generate: ENABLE RLS, FORCE RLS, and CREATE POLICY statements
       expect(statements.length).toBeGreaterThanOrEqual(2)
-      expect(statements[0]).toBe('ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;')
-      expect(statements[1]).toBe('ALTER TABLE public.users FORCE ROW LEVEL SECURITY;')
+      expect(statements[0]).toBe('ALTER TABLE "public"."users" ENABLE ROW LEVEL SECURITY;')
+      expect(statements[1]).toBe('ALTER TABLE "public"."users" FORCE ROW LEVEL SECURITY;')
       // Third statement would be CREATE POLICY if there's a policy with USING clause
       expect(
         statements.some(s => s.includes('CREATE POLICY') || s.includes('ENABLE ROW LEVEL'))
@@ -78,9 +78,9 @@ describe('PostgresRLSGenerator', () => {
       const policyStatement = statements.find(s => s.includes('CREATE POLICY'))
       expect(policyStatement).toBeDefined()
       expect(policyStatement).toContain('CREATE POLICY "tenant_isolation"')
-      expect(policyStatement).toContain('ON public.users')
+      expect(policyStatement).toContain('ON "public"."users"')
       expect(policyStatement).toContain('AS PERMISSIVE')
-      expect(policyStatement).toContain('TO public')
+      expect(policyStatement).toContain('TO "public"')
       expect(policyStatement).toContain('FOR SELECT')
       expect(policyStatement).toContain('USING (tenant_id = rls_current_tenant_id())')
     })
@@ -173,7 +173,7 @@ describe('PostgresRLSGenerator', () => {
       const generator = new PostgresRLSGenerator()
       const statements = generator.generateStatements(schema, { schemaName: 'app_schema' })
 
-      expect(statements[0]).toContain('app_schema.users')
+      expect(statements[0]).toContain('"app_schema"."users"')
     })
 
     it('should handle policyPrefix option', () => {
@@ -204,7 +204,7 @@ describe('PostgresRLSGenerator', () => {
             {
               type: 'filter',
               operation: 'read',
-              condition: ctx => ({ tenant_id: ctx.auth.tenantId })
+              condition: ctx => ({ tenant_id: ctx.auth!.tenantId })
             }
           ]
         }
@@ -225,7 +225,7 @@ describe('PostgresRLSGenerator', () => {
             {
               type: 'validate',
               operation: 'create',
-              condition: ctx => !!ctx.data?.name
+              condition: ctx => !!(ctx.data as any)?.name
             }
           ]
         }
@@ -303,7 +303,7 @@ describe('PostgresRLSGenerator', () => {
       const statements = generator.generateStatements(schema)
 
       const policyStatement = statements.find(s => s.includes('CREATE POLICY'))
-      expect(policyStatement).toContain('TO authenticated')
+      expect(policyStatement).toContain('TO "authenticated"')
     })
 
     it('should map operations correctly', () => {
@@ -540,7 +540,7 @@ describe('PostgresRLSGenerator', () => {
       expect(statements).toHaveLength(2)
       expect(statements[0]).toContain('DROP POLICY IF EXISTS')
       expect(statements[0]).toContain('pg_policies')
-      expect(statements[1]).toBe('ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;')
+      expect(statements[1]).toBe('ALTER TABLE "public"."users" DISABLE ROW LEVEL SECURITY;')
     })
 
     it('should handle custom schema name', () => {
@@ -561,7 +561,7 @@ describe('PostgresRLSGenerator', () => {
       const statements = generator.generateDropStatements(schema, { schemaName: 'app_schema' })
 
       expect(statements[0]).toContain("schemaname = 'app_schema'")
-      expect(statements[1]).toContain('app_schema.users')
+      expect(statements[1]).toContain('"app_schema"."users"')
     })
 
     it('should handle custom policy prefix', () => {
@@ -817,7 +817,7 @@ describe('RLSMigrationGenerator', () => {
         force: false
       })
 
-      expect(migration).toContain('app_schema.users')
+      expect(migration).toContain('"app_schema"."users"')
       expect(migration).not.toContain('FORCE ROW LEVEL SECURITY')
     })
   })
@@ -872,20 +872,8 @@ describe('syncContextToPostgres', () => {
   function createMockDb() {
     const mockExecute = vi.fn().mockResolvedValue({ rows: [] })
 
-    // Create a minimal mock that satisfies Kysely's RawBuilder requirements
-    const mockCompiler = {
-      compileQuery: vi.fn().mockReturnValue({
-        sql: 'SELECT set_config($1, $2, $3)',
-        parameters: []
-      })
-    }
-
     const mockAdapter = {
       supportsReturning: true
-    }
-
-    const mockQueryCreator = {
-      getExecutor: () => mockExecutor
     }
 
     const mockExecutor = {

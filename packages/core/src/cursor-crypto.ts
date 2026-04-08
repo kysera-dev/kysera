@@ -22,7 +22,7 @@ import { BadRequestError } from './errors.js'
  */
 export interface CursorSecurityOptions {
   /**
-   * Secret key for HMAC signing (minimum 32 bytes recommended)
+   * Secret key for HMAC signing (minimum 32 characters required)
    */
   secret: string
 
@@ -66,8 +66,8 @@ export function signCursor(
     throw new BadRequestError('Cursor cannot be empty')
   }
 
-  if (!secret || secret.length < 16) {
-    throw new Error('Secret must be at least 16 characters long')
+  if (!secret || secret.length < 32) {
+    throw new Error('Secret must be at least 32 characters long')
   }
 
   const hmac = createHmac(algorithm, secret)
@@ -105,8 +105,8 @@ export function verifyCursor(
     throw new BadRequestError('Signed cursor cannot be empty')
   }
 
-  if (!secret || secret.length < 16) {
-    throw new Error('Secret must be at least 16 characters long')
+  if (!secret || secret.length < 32) {
+    throw new Error('Secret must be at least 32 characters long')
   }
 
   // Split on last dot to handle cursors that may contain dots
@@ -157,8 +157,8 @@ export function encryptCursor(cursor: string, secret: string): string {
     throw new BadRequestError('Cursor cannot be empty')
   }
 
-  if (!secret || secret.length < 16) {
-    throw new Error('Secret must be at least 16 characters long')
+  if (!secret || secret.length < 32) {
+    throw new Error('Secret must be at least 32 characters long')
   }
 
   // Derive 32-byte key from secret using SHA-256
@@ -203,8 +203,8 @@ export function decryptCursor(encryptedCursor: string, secret: string): string {
     throw new BadRequestError('Encrypted cursor cannot be empty')
   }
 
-  if (!secret || secret.length < 16) {
-    throw new Error('Secret must be at least 16 characters long')
+  if (!secret || secret.length < 32) {
+    throw new Error('Secret must be at least 32 characters long')
   }
 
   // Parse format: iv.encrypted.authTag
@@ -257,15 +257,15 @@ export function decryptCursor(encryptedCursor: string, secret: string): string {
  * @returns true if strings are equal, false otherwise
  */
 function timingSafeEqual(a: string, b: string): boolean {
-  // Convert to buffers for constant-time comparison
   const bufA = Buffer.from(a)
   const bufB = Buffer.from(b)
 
-  // If lengths differ, still compare to avoid timing leak
+  // Constant-time comparison even when lengths differ:
+  // compare against bufA itself to consume the same time, then reject via length check
   if (bufA.length !== bufB.length) {
+    cryptoTimingSafeEqual(bufA, bufA)
     return false
   }
 
-  // Use Node.js crypto.timingSafeEqual for constant-time comparison
   return cryptoTimingSafeEqual(bufA, bufB)
 }

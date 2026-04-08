@@ -138,11 +138,17 @@ export class HealthMonitor<DB = unknown> implements Disposable {
       }
     }
 
-    // Initial check
-    void check()
+    // Initial check — catch any unhandled rejection from the async function
+    check().catch((err: unknown) => {
+      this.logger.error('Initial health check failed unexpectedly:', err)
+    })
 
     // Schedule periodic checks
-    this.intervalId = setInterval(() => void check(), this.intervalMs)
+    this.intervalId = setInterval(() => {
+      check().catch((err: unknown) => {
+        this.logger.error('Periodic health check failed unexpectedly:', err)
+      })
+    }, this.intervalMs)
   }
 
   /**

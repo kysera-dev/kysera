@@ -7,20 +7,7 @@
 import type { Kysely } from 'kysely'
 import type { KyseraExecutor } from '@kysera/executor'
 import type { DbContext, QueryFunction } from './types.js'
-import { isDbContext } from './types.js'
-import { createContext } from './context.js'
-
-/**
- * Normalize input to DbContext.
- * Uses Symbol-based detection for reliable context identification.
- * @internal
- */
-function toContext<DB>(ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>): DbContext<DB> {
-  if (isDbContext<DB>(ctxOrDb)) {
-    return ctxOrDb
-  }
-  return createContext(ctxOrDb)
-}
+import { toContext } from './context.js'
 
 /**
  * Compose two query functions sequentially.

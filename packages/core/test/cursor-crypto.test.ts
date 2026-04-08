@@ -71,7 +71,7 @@ describe('Cursor Cryptography', () => {
     })
 
     it('should throw error for short secret', () => {
-      expect(() => signCursor(testCursor, 'short')).toThrow('Secret must be at least 16 characters')
+      expect(() => signCursor(testCursor, 'short')).toThrow('Secret must be at least 32 characters')
     })
   })
 
@@ -136,7 +136,7 @@ describe('Cursor Cryptography', () => {
 
     it('should throw error for short secret', () => {
       const signed = signCursor(testCursor, testSecret)
-      expect(() => verifyCursor(signed, 'short')).toThrow('Secret must be at least 16 characters')
+      expect(() => verifyCursor(signed, 'short')).toThrow('Secret must be at least 32 characters')
     })
 
     it('should handle cursors with dots in the value', () => {
@@ -172,7 +172,7 @@ describe('Cursor Cryptography', () => {
     })
 
     it('should throw error for short secret', () => {
-      expect(() => encryptCursor(testCursor, 'short')).toThrow('Secret must be at least 16 characters')
+      expect(() => encryptCursor(testCursor, 'short')).toThrow('Secret must be at least 32 characters')
     })
   })
 
@@ -228,7 +228,7 @@ describe('Cursor Cryptography', () => {
 
     it('should throw error for short secret', () => {
       const encrypted = encryptCursor(testCursor, testSecret)
-      expect(() => decryptCursor(encrypted, 'short')).toThrow('Secret must be at least 16 characters')
+      expect(() => decryptCursor(encrypted, 'short')).toThrow('Secret must be at least 32 characters')
     })
 
     it('should handle Unicode characters', () => {

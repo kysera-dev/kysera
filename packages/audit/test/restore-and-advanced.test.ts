@@ -274,12 +274,9 @@ describe('Audit Plugin - restoreFromAudit', () => {
       expect(logs).toHaveLength(1)
       expect(logs[0]!.old_values).toBeNull()
 
-      // Should throw when trying to restore
+      // Should throw AuditMissingValuesError when old_values not captured
       await expect(userRepo.restoreFromAudit(logs[0]!.id)).rejects.toThrow(
-        'Cannot restore from DELETE audit log'
-      )
-      await expect(userRepo.restoreFromAudit(logs[0]!.id)).rejects.toThrow(
-        'old_values not captured'
+        'missing old_values'
       )
     })
   })
@@ -420,10 +417,7 @@ describe('Audit Plugin - restoreFromAudit', () => {
       expect(logs[0]!.old_values).toBeNull()
 
       await expect(userRepo.restoreFromAudit(logs[0]!.id)).rejects.toThrow(
-        'Cannot revert UPDATE from audit log'
-      )
-      await expect(userRepo.restoreFromAudit(logs[0]!.id)).rejects.toThrow(
-        'old_values not captured'
+        'missing old_values'
       )
     })
   })
@@ -473,7 +467,7 @@ describe('Audit Plugin - restoreFromAudit', () => {
       expect(logs).toHaveLength(1)
 
       await expect(userRepo.restoreFromAudit(logs[0]!.id)).rejects.toThrow(
-        'Cannot restore from INSERT operation'
+        'Cannot restore audit'
       )
     })
 

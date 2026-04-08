@@ -14,7 +14,7 @@ import {
   whenFeature,
   whenTimeRange,
   whenCondition,
-  type PolicyOptions
+  // type PolicyOptions
 } from '../../src/policy/builder.js'
 import type {
   PolicyActivationContext,
@@ -72,7 +72,7 @@ describe('Policy Builders with Activation Conditions', () => {
     it('should support activation condition', () => {
       const policy = deny('delete', () => true, {
         name: 'test-deny',
-        condition: ctx => ctx.features['strict_mode'] === true
+        condition: ctx => (ctx.features as Record<string, unknown>)['strict_mode'] === true
       })
 
       const strictCtx = createActivationContext({ features: { strict_mode: true } })
@@ -102,7 +102,7 @@ describe('Policy Builders with Activation Conditions', () => {
     it('should support activation condition', () => {
       const policy = validate('create', () => true, {
         name: 'test-validate',
-        condition: ctx => ctx.features['validation_v2'] === true
+        condition: ctx => (ctx.features as Record<string, unknown>)['validation_v2'] === true
       })
 
       const v2Ctx = createActivationContext({ features: { validation_v2: true } })
@@ -298,7 +298,7 @@ describe('whenTimeRange', () => {
 describe('whenCondition', () => {
   it('should support custom activation conditions', () => {
     const policy = whenCondition(
-      ctx => ctx.environment === 'production' && ctx.features['beta'] === true,
+      ctx => ctx.environment === 'production' && (ctx.features as Record<string, unknown>)['beta'] === true,
       () => allow('read', () => true, { name: 'beta-production' })
     )
 
@@ -324,9 +324,9 @@ describe('whenCondition', () => {
   it('should support complex conditional logic', () => {
     const policy = whenCondition(
       ctx => {
-        const hour = ctx.timestamp.getHours()
+        const hour = ctx.timestamp!.getHours()
         const isPeakHours = hour >= 9 && hour < 17
-        const isLoadTest = ctx.features['load_test'] === true
+        const isLoadTest = (ctx.features as Record<string, unknown>)['load_test'] === true
 
         // Only active during peak hours OR during load testing
         return isPeakHours || isLoadTest
@@ -445,7 +445,7 @@ describe('Real-World Scenarios', () => {
     it('should support percentage-based rollout', () => {
       const policy = whenCondition(
         ctx => {
-          const rolloutPercentage = ctx.features['new_policy_rollout'] as number
+          const rolloutPercentage = (ctx.features as Record<string, unknown>)['new_policy_rollout'] as number
           if (typeof rolloutPercentage !== 'number') return false
 
           // Use some user attribute to determine bucket
@@ -478,7 +478,7 @@ describe('Real-World Scenarios', () => {
 
       const maintenancePolicy = whenCondition(
         ctx => {
-          const maintenanceWindow = ctx.features['maintenance_window'] as {
+          const maintenanceWindow = (ctx.features as Record<string, unknown>)['maintenance_window'] as {
             start: string
             end: string
           } | undefined

@@ -22,6 +22,10 @@
       "dependsOn": ["build"],
       "outputs": ["coverage/**"]
     },
+    "test:multi-db": {
+      "dependsOn": ["build"],
+      "env": ["NODE_ENV", "DB_PORT", "POSTGRES_PORT", "POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DB", "MYSQL_PORT"]
+    },
     "lint": {
       "dependsOn": [],
       "outputs": []

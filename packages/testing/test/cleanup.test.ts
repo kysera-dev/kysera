@@ -261,7 +261,7 @@ describe('cleanDatabase - truncate strategy - PostgreSQL', () => {
   })
 
   it('should disable FK checks before truncating', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'postgres', tables: ['users'] })
 
     expect(
       mock.rawCalls.some(sql => sql.includes('session_replication_role') && sql.includes('replica'))
@@ -269,7 +269,7 @@ describe('cleanDatabase - truncate strategy - PostgreSQL', () => {
   })
 
   it('should re-enable FK checks after truncating', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'postgres', tables: ['users'] })
 
     expect(
       mock.rawCalls.some(sql => sql.includes('session_replication_role') && sql.includes('DEFAULT'))
@@ -277,14 +277,14 @@ describe('cleanDatabase - truncate strategy - PostgreSQL', () => {
   })
 
   it('should truncate tables with CASCADE', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users', 'posts'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'postgres', tables: ['users', 'posts'] })
 
     expect(mock.rawCalls.some(sql => sql.includes('TRUNCATE TABLE users CASCADE'))).toBe(true)
     expect(mock.rawCalls.some(sql => sql.includes('TRUNCATE TABLE posts CASCADE'))).toBe(true)
   })
 
   it('should execute operations in correct order', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'postgres', tables: ['users'] })
 
     // Order: disable FK -> truncate -> enable FK
     const replicaIdx = mock.rawCalls.findIndex(sql => sql.includes('replica'))
@@ -296,7 +296,7 @@ describe('cleanDatabase - truncate strategy - PostgreSQL', () => {
   })
 
   it('should handle multiple tables', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users', 'posts', 'comments'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'postgres', tables: ['users', 'posts', 'comments'] })
 
     const truncateCalls = mock.rawCalls.filter(sql => sql.includes('TRUNCATE TABLE'))
     expect(truncateCalls).toHaveLength(3)
@@ -311,7 +311,7 @@ describe('cleanDatabase - truncate strategy - MySQL', () => {
   })
 
   it('should disable FK checks before truncating', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'mysql', tables: ['users'] })
 
     expect(mock.rawCalls.some(sql => sql.includes('FOREIGN_KEY_CHECKS') && sql.includes('0'))).toBe(
       true
@@ -319,7 +319,7 @@ describe('cleanDatabase - truncate strategy - MySQL', () => {
   })
 
   it('should re-enable FK checks after truncating', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'mysql', tables: ['users'] })
 
     expect(mock.rawCalls.some(sql => sql.includes('FOREIGN_KEY_CHECKS') && sql.includes('1'))).toBe(
       true
@@ -327,13 +327,13 @@ describe('cleanDatabase - truncate strategy - MySQL', () => {
   })
 
   it('should truncate tables with backtick escaping', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'mysql', tables: ['users'] })
 
     expect(mock.rawCalls.some(sql => sql.includes('TRUNCATE TABLE `users`'))).toBe(true)
   })
 
   it('should execute operations in correct order', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'mysql', tables: ['users'] })
 
     const disableIdx = mock.rawCalls.findIndex(
       sql => sql.includes('FOREIGN_KEY_CHECKS') && sql.includes('0')
@@ -367,7 +367,7 @@ describe('cleanDatabase - truncate strategy - SQLite', () => {
     // Override deleteFrom on the mock db
     mock.db.deleteFrom = deleteFromMock
 
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'sqlite', tables: ['users'] })
 
     expect(deleteFromCalls).toContain('users')
     expect(mock.rawCalls.some(sql => sql.includes('TRUNCATE'))).toBe(false)
@@ -378,7 +378,7 @@ describe('cleanDatabase - truncate strategy - SQLite', () => {
       execute: vi.fn().mockResolvedValue({ numDeletedRows: 0n })
     })
 
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'sqlite', tables: ['users'] })
 
     // The parameterized query uses ? placeholder
     expect(mock.rawCalls.some(sql => sql.includes('DELETE FROM sqlite_sequence WHERE name'))).toBe(
@@ -397,7 +397,7 @@ describe('cleanDatabase - truncate strategy - SQLite', () => {
 
     mock.db.deleteFrom = deleteFromMock
 
-    await cleanDatabase(mock.db, 'truncate', ['users', 'posts'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'sqlite', tables: ['users', 'posts'] })
 
     expect(deleteFromCalls).toEqual(['users', 'posts'])
     // Both sequence resets should be executed
@@ -414,7 +414,7 @@ describe('cleanDatabase - truncate strategy - MSSQL', () => {
   })
 
   it('should disable FK checks before truncating', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'mssql', tables: ['users'] })
 
     expect(
       mock.rawCalls.some(
@@ -424,7 +424,7 @@ describe('cleanDatabase - truncate strategy - MSSQL', () => {
   })
 
   it('should re-enable FK checks after truncating', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'mssql', tables: ['users'] })
 
     expect(
       mock.rawCalls.some(
@@ -434,13 +434,13 @@ describe('cleanDatabase - truncate strategy - MSSQL', () => {
   })
 
   it('should truncate tables with square bracket escaping', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'mssql', tables: ['users'] })
 
     expect(mock.rawCalls.some(sql => sql.includes('TRUNCATE TABLE [users]'))).toBe(true)
   })
 
   it('should execute operations in correct order', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'mssql', tables: ['users'] })
 
     // Order: disable FK -> truncate -> enable FK
     const disableIdx = mock.rawCalls.findIndex(sql => sql.includes('NOCHECK CONSTRAINT ALL'))
@@ -457,7 +457,7 @@ describe('cleanDatabase - truncate strategy - MSSQL', () => {
   })
 
   it('should handle multiple tables', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users', 'posts', 'comments'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'mssql', tables: ['users', 'posts', 'comments'] })
 
     const truncateCalls = mock.rawCalls.filter(sql => sql.includes('TRUNCATE TABLE'))
     expect(truncateCalls).toHaveLength(3)
@@ -467,7 +467,7 @@ describe('cleanDatabase - truncate strategy - MSSQL', () => {
   })
 
   it('should handle single table', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'mssql', tables: ['users'] })
 
     const truncateCalls = mock.rawCalls.filter(sql => sql.includes('TRUNCATE TABLE [users]'))
     expect(truncateCalls).toHaveLength(1)
@@ -486,7 +486,7 @@ describe('cleanDatabase - truncate strategy - MSSQL', () => {
   })
 
   it('should detect MssqlDialect from constructor name', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['users'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'mssql', tables: ['users'] })
 
     // Should detect MSSQL and use appropriate syntax
     expect(mock.rawCalls.some(sql => sql.includes('[users]'))).toBe(true)
@@ -495,14 +495,14 @@ describe('cleanDatabase - truncate strategy - MSSQL', () => {
   it('should detect SqlServerDialect variant', async () => {
     const sqlServerMock = createMockDbWithRawTracking('SqlServerDialect')
 
-    await cleanDatabase(sqlServerMock.db, 'truncate', ['users'])
+    await cleanDatabase(sqlServerMock.db, 'truncate', { dialect: 'mssql', tables: ['users'] })
 
-    // Should detect as MSSQL and use square brackets
+    // Should use square brackets for MSSQL
     expect(sqlServerMock.rawCalls.some(sql => sql.includes('[users]'))).toBe(true)
   })
 
   it('should handle tables with valid identifier patterns', async () => {
-    await cleanDatabase(mock.db, 'truncate', ['user_table', 'UserPosts123', '_internal_table'])
+    await cleanDatabase(mock.db, 'truncate', { dialect: 'mssql', tables: ['user_table', 'UserPosts123', '_internal_table'] })
 
     expect(mock.rawCalls.some(sql => sql.includes('[user_table]'))).toBe(true)
     expect(mock.rawCalls.some(sql => sql.includes('[UserPosts123]'))).toBe(true)
@@ -629,7 +629,7 @@ describe('cleanDatabase - edge cases', () => {
     })
 
     // Should fall back to SQLite behavior (DELETE + sequence reset)
-    await expect(cleanDatabase(mock.db, 'truncate', ['users'])).resolves.toBeUndefined()
+    await expect(cleanDatabase(mock.db, 'truncate', { dialect: 'sqlite', tables: ['users'] })).resolves.toBeUndefined()
   })
 
   it('should handle errors during FK disable', async () => {
@@ -687,7 +687,7 @@ describe('cleanDatabase - CleanupOptions', () => {
   it('should accept tables as array (backward compatibility)', async () => {
     const mock = createMockDbWithRawTracking('PostgresDialect')
 
-    await expect(cleanDatabase(mock.db, 'truncate', ['users'])).resolves.toBeUndefined()
+    await expect(cleanDatabase(mock.db, 'truncate', { dialect: 'postgres', tables: ['users'] })).resolves.toBeUndefined()
   })
 
   it('should accept tables via CleanupOptions object', async () => {

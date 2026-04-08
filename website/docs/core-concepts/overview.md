@@ -92,7 +92,7 @@ import { rlsPlugin } from '@kysera/rls'
 
 // Create plugin-aware executor
 const executor = await createExecutor(db, [
-  rlsPlugin({ schema: rlsSchema }), // High priority (50)
+  rlsPlugin({ schema: rlsSchema }), // SECURITY priority (1000)
   softDeletePlugin() // Standard priority (0)
 ])
 

@@ -256,7 +256,7 @@ pnpm add @kysera/core@^0.8.5 \
 Ensure peer dependencies are up to date:
 
 ```bash
-# Kysely (unchanged - still >=0.28.9)
+# Kysely (unchanged - still >=0.28.14)
 pnpm add kysely@latest
 
 # Zod (if using Repository validation)

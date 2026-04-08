@@ -257,10 +257,12 @@ export class MutationGuard<DB = unknown> {
       return
     }
 
+    // Create evaluation context once and reuse for all policies
+    const evalCtx = this.createEvalContext(ctx, table, operation, row, data)
+
     // Evaluate deny policies first (they override allows)
     const denies = this.registry.getDenies(table, operation)
     for (const deny of denies) {
-      const evalCtx = this.createEvalContext(ctx, table, operation, row, data)
       const result = await this.evaluatePolicy(deny.evaluate, evalCtx, deny.name)
 
       if (result) {
@@ -272,7 +274,6 @@ export class MutationGuard<DB = unknown> {
     if ((operation === 'create' || operation === 'update') && data) {
       const validates = this.registry.getValidates(table, operation)
       for (const validate of validates) {
-        const evalCtx = this.createEvalContext(ctx, table, operation, row, data)
         const result = await this.evaluatePolicy(validate.evaluate, evalCtx, validate.name)
 
         if (!result) {
@@ -290,11 +291,9 @@ export class MutationGuard<DB = unknown> {
     }
 
     if (allows.length > 0) {
-      // At least one allow policy must pass
       let allowed = false
 
       for (const allow of allows) {
-        const evalCtx = this.createEvalContext(ctx, table, operation, row, data)
         const result = await this.evaluatePolicy(allow.evaluate, evalCtx, allow.name)
 
         if (result) {

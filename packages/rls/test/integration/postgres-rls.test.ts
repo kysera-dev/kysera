@@ -7,7 +7,7 @@
  * Run with: TEST_POSTGRES=true pnpm test
  */
 
-import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import { Kysely, sql } from 'kysely'
 import {
   createTestDb,
@@ -70,20 +70,20 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
   describe('Multi-Tenant Isolation with Real PostgreSQL', () => {
     const schema = defineRLSSchema<RLSTestDatabase>({
       users: {
-        policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+        policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))]
       },
       posts: {
         policies: [
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-          allow('update', ctx => Number(ctx.auth.userId) === ctx.row.user_id),
-          deny('delete', ctx => ctx.row.status === 'published')
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
+          allow('update', ctx => Number(ctx.auth!.userId) === (ctx.row as any).user_id),
+          deny('delete', ctx => (ctx.row as any).status === 'published')
         ]
       },
       resources: {
         policies: [
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-          allow('update', ctx => Number(ctx.auth.userId) === ctx.row.owner_id),
-          allow('all', ctx => ctx.auth.roles.includes('admin'))
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
+          allow('update', ctx => Number(ctx.auth!.userId) === (ctx.row as any).owner_id),
+          allow('all', ctx => ctx.auth!.roles.includes('admin'))
         ],
         defaultDeny: true
       }
@@ -189,8 +189,8 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
       const schema = defineRLSSchema<RLSTestDatabase>({
         posts: {
           policies: [
-            filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-            validate('create', ctx => ctx.data.tenant_id === ctx.auth.tenantId)
+            filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
+            validate('create', ctx => (ctx.data as any).tenant_id === ctx.auth!.tenantId)
           ]
         }
       })
@@ -263,7 +263,7 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
 
       const schema = defineRLSSchema<RLSTestDatabase>({
         users: {
-          policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+          policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))]
         }
       })
 
@@ -304,16 +304,16 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
     const nativeSchema = defineRLSSchema<RLSTestDatabase>({
       users: {
         policies: [
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-          allow('update', ctx => Number(ctx.auth.userId) === ctx.row.id)
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
+          allow('update', ctx => Number(ctx.auth!.userId) === (ctx.row as any).id)
         ],
         skipFor: ['superadmin']
       },
       posts: {
         policies: [
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-          allow('update', ctx => Number(ctx.auth.userId) === ctx.row.user_id),
-          deny('delete', ctx => ctx.row.status === 'published')
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
+          allow('update', ctx => Number(ctx.auth!.userId) === (ctx.row as any).user_id),
+          deny('delete', ctx => (ctx.row as any).status === 'published')
         ]
       }
     })
@@ -359,7 +359,7 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
 
       const schema = defineRLSSchema<RLSTestDatabase>({
         posts: {
-          policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+          policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))]
         }
       })
 

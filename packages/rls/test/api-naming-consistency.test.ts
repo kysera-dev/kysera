@@ -3,13 +3,14 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { rlsPlugin, defineRLSSchema, filter, RLSPluginOptions } from '../src/index.js'
+import { rlsPlugin, defineRLSSchema, filter } from '../src/index.js'
+import type { RLSPluginOptions } from '../src/index.js'
 
 describe('M-10: API naming consistency', () => {
   const createTestSchema = () =>
     defineRLSSchema({
       users: {
-        policies: [filter('read', ctx => ({ user_id: ctx.auth.userId }))]
+        policies: [filter('read', ctx => ({ user_id: ctx.auth!.userId }))]
       }
     })
 
