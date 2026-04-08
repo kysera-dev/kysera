@@ -20,7 +20,7 @@ npm install @kysera/audit
 | --------------------- | ----------------------------------- |
 | **Bundle Size**       | ~8 KB (minified)                    |
 | **Dependencies**      | @kysera/core (workspace)            |
-| **Peer Dependencies** | kysely >=0.28.9, @kysera/repository |
+| **Peer Dependencies** | kysely >=0.28.14, @kysera/repository |
 
 ## Exports
 
@@ -28,9 +28,12 @@ npm install @kysera/audit
 // Main plugin
 export { auditPlugin } from './index'
 
-// Database-specific plugins
+// Database-specific plugins (deprecated — auditPlugin() auto-detects dialect)
+/** @deprecated Use auditPlugin() instead */
 export { auditPluginPostgreSQL } from './dialects/postgres'
+/** @deprecated Use auditPlugin() instead */
 export { auditPluginMySQL } from './dialects/mysql'
+/** @deprecated Use auditPlugin() instead */
 export { auditPluginSQLite } from './dialects/sqlite'
 
 // Types
@@ -592,15 +595,18 @@ await userRepo.delete(userId)
 const history = await userRepo.getAuditHistory(userId)
 ```
 
-## Database-Specific Plugins
+## Database-Specific Plugins (Deprecated)
 
-For optimized performance, use database-specific variants:
+:::warning Deprecated
+Since v0.8.7, `auditPlugin()` automatically detects the dialect and formats timestamps correctly. Use `auditPlugin()` for all databases.
+:::
 
 ```typescript
-// PostgreSQL - uses JSONB
-import { auditPluginPostgreSQL } from '@kysera/audit'
+// Recommended: works with all databases
+import { auditPlugin } from '@kysera/audit'
 
-// MySQL - uses JSON type
+// @deprecated — dialect-specific variants
+import { auditPluginPostgreSQL } from '@kysera/audit'
 import { auditPluginMySQL } from '@kysera/audit'
 
 // SQLite - uses TEXT with JSON

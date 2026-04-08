@@ -308,22 +308,25 @@ All bulk methods use batch audit logging:
 
 For optimal compatibility, use the database-specific audit plugin:
 
+:::info Auto-Dialect Detection
+Since v0.8.7, `auditPlugin()` automatically detects the database dialect via `detectDialect()` from `@kysera/core` and formats timestamps appropriately for each database. The dialect-specific variants are deprecated.
+:::
+
 | Database   | Plugin                     | Notes                            |
 | ---------- | -------------------------- | -------------------------------- |
-| PostgreSQL | `auditPluginPostgreSQL()`  | Full feature support             |
-| MySQL      | `auditPluginMySQL()`       | DATETIME timestamp handling      |
-| SQLite     | `auditPluginSQLite()`      | SQLite-specific optimizations    |
+| All        | `auditPlugin()`            | Auto-detects dialect, formats timestamps correctly |
+| PostgreSQL | ~~`auditPluginPostgreSQL()`~~ | **Deprecated** — use `auditPlugin()` |
+| MySQL      | ~~`auditPluginMySQL()`~~      | **Deprecated** — use `auditPlugin()` |
+| SQLite     | ~~`auditPluginSQLite()`~~     | **Deprecated** — use `auditPlugin()` |
 
-### MySQL Timestamp Handling
-
-MySQL's DATETIME type requires specific formatting:
+### Recommended Usage (All Databases)
 
 ```typescript
-import { auditPluginMySQL } from '@kysera/audit'
+import { auditPlugin } from '@kysera/audit'
 
+// Works with PostgreSQL, MySQL, SQLite — dialect auto-detected
 const plugins = [
-  auditPluginMySQL({
-    tableName: 'audit_logs',
+  auditPlugin({
     getUserId: () => getCurrentUserId()
   })
 ]
@@ -331,16 +334,12 @@ const plugins = [
 const executor = await createExecutor(db, plugins)
 ```
 
-### All Database-Specific Variants
+### Deprecated Database-Specific Variants
 
 ```typescript
-// PostgreSQL-optimized (ISO8601 timestamps)
+// @deprecated — use auditPlugin() instead
 import { auditPluginPostgreSQL } from '@kysera/audit'
-
-// MySQL-optimized (DATETIME format: 'YYYY-MM-DD HH:MM:SS')
 import { auditPluginMySQL } from '@kysera/audit'
-
-// SQLite-optimized (ISO8601 timestamps)
 import { auditPluginSQLite } from '@kysera/audit'
 ```
 

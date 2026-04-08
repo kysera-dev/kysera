@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
-import { Kysely, sql } from 'kysely'
+import { Kysely } from 'kysely'
 import {
   createTestDb,
   initializeSchema,
@@ -22,7 +22,7 @@ import {
   allow,
   deny,
   filter,
-  validate,
+  // validate,
   rlsContext,
   PolicyRegistry,
   type RLSContext
@@ -52,7 +52,6 @@ import {
 import {
   createAuditLogger,
   InMemoryAuditAdapter,
-  type RLSAuditEvent
 } from '../../src/audit/index.js'
 import {
   whenEnvironment,
@@ -135,7 +134,7 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL New Features Integration Tests
         return processor.maskRow('users', users[0] as Record<string, unknown>)
       })
 
-      expect(ownerResult.data.email).toBe(users[0]!.email)
+      expect(ownerResult.data['email']).toBe(users[0]!['email'])
       expect(ownerResult.maskedFields).not.toContain('email')
 
       // User 1 accessing user 2's data (not owner)
@@ -143,7 +142,7 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL New Features Integration Tests
         return processor.maskRow('users', users[1] as Record<string, unknown>)
       })
 
-      expect(nonOwnerResult.data.email).toBeNull()
+      expect(nonOwnerResult.data['email']).toBeNull()
       expect(nonOwnerResult.maskedFields).toContain('email')
     })
 
@@ -226,7 +225,7 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL New Features Integration Tests
       })
 
       // System user should see all fields
-      expect(result.data.email).toBe(user.email)
+      expect(result.data['email']).toBe(user['email'])
       expect(result.maskedFields).toHaveLength(0)
     })
   })
@@ -286,7 +285,7 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL New Features Integration Tests
 
       const users = await db.selectFrom('users').selectAll().execute()
       const posts = await db.selectFrom('posts').selectAll().execute()
-      const ownedPost = posts.find(p => p.user_id === users[0]!.id)!
+      const ownedPost = posts.find(p => p['user_id'] === users[0]!.id)!
 
       const ownerCtx: RLSContext = {
         auth: { userId: String(users[0]!.id), roles: ['user'], isSystem: false }
@@ -623,7 +622,7 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL New Features Integration Tests
 
       const manager = createResolverManager()
 
-      interface OrgData {
+      interface OrgData extends ResolvedData {
         organizationId: number
         organizationName: string
       }
@@ -636,7 +635,7 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL New Features Integration Tests
           const user = await db
             .selectFrom('users')
             .select(['id', 'tenant_id'])
-            .where('id', '=', Number(ctx.auth.userId))
+            .where('id', '=', Number(ctx.auth!.userId))
             .executeTakeFirst()
 
           return {
@@ -672,7 +671,7 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL New Features Integration Tests
         name: 'counter',
         cacheable: true,
         ttl: 5000,
-        cacheKey: ctx => `user:${ctx.auth.userId}`,
+        cacheKey: ctx => `user:${ctx.auth!.userId}`,
         resolve: async () => {
           resolveCount++
           return { count: resolveCount }
@@ -721,8 +720,8 @@ describe.skipIf(!isPostgresAvailable)('PostgreSQL New Features Integration Tests
       const schema = defineRLSSchema<RLSTestDatabase>({
         posts: {
           policies: [
-            filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-            allow('update', ctx => Number(ctx.auth.userId) === ctx.row?.user_id)
+            filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
+            allow('update', ctx => Number(ctx.auth!.userId) === ctx.row?.user_id)
           ]
         }
       })

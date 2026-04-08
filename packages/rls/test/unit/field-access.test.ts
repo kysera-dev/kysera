@@ -197,7 +197,7 @@ describe('Predefined Field Patterns', () => {
     })
 
     it('should support custom read condition', () => {
-      const config = readOnly(ctx => ctx.auth.roles.includes('viewer'))
+      const config = readOnly(ctx => ctx.auth!.roles.includes('viewer'))
       const ctx = createCtx({
         auth: {
           userId: '123',
@@ -223,7 +223,7 @@ describe('Predefined Field Patterns', () => {
     })
 
     it('should apply write condition', () => {
-      const config = publicReadRestrictedWrite(ctx => ctx.auth.userId === (ctx.row as Record<string, unknown>)?.id)
+      const config = publicReadRestrictedWrite(ctx => ctx.auth!.userId === (ctx.row as Record<string, unknown>)?.['id'])
 
       const ownerCtx = createCtx({ row: { id: '123' } })
       expect(config.write!(ownerCtx)).toBe(true)
@@ -247,7 +247,7 @@ describe('Predefined Field Patterns', () => {
     it('should apply read condition', () => {
       const config = maskedField(
         (value) => (value as string).replace(/./g, '*'),
-        ctx => ctx.auth.roles.includes('admin')
+        ctx => ctx.auth!.roles.includes('admin')
       )
 
       const adminCtx = createCtx({
@@ -446,7 +446,7 @@ describe('FieldAccessProcessor', () => {
           omitWhenHidden: true
         },
         internal_notes: rolesOnly(['admin']),
-        display_name: publicReadRestrictedWrite(ctx => ctx.auth.userId === (ctx.row as Record<string, unknown>)?.id)
+        display_name: publicReadRestrictedWrite(ctx => ctx.auth!.userId === (ctx.row as Record<string, unknown>)?.['id'])
       }
     }
   }
@@ -507,7 +507,7 @@ describe('FieldAccessProcessor', () => {
       })
       // Use string id to match string userId for owner comparison
       const row = {
-        id: '123', // String to match ctx.auth.userId
+        id: '123', // String to match ctx.auth!.userId
         email: 'user@example.com',
         phone: '123-456-7890',
         display_name: 'Test User'
@@ -517,7 +517,7 @@ describe('FieldAccessProcessor', () => {
         return processor.maskRow('users', row)
       })
 
-      // Owner check compares ctx.auth.userId === row.id
+      // Owner check compares ctx.auth!.userId === row.id
       expect(result.data.email).toBe('user@example.com')
       expect(result.data.phone).toBe('123-456-7890')
       expect(result.maskedFields).toHaveLength(0)

@@ -16,7 +16,7 @@ npm install @kysera/infra kysely
 
 ## Overview
 
-**Dependencies:** None (peer: kysely >=0.28.9)
+**Dependencies:** None (peer: kysely >=0.28.14)
 
 :::info Package Type
 This is a **utility package** providing infrastructure and resilience features. It's not part of the Repository/DAL pattern - it works with Kysely instances directly.

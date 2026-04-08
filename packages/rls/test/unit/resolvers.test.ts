@@ -155,7 +155,7 @@ describe('ResolverManager', () => {
       const resolver: ContextResolver<OrgData> = {
         name: 'organization',
         resolve: async ctx => ({
-          organizationId: `org-${ctx.auth.userId}`,
+          organizationId: `org-${ctx.auth!.userId}`,
           organizationName: 'Test Org',
           memberRole: 'admin'
         })
@@ -178,7 +178,7 @@ describe('ResolverManager', () => {
       const resolver: ContextResolver<OrgData> = {
         name: 'organization',
         resolve: async ctx => ({
-          organizationId: `org-${ctx.auth.userId}`,
+          organizationId: `org-${ctx.auth!.userId}`,
           organizationName: 'Test Org',
           memberRole: 'admin'
         })
@@ -256,7 +256,7 @@ describe('createResolver', () => {
     const resolver = createResolver<OrgData>({
       name: 'organization',
       resolve: async ctx => ({
-        organizationId: `org-${ctx.auth.userId}`,
+        organizationId: `org-${ctx.auth!.userId}`,
         organizationName: 'Test Org',
         memberRole: 'admin'
       })
@@ -270,19 +270,19 @@ describe('createResolver', () => {
     const resolver = createResolver<OrgData>({
       name: 'organization',
       resolve: async ctx => ({
-        organizationId: `org-${ctx.auth.userId}`,
+        organizationId: `org-${ctx.auth!.userId}`,
         organizationName: 'Test Org',
         memberRole: 'admin'
       }),
       cacheable: true,
       ttl: 5000,
       dependsOn: ['tenant'],
-      cacheKey: ctx => `org:${ctx.auth.userId}`
+      cacheKey: ctx => `org:${ctx.auth!.userId}`
     })
 
     expect(resolver.name).toBe('organization')
-    expect(resolver.cacheable).toBe(true)
-    expect(resolver.ttl).toBe(5000)
+    expect((resolver as any).cacheable).toBe(true)
+    expect((resolver as any).ttl).toBe(5000)
     expect(resolver.dependsOn).toEqual(['tenant'])
     expect(resolver.cacheKey).toBeDefined()
   })

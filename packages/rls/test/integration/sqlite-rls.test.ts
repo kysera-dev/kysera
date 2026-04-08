@@ -24,7 +24,7 @@ import {
   createRLSContext,
   withRLSContext,
   PolicyRegistry,
-  RLSPolicyViolation,
+  // RLSPolicyViolation,
   type RLSContext
 } from '../../src/index.js'
 import { SelectTransformer } from '../../src/transformer/select.js'
@@ -50,16 +50,16 @@ describe('SQLite Integration Tests', () => {
   describe('Multi-Tenant Isolation', () => {
     const schema = defineRLSSchema<RLSTestDatabase>({
       users: {
-        policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+        policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))]
       },
       posts: {
-        policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+        policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))]
       },
       resources: {
-        policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+        policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))]
       },
       comments: {
-        policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+        policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))]
       }
     })
 
@@ -112,7 +112,7 @@ describe('SQLite Integration Tests', () => {
 
       // Get total counts without RLS
       const allUsers = await db.selectFrom('users').selectAll().execute()
-      const allPosts = await db.selectFrom('posts').selectAll().execute()
+      await db.selectFrom('posts').selectAll().execute()
 
       expect(allUsers.length).toBe(6) // 4 tenant 1 + 2 tenant 2
 
@@ -144,13 +144,13 @@ describe('SQLite Integration Tests', () => {
       resources: {
         policies: [
           // Allow owners to access their own resources
-          allow('read', ctx => Number(ctx.auth.userId) === ctx.row.owner_id),
-          allow('update', ctx => Number(ctx.auth.userId) === ctx.row.owner_id),
-          allow('delete', ctx => Number(ctx.auth.userId) === ctx.row.owner_id),
+          allow('read', ctx => Number(ctx.auth!.userId) === (ctx.row as any).owner_id),
+          allow('update', ctx => Number(ctx.auth!.userId) === (ctx.row as any).owner_id),
+          allow('delete', ctx => Number(ctx.auth!.userId) === (ctx.row as any).owner_id),
           // Admins can access all
-          allow('all', ctx => ctx.auth.roles.includes('admin')),
+          allow('all', ctx => ctx.auth!.roles.includes('admin')),
           // Deny archived resources for non-admins
-          deny('update', ctx => ctx.row.is_archived && !ctx.auth.roles.includes('admin'))
+          deny('update', ctx => (ctx.row as any).is_archived && !ctx.auth!.roles.includes('admin'))
         ],
         defaultDeny: true
       }
@@ -278,15 +278,15 @@ describe('SQLite Integration Tests', () => {
       posts: {
         policies: [
           // Public posts are readable by all
-          allow('read', ctx => ctx.row.is_public === true || ctx.row.is_public === 1),
+          allow('read', ctx => (ctx.row as any).is_public === true || (ctx.row as any).is_public === 1),
           // Tenant members can read all tenant posts
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
           // Only authors can update their own posts
-          allow('update', ctx => Number(ctx.auth.userId) === ctx.row.user_id),
+          allow('update', ctx => Number(ctx.auth!.userId) === (ctx.row as any).user_id),
           // Deny deletion of published posts
-          deny('delete', ctx => ctx.row.status === 'published'),
+          deny('delete', ctx => (ctx.row as any).status === 'published'),
           // Editors can update any post in their tenant
-          allow('update', ctx => ctx.auth.roles.includes('editor'))
+          allow('update', ctx => ctx.auth!.roles.includes('editor'))
         ]
       }
     })
@@ -374,7 +374,7 @@ describe('SQLite Integration Tests', () => {
   describe('System User Bypass', () => {
     const strictSchema = defineRLSSchema<RLSTestDatabase>({
       users: {
-        policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))],
+        policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))],
         defaultDeny: true
       },
       audit_logs: {
@@ -424,7 +424,7 @@ describe('SQLite Integration Tests', () => {
   describe('Skip For Roles', () => {
     const schemaWithSkip = defineRLSSchema<RLSTestDatabase>({
       users: {
-        policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))],
+        policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))],
         skipFor: ['superadmin']
       }
     })
@@ -454,9 +454,9 @@ describe('SQLite Integration Tests', () => {
       posts: {
         policies: [
           // Validate that new posts belong to the correct tenant
-          validate('create', ctx => ctx.data.tenant_id === ctx.auth.tenantId),
+          validate('create', ctx => (ctx.data as any).tenant_id === ctx.auth!.tenantId),
           // Validate that updates don't change tenant_id
-          validate('update', ctx => !ctx.data.tenant_id || ctx.data.tenant_id === ctx.row.tenant_id)
+          validate('update', ctx => !(ctx.data as any).tenant_id || (ctx.data as any).tenant_id === (ctx.row as any).tenant_id)
         ]
       }
     })
@@ -579,7 +579,7 @@ describe('SQLite Integration Tests', () => {
         },
         async () => {
           const ctx = rlsContext.getContext()
-          return ctx.auth.userId
+          return ctx.auth!.userId
         }
       )
 
@@ -592,17 +592,17 @@ describe('SQLite Integration Tests', () => {
       comments: {
         policies: [
           // Base filter: tenant isolation
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
           // Additional filter: only approved comments (unless admin)
           // Note: SQLite uses 1/0 for booleans
           filter('read', ctx => {
-            if (ctx.auth.roles.includes('admin')) {
+            if (ctx.auth!.roles.includes('admin')) {
               return {} // No additional filter for admins
             }
             return { is_approved: 1 } // Use 1 instead of true for SQLite
           }),
           // Allow users to see their own unapproved comments
-          allow('read', ctx => Number(ctx.auth.userId) === ctx.row.user_id)
+          allow('read', ctx => Number(ctx.auth!.userId) === (ctx.row as any).user_id)
         ]
       }
     })

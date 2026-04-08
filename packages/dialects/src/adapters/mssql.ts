@@ -7,7 +7,7 @@
 
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
-import { silentLogger, type KyseraLogger } from '@kysera/core'
+import { silentLogger, formatTimestampForDb, type KyseraLogger } from '@kysera/core'
 import type { DialectAdapter, DialectAdapterOptions, SchemaOptions } from '../types.js'
 import { assertValidIdentifier, resolveSchema as resolveSchemaUtil, errorMatchers } from '../helpers.js'
 
@@ -44,8 +44,7 @@ export class MSSQLAdapter implements DialectAdapter {
   }
 
   formatDate(date: Date): string {
-    // MSSQL datetime format: YYYY-MM-DD HH:MM:SS.mmm
-    return date.toISOString().replace('T', ' ').replace('Z', '')
+    return formatTimestampForDb(date, 'mssql')
   }
 
   isUniqueConstraintError(error: unknown): boolean {
@@ -182,7 +181,7 @@ export class MSSQLAdapter implements DialectAdapter {
       }
       // Log and rethrow with context
       this.logger.error(`Failed to truncate MSSQL table "${schema}.${tableName}":`, error)
-      throw new Error(`Failed to truncate MSSQL table "${schema}.${tableName}": ${String(error)}`)
+      throw new Error(`Failed to truncate MSSQL table "${schema}.${tableName}": ${String(error)}`, { cause: error })
     }
   }
 
@@ -193,34 +192,31 @@ export class MSSQLAdapter implements DialectAdapter {
   ): Promise<void> {
     const tables = await this.getTables(db, options)
     const schema = this.resolveSchema(options)
+    const targetTables = tables.filter(t => !exclude.includes(t))
 
     // MSSQL: Disable all FK constraints first
-    for (const table of tables) {
-      if (!exclude.includes(table)) {
-        try {
-          const qualifiedTable = `${this.escapeIdentifier(schema)}.${this.escapeIdentifier(table)}`
-          await sql.raw(`ALTER TABLE ${qualifiedTable} NOCHECK CONSTRAINT ALL`).execute(db)
-        } catch {
-          // Ignore errors for tables without constraints
-        }
+    for (const table of targetTables) {
+      try {
+        const qualifiedTable = `${this.escapeIdentifier(schema)}.${this.escapeIdentifier(table)}`
+        await sql.raw(`ALTER TABLE ${qualifiedTable} NOCHECK CONSTRAINT ALL`).execute(db)
+      } catch {
+        // Ignore errors for tables without constraints
       }
     }
 
-    // Truncate all tables
-    for (const table of tables) {
-      if (!exclude.includes(table)) {
+    try {
+      // Truncate all tables
+      for (const table of targetTables) {
         await this.truncateTable(db, table, options)
       }
-    }
-
-    // Re-enable all FK constraints
-    for (const table of tables) {
-      if (!exclude.includes(table)) {
+    } finally {
+      // Always re-enable FK constraints, even if truncate threw
+      for (const table of targetTables) {
         try {
           const qualifiedTable = `${this.escapeIdentifier(schema)}.${this.escapeIdentifier(table)}`
           await sql.raw(`ALTER TABLE ${qualifiedTable} CHECK CONSTRAINT ALL`).execute(db)
         } catch {
-          // Ignore errors
+          // Ignore re-enable errors
         }
       }
     }

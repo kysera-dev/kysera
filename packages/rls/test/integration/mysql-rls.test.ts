@@ -68,20 +68,20 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
   describe('Multi-Tenant Isolation with Real MySQL', () => {
     const schema = defineRLSSchema<RLSTestDatabase>({
       users: {
-        policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+        policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))]
       },
       posts: {
         policies: [
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-          allow('update', ctx => Number(ctx.auth.userId) === ctx.row.user_id),
-          deny('delete', ctx => ctx.row.status === 'published')
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
+          allow('update', ctx => Number(ctx.auth!.userId) === (ctx.row as any).user_id),
+          deny('delete', ctx => (ctx.row as any).status === 'published')
         ]
       },
       resources: {
         policies: [
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-          allow('update', ctx => Number(ctx.auth.userId) === ctx.row.owner_id),
-          allow('all', ctx => ctx.auth.roles.includes('admin'))
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
+          allow('update', ctx => Number(ctx.auth!.userId) === (ctx.row as any).owner_id),
+          allow('all', ctx => ctx.auth!.roles.includes('admin'))
         ],
         defaultDeny: true
       }
@@ -187,8 +187,8 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
       const schema = defineRLSSchema<RLSTestDatabase>({
         posts: {
           policies: [
-            filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-            validate('create', ctx => ctx.data.tenant_id === ctx.auth.tenantId)
+            filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
+            validate('create', ctx => (ctx.data as any).tenant_id === ctx.auth!.tenantId)
           ]
         }
       })
@@ -261,7 +261,7 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
 
       const schema = defineRLSSchema<RLSTestDatabase>({
         users: {
-          policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+          policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))]
         }
       })
 
@@ -305,7 +305,7 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
 
       const schema = defineRLSSchema<RLSTestDatabase>({
         users: {
-          policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+          policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))]
         }
       })
 
@@ -333,11 +333,11 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
     const ownerSchema = defineRLSSchema<RLSTestDatabase>({
       resources: {
         policies: [
-          allow('read', ctx => Number(ctx.auth.userId) === ctx.row.owner_id),
-          allow('update', ctx => Number(ctx.auth.userId) === ctx.row.owner_id),
-          allow('delete', ctx => Number(ctx.auth.userId) === ctx.row.owner_id),
-          allow('all', ctx => ctx.auth.roles.includes('admin')),
-          deny('update', ctx => ctx.row.is_archived && !ctx.auth.roles.includes('admin'))
+          allow('read', ctx => Number(ctx.auth!.userId) === (ctx.row as any).owner_id),
+          allow('update', ctx => Number(ctx.auth!.userId) === (ctx.row as any).owner_id),
+          allow('delete', ctx => Number(ctx.auth!.userId) === (ctx.row as any).owner_id),
+          allow('all', ctx => ctx.auth!.roles.includes('admin')),
+          deny('update', ctx => (ctx.row as any).is_archived && !ctx.auth!.roles.includes('admin'))
         ],
         defaultDeny: true
       }
@@ -420,7 +420,7 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
 
       const schema = defineRLSSchema<RLSTestDatabase>({
         posts: {
-          policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+          policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))]
         }
       })
 
@@ -472,8 +472,8 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
     const validateSchema = defineRLSSchema<RLSTestDatabase>({
       posts: {
         policies: [
-          validate('create', ctx => ctx.data.tenant_id === ctx.auth.tenantId),
-          validate('update', ctx => !ctx.data.tenant_id || ctx.data.tenant_id === ctx.row.tenant_id)
+          validate('create', ctx => (ctx.data as any).tenant_id === ctx.auth!.tenantId),
+          validate('update', ctx => !(ctx.data as any).tenant_id || (ctx.data as any).tenant_id === (ctx.row as any).tenant_id)
         ]
       }
     })
@@ -521,7 +521,7 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
   describe('System User Bypass', () => {
     const strictSchema = defineRLSSchema<RLSTestDatabase>({
       users: {
-        policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))],
+        policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))],
         defaultDeny: true
       },
       audit_logs: {
@@ -557,7 +557,7 @@ describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
   describe('Skip For Roles', () => {
     const schemaWithSkip = defineRLSSchema<RLSTestDatabase>({
       users: {
-        policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))],
+        policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))],
         skipFor: ['superadmin']
       }
     })

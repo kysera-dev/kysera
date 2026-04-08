@@ -14,7 +14,7 @@ import type {
 } from './types.js'
 import type { DialectConfig } from './types.js'
 import { getPrimaryKeyColumns, normalizePrimaryKeyInput, isCompositeKey } from './types.js'
-import { DatabaseError, getEnv } from '@kysera/core'
+import { DatabaseError, getEnv, detectDialect, silentLogger, type KyseraLogger } from '@kysera/core'
 import { extractPrimaryKey } from './primary-key-utils.js'
 import type { ColumnValidationOptions } from './column-validation.js'
 import { validateConditions } from './column-validation.js'
@@ -41,7 +41,7 @@ import { applyWhereClause, hasOperators, validateOperators, extractColumns } fro
  * @param results - Query result to cast
  * @returns Typed result
  */
-function castResults<T>(results: unknown): T {
+function castResults<T>(results: unknown, logger: KyseraLogger = silentLogger): T {
   // Development mode: runtime validation
   if (getEnv('NODE_ENV') === 'development') {
     // Validate non-null results are objects or arrays
@@ -51,14 +51,14 @@ function castResults<T>(results: unknown): T {
         for (let i = 0; i < results.length; i++) {
           const item = results[i]
           if (item !== null && typeof item !== 'object') {
-            console.warn(
+            logger.warn(
               `[Kysera] Type cast warning: Array element at index ${i} is not an object. ` +
                 `Expected object, got ${typeof item}. This may indicate a query structure mismatch.`
             )
           }
         }
       } else if (typeof results !== 'object') {
-        console.warn(
+        logger.warn(
           `[Kysera] Type cast warning: Result is not an object. ` +
             `Expected object, got ${typeof results}. This may indicate a query structure mismatch.`
         )
@@ -70,84 +70,6 @@ function castResults<T>(results: unknown): T {
 }
 
 /**
- * Internal interface for database executors with adapter access
- * This provides a type-safe way to access internal Kysely properties
- * @deprecated Use DialectConfig instead of relying on Kysely internals
- */
-interface DatabaseExecutorWithAdapter {
-  getExecutor?: () => {
-    adapter?: {
-      constructor?: {
-        name?: string
-      }
-    }
-  }
-}
-
-/**
- * Detect dialect from Kysely internals.
- * @deprecated Prefer providing explicit DialectConfig in repository configuration.
- * This function relies on Kysely's internal adapter class names which may change.
- *
- * **Why this exists:**
- * Provides backward compatibility for code that doesn't pass `DialectConfig`.
- * This allows the repository to work out-of-the-box while we encourage
- * migration to explicit configuration.
- *
- * **Risks:**
- * - Kysely may change internal adapter structure in future versions
- * - Constructor name detection is fragile and could fail silently
- * - May not work correctly with custom adapters or proxies
- *
- * **Migration path:**
- * ```typescript
- * // Old (relies on detection):
- * const ops = createTableOperations(db, 'users', pkConfig);
- *
- * // New (explicit configuration - recommended):
- * const ops = createTableOperations(db, 'users', pkConfig, { dialect: 'mysql' });
- * ```
- *
- * @param db - Kysely database executor
- * @returns Detected dialect or 'postgres' as default fallback
- */
-function detectDialectFromInternals<DB>(db: Executor<DB>): Dialect {
-  try {
-    // Type assertion is necessary here because we need to access internal Kysely properties
-    // that aren't part of the public API. This is safe because we handle all errors.
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backwards compatibility fallback
-    const dbWithAdapter = db as unknown as DatabaseExecutorWithAdapter
-    const executor = dbWithAdapter.getExecutor?.()
-    const adapter = executor?.adapter
-
-    if (adapter?.constructor?.name) {
-      // Warn about deprecated internal API usage
-      // Deprecation warning is now handled via the dialectConfig parameter
-      const adapterName = adapter.constructor.name.toLowerCase()
-      if (adapterName.includes('mysql')) return 'mysql'
-      if (adapterName.includes('postgres') || adapterName.includes('pg')) return 'postgres'
-      if (adapterName.includes('sqlite')) return 'sqlite'
-    }
-
-    // If we can't detect, log a warning and default to postgres (safest for RETURNING support)
-    console.warn(
-      '[Kysera] Could not detect database dialect from Kysely internals. ' +
-      'Please provide explicit dialect config. Defaulting to PostgreSQL behavior.'
-    )
-    return 'postgres'
-  } catch (_error) {
-    // Expected failure when accessing internal Kysely properties
-    // This is an expected code path when adapter detection is not possible
-    // If we can't detect, log a warning and default to postgres (safest for RETURNING support)
-    console.warn(
-      '[Kysera] Could not detect database dialect from Kysely internals. ' +
-      'Please provide explicit dialect config. Defaulting to PostgreSQL behavior.'
-    )
-    return 'postgres'
-  }
-}
-
-/**
  * Determine if database requires MySQL-specific behavior
  *
  * MySQL differs from PostgreSQL and SQLite in key ways:
@@ -155,8 +77,8 @@ function detectDialectFromInternals<DB>(db: Executor<DB>): Dialect {
  * - Uses insertId for auto-increment primary keys
  * - Requires separate SELECT queries to fetch created/updated records
  *
- * **Best practice:** Always provide `dialectConfig` parameter to avoid
- * relying on fragile internal detection.
+ * Uses `detectDialect` from `@kysera/core` for stable, version-safe detection
+ * based on SQL generation patterns rather than Kysely internals.
  *
  * @param db - Kysely database executor
  * @param dialectConfig - Optional explicit dialect configuration (recommended)
@@ -167,7 +89,7 @@ function detectDialectFromInternals<DB>(db: Executor<DB>): Dialect {
  * // Recommended: explicit configuration
  * const ops = createTableOperations(db, 'users', pkConfig, { dialect: 'mysql' });
  *
- * // Fallback: automatic detection (may fail on Kysely updates)
+ * // Fallback: automatic detection via detectDialect()
  * const ops = createTableOperations(db, 'users', pkConfig);
  * ```
  */
@@ -177,9 +99,8 @@ function requiresMySQLBehavior<DB>(db: Executor<DB>, dialectConfig?: DialectConf
     return dialectConfig.dialect === 'mysql'
   }
 
-  // Fallback to internal detection (deprecated path)
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backwards compatibility fallback
-  const detected = detectDialectFromInternals(db)
+  // Use stable SQL-generation-based detection from @kysera/core
+  const detected = detectDialect(db)
   return detected === 'mysql'
 }
 
@@ -431,6 +352,11 @@ export interface TableOperationsOptions {
    * When set, all queries are scoped to this schema.
    */
   schema?: string
+  /**
+   * Logger for table operations warnings and diagnostics.
+   * @default silentLogger
+   */
+  logger?: KyseraLogger
 }
 
 /* eslint-disable @typescript-eslint/no-deprecated -- DialectConfig kept for backwards compatibility */
@@ -457,6 +383,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     : {}
 
   const dialectConfig: DialectConfig | undefined = opts.dialect ? { dialect: opts.dialect } : undefined
+  const logger: KyseraLogger = opts.logger ?? silentLogger
   /* eslint-enable @typescript-eslint/no-deprecated */
 
   // Apply schema if provided - all queries will use this schema
@@ -474,7 +401,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     async selectAll(): Promise<SelectTable[]> {
       const result = await dbWithSchema.selectFrom(tableName).selectAll().execute()
 
-      return castResults<SelectTable[]>(result)
+      return castResults<SelectTable[]>(result, logger)
     },
 
     async selectById(id: PrimaryKeyInput): Promise<SelectTable | undefined> {
@@ -482,7 +409,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       const query = buildWherePrimaryKey(baseQuery, pkConfig, id)
       const result = await query.executeTakeFirst()
 
-      return castResults<SelectTable | undefined>(result)
+      return castResults<SelectTable | undefined>(result, logger)
     },
 
     async selectByIds(ids: PrimaryKeyInput[]): Promise<SelectTable[]> {
@@ -492,7 +419,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       const query = buildWherePrimaryKeyIn(baseQuery, pkConfig, ids)
       const result = await query.execute()
 
-      return castResults<SelectTable[]>(result)
+      return castResults<SelectTable[]>(result, logger)
     },
 
     async selectWhere(conditions: Record<string, unknown>): Promise<SelectTable[]> {
@@ -500,7 +427,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       const query = buildDynamicWhere(baseQuery, conditions, pkConfig)
       const result = await query.execute()
 
-      return castResults<SelectTable[]>(result)
+      return castResults<SelectTable[]>(result, logger)
     },
 
     async selectOneWhere(conditions: Record<string, unknown>): Promise<SelectTable | undefined> {
@@ -508,7 +435,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       const query = buildDynamicWhere(baseQuery, conditions, pkConfig)
       const result = await query.executeTakeFirst()
 
-      return castResults<SelectTable | undefined>(result)
+      return castResults<SelectTable | undefined>(result, logger)
     },
 
     async insert(data: unknown): Promise<SelectTable> {
@@ -548,7 +475,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
           throw new DatabaseError('Failed to fetch created record', 'FETCH_FAILED', tableName)
         }
 
-        return castResults<SelectTable>(record)
+        return castResults<SelectTable>(record, logger)
       } else {
         // PostgreSQL and SQLite support RETURNING
         const result = await dbWithSchema
@@ -561,7 +488,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
           throw new DatabaseError('Failed to create record', 'INSERT_FAILED', tableName)
         }
 
-        return castResults<SelectTable>(result)
+        return castResults<SelectTable>(result, logger)
       }
     },
 
@@ -607,7 +534,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
               throw new DatabaseError('Failed to fetch created record', 'FETCH_FAILED', tableName)
             }
 
-            results.push(castResults<SelectTable>(record))
+            results.push(castResults<SelectTable>(record, logger))
           }
 
           return results
@@ -620,7 +547,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
           .returningAll()
           .execute()
 
-        return castResults<SelectTable[]>(result)
+        return castResults<SelectTable[]>(result, logger)
       }
     },
 
@@ -684,12 +611,12 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
         const queryWithWhere = buildWherePrimaryKey(selectQuery, pkConfig, id)
         const record = await queryWithWhere.executeTakeFirst()
 
-        return castResults<SelectTable | undefined>(record)
+        return castResults<SelectTable | undefined>(record, logger)
       } else {
         // PostgreSQL and SQLite support RETURNING
         const result = await query.returningAll().executeTakeFirst()
 
-        return castResults<SelectTable | undefined>(result)
+        return castResults<SelectTable | undefined>(result, logger)
       }
     },
 
@@ -698,10 +625,10 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       const query = buildDeleteWherePrimaryKey(baseQuery, pkConfig, id)
       const result = await query.execute()
 
-      // Type assertion needed: Delete result structure varies by database
+      // Normalize to Number to avoid BigInt/number comparison issues
       const deleteResult = result as unknown as DeleteResult[]
       return Array.isArray(deleteResult) && deleteResult.length > 0
-        ? (deleteResult[0]?.numDeletedRows ?? BigInt(0)) > 0
+        ? Number(deleteResult[0]?.numDeletedRows ?? 0) > 0
         : false
     },
 
@@ -781,7 +708,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       const query = buildOrderByAndPaginate(baseQuery, orderBy, orderDirection, limit, offset)
       const result = await query.execute()
 
-      return castResults<SelectTable[]>(result)
+      return castResults<SelectTable[]>(result, logger)
     },
 
     async paginateCursor(options: {
@@ -842,7 +769,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
 
       const result = await query.execute()
 
-      return castResults<SelectTable[]>(result)
+      return castResults<SelectTable[]>(result, logger)
     },
 
     async selectWithOptions<Cols extends string = string>(
@@ -913,7 +840,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       }
 
       const result = await query.execute()
-      return castResults<SelectTable[]>(result)
+      return castResults<SelectTable[]>(result, logger)
     },
 
     async selectOneWithOptions<Cols extends string = string>(

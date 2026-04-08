@@ -532,7 +532,7 @@ const page1 = await paginateCursor(db.selectFrom('posts').selectAll(), {
   ],
   limit: 20,
   security: {
-    secret: process.env.CURSOR_SECRET!, // Minimum 16 characters
+    secret: process.env.CURSOR_SECRET!, // Minimum 32 characters
     algorithm: 'sha256' // Default: sha256, options: sha256 | sha384 | sha512
   }
 })
@@ -664,7 +664,7 @@ const secret = await kms.getSecret('cursor-secret')
 const secret = 'my-secret-key-12345' // Don't do this!
 
 // ❌ Bad: Short secret
-const secret = 'short' // Minimum 16 characters required
+const secret = 'short' // Minimum 32 characters required
 ```
 
 **Generate secure secrets:**

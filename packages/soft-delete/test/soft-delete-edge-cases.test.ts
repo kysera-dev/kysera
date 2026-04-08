@@ -373,15 +373,8 @@ describe('Soft Delete Plugin - Edge Cases and Security', () => {
       expect(user).not.toBeNull()
       expect(user!.deleted_at).toBeNull()
 
-      // Multiple restores should not throw and should be idempotent
-      await repo.restore!(bob.id)
-      await repo.restore!(bob.id)
-      await repo.restore!(bob.id)
-
-      // Still restored
-      user = await repo.findById(bob.id)
-      expect(user).not.toBeNull()
-      expect(user!.deleted_at).toBeNull()
+      // Restoring an already-restored (non-deleted) record should throw RecordNotDeletedError
+      await expect(repo.restore!(bob.id)).rejects.toThrow('is not deleted')
     })
 
     it('should be idempotent when restoring never-deleted record', async () => {
@@ -410,13 +403,8 @@ describe('Soft Delete Plugin - Edge Cases and Security', () => {
       // Record was never deleted
       expect(charlie.deleted_at).toBeNull()
 
-      // Restore should not throw
-      await repo.restore!(charlie.id)
-
-      // Should still exist and not be deleted
-      const user = await repo.findById(charlie.id)
-      expect(user).not.toBeNull()
-      expect(user!.deleted_at).toBeNull()
+      // Restore should throw RecordNotDeletedError for never-deleted record
+      await expect(repo.restore!(charlie.id)).rejects.toThrow('is not deleted')
     })
   })
 

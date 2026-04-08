@@ -526,3 +526,17 @@ export async function withContext<DB, T>(
 export function isInTransaction<DB>(ctx: DbContext<DB>): boolean {
   return ctx.isTransaction
 }
+
+/**
+ * Normalize input to DbContext.
+ * Accepts either a DbContext (returned as-is) or a database/executor instance
+ * (wrapped in a new context).
+ *
+ * @param ctxOrDb - Database context or database instance
+ * @returns Database context
+ */
+export function toContext<DB>(
+  ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>
+): DbContext<DB> {
+  return isDbContext<DB>(ctxOrDb) ? ctxOrDb : createContext(ctxOrDb)
+}

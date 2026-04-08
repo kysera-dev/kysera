@@ -21,7 +21,7 @@ import { MutationGuard } from './transformer/mutation.js'
 import { rlsContext } from './context/manager.js'
 import { VERSION } from './version.js'
 import { RLSContextError, RLSPolicyViolation, RLSError, RLSErrorCodes } from './errors.js'
-import { silentLogger, type KyseraLogger } from '@kysera/core'
+import { silentLogger, shouldApplyToTable, type KyseraLogger } from '@kysera/core'
 import {
   transformQueryBuilder,
   selectFromDynamicTable,
@@ -39,8 +39,15 @@ export interface RLSPluginOptions<DB = unknown> {
   schema: RLSSchema<DB>
 
   /**
-   * Tables to exclude from RLS (always bypass policies)
-   * @default []
+   * Whitelist of tables to apply RLS to.
+   * If provided, only these tables will have RLS enforced.
+   * Takes precedence over excludeTables when both are provided.
+   */
+  tables?: string[]
+
+  /**
+   * Tables to exclude from RLS (always bypass policies).
+   * Ignored if `tables` whitelist is provided.
    */
   excludeTables?: string[]
 
@@ -103,6 +110,7 @@ export interface RLSPluginOptions<DB = unknown> {
  * Note: 'schema' and 'onViolation' are not included as they are complex runtime objects.
  */
 export const RLSPluginOptionsSchema = z.object({
+  tables: z.array(z.string()).optional(),
   excludeTables: z.array(z.string()).optional(),
   bypassRoles: z.array(z.string()).optional(),
   requireContext: z.boolean().optional(),
@@ -169,7 +177,8 @@ type BaseRepository = BaseRepositoryLike<Record<string, unknown>>
 export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
   const {
     schema,
-    excludeTables = [],
+    tables,
+    excludeTables,
     bypassRoles = [],
     logger = silentLogger,
     requireContext = true, // SECURITY: Changed to true for secure-by-default (CRIT-2 fix)
@@ -188,8 +197,8 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     name: '@kysera/rls',
     version: VERSION,
 
-    // Run after soft-delete (priority 0), before audit
-    priority: 50,
+    // SECURITY plugin: must run FIRST to enforce access policies before other plugins
+    priority: 1000,
 
     // No dependencies by default
     dependencies: [],
@@ -200,7 +209,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     onInit<TDB>(_executor: Kysely<TDB>): void {
       logger.info?.('[RLS] Initializing RLS plugin', {
         tables: Object.keys(schema).length,
-        excludeTables: excludeTables.length,
+        excludeTables: excludeTables?.length ?? 0,
         bypassRoles: bypassRoles.length
       })
 
@@ -220,11 +229,9 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     /**
      * Cleanup resources when executor is destroyed
      */
-    onDestroy(): Promise<void> {
-      // Clear registry to free up memory
+    onDestroy() {
       registry.clear()
       logger.info?.('[RLS] RLS plugin destroyed, cleared policy registry')
-      return Promise.resolve()
     },
 
     /**
@@ -238,7 +245,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
       const { operation, table, metadata } = context
 
       // Skip if table is excluded
-      if (excludeTables.includes(table)) {
+      if (!shouldApplyToTable(table, { tables, excludeTables })) {
         logger.debug?.(`[RLS] Skipping RLS for excluded table: ${table}`)
         return qb
       }
@@ -358,7 +365,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
       const table = baseRepo.tableName
 
       // Skip excluded tables
-      if (excludeTables.includes(table)) {
+      if (!shouldApplyToTable(table, { tables, excludeTables })) {
         logger.debug?.(`[RLS] Skipping repository extension for excluded table: ${table}`)
         return repo
       }

@@ -71,73 +71,45 @@ const decodeBase64 = (str: string): string => {
  * // Returns signed cursor: "Y3JlYXRlZF9hdA==:IjIwMjQtMDEtMDFUMDA6MDA6MDAuMDAwWiI=.signature"
  * ```
  */
+async function applyCursorSecurity(cursor: string, security: CursorSecurityOptions): Promise<string> {
+  const crypto = await getCursorCrypto()
+  let result = cursor
+  if (security.encrypt) {
+    result = crypto.encryptCursor(result, security.secret)
+  }
+  return crypto.signCursor(result, security.secret, security.algorithm)
+}
+
 async function encodeCursor<T>(
   orderBy: Array<{ column: keyof T & string }>,
   lastRow: T,
   security?: CursorSecurityOptions
 ): Promise<string> {
+  let cursor: string
+
   if (orderBy.length === 1) {
-    // Single column optimization: encode column and value separately
     const column = orderBy[0]!.column
     const value = (lastRow as Record<string, unknown>)[column]
 
-    // Handle undefined/null values (shouldn't normally happen, but handle gracefully)
     if (value === undefined || value === null) {
-      // Fall back to multi-column encoding which handles undefined correctly
-      const cursorObj = { [column]: value }
-      let cursor = encodeBase64(JSON.stringify(cursorObj))
-
-      // Apply security if configured (lazy-load crypto only when needed)
-      if (security) {
-        const crypto = await getCursorCrypto()
-        if (security.encrypt) {
-          cursor = crypto.encryptCursor(cursor, security.secret)
-        }
-        cursor = crypto.signCursor(cursor, security.secret, security.algorithm)
-      }
-
-      return cursor
+      cursor = encodeBase64(JSON.stringify({ [column]: value }))
+    } else {
+      const columnB64 = encodeBase64(String(column))
+      const valueB64 = encodeBase64(JSON.stringify(value))
+      cursor = `${columnB64}:${valueB64}`
     }
-
-    const columnB64 = encodeBase64(String(column))
-    const valueB64 = encodeBase64(JSON.stringify(value))
-    let cursor = `${columnB64}:${valueB64}`
-
-    // Apply security if configured (lazy-load crypto only when needed)
-    if (security) {
-      const crypto = await getCursorCrypto()
-      if (security.encrypt) {
-        cursor = crypto.encryptCursor(cursor, security.secret)
-      }
-      cursor = crypto.signCursor(cursor, security.secret, security.algorithm)
-    }
-
-    return cursor
+  } else {
+    const cursorObj = orderBy.reduce(
+      (acc, { column }) => {
+        acc[column] = (lastRow as Record<string, unknown>)[column]
+        return acc
+      },
+      {} as Record<string, unknown>
+    )
+    cursor = encodeBase64(JSON.stringify(cursorObj))
   }
 
-  // Multi-column: use JSON encoding
-  const cursorObj = orderBy.reduce(
-    (acc, { column }) => {
-      acc[column] = (lastRow as Record<string, unknown>)[column]
-      return acc
-    },
-    {} as Record<string, unknown>
-  )
-
-  let cursor = encodeBase64(JSON.stringify(cursorObj))
-
-  // Apply security if configured (lazy-load crypto only when needed)
-  if (security) {
-    const crypto = await getCursorCrypto()
-    if (security.encrypt) {
-      // Encrypt first, then optionally sign
-      cursor = crypto.encryptCursor(cursor, security.secret)
-    }
-    // Sign the cursor (or encrypted cursor)
-    cursor = crypto.signCursor(cursor, security.secret, security.algorithm)
-  }
-
-  return cursor
+  return security ? applyCursorSecurity(cursor, security) : cursor
 }
 
 /**
@@ -191,11 +163,14 @@ async function decodeCursor(cursor: string, security?: CursorSecurityOptions): P
   // Single-column format: base64(column):base64(value)
 
   // First, try to decode as multi-column JSON object
+  let jsonDecoded: unknown
+  let jsonParseSucceeded = false
   try {
-    const decoded: unknown = JSON.parse(decodeBase64(decodedCursor))
+    jsonDecoded = JSON.parse(decodeBase64(decodedCursor))
+    jsonParseSucceeded = true
     // Type guard: ensure decoded is an object
-    if (typeof decoded === 'object' && decoded !== null && !Array.isArray(decoded)) {
-      return decoded as Record<string, unknown>
+    if (typeof jsonDecoded === 'object' && jsonDecoded !== null && !Array.isArray(jsonDecoded)) {
+      return jsonDecoded as Record<string, unknown>
     }
     // If not a valid object, fall through to single-column format
   } catch {
@@ -215,15 +190,12 @@ async function decodeCursor(cursor: string, security?: CursorSecurityOptions): P
     }
   }
 
-  // If we got here, multi-column decode succeeded but wasn't an object
-  const decoded: unknown = JSON.parse(decodeBase64(decodedCursor))
-
-  // Type guard: ensure decoded is an object
-  if (typeof decoded !== 'object' || decoded === null || Array.isArray(decoded)) {
-    throw new Error('Invalid cursor format: expected object')
+  // JSON parsed successfully but wasn't an object (e.g., number, string, boolean)
+  if (jsonParseSucceeded) {
+    throw new BadRequestError('Invalid cursor format: expected object')
   }
 
-  return decoded as Record<string, unknown>
+  throw new BadRequestError('Invalid cursor format: unable to decode')
 }
 
 export interface PaginationOptions {
@@ -304,8 +276,8 @@ export async function paginate<DB, TB extends keyof DB, O>(
     throw new BadRequestError(`Page ${page} with limit ${limit} exceeds safe integer range`)
   }
 
-  // Get total count - for MSSQL we need to use a different approach
-  const countQuery = query.clearSelect().clearOrderBy() as SelectQueryBuilder<
+  // Get total count - clear select, order, and group to get accurate count
+  const countQuery = query.clearSelect().clearOrderBy().clearGroupBy() as SelectQueryBuilder<
     DB,
     TB,
     { count: string }

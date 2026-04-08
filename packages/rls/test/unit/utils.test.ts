@@ -23,9 +23,9 @@ describe('Utils', () => {
     it('should create context with auth from RLS context', () => {
       const ctx = createEvaluationContext(baseRLSContext)
 
-      expect(ctx.auth.userId).toBe('user-123')
-      expect(ctx.auth.roles).toEqual(['user', 'editor'])
-      expect(ctx.auth.tenantId).toBe('tenant-456')
+      expect(ctx.auth!.userId).toBe('user-123')
+      expect(ctx.auth!.roles).toEqual(['user', 'editor'])
+      expect(ctx.auth!.tenantId).toBe('tenant-456')
     })
 
     it('should include row when provided', () => {

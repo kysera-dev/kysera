@@ -11,7 +11,7 @@
 
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
-import { silentLogger, type KyseraLogger } from '@kysera/core'
+import { silentLogger, formatTimestampForDb, type KyseraLogger } from '@kysera/core'
 import type { DialectAdapter, DialectAdapterOptions, SchemaOptions } from '../types.js'
 import { assertValidIdentifier, resolveSchema as resolveSchemaUtil, errorMatchers } from '../helpers.js'
 
@@ -48,7 +48,7 @@ export class SQLiteAdapter implements DialectAdapter {
   }
 
   formatDate(date: Date): string {
-    return date.toISOString()
+    return formatTimestampForDb(date, 'sqlite')
   }
 
   isUniqueConstraintError(error: unknown): boolean {

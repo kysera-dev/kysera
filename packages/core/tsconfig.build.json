@@ -4,6 +4,7 @@
   "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts"],
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "types": ["node"]
   }
 }

@@ -375,6 +375,18 @@ export async function atomicStatusTransition<DB, Table extends keyof DB & string
   }
 
   const result = await query.execute()
-  // Check if any row was updated
-  return result.numUpdatedRows > 0 ? ({} as Selectable<DB[Table]>) : null
+  if (result.numUpdatedRows <= 0) return null
+
+  // Re-fetch the updated record since RETURNING was not requested but we need to return it
+  type RefetchQueryBuilder = {
+    where: (column: string, op: string, value: unknown) => RefetchQueryBuilder
+    executeTakeFirst: () => Promise<unknown>
+  }
+  let refetch: RefetchQueryBuilder = (db.selectFrom(table) as unknown as { selectAll: () => RefetchQueryBuilder }).selectAll()
+  for (const [column, value] of Object.entries(where)) {
+    refetch = refetch.where(column, '=', value)
+  }
+  refetch = refetch.where(statusColumn, '=', toStatus as unknown)
+  const row = await refetch.executeTakeFirst()
+  return (row as Selectable<DB[Table]>) ?? null
 }

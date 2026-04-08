@@ -156,7 +156,7 @@ describe('ReBAC Policy Builders', () => {
         'read',
         'org_membership',
         ctx => ({
-          user_id: ctx.auth.userId,
+          user_id: ctx.auth!.userId,
           status: 'active'
         })
       )
@@ -181,7 +181,7 @@ describe('ReBAC Policy Builders', () => {
       const policy = allowRelation(
         ['read', 'update'],
         'org_membership',
-        ctx => ({ user_id: ctx.auth.userId })
+        ctx => ({ user_id: ctx.auth!.userId })
       )
 
       expect(policy.operation).toEqual(['read', 'update'])
@@ -206,7 +206,7 @@ describe('ReBAC Policy Builders', () => {
         'delete',
         'org_membership',
         ctx => ({
-          user_id: ctx.auth.userId,
+          user_id: ctx.auth!.userId,
           status: 'blocked'
         })
       )
@@ -398,7 +398,7 @@ describe('ReBAcTransformer', () => {
       relationships: [path],
       policies: [
         allowRelation('read', path.name, ctx => ({
-          user_id: ctx.auth.userId,
+          user_id: ctx.auth!.userId,
           status: 'active'
         }))
       ]
@@ -445,7 +445,7 @@ describe('ReBAcTransformer', () => {
         relationships: [path],
         policies: [
           denyRelation('read', path.name, ctx => ({
-            user_id: ctx.auth.userId,
+            user_id: ctx.auth!.userId,
             status: 'blocked'
           }))
         ]

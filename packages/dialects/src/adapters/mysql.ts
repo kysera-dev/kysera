@@ -7,7 +7,7 @@
 
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
-import { silentLogger, type KyseraLogger } from '@kysera/core'
+import { silentLogger, formatTimestampForDb, type KyseraLogger } from '@kysera/core'
 import type { DialectAdapter, DialectAdapterOptions, SchemaOptions } from '../types.js'
 import { assertValidIdentifier, errorMatchers } from '../helpers.js'
 
@@ -44,8 +44,7 @@ export class MySQLAdapter implements DialectAdapter {
   }
 
   formatDate(date: Date): string {
-    // MySQL datetime format: YYYY-MM-DD HH:MM:SS
-    return date.toISOString().slice(0, 19).replace('T', ' ')
+    return formatTimestampForDb(date, 'mysql')
   }
 
   isUniqueConstraintError(error: unknown): boolean {
@@ -61,16 +60,29 @@ export class MySQLAdapter implements DialectAdapter {
   }
 
   /**
-   * Get the schema (database) filter for queries.
-   * In MySQL, schema = database, so we use DATABASE() if not specified.
+   * Get the resolved schema (database) name for queries.
+   * In MySQL, schema = database, so we use DATABASE() as fallback.
    */
-  private getSchemaFilter(options?: SchemaOptions): ReturnType<typeof sql> | string {
+  private resolveSchemaOrDatabase(options?: SchemaOptions): string | null {
     const schema = options?.schema ?? this.defaultSchema
     if (schema) {
       assertValidIdentifier(schema, 'schema/database name')
       return schema
     }
-    return sql`DATABASE()`
+    return null // indicates: use DATABASE() function
+  }
+
+  /**
+   * Apply schema filter to a query. Uses literal schema name or DATABASE() function.
+   */
+  private applySchemaFilter<Q extends { where: (...args: never[]) => Q }>(
+    query: Q,
+    schema: string | null
+  ): Q {
+    if (schema) {
+      return (query as any).where('table_schema', '=', schema)
+    }
+    return (query as any).where('table_schema', '=', sql`DATABASE()`)
   }
 
   async tableExists(
@@ -79,7 +91,7 @@ export class MySQLAdapter implements DialectAdapter {
     options?: SchemaOptions
   ): Promise<boolean> {
     assertValidIdentifier(tableName, 'table name')
-    const schemaFilter = this.getSchemaFilter(options)
+    const schema = this.resolveSchemaOrDatabase(options)
 
     try {
       const query = db
@@ -87,10 +99,7 @@ export class MySQLAdapter implements DialectAdapter {
         .select('table_name')
         .where('table_name', '=', tableName)
 
-      const result = typeof schemaFilter === 'string'
-        ? await query.where('table_schema', '=', schemaFilter).executeTakeFirst()
-        : await query.where('table_schema', '=', schemaFilter).executeTakeFirst()
-
+      const result = await this.applySchemaFilter(query, schema).executeTakeFirst()
       return !!result
     } catch {
       return false
@@ -103,7 +112,7 @@ export class MySQLAdapter implements DialectAdapter {
     options?: SchemaOptions
   ): Promise<string[]> {
     assertValidIdentifier(tableName, 'table name')
-    const schemaFilter = this.getSchemaFilter(options)
+    const schema = this.resolveSchemaOrDatabase(options)
 
     try {
       const query = db
@@ -111,10 +120,7 @@ export class MySQLAdapter implements DialectAdapter {
         .select('column_name')
         .where('table_name', '=', tableName)
 
-      const results = typeof schemaFilter === 'string'
-        ? await query.where('table_schema', '=', schemaFilter).execute()
-        : await query.where('table_schema', '=', schemaFilter).execute()
-
+      const results = await this.applySchemaFilter(query, schema).execute()
       return results.map(r => r.column_name as string)
     } catch {
       return []
@@ -122,7 +128,7 @@ export class MySQLAdapter implements DialectAdapter {
   }
 
   async getTables(db: Kysely<any>, options?: SchemaOptions): Promise<string[]> {
-    const schemaFilter = this.getSchemaFilter(options)
+    const schema = this.resolveSchemaOrDatabase(options)
 
     try {
       const query = db
@@ -130,10 +136,7 @@ export class MySQLAdapter implements DialectAdapter {
         .select('table_name')
         .where('table_type', '=', 'BASE TABLE')
 
-      const results = typeof schemaFilter === 'string'
-        ? await query.where('table_schema', '=', schemaFilter).execute()
-        : await query.where('table_schema', '=', schemaFilter).execute()
-
+      const results = await this.applySchemaFilter(query, schema).execute()
       return results.map(r => r.table_name as string)
     } catch {
       return []

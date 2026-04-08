@@ -1073,7 +1073,7 @@ export function parseDatabaseError(
     return new DatabaseError('Unknown database error', ErrorCodes.DB_UNKNOWN)
   }
 
-  const dbError = error as RawDatabaseError
+  const dbError: RawDatabaseError = error
 
   if (dialect === 'postgres' && dbError.code) {
     return parsePostgresError(dbError)

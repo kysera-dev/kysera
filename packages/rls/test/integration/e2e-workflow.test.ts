@@ -26,8 +26,8 @@ import {
   rlsContext,
   withRLSContext,
   PolicyRegistry,
-  type RLSContext,
-  type RLSSchema
+  // type RLSContext,
+  // type RLSSchema
 } from '../../src/index.js'
 import { SelectTransformer } from '../../src/transformer/select.js'
 import { MutationGuard } from '../../src/transformer/mutation.js'
@@ -62,30 +62,30 @@ describe('E2E Workflow Tests', () => {
       users: {
         policies: [
           // Tenant isolation
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
           // Users can update their own profile
-          allow('update', ctx => Number(ctx.auth.userId) === ctx.row.id),
+          allow('update', ctx => Number(ctx.auth!.userId) === (ctx.row as any).id),
           // Admins can update any user in their tenant
-          allow('update', ctx => ctx.auth.roles.includes('admin')),
+          allow('update', ctx => ctx.auth!.roles.includes('admin')),
           // Only admins can delete users
-          allow('delete', ctx => ctx.auth.roles.includes('admin')),
+          allow('delete', ctx => ctx.auth!.roles.includes('admin')),
           // Cannot delete yourself
-          deny('delete', ctx => Number(ctx.auth.userId) === ctx.row.id)
+          deny('delete', ctx => Number(ctx.auth!.userId) === (ctx.row as any).id)
         ],
         skipFor: ['superadmin']
       },
       resources: {
         policies: [
           // Tenant isolation
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
           // Owners have full access
-          allow('all', ctx => Number(ctx.auth.userId) === ctx.row.owner_id),
+          allow('all', ctx => Number(ctx.auth!.userId) === (ctx.row as any).owner_id),
           // Admins have full access
-          allow('all', ctx => ctx.auth.roles.includes('admin')),
+          allow('all', ctx => ctx.auth!.roles.includes('admin')),
           // Deny archived resources for non-admins (except read)
           deny(
             ['update', 'delete'],
-            ctx => ctx.row.is_archived && !ctx.auth.roles.includes('admin')
+            ctx => (ctx.row as any).is_archived && !ctx.auth!.roles.includes('admin')
           )
         ],
         defaultDeny: true
@@ -93,15 +93,15 @@ describe('E2E Workflow Tests', () => {
       posts: {
         policies: [
           // Tenant isolation
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
           // Authors can manage their posts
-          allow(['update', 'delete'], ctx => Number(ctx.auth.userId) === ctx.row.user_id),
+          allow(['update', 'delete'], ctx => Number(ctx.auth!.userId) === (ctx.row as any).user_id),
           // Editors can update any post
-          allow('update', ctx => ctx.auth.roles.includes('editor')),
+          allow('update', ctx => ctx.auth!.roles.includes('editor')),
           // Cannot delete published posts
-          deny('delete', ctx => ctx.row.status === 'published'),
+          deny('delete', ctx => (ctx.row as any).status === 'published'),
           // Validate tenant_id on create
-          validate('create', ctx => ctx.data.tenant_id === ctx.auth.tenantId)
+          validate('create', ctx => (ctx.data as any).tenant_id === ctx.auth!.tenantId)
         ]
       }
     })
@@ -313,33 +313,33 @@ describe('E2E Workflow Tests', () => {
       posts: {
         policies: [
           // Tenant isolation
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
 
           // Public posts visible to everyone (within tenant)
-          allow('read', ctx => ctx.row.is_public === true || ctx.row.is_public === 1),
+          allow('read', ctx => (ctx.row as any).is_public === true || (ctx.row as any).is_public === 1),
 
           // Authors can read their own drafts
-          allow('read', ctx => Number(ctx.auth.userId) === ctx.row.user_id),
+          allow('read', ctx => Number(ctx.auth!.userId) === (ctx.row as any).user_id),
 
           // Authors can update their own posts
-          allow('update', ctx => Number(ctx.auth.userId) === ctx.row.user_id),
+          allow('update', ctx => Number(ctx.auth!.userId) === (ctx.row as any).user_id),
 
           // Editors can update any post
-          allow('update', ctx => ctx.auth.roles.includes('editor')),
+          allow('update', ctx => ctx.auth!.roles.includes('editor')),
 
           // Only authors can delete their own drafts
           allow(
             'delete',
-            ctx => Number(ctx.auth.userId) === ctx.row.user_id && ctx.row.status === 'draft'
+            ctx => Number(ctx.auth!.userId) === (ctx.row as any).user_id && (ctx.row as any).status === 'draft'
           ),
 
           // No one can delete published posts
-          deny('delete', ctx => ctx.row.status === 'published'),
+          deny('delete', ctx => (ctx.row as any).status === 'published'),
 
           // Validate status transitions
           validate('update', ctx => {
             // Only editors can change status to published
-            if (ctx.data.status === 'published' && !ctx.auth.roles.includes('editor')) {
+            if ((ctx.data as any).status === 'published' && !ctx.auth!.roles.includes('editor')) {
               return false
             }
             return true
@@ -349,29 +349,29 @@ describe('E2E Workflow Tests', () => {
       comments: {
         policies: [
           // Tenant isolation
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
 
           // Only show approved comments (unless admin/moderator)
           filter('read', ctx => {
-            if (ctx.auth.roles.includes('admin') || ctx.auth.roles.includes('moderator')) {
+            if (ctx.auth!.roles.includes('admin') || ctx.auth!.roles.includes('moderator')) {
               return {}
             }
             return { is_approved: true }
           }),
 
           // Users can see their own pending comments
-          allow('read', ctx => Number(ctx.auth.userId) === ctx.row.user_id),
+          allow('read', ctx => Number(ctx.auth!.userId) === (ctx.row as any).user_id),
 
           // Anyone can create comments
           allow('create', () => true),
 
           // Users can delete their own comments
-          allow('delete', ctx => Number(ctx.auth.userId) === ctx.row.user_id),
+          allow('delete', ctx => Number(ctx.auth!.userId) === (ctx.row as any).user_id),
 
           // Moderators can delete any comment
           allow(
             'delete',
-            ctx => ctx.auth.roles.includes('moderator') || ctx.auth.roles.includes('admin')
+            ctx => ctx.auth!.roles.includes('moderator') || ctx.auth!.roles.includes('admin')
           )
         ]
       }
@@ -387,7 +387,7 @@ describe('E2E Workflow Tests', () => {
     })
 
     it('should enforce editorial workflow for publishing', async () => {
-      const bob = await db
+      await db
         .selectFrom('users')
         .selectAll()
         .where('email', '=', 'bob@acme.com')
@@ -480,20 +480,20 @@ describe('E2E Workflow Tests', () => {
       // Base schema with tenant isolation
       const baseSchema = defineRLSSchema<RLSTestDatabase>({
         users: {
-          policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+          policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))]
         },
         posts: {
-          policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+          policies: [filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }))]
         }
       })
 
       // Admin override schema
       const adminSchema = defineRLSSchema<RLSTestDatabase>({
         users: {
-          policies: [allow('all', ctx => ctx.auth.roles.includes('admin'))]
+          policies: [allow('all', ctx => ctx.auth!.roles.includes('admin'))]
         },
         posts: {
-          policies: [allow('all', ctx => ctx.auth.roles.includes('admin'))]
+          policies: [allow('all', ctx => ctx.auth!.roles.includes('admin'))]
         }
       })
 
@@ -501,8 +501,8 @@ describe('E2E Workflow Tests', () => {
       const archiveSchema = defineRLSSchema<RLSTestDatabase>({
         resources: {
           policies: [
-            filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
-            deny('update', ctx => ctx.row.is_archived === true || ctx.row.is_archived === 1)
+            filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
+            deny('update', ctx => (ctx.row as any).is_archived === true || (ctx.row as any).is_archived === 1)
           ]
         }
       })
@@ -537,22 +537,22 @@ describe('E2E Workflow Tests', () => {
       resources: {
         policies: [
           // Tenant isolation (always applied first via filter)
-          filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+          filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
 
           // Owner has full access
-          allow('all', ctx => Number(ctx.auth.userId) === ctx.row.owner_id),
+          allow('all', ctx => Number(ctx.auth!.userId) === (ctx.row as any).owner_id),
 
           // Admin has full access
-          allow('all', ctx => ctx.auth.roles.includes('admin')),
+          allow('all', ctx => ctx.auth!.roles.includes('admin')),
 
           // Archived resources are read-only (deny mutations)
           deny(
             ['create', 'update', 'delete'],
-            ctx => ctx.row.is_archived === true || ctx.row.is_archived === 1
+            ctx => (ctx.row as any).is_archived === true || (ctx.row as any).is_archived === 1
           ),
 
           // Team members can read (would need team membership check in real app)
-          allow('read', ctx => ctx.auth.roles.includes('team_member'))
+          allow('read', ctx => ctx.auth!.roles.includes('team_member'))
         ],
         defaultDeny: true,
         skipFor: ['superadmin']
@@ -709,14 +709,14 @@ describe('E2E Workflow Tests', () => {
       const asyncSchema = defineRLSSchema<RLSTestDatabase>({
         posts: {
           policies: [
-            filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+            filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId })),
             // Async validation that checks user exists
             validate('create', async ctx => {
               // Simulate async database lookup
               const user = await db
                 .selectFrom('users')
                 .select('id')
-                .where('id', '=', Number(ctx.auth.userId))
+                .where('id', '=', Number(ctx.auth!.userId))
                 .executeTakeFirst()
               return user !== undefined
             })

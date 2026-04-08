@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import {
   rlsContext,
   createRLSContext,
@@ -17,8 +17,8 @@ describe('RLS Context', () => {
         }
       })
 
-      expect(ctx.auth.userId).toBe('user-123')
-      expect(ctx.auth.roles).toEqual(['user'])
+      expect(ctx.auth!.userId).toBe('user-123')
+      expect(ctx.auth!.roles).toEqual(['user'])
       expect(ctx.timestamp).toBeInstanceOf(Date)
     })
 
@@ -37,7 +37,7 @@ describe('RLS Context', () => {
         meta: { custom: 'data' }
       })
 
-      expect(ctx.auth.tenantId).toBe('tenant-456')
+      expect(ctx.auth!.tenantId).toBe('tenant-456')
       expect(ctx.auth.permissions).toEqual(['read', 'write'])
       expect(ctx.request?.requestId).toBe('req-789')
       expect(ctx.meta).toEqual({ custom: 'data' })

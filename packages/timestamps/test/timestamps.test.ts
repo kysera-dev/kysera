@@ -770,23 +770,22 @@ describe('Timestamps Plugin', () => {
     })
 
     it('should handle both tables and excludeTables options together', async () => {
-      // When tables is specified, only those tables are included
-      // excludeTables should have no effect when tables is specified
+      // Whitelist takes precedence: 'users' is in tables whitelist,
+      // so excludeTables is ignored — timestamps ARE applied
       const plugin = timestampsPlugin({
         tables: ['users', 'config'],
-        excludeTables: ['users'] // This should be ignored since tables is specified
+        excludeTables: ['users'] // Ignored because whitelist takes precedence
       })
 
       const userRepo = await createTestRepository(db, 'users', [plugin])
 
-      // Users should NOT have timestamps because excludeTables takes precedence
       const user = await userRepo.create({
         name: 'John Doe',
         email: 'john@example.com'
       })
 
-      // Actually, looking at the implementation, excludeTables is checked first
-      expect(user.created_at).toBeNull()
+      // Users IS in the whitelist, so timestamps are applied (whitelist > blacklist)
+      expect(user.created_at).not.toBeNull()
     })
 
     it('should not modify repository without tableName property', async () => {

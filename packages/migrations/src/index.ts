@@ -1,7 +1,7 @@
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
 import type { KyseraLogger } from '@kysera/core'
-import { DatabaseError, NotFoundError, BadRequestError, silentLogger } from '@kysera/core'
+import { DatabaseError, NotFoundError, BadRequestError, ErrorCodes, silentLogger } from '@kysera/core'
 import { VERSION } from './version.js'
 
 // ============================================================================
@@ -147,11 +147,14 @@ export interface MigrationResult {
 // Error Classes (extending @kysera/core)
 // ============================================================================
 
-/** Error codes for migration operations */
-export type MigrationErrorCode =
-  | 'MIGRATION_UP_FAILED'
-  | 'MIGRATION_DOWN_FAILED'
-  | 'MIGRATION_VALIDATION_FAILED'
+/** Error codes for migration operations — references unified codes from @kysera/core */
+export const MigrationErrorCodes = {
+  UP_FAILED: ErrorCodes.MIGRATION_UP_FAILED,
+  DOWN_FAILED: ErrorCodes.MIGRATION_DOWN_FAILED,
+  VALIDATION_FAILED: ErrorCodes.MIGRATION_VALIDATION_FAILED,
+} as const
+
+export type MigrationErrorCode = (typeof MigrationErrorCodes)[keyof typeof MigrationErrorCodes]
 
 /**
  * Migration-specific error extending DatabaseError from @kysera/core
@@ -162,8 +165,7 @@ export class MigrationError extends DatabaseError {
   public readonly operation: 'up' | 'down'
 
   constructor(message: string, migrationName: string, operation: 'up' | 'down', cause?: Error) {
-    const code: MigrationErrorCode =
-      operation === 'up' ? 'MIGRATION_UP_FAILED' : 'MIGRATION_DOWN_FAILED'
+    const code = operation === 'up' ? MigrationErrorCodes.UP_FAILED : MigrationErrorCodes.DOWN_FAILED
     super(message, code, migrationName)
     this.name = 'MigrationError'
     this.migrationName = migrationName
@@ -263,6 +265,7 @@ export class MigrationRunner<DB = unknown> {
   }
   protected db: Kysely<DB>
   protected migrations: Migration<DB>[]
+  private setupDone = false
 
   constructor(db: Kysely<DB>, migrations: Migration<DB>[], options: MigrationRunnerOptions = {}) {
     // Validate and apply defaults using Zod schema
@@ -287,13 +290,21 @@ export class MigrationRunner<DB = unknown> {
   }
 
   /**
+   * Ensure migrations table exists (idempotent, cached after first call)
+   */
+  protected async ensureSetup(): Promise<void> {
+    if (this.setupDone) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await setupMigrations(this.db as any)
+    this.setupDone = true
+  }
+
+  /**
    * Get list of executed migrations from database
    * Note: Uses type assertions for migrations table as it's not part of the user schema
    */
   async getExecutedMigrations(): Promise<string[]> {
-    // Cast to any for migrations table operations - it's internal and not part of user schema
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any)
+    await this.ensureSetup()
 
     // The migrations table is internal and not part of the generic DB schema
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -373,6 +384,21 @@ export class MigrationRunner<DB = unknown> {
    * Run all pending migrations
    */
   async up(): Promise<MigrationResult> {
+    return this.runUp(this.migrations)
+  }
+
+  /**
+   * Core up logic — used by up(), upTo(), and overridden by MigrationRunnerWithPlugins.
+   * Protected to allow hook injection by subclasses.
+   */
+  protected async runUp(
+    migrationsToConsider: Migration<DB>[],
+    hooks?: {
+      before?: (migration: Migration<DB>) => Promise<void>
+      after?: (migration: Migration<DB>, duration: number) => Promise<void>
+      onError?: (migration: Migration<DB>, error: unknown) => Promise<void>
+    }
+  ): Promise<MigrationResult> {
     const startTime = Date.now()
     const result: MigrationResult = {
       executed: [],
@@ -382,15 +408,14 @@ export class MigrationRunner<DB = unknown> {
       dryRun: this.runnerOptions.dryRun
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any)
-    const executed = await this.getExecutedMigrations()
+    const executedList = await this.getExecutedMigrations()
+    const executedSet = new Set(executedList)
 
-    const pending = this.migrations.filter(m => !executed.includes(m.name))
+    const pending = migrationsToConsider.filter(m => !executedSet.has(m.name))
 
     if (pending.length === 0) {
       this.logger.info('No pending migrations')
-      result.skipped = executed
+      result.skipped = executedList
       result.duration = Date.now() - startTime
       return result
     }
@@ -399,14 +424,18 @@ export class MigrationRunner<DB = unknown> {
       this.logger.info('DRY RUN - No changes will be made')
     }
 
-    for (const migration of this.migrations) {
-      if (executed.includes(migration.name)) {
+    for (const migration of migrationsToConsider) {
+      if (executedSet.has(migration.name)) {
         this.logger.info(`${migration.name} (already executed)`)
         result.skipped.push(migration.name)
         continue
       }
 
+      const migrationStart = Date.now()
+
       try {
+        await hooks?.before?.(migration)
+
         this.logger.info(`Running ${migration.name}...`)
         this.logMigrationMeta(migration)
 
@@ -415,9 +444,13 @@ export class MigrationRunner<DB = unknown> {
           await this.markAsExecuted(migration.name)
         }
 
+        await hooks?.after?.(migration, Date.now() - migrationStart)
+
         this.logger.info(`${migration.name} completed`)
         result.executed.push(migration.name)
       } catch (error) {
+        await hooks?.onError?.(migration, error)
+
         const errorMsg = formatError(error)
         this.logger.error(`${migration.name} failed: ${errorMsg}`)
         result.failed.push(migration.name)
@@ -434,7 +467,11 @@ export class MigrationRunner<DB = unknown> {
     }
 
     if (!this.runnerOptions.dryRun) {
-      this.logger.info('All migrations completed successfully')
+      if (result.failed.length > 0) {
+        this.logger.warn(`Migrations completed with ${String(result.failed.length)} failure(s)`)
+      } else {
+        this.logger.info('All migrations completed successfully')
+      }
     } else {
       this.logger.info('Dry run completed - no changes made')
     }
@@ -447,6 +484,21 @@ export class MigrationRunner<DB = unknown> {
    * Rollback last N migrations
    */
   async down(steps = 1): Promise<MigrationResult> {
+    return this.runDown(steps)
+  }
+
+  /**
+   * Core down logic — used by down() and overridden by MigrationRunnerWithPlugins.
+   * Protected to allow hook injection by subclasses.
+   */
+  protected async runDown(
+    steps: number,
+    hooks?: {
+      before?: (migration: Migration<DB>) => Promise<void>
+      after?: (migration: Migration<DB>, duration: number) => Promise<void>
+      onError?: (migration: Migration<DB>, error: unknown) => Promise<void>
+    }
+  ): Promise<MigrationResult> {
     const startTime = Date.now()
     const result: MigrationResult = {
       executed: [],
@@ -456,8 +508,6 @@ export class MigrationRunner<DB = unknown> {
       dryRun: this.runnerOptions.dryRun
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any)
     const executed = await this.getExecutedMigrations()
 
     if (executed.length === 0) {
@@ -487,7 +537,11 @@ export class MigrationRunner<DB = unknown> {
         continue
       }
 
+      const migrationStart = Date.now()
+
       try {
+        await hooks?.before?.(migration)
+
         this.logger.info(`Rolling back ${name}...`)
         this.logMigrationMeta(migration)
 
@@ -496,9 +550,13 @@ export class MigrationRunner<DB = unknown> {
           await this.markAsRolledBack(name)
         }
 
+        await hooks?.after?.(migration, Date.now() - migrationStart)
+
         this.logger.info(`${name} rolled back`)
         result.executed.push(name)
       } catch (error) {
+        await hooks?.onError?.(migration, error)
+
         const errorMsg = formatError(error)
         this.logger.error(`${name} rollback failed: ${errorMsg}`)
         result.failed.push(name)
@@ -515,7 +573,11 @@ export class MigrationRunner<DB = unknown> {
     }
 
     if (!this.runnerOptions.dryRun) {
-      this.logger.info('Rollback completed successfully')
+      if (result.failed.length > 0) {
+        this.logger.warn(`Rollback completed with ${String(result.failed.length)} failure(s)`)
+      } else {
+        this.logger.info('Rollback completed successfully')
+      }
     } else {
       this.logger.info('Dry run completed - no changes made')
     }
@@ -529,7 +591,7 @@ export class MigrationRunner<DB = unknown> {
    */
   async status(): Promise<MigrationStatus> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any)
+    await this.ensureSetup()
     const executed = await this.getExecutedMigrations()
     const pending = this.migrations.filter(m => !executed.includes(m.name)).map(m => m.name)
 
@@ -576,7 +638,7 @@ export class MigrationRunner<DB = unknown> {
     const startTime = Date.now()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any)
+    await this.ensureSetup()
     const executed = await this.getExecutedMigrations()
 
     if (executed.length === 0) {
@@ -621,69 +683,18 @@ export class MigrationRunner<DB = unknown> {
    * Run migrations up to a specific migration (inclusive)
    */
   async upTo(targetName: string): Promise<MigrationResult> {
-    const startTime = Date.now()
-    const result: MigrationResult = {
-      executed: [],
-      skipped: [],
-      failed: [],
-      duration: 0,
-      dryRun: this.runnerOptions.dryRun
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any)
-    const executed = await this.getExecutedMigrations()
-
     const targetIndex = this.migrations.findIndex(m => m.name === targetName)
     if (targetIndex === -1) {
       throw new NotFoundError('Migration', { name: targetName })
     }
 
     const migrationsToRun = this.migrations.slice(0, targetIndex + 1)
+    const result = await this.runUp(migrationsToRun)
 
-    if (this.runnerOptions.dryRun) {
-      this.logger.info('DRY RUN - No changes will be made')
-    }
-
-    for (const migration of migrationsToRun) {
-      if (executed.includes(migration.name)) {
-        this.logger.info(`${migration.name} (already executed)`)
-        result.skipped.push(migration.name)
-        continue
-      }
-
-      try {
-        this.logger.info(`Running ${migration.name}...`)
-        this.logMigrationMeta(migration)
-
-        if (!this.runnerOptions.dryRun) {
-          await this.executeMigration(migration, 'up')
-          await this.markAsExecuted(migration.name)
-        }
-
-        this.logger.info(`${migration.name} completed`)
-        result.executed.push(migration.name)
-      } catch (error) {
-        const errorMsg = formatError(error)
-        this.logger.error(`${migration.name} failed: ${errorMsg}`)
-        result.failed.push(migration.name)
-
-        throw new MigrationError(
-          `Migration ${migration.name} failed: ${errorMsg}`,
-          migration.name,
-          'up',
-          error instanceof Error ? error : undefined
-        )
-      }
-    }
-
-    if (!this.runnerOptions.dryRun) {
+    if (!this.runnerOptions.dryRun && result.failed.length === 0) {
       this.logger.info(`Migrated up to ${targetName}`)
-    } else {
-      this.logger.info(`Dry run completed - would migrate up to ${targetName}`)
     }
 
-    result.duration = Date.now() - startTime
     return result
   }
 }
@@ -986,186 +997,27 @@ export class MigrationRunnerWithPlugins<DB = unknown> extends MigrationRunner<DB
   }
 
   /**
-   * Run all pending migrations with plugin hooks
-   * Overrides parent to call beforeMigration/afterMigration/onMigrationError hooks
+   * Run all pending migrations with plugin hooks.
+   * Delegates to parent's runUp with plugin lifecycle hooks.
    */
   override async up(): Promise<MigrationResult> {
-    const startTime = Date.now()
-    const result: MigrationResult = {
-      executed: [],
-      skipped: [],
-      failed: [],
-      duration: 0,
-      dryRun: this.runnerOptions.dryRun
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any)
-    const executed = await this.getExecutedMigrations()
-
-    const pending = this.migrations.filter(m => !executed.includes(m.name))
-
-    if (pending.length === 0) {
-      this.logger.info('No pending migrations')
-      result.skipped = executed
-      result.duration = Date.now() - startTime
-      return result
-    }
-
-    if (this.runnerOptions.dryRun) {
-      this.logger.info('DRY RUN - No changes will be made')
-    }
-
-    for (const migration of this.migrations) {
-      if (executed.includes(migration.name)) {
-        this.logger.info(`${migration.name} (already executed)`)
-        result.skipped.push(migration.name)
-        continue
-      }
-
-      const migrationStartTime = Date.now()
-
-      try {
-        // Call beforeMigration hooks
-        await this.runBeforeHooks(migration, 'up')
-
-        this.logger.info(`Running ${migration.name}...`)
-        this.logMigrationMeta(migration)
-
-        if (!this.runnerOptions.dryRun) {
-          await this.executeMigration(migration, 'up')
-          await this.markAsExecuted(migration.name)
-        }
-
-        const migrationDuration = Date.now() - migrationStartTime
-
-        // Call afterMigration hooks
-        await this.runAfterHooks(migration, 'up', migrationDuration)
-
-        this.logger.info(`${migration.name} completed`)
-        result.executed.push(migration.name)
-      } catch (error) {
-        // Call onMigrationError hooks
-        await this.runErrorHooks(migration, 'up', error)
-
-        const errorMsg = formatError(error)
-        this.logger.error(`${migration.name} failed: ${errorMsg}`)
-        result.failed.push(migration.name)
-
-        if (this.runnerOptions.stopOnError) {
-          throw new MigrationError(
-            `Migration ${migration.name} failed: ${errorMsg}`,
-            migration.name,
-            'up',
-            error instanceof Error ? error : undefined
-          )
-        }
-      }
-    }
-
-    if (!this.runnerOptions.dryRun) {
-      this.logger.info('All migrations completed successfully')
-    } else {
-      this.logger.info('Dry run completed - no changes made')
-    }
-
-    result.duration = Date.now() - startTime
-    return result
+    return this.runUp(this.migrations, {
+      before: async (migration) => { await this.runBeforeHooks(migration, 'up') },
+      after: async (migration, duration) => { await this.runAfterHooks(migration, 'up', duration) },
+      onError: async (migration, error) => { await this.runErrorHooks(migration, 'up', error) }
+    })
   }
 
   /**
-   * Rollback last N migrations with plugin hooks
-   * Overrides parent to call beforeMigration/afterMigration/onMigrationError hooks
+   * Rollback last N migrations with plugin hooks.
+   * Delegates to parent's runDown with plugin lifecycle hooks.
    */
   override async down(steps = 1): Promise<MigrationResult> {
-    const startTime = Date.now()
-    const result: MigrationResult = {
-      executed: [],
-      skipped: [],
-      failed: [],
-      duration: 0,
-      dryRun: this.runnerOptions.dryRun
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any)
-    const executed = await this.getExecutedMigrations()
-
-    if (executed.length === 0) {
-      this.logger.warn('No executed migrations to rollback')
-      result.duration = Date.now() - startTime
-      return result
-    }
-
-    const toRollback = executed.slice(-steps).reverse()
-
-    if (this.runnerOptions.dryRun) {
-      this.logger.info('DRY RUN - No changes will be made')
-    }
-
-    for (const name of toRollback) {
-      const migration = this.migrations.find(m => m.name === name)
-
-      if (!migration) {
-        this.logger.warn(`Migration ${name} not found in codebase`)
-        result.skipped.push(name)
-        continue
-      }
-
-      if (!migration.down) {
-        this.logger.warn(`Migration ${name} has no down method - skipping`)
-        result.skipped.push(name)
-        continue
-      }
-
-      const migrationStartTime = Date.now()
-
-      try {
-        // Call beforeMigration hooks
-        await this.runBeforeHooks(migration, 'down')
-
-        this.logger.info(`Rolling back ${name}...`)
-        this.logMigrationMeta(migration)
-
-        if (!this.runnerOptions.dryRun) {
-          await this.executeMigration(migration, 'down')
-          await this.markAsRolledBack(name)
-        }
-
-        const migrationDuration = Date.now() - migrationStartTime
-
-        // Call afterMigration hooks
-        await this.runAfterHooks(migration, 'down', migrationDuration)
-
-        this.logger.info(`${name} rolled back`)
-        result.executed.push(name)
-      } catch (error) {
-        // Call onMigrationError hooks
-        await this.runErrorHooks(migration, 'down', error)
-
-        const errorMsg = formatError(error)
-        this.logger.error(`${name} rollback failed: ${errorMsg}`)
-        result.failed.push(name)
-
-        if (this.runnerOptions.stopOnError) {
-          throw new MigrationError(
-            `Rollback of ${name} failed: ${errorMsg}`,
-            name,
-            'down',
-            error instanceof Error ? error : undefined
-          )
-        }
-      }
-    }
-
-    if (!this.runnerOptions.dryRun) {
-      this.logger.info('Rollback completed successfully')
-    } else {
-      this.logger.info('Dry run completed - no changes made')
-    }
-
-    result.duration = Date.now() - startTime
-    return result
+    return this.runDown(steps, {
+      before: async (migration) => { await this.runBeforeHooks(migration, 'down') },
+      after: async (migration, duration) => { await this.runAfterHooks(migration, 'down', duration) },
+      onError: async (migration, error) => { await this.runErrorHooks(migration, 'down', error) }
+    })
   }
 }
 

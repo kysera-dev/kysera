@@ -268,7 +268,7 @@ export function resolvePluginOrder(plugins: readonly Plugin[]): Plugin[] {
   })
 
   while (available.length > 0) {
-    // Take first element (highest priority): O(1) with shift
+    // Take first element (highest priority)
     const current = available.shift()
     // Safety: available.length > 0 check ensures current is defined
     if (!current) break
@@ -343,7 +343,8 @@ function createInterceptedMethod<DB>(
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           throw new Error(
-            `Plugin "${plugin.name}" threw during interceptQuery for ${context.operation} on "${context.table}": ${message}`
+            `Plugin "${plugin.name}" threw during interceptQuery for ${context.operation} on "${context.table}": ${message}`,
+            { cause: error }
           )
         }
       }
@@ -355,6 +356,88 @@ function createInterceptedMethod<DB>(
 
 /** Marker properties Set for fast O(1) lookup */
 const MARKER_PROPS = new Set<string | symbol>(['__kysera', '__plugins', '__rawDb'])
+
+/**
+ * Wrap a Kysely instance with KyseraExecutor marker properties WITHOUT mutating the original.
+ * Uses a lightweight Proxy that only intercepts marker property access.
+ *
+ * @internal
+ */
+function wrapWithMarker<DB>(
+  db: Kysely<DB>,
+  plugins: readonly Plugin[]
+): KyseraExecutor<DB> {
+  const methodCache = new Map<string | symbol, unknown>()
+
+  return new Proxy(db, {
+    has(target, prop) {
+      if (MARKER_PROPS.has(prop)) return true
+      if (prop === '__schema') return true
+      return Reflect.has(target, prop)
+    },
+    get(target, prop, receiver) {
+      if (prop === '__kysera') return true
+      if (prop === '__plugins') return plugins
+      if (prop === '__rawDb') return db
+      if (prop === '__schema') return undefined
+
+      // Check method cache
+      if (methodCache.has(prop)) {
+        return methodCache.get(prop)
+      }
+
+      const value = Reflect.get(target, prop, receiver)
+
+      // Bind methods to target to preserve private field access (#props)
+      if (typeof value === 'function') {
+        const bound = value.bind(target)
+        methodCache.set(prop, bound)
+        return bound
+      }
+
+      return value
+    }
+  }) as KyseraExecutor<DB>
+}
+
+/**
+ * Wrap a Transaction with KyseraTransaction marker properties WITHOUT mutating the original.
+ * @internal
+ */
+function wrapTransactionWithMarker<DB>(
+  trx: Transaction<DB>,
+  plugins: readonly Plugin[]
+): KyseraTransaction<DB> {
+  const methodCache = new Map<string | symbol, unknown>()
+
+  return new Proxy(trx, {
+    has(target, prop) {
+      if (MARKER_PROPS.has(prop)) return true
+      if (prop === '__schema') return true
+      return Reflect.has(target, prop)
+    },
+    get(target, prop, receiver) {
+      if (prop === '__kysera') return true
+      if (prop === '__plugins') return plugins
+      if (prop === '__rawDb') return trx
+      if (prop === '__schema') return undefined
+
+      if (methodCache.has(prop)) {
+        return methodCache.get(prop)
+      }
+
+      const value = Reflect.get(target, prop, receiver)
+
+      if (typeof value === 'function') {
+        const bound = value.bind(target)
+        methodCache.set(prop, bound)
+        return bound
+      }
+
+      return value
+    }
+  }) as KyseraTransaction<DB>
+}
 
 /** Maximum size for LRU caches to prevent unbounded growth */
 const MAX_CACHE_SIZE = 100
@@ -632,26 +715,7 @@ export async function createExecutor<DB>(
 
   // Fast path: no plugins or disabled
   if (plugins.length === 0 || !enabled) {
-    /**
-     * TYPE ASSERTION #4a: Object.assign result to KyseraExecutor
-     *
-     * Cast: Kysely<DB> & KyseraExecutorMarker<DB> -> KyseraExecutor<DB>
-     *
-     * Why needed:
-     * - Object.assign returns intersection type (Kysely & Marker)
-     * - KyseraExecutor is defined as: type KyseraExecutor<DB> = Kysely<DB> & KyseraExecutorMarker<DB>
-     * - TypeScript treats intersection types different from type aliases
-     *
-     * Why safe:
-     * - We're adding exactly the marker properties defined in KyseraExecutorMarker
-     * - Runtime type is identical to KyseraExecutor type definition
-     * - No structural difference between intersection and type alias at runtime
-     */
-    return Object.assign(db, {
-      __kysera: true as const,
-      __plugins: plugins,
-      __rawDb: db
-    }) as KyseraExecutor<DB>
+    return wrapWithMarker(db, plugins)
   }
 
   // Validate and sort plugins
@@ -676,17 +740,7 @@ export async function createExecutor<DB>(
 
   // Fast path: no interceptors
   if (interceptors.length === 0) {
-    /**
-     * TYPE ASSERTION #4b: Object.assign result to KyseraExecutor (no interceptors)
-     *
-     * Same as #4a but with sorted plugins instead of input plugins.
-     * This path is for plugins that have onInit but no interceptQuery.
-     */
-    return Object.assign(db, {
-      __kysera: true as const,
-      __plugins: sorted,
-      __rawDb: db
-    }) as KyseraExecutor<DB>
+    return wrapWithMarker(db, sorted)
   }
 
   // Create proxy with interception
@@ -726,16 +780,7 @@ export function createExecutorSync<DB>(
   const { enabled = true } = config
 
   if (plugins.length === 0 || !enabled) {
-    /**
-     * TYPE ASSERTION #4c: Object.assign in createExecutorSync (no plugins/disabled)
-     *
-     * Same as #4a - see explanation there.
-     */
-    return Object.assign(db, {
-      __kysera: true as const,
-      __plugins: plugins,
-      __rawDb: db
-    }) as KyseraExecutor<DB>
+    return wrapWithMarker(db, plugins)
   }
 
   validatePlugins(plugins)
@@ -743,16 +788,7 @@ export function createExecutorSync<DB>(
   const interceptors = sorted.filter(p => p.interceptQuery)
 
   if (interceptors.length === 0) {
-    /**
-     * TYPE ASSERTION #4d: Object.assign in createExecutorSync (no interceptors)
-     *
-     * Same as #4b - see explanation there.
-     */
-    return Object.assign(db, {
-      __kysera: true as const,
-      __plugins: sorted,
-      __rawDb: db
-    }) as KyseraExecutor<DB>
+    return wrapWithMarker(db, sorted)
   }
 
   return createProxy(db, interceptors, sorted)
@@ -784,38 +820,10 @@ export function wrapTransaction<DB>(
   const interceptors = plugins.filter(p => p.interceptQuery)
 
   if (interceptors.length === 0) {
-    /**
-     * TYPE ASSERTION #4e: Object.assign for transaction wrapping (no interceptors)
-     *
-     * Cast: Transaction<DB> & KyseraExecutorMarker<DB> -> KyseraTransaction<DB>
-     *
-     * Similar to #4a but for Transaction type instead of Kysely type.
-     * KyseraTransaction is defined as: type KyseraTransaction<DB> = Transaction<DB> & KyseraExecutorMarker<DB>
-     */
-    return Object.assign(trx, {
-      __kysera: true as const,
-      __plugins: plugins,
-      __rawDb: trx
-    }) as KyseraTransaction<DB>
+    return wrapTransactionWithMarker(trx, plugins)
   }
 
-  /**
-   * TYPE ASSERTION #5: wrapTransaction cast chain
-   *
-   * Double cast: Transaction<DB> -> Kysely<DB> -> KyseraExecutor<DB> -> KyseraTransaction<DB>
-   *
-   * Why needed:
-   * - createProxy expects Kysely<DB> and returns KyseraExecutor<DB>
-   * - We need to return KyseraTransaction<DB>
-   * - TypeScript doesn't recognize that KyseraExecutor wrapping a Transaction is compatible with KyseraTransaction
-   *
-   * Why safe:
-   * - Transaction<DB> extends Kysely<DB> (first cast is upcast)
-   * - createProxy preserves all methods (adds marker properties only)
-   * - KyseraTransaction<DB> = Transaction<DB> & Marker, KyseraExecutor<DB> = Kysely<DB> & Marker
-   * - Since original is Transaction, wrapped result is structurally KyseraTransaction
-   * - Verified in integration tests (packages/executor/test/executor.test.ts)
-   */
+  // Transaction with interceptors — create full proxy
   return createProxy(
     trx as unknown as Kysely<DB>,
     interceptors,
@@ -840,7 +848,8 @@ export function applyPlugins<QB>(
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         throw new Error(
-          `Plugin "${plugin.name}" threw during interceptQuery for ${context.operation} on "${context.table}": ${message}`
+          `Plugin "${plugin.name}" threw during interceptQuery for ${context.operation} on "${context.table}": ${message}`,
+          { cause: error }
         )
       }
     }
@@ -905,12 +914,24 @@ export function getRawDb<DB>(executor: Kysely<DB>): Kysely<DB> {
  */
 export async function destroyExecutor<DB>(executor: KyseraExecutor<DB>): Promise<void> {
   const plugins = executor.__plugins
+  const errors: { plugin: string; error: unknown }[] = []
 
   // Call onDestroy in reverse order (cleanup in reverse of initialization)
+  // Continue through all plugins even if some throw — collect errors
   for (let i = plugins.length - 1; i >= 0; i--) {
     const plugin = plugins[i]
     if (plugin?.onDestroy) {
-      await plugin.onDestroy()
+      try {
+        await plugin.onDestroy()
+      } catch (error) {
+        errors.push({ plugin: plugin.name, error })
+      }
     }
+  }
+
+  // If any plugins failed to destroy, throw aggregate error
+  if (errors.length > 0) {
+    const messages = errors.map(e => `${e.plugin}: ${e.error instanceof Error ? e.error.message : String(e.error)}`)
+    throw new Error(`Failed to destroy ${String(errors.length)} plugin(s): ${messages.join('; ')}`)
   }
 }

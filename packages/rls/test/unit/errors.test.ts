@@ -169,7 +169,7 @@ describe('RLSContextValidationError', () => {
     fields.forEach(field => {
       const error = new RLSContextValidationError(`${field} validation failed`, field)
       expect(error.field).toBe(field)
-      expect(error.toJSON().field).toBe(field)
+      expect(error.toJSON()['field']).toBe(field)
     })
   })
 
@@ -369,7 +369,7 @@ describe('RLSSchemaError', () => {
     }
     const error = new RLSSchemaError('Invalid policy definition', details)
     expect(error.details).toEqual(details)
-    expect(error.toJSON().details).toEqual(details)
+    expect(error.toJSON()['details']).toEqual(details)
   })
 
   it('should preserve detail types', () => {

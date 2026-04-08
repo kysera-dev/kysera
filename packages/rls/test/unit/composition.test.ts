@@ -20,9 +20,9 @@ import {
   composePolicies,
   extendPolicy,
   overridePolicy,
-  type ReusablePolicy
+  // type ReusablePolicy
 } from '../../src/composition/index.js'
-import { allow, deny, filter, validate } from '../../src/policy/builder.js'
+import { allow, deny, filter } from '../../src/policy/builder.js'
 import type { PolicyEvaluationContext } from '../../src/policy/types.js'
 
 // ============================================================================
@@ -80,7 +80,7 @@ describe('Core Policy Builders', () => {
   describe('defineFilterPolicy', () => {
     it('should create a filter-only policy', () => {
       const policy = defineFilterPolicy('tenantFilter', ctx => ({
-        tenant_id: ctx.auth.tenantId
+        tenant_id: ctx.auth!.tenantId
       }))
 
       expect(policy.name).toBe('tenantFilter')
@@ -91,7 +91,7 @@ describe('Core Policy Builders', () => {
 
     it('should support priority option', () => {
       const policy = defineFilterPolicy('tenantFilter', ctx => ({
-        tenant_id: ctx.auth.tenantId
+        tenant_id: ctx.auth!.tenantId
       }), { priority: 100 })
 
       expect(policy.policies[0]?.priority).toBe(100)
@@ -101,7 +101,7 @@ describe('Core Policy Builders', () => {
   describe('defineAllowPolicy', () => {
     it('should create an allow-based policy', () => {
       const policy = defineAllowPolicy('ownerAccess', 'read', ctx =>
-        ctx.auth.userId === (ctx.row as Record<string, unknown>)?.owner_id
+        ctx.auth!.userId === (ctx.row as Record<string, unknown>)?.['owner_id']
       )
 
       expect(policy.name).toBe('ownerAccess')
@@ -129,7 +129,7 @@ describe('Core Policy Builders', () => {
 
     it('should support conditional deny', () => {
       const policy = defineDenyPolicy('noDeletePublished', 'delete', ctx =>
-        (ctx.row as Record<string, unknown>)?.status === 'published'
+        (ctx.row as Record<string, unknown>)?.['status'] === 'published'
       )
 
       const ctx = createCtx({ row: { status: 'published' } })
@@ -146,7 +146,7 @@ describe('Core Policy Builders', () => {
   describe('defineValidatePolicy', () => {
     it('should create a validation policy', () => {
       const policy = defineValidatePolicy('validateCreate', 'create', ctx =>
-        (ctx.data as Record<string, unknown>)?.name !== undefined
+        (ctx.data as Record<string, unknown>)?.['name'] !== undefined
       )
 
       expect(policy.name).toBe('validateCreate')
@@ -166,16 +166,16 @@ describe('Core Policy Builders', () => {
   describe('defineCombinedPolicy', () => {
     it('should create a combined policy with multiple types', () => {
       const policy = defineCombinedPolicy('combined', {
-        filter: ctx => ({ tenant_id: ctx.auth.tenantId }),
+        filter: ctx => ({ tenant_id: ctx.auth!.tenantId }),
         allow: {
-          read: ctx => ctx.auth.userId === (ctx.row as Record<string, unknown>)?.owner_id
+          read: ctx => ctx.auth!.userId === (ctx.row as Record<string, unknown>)?.['owner_id']
         },
         deny: {
-          delete: ctx => (ctx.row as Record<string, unknown>)?.status === 'protected'
+          delete: ctx => (ctx.row as Record<string, unknown>)?.['status'] === 'protected'
         },
         validate: {
-          create: ctx => (ctx.data as Record<string, unknown>)?.name !== undefined,
-          update: ctx => (ctx.data as Record<string, unknown>)?.id === undefined
+          create: ctx => (ctx.data as Record<string, unknown>)?.['name'] !== undefined,
+          update: ctx => (ctx.data as Record<string, unknown>)?.['id'] === undefined
         }
       })
 

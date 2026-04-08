@@ -80,6 +80,17 @@ describe('@kysera/executor', () => {
       expect(users).toHaveLength(3)
     })
 
+    it('does not mutate original db instance', async () => {
+      const executor = await createExecutor(db, [])
+
+      // Original db should NOT have __kysera marker (no mutation)
+      expect((db as any).__kysera).toBeUndefined()
+
+      // Executor SHOULD have it (via proxy)
+      expect(isKyseraExecutor(executor)).toBe(true)
+      expect(executor.__rawDb).toBe(db)
+    })
+
     it('creates executor with interceptor plugin', async () => {
       const softDeletePlugin: Plugin = {
         name: 'soft-delete',

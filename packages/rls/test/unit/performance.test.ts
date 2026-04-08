@@ -22,9 +22,9 @@ describe('RLS Performance', () => {
       resources: {
         policies: [
           // Simple tenant-based filtering
-          allow('read', ctx => ctx.auth.tenantId === ctx.row?.tenant_id),
+          allow('read', ctx => ctx.auth!.tenantId === ctx.row?.['tenant_id']),
           // Allow admins to read all
-          allow('all', ctx => ctx.auth.roles.includes('admin'))
+          allow('all', ctx => ctx.auth!.roles.includes('admin'))
         ]
       }
     })
@@ -56,7 +56,7 @@ describe('RLS Performance', () => {
 
         // Should filter correctly (only rows with tenant_id === 5)
         expect(filtered.length).toBe(100) // 1000 rows / 10 tenants = 100 per tenant
-        expect(filtered.every(r => r.tenant_id === 5)).toBe(true)
+        expect(filtered.every(r => r['tenant_id'] === 5)).toBe(true)
       })
     })
 
@@ -89,7 +89,7 @@ describe('RLS Performance', () => {
 
         // Should filter correctly with custom chunk size
         expect(filtered.length).toBe(10) // 50 rows / 5 tenants = 10 per tenant
-        expect(filtered.every(r => r.tenant_id === 0)).toBe(true)
+        expect(filtered.every(r => r['tenant_id'] === 0)).toBe(true)
       })
     })
 
@@ -136,7 +136,7 @@ describe('RLS Performance', () => {
 
         // Should only return rows with tenant_id 1
         expect(filtered.length).toBe(30)
-        expect(filtered.every(r => r.tenant_id === 1)).toBe(true)
+        expect(filtered.every(r => r['tenant_id'] === 1)).toBe(true)
       })
     })
   })

@@ -276,7 +276,7 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
 
       // Try to restore from INSERT log (should fail because INSERT cannot be "restored")
       await expect(userRepo.restoreFromAudit(logs[0]!.id)).rejects.toThrow(
-        'Cannot restore from INSERT operation'
+        'Cannot restore audit'
       )
     })
   })
@@ -854,14 +854,14 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
   // =========================================================================
 
   describe('Tables and excludeTables Configuration', () => {
-    it('should let excludeTables take precedence when a table is in both lists', async () => {
+    it('should let whitelist take precedence when a table is in both lists', async () => {
       // When a table appears in both tables (whitelist) and excludeTables (blacklist),
-      // the blacklist takes precedence - the table is NOT audited.
-      // This is because the implementation checks whitelist first, then blacklist.
+      // the whitelist takes precedence - the table IS audited.
+      // This is consistent with shouldApplyToTable from @kysera/core.
       const mixedAudit = auditPluginSQLite({
         getUserId: () => 'mixed-config-user',
-        tables: ['users', 'products'], // Whitelist
-        excludeTables: ['users'] // Blacklist - overrides whitelist for 'users'
+        tables: ['users', 'products'], // Whitelist takes precedence
+        excludeTables: ['users'] // Ignored because whitelist is provided
       })
 
       const mixedOrm = await createORM(db, [mixedAudit])
@@ -917,9 +917,9 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
         .where('changed_by', '=', 'mixed-config-user')
         .execute()
 
-      // Users should NOT be audited (excludeTables takes precedence)
-      expect(logs.some(l => l.table_name === 'users')).toBe(false)
-      // Products should be audited (in whitelist, not in blacklist)
+      // Users IS audited (whitelist takes precedence over blacklist)
+      expect(logs.some(l => l.table_name === 'users')).toBe(true)
+      // Products should be audited (in whitelist)
       expect(logs.some(l => l.table_name === 'products')).toBe(true)
     })
 

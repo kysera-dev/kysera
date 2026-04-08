@@ -27,9 +27,9 @@ export function spinner(options?: SpinnerOptions): ExtendedSpinnerResult {
       if (msg) currentText = msg
       base.start(msg)
     },
-    stop(msg?: string, code?: number) {
+    stop(msg?: string, _code?: number) {
       if (msg) currentText = msg
-      base.stop(msg, code)
+      base.stop(msg)
     },
     message(msg?: string) {
       if (msg) currentText = msg
@@ -37,21 +37,21 @@ export function spinner(options?: SpinnerOptions): ExtendedSpinnerResult {
     },
     succeed(msg?: string) {
       const message = msg || currentText
-      base.stop(message, 0)
+      base.stop(message)
       if (message) {
         log.success(message)
       }
     },
     warn(msg?: string) {
       const message = msg || currentText
-      base.stop(message, 0)
+      base.stop(message)
       if (message) {
         log.warn(message)
       }
     },
     fail(msg?: string) {
       const message = msg || currentText
-      base.stop(message, 1)
+      base.stop(message)
       if (message) {
         log.error(message)
       }

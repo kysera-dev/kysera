@@ -275,14 +275,12 @@ export async function createInMemoryDatabase<DB>(schema: string): Promise<Kysely
     })
   })
 
-  // Execute schema statements
+  // Execute schema statements using sql.raw (public API, not internal executeQuery)
+  const { sql: sqlTag } = await import('kysely')
   const statements = schema.split(';').filter((s) => s.trim())
   for (const statement of statements) {
     if (statement.trim()) {
-      await (db as Kysely<unknown>).executeQuery({
-        sql: statement.trim(),
-        parameters: []
-      } as never)
+      await sqlTag.raw(statement.trim()).execute(db)
     }
   }
 
@@ -354,7 +352,7 @@ export function createPluginTestHarness<DB>(options: {
       executor = (await createExecutor(db as Kysely<unknown>, options.plugins)) as unknown as Kysely<DB>
 
       if (options.seedData) {
-        await options.seedData(executor!)
+        await options.seedData(executor)
       }
     },
 

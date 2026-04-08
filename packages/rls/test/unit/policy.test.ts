@@ -29,7 +29,7 @@ interface TestDB {
 describe('Policy Builders', () => {
   describe('allow()', () => {
     it('should create allow policy', () => {
-      const policy = allow('read', ctx => ctx.auth.userId === ctx.row?.id)
+      const policy = allow('read', ctx => ctx.auth!.userId === ctx.row?.id)
 
       expect(policy.type).toBe('allow')
       expect(policy.operation).toBe('read')
@@ -103,8 +103,8 @@ describe('Policy Builders', () => {
 
   describe('filter()', () => {
     it('should create filter policy with function', () => {
-      const policy = filter('read', ctx => ({
-        tenant_id: ctx.auth.tenantId
+      const policy = filter('read', _ctx => ({
+        tenant_id: ctx.auth!.tenantId
       }))
 
       expect(policy.type).toBe('filter')
@@ -112,13 +112,13 @@ describe('Policy Builders', () => {
     })
 
     it('should normalize "all" to "read"', () => {
-      const policy = filter('all', ctx => ({}))
+      const policy = filter('all', _ctx => ({}))
 
       expect(policy.operation).toBe('read')
     })
 
     it('should support hints', () => {
-      const policy = filter('read', ctx => ({}), {
+      const policy = filter('read', _ctx => ({}), {
         name: 'test-filter',
         hints: { cacheable: true }
       })
@@ -133,7 +133,7 @@ describe('Policy Builders', () => {
 
   describe('validate()', () => {
     it('should create validate policy', () => {
-      const policy = validate('create', ctx => ctx.data?.tenant_id === ctx.auth.tenantId)
+      const policy = validate('create', ctx => (ctx.data as any)?.tenant_id === ctx.auth!.tenantId)
 
       expect(policy.type).toBe('validate')
     })
@@ -171,7 +171,7 @@ describe('defineRLSSchema', () => {
   it('should create valid schema', () => {
     const schema = defineRLSSchema<TestDB>({
       users: {
-        policies: [allow('read', ctx => true)]
+        policies: [allow('read', _ctx => true)]
       }
     })
 
@@ -386,7 +386,7 @@ describe('PolicyRegistry', () => {
     const schema = defineRLSSchema<TestDB>({
       users: {
         policies: [
-          allow('read', ctx => ctx.auth.userId === ctx.row?.id),
+          allow('read', ctx => ctx.auth!.userId === ctx.row?.id),
           deny('delete', ctx => ctx.row?.role === 'admin')
         ]
       }
@@ -437,7 +437,7 @@ describe('PolicyRegistry', () => {
   it('should get filter policies', () => {
     const schema = defineRLSSchema<TestDB>({
       resources: {
-        policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))]
+        policies: [filter('read', _ctx => ({ tenant_id: ctx.auth!.tenantId }))]
       }
     })
 
@@ -469,7 +469,7 @@ describe('PolicyRegistry', () => {
   it('should evaluate compiled policies', async () => {
     const schema = defineRLSSchema<TestDB>({
       users: {
-        policies: [allow('read', ctx => ctx.auth.userId === ctx.row?.id)]
+        policies: [allow('read', ctx => ctx.auth!.userId === ctx.row?.id)]
       }
     })
 
@@ -582,7 +582,7 @@ describe('PolicyRegistry', () => {
   it('should support validate policies', () => {
     const schema = defineRLSSchema<TestDB>({
       users: {
-        policies: [validate('create', ctx => !!ctx.data?.name)]
+        policies: [validate('create', ctx => !!(ctx.data as any)?.name)]
       }
     })
 

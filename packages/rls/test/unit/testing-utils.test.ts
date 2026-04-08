@@ -40,15 +40,15 @@ interface TestDB {
 const testSchema = defineRLSSchema<TestDB>({
   users: {
     policies: [
-      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }), {
+      filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }), {
         name: 'tenant-filter',
         priority: 100
       }),
-      allow('read', ctx => ctx.auth.roles.includes('admin'), {
+      allow('read', ctx => ctx.auth!.roles.includes('admin'), {
         name: 'admin-read',
         priority: 50
       }),
-      allow('update', ctx => ctx.auth.userId === ctx.row?.id, {
+      allow('update', ctx => ctx.auth!.userId === ctx.row?.['id'], {
         name: 'self-update'
       }),
       deny('delete', () => true, {
@@ -59,21 +59,21 @@ const testSchema = defineRLSSchema<TestDB>({
   },
   posts: {
     policies: [
-      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }), {
+      filter('read', ctx => ({ tenant_id: ctx.auth!.tenantId }), {
         name: 'tenant-filter',
         priority: 100
       }),
-      allow('all', ctx => ctx.auth.userId === (ctx.row as Record<string, unknown>)?.owner_id, {
+      allow('all', ctx => ctx.auth!.userId === (ctx.row as Record<string, unknown>)?.['owner_id'], {
         name: 'owner-access',
         priority: 50
       }),
       validate('create', ctx => {
         const data = ctx.data as Record<string, unknown> | undefined
-        return data?.title !== undefined && data?.title !== ''
+        return data?.['title'] !== undefined && data?.['title'] !== ''
       }, {
         name: 'title-required'
       }),
-      deny('delete', ctx => (ctx.row as Record<string, unknown>)?.status === 'published', {
+      deny('delete', ctx => (ctx.row as Record<string, unknown>)?.['status'] === 'published', {
         name: 'no-delete-published',
         priority: 150
       })
@@ -123,7 +123,7 @@ describe('Test Helper Functions', () => {
         status: 'draft'
       })
 
-      expect(row.id).toBe(1)
+      expect(row['id']).toBe(1)
       expect(row.title).toBe('Test Post')
       expect(row.owner_id).toBe(123)
     })
@@ -131,7 +131,7 @@ describe('Test Helper Functions', () => {
     it('should allow partial rows', () => {
       const row = createTestRow<TestDB['posts']>({ id: 1 })
 
-      expect(row.id).toBe(1)
+      expect(row['id']).toBe(1)
       expect(row.title).toBeUndefined()
     })
   })

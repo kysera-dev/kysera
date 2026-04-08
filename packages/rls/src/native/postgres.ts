@@ -1,6 +1,40 @@
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
 import type { RLSSchema, TableRLSConfig, PolicyDefinition, Operation } from '../policy/types.js'
+import { RLSSchemaError } from '../errors.js'
+
+/**
+ * Pattern for valid SQL identifiers (prevents injection in DDL statements)
+ */
+const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/
+
+/**
+ * Validate and quote a SQL identifier to prevent injection.
+ * Only allows alphanumeric + underscore characters.
+ * @throws RLSSchemaError if identifier contains unsafe characters
+ */
+function quoteIdent(name: string, context: string): string {
+  if (!SAFE_IDENTIFIER.test(name)) {
+    throw new RLSSchemaError(
+      `Unsafe ${context}: "${name}". Only alphanumeric and underscore characters are allowed.`,
+      { identifier: name, context }
+    )
+  }
+  return '"' + name.replace(/"/g, '""') + '"'
+}
+
+/**
+ * Quote a string literal for use in PL/pgSQL (single quotes, doubled for escaping)
+ */
+function quoteLiteral(value: string, context: string): string {
+  if (!SAFE_IDENTIFIER.test(value)) {
+    throw new RLSSchemaError(
+      `Unsafe ${context}: "${value}". Only alphanumeric and underscore characters are allowed.`,
+      { identifier: value, context }
+    )
+  }
+  return "'" + value.replace(/'/g, "''") + "'"
+}
 
 /**
  * Options for PostgreSQL RLS generation
@@ -26,11 +60,13 @@ export class PostgresRLSGenerator {
     const { force = true, schemaName = 'public', policyPrefix = 'rls' } = options
 
     const statements: string[] = []
+    const quotedSchema = quoteIdent(schemaName, 'schema name')
 
     for (const [table, config] of Object.entries(schema)) {
       if (!config) continue
 
-      const qualifiedTable = `${schemaName}.${table}`
+      const quotedTable = quoteIdent(table, 'table name')
+      const qualifiedTable = `${quotedSchema}.${quotedTable}`
       const tableConfig = config as TableRLSConfig
 
       // Enable RLS on table
@@ -43,8 +79,8 @@ export class PostgresRLSGenerator {
       // Generate policies
       let policyIndex = 0
       for (const policy of tableConfig.policies) {
-        const policyName = policy.name ?? `${policyPrefix}_${table}_${policy.type}_${policyIndex++}`
-        const policySQL = this.generatePolicy(qualifiedTable, policyName, policy)
+        const rawPolicyName = policy.name ?? `${policyPrefix}_${table}_${policy.type}_${policyIndex++}`
+        const policySQL = this.generatePolicy(qualifiedTable, rawPolicyName, policy)
         if (policySQL) {
           statements.push(policySQL)
         }
@@ -68,7 +104,8 @@ export class PostgresRLSGenerator {
       return null
     }
 
-    const parts: string[] = [`CREATE POLICY "${name}"`, `ON ${table}`]
+    const quotedName = quoteIdent(name, 'policy name')
+    const parts: string[] = [`CREATE POLICY ${quotedName}`, `ON ${table}`]
 
     // Policy type
     if (policy.type === 'deny') {
@@ -77,8 +114,9 @@ export class PostgresRLSGenerator {
       parts.push('AS PERMISSIVE')
     }
 
-    // Target role
-    parts.push(`TO ${policy.role ?? 'public'}`)
+    // Target role — validate to prevent injection
+    const role = policy.role ?? 'public'
+    parts.push(`TO ${quoteIdent(role, 'role name')}`)
 
     // Operation
     parts.push(`FOR ${this.mapOperation(policy.operation)}`)
@@ -186,18 +224,30 @@ AS $$ SELECT COALESCE(current_setting('app.is_system', true), 'false')::boolean 
   generateDropStatements<DB>(schema: RLSSchema<DB>, options: PostgresRLSOptions = {}): string[] {
     const { schemaName = 'public', policyPrefix = 'rls' } = options
     const statements: string[] = []
+    const quotedSchema = quoteIdent(schemaName, 'schema name')
+
+    // Validate prefix (used in LIKE pattern)
+    if (!SAFE_IDENTIFIER.test(policyPrefix)) {
+      throw new RLSSchemaError(
+        `Unsafe policy prefix: "${policyPrefix}". Only alphanumeric and underscore characters are allowed.`,
+        { identifier: policyPrefix, context: 'policy prefix' }
+      )
+    }
 
     for (const table of Object.keys(schema)) {
-      const qualifiedTable = `${schemaName}.${table}`
+      const quotedTable = quoteIdent(table, 'table name')
+      const qualifiedTable = `${quotedSchema}.${quotedTable}`
 
-      // Drop all policies with prefix
+      // Drop all policies with prefix — use dollar-quoting for safety
+      // pg_policies.tablename/schemaname are system-provided, safe for comparison
+      // policyPrefix is validated above
       statements.push(
         `DO $$ BEGIN
   EXECUTE (
     SELECT string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON ${qualifiedTable};', E'\\n')
     FROM pg_policies
-    WHERE tablename = '${table}'
-      AND schemaname = '${schemaName}'
+    WHERE tablename = ${quoteLiteral(table, 'table name')}
+      AND schemaname = ${quoteLiteral(schemaName, 'schema name')}
       AND policyname LIKE '${policyPrefix}_%'
   );
 END $$;`

@@ -306,7 +306,8 @@ describe('MySQLAdapter', () => {
 
   it('should format date in MySQL datetime format', () => {
     const date = new Date('2024-01-15T10:30:45.123Z')
-    expect(adapter.formatDate(date)).toBe('2024-01-15 10:30:45')
+    // MySQL DATETIME(3) supports milliseconds; delegates to formatTimestampForDb from core
+    expect(adapter.formatDate(date)).toBe('2024-01-15 10:30:45.123')
   })
 
   describe('error detection', () => {
@@ -545,7 +546,7 @@ describe('Helper Functions', () => {
 
     it('should format correctly for each dialect', () => {
       expect(formatDate(date, 'postgres')).toBe('2024-01-15T10:30:45.123Z')
-      expect(formatDate(date, 'mysql')).toBe('2024-01-15 10:30:45')
+      expect(formatDate(date, 'mysql')).toBe('2024-01-15 10:30:45.123')
       expect(formatDate(date, 'sqlite')).toBe('2024-01-15T10:30:45.123Z')
     })
   })

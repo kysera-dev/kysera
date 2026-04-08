@@ -199,47 +199,47 @@ function getDefaultMetrics(): PoolMetrics {
   }
 }
 
-export function createMetricsPool(pool: DatabasePool): MetricsPool {
-  const metricsPool = pool as MetricsPool
+/**
+ * Detect pool type and return appropriate metrics extractor.
+ * @internal
+ */
+function detectPoolMetrics(pool: DatabasePool): () => PoolMetrics {
+  const p = pool as unknown
 
-  metricsPool.getMetrics = function (): PoolMetrics {
-    // Runtime type detection requires unsafe type assertions
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const anyPool: unknown = this as any
-
-    // PostgreSQL (pg) Pool detection
-    if (
-      typeof anyPool === 'object' &&
-      anyPool !== null &&
-      'totalCount' in anyPool &&
-      'idleCount' in anyPool
-    ) {
-      return getPostgreSQLMetrics(anyPool as PostgreSQLPoolInternals)
-    }
-
-    // MySQL (mysql2) Pool detection
-    if (typeof anyPool === 'object' && anyPool !== null && 'pool' in anyPool) {
-      const mysqlPool = anyPool as MySQLPoolInternals
-      if (mysqlPool.pool?._allConnections) {
-        return getMySQLMetrics(mysqlPool)
-      }
-    }
-
-    // SQLite (better-sqlite3) Database detection
-    if (
-      typeof anyPool === 'object' &&
-      anyPool !== null &&
-      'open' in anyPool &&
-      'memory' in anyPool
-    ) {
-      return getSQLiteMetrics(anyPool as SQLiteDatabase)
-    }
-
-    // Fallback for unknown pool types
-    return getDefaultMetrics()
+  // PostgreSQL (pg) Pool
+  if (typeof p === 'object' && p !== null && 'totalCount' in p && 'idleCount' in p) {
+    return () => getPostgreSQLMetrics(pool as unknown as PostgreSQLPoolInternals)
   }
 
-  return metricsPool
+  // MySQL (mysql2) Pool
+  if (typeof p === 'object' && p !== null && 'pool' in p) {
+    const mysqlPool = p as MySQLPoolInternals
+    if (mysqlPool.pool?._allConnections) {
+      return () => getMySQLMetrics(pool as unknown as MySQLPoolInternals)
+    }
+  }
+
+  // SQLite (better-sqlite3) Database
+  if (typeof p === 'object' && p !== null && 'open' in p && 'memory' in p) {
+    return () => getSQLiteMetrics(pool as unknown as SQLiteDatabase)
+  }
+
+  return getDefaultMetrics
+}
+
+export function createMetricsPool(pool: DatabasePool): MetricsPool {
+  // Detect pool type once at creation (not per-call)
+  const extractMetrics = detectPoolMetrics(pool)
+
+  // Wrap without mutating original pool — use Proxy
+  return new Proxy(pool, {
+    get(target, prop, receiver): unknown {
+      if (prop === 'getMetrics') {
+        return extractMetrics
+      }
+      return Reflect.get(target, prop, receiver) as unknown
+    }
+  }) as MetricsPool
 }
 
 /**

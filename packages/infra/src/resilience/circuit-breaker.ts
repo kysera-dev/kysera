@@ -181,7 +181,7 @@ export class CircuitBreaker {
     const releaseMutex = await this.acquireMutex()
 
     // Variables to track state for error handling
-    let wasHalfOpen = false
+    let wasHalfOpen: boolean
     let mutexReleased = false
 
     try {
@@ -281,46 +281,28 @@ export class CircuitBreaker {
    *
    * @returns Current state snapshot
    */
-  async getState(): Promise<CircuitBreakerState> {
-    const release = await this.acquireMutex()
-    try {
-      return {
-        state: this.state,
-        failures: this.failures,
-        lastFailureTime: this.lastFailureTime,
-        isTestingHalfOpen: this.isTestingHalfOpen
-      }
-    } finally {
-      release()
+  getState(): CircuitBreakerState {
+    // JS is single-threaded — reads are atomic, no mutex needed for snapshots
+    return {
+      state: this.state,
+      failures: this.failures,
+      lastFailureTime: this.lastFailureTime,
+      isTestingHalfOpen: this.isTestingHalfOpen
     }
   }
 
   /**
    * Check if circuit is currently open.
-   *
-   * @returns True if circuit is open
    */
-  async isOpen(): Promise<boolean> {
-    const release = await this.acquireMutex()
-    try {
-      return this.state === 'open'
-    } finally {
-      release()
-    }
+  isOpen(): boolean {
+    return this.state === 'open'
   }
 
   /**
    * Check if circuit is currently closed.
-   *
-   * @returns True if circuit is closed
    */
-  async isClosed(): Promise<boolean> {
-    const release = await this.acquireMutex()
-    try {
-      return this.state === 'closed'
-    } finally {
-      release()
-    }
+  isClosed(): boolean {
+    return this.state === 'closed'
   }
 
   /**

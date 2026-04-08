@@ -44,8 +44,8 @@ export function buildConnectionUrl(dialect: Dialect, config: ConnectionConfig): 
   const protocol = protocolMap[dialect]
   const auth = config.user
     ? config.password
-      ? `${config.user}:${config.password}@`
-      : `${config.user}@`
+      ? `${encodeURIComponent(config.user)}:${encodeURIComponent(config.password)}@`
+      : `${encodeURIComponent(config.user)}@`
     : ''
 
   const host = config.host || 'localhost'

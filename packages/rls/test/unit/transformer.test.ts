@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { MutationGuard } from '../../src/transformer/mutation.js'
 import { PolicyRegistry } from '../../src/policy/registry.js'
-import { defineRLSSchema, allow, deny, filter } from '../../src/policy/index.js'
+import { defineRLSSchema, allow, deny } from '../../src/policy/index.js'
 import { rlsContext, createRLSContext } from '../../src/context/index.js'
 import { RLSPolicyViolation, RLSPolicyEvaluationError } from '../../src/errors.js'
 
@@ -23,11 +23,11 @@ describe('MutationGuard', () => {
       resources: {
         policies: [
           // Allow owners to do anything
-          allow('all', ctx => ctx.auth.userId === ctx.row?.owner_id),
+          allow('all', ctx => ctx.auth!.userId === ctx.row?.['owner_id']),
           // Allow admins to do anything
-          allow('all', ctx => ctx.auth.roles.includes('admin')),
+          allow('all', ctx => ctx.auth!.roles.includes('admin')),
           // Deny deletion of published resources
-          deny('delete', ctx => ctx.row?.status === 'published')
+          deny('delete', ctx => ctx.row?.['status'] === 'published')
         ]
       }
     })
@@ -430,7 +430,7 @@ describe('MutationGuard', () => {
     it('should skip RLS when user role matches skipFor', async () => {
       const schema = defineRLSSchema<TestDB>({
         resources: {
-          policies: [allow('read', ctx => ctx.auth.userId === ctx.row?.owner_id)],
+          policies: [allow('read', ctx => ctx.auth!.userId === ctx.row?.['owner_id'])],
           skipFor: ['admin'] // Skip RLS for admin role
         }
       })
@@ -457,7 +457,7 @@ describe('MutationGuard', () => {
     it('should not skip RLS when user role does not match skipFor', async () => {
       const schema = defineRLSSchema<TestDB>({
         resources: {
-          policies: [allow('read', ctx => ctx.auth.userId === ctx.row?.owner_id)],
+          policies: [allow('read', ctx => ctx.auth!.userId === ctx.row?.['owner_id'])],
           skipFor: ['admin', 'superuser'] // Skip RLS for admin and superuser roles
         }
       })
