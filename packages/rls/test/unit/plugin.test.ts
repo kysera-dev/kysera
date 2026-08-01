@@ -232,6 +232,7 @@ describe('rlsPlugin', () => {
         requireContext: false,
         allowUnfilteredQueries: false
       })
+      void pluginWithoutRequire.onInit!(mockExecutor)
 
       const qb = new MockQueryBuilder()
       const context: QueryBuilderContext = {
@@ -272,6 +273,7 @@ describe('rlsPlugin', () => {
         requireContext: false,
         allowUnfilteredQueries: true
       })
+      void pluginWithUnfiltered.onInit!(mockExecutor)
 
       const qb = new MockQueryBuilder()
       const context: QueryBuilderContext = {
@@ -353,46 +355,44 @@ describe('rlsPlugin', () => {
       })
     })
 
-    it('should mark mutations for later RLS check', async () => {
+    it('should enforce filter policies on UPDATE/DELETE at SQL level', async () => {
       const ctx = createRLSContext({
         auth: { userId: 1, roles: ['user'], tenantId: 't1' }
       })
 
       await rlsContext.runAsync(ctx, async () => {
-        const qb = new MockQueryBuilder()
-
-        // Test insert
-        const insertContext: QueryBuilderContext = {
-          operation: 'insert',
-          table: 'posts',
-          metadata: {}
-        }
-
-        plugin.interceptQuery!(qb as unknown as AnyQueryBuilder, insertContext)
-        expect(insertContext.metadata['__rlsRequired']).toBe(true)
-        expect(insertContext.metadata['__rlsTable']).toBe('posts')
-
-        // Test update
+        // UPDATE gets the tenant predicate appended
+        const updateQb = new MockQueryBuilder()
         const updateContext: QueryBuilderContext = {
           operation: 'update',
           table: 'posts',
           metadata: {}
         }
+        plugin.interceptQuery!(updateQb as unknown as AnyQueryBuilder, updateContext)
+        expect(updateQb.getWhereCalls()).toContainEqual({ tenant_id: 't1' })
 
-        plugin.interceptQuery!(qb as unknown as AnyQueryBuilder, updateContext)
-        expect(updateContext.metadata['__rlsRequired']).toBe(true)
-        expect(updateContext.metadata['__rlsTable']).toBe('posts')
-
-        // Test delete
+        // DELETE gets the tenant predicate appended
+        const deleteQb = new MockQueryBuilder()
         const deleteContext: QueryBuilderContext = {
           operation: 'delete',
           table: 'posts',
           metadata: {}
         }
+        plugin.interceptQuery!(deleteQb as unknown as AnyQueryBuilder, deleteContext)
+        expect(deleteQb.getWhereCalls()).toContainEqual({ tenant_id: 't1' })
 
-        plugin.interceptQuery!(qb as unknown as AnyQueryBuilder, deleteContext)
-        expect(deleteContext.metadata['__rlsRequired']).toBe(true)
-        expect(deleteContext.metadata['__rlsTable']).toBe('posts')
+        // INSERT has no WHERE to narrow — passes through unchanged
+        // (value-level policy checks run in the repository wrappers)
+        const insertQb = new MockQueryBuilder()
+        const insertContext: QueryBuilderContext = {
+          operation: 'insert',
+          table: 'posts',
+          metadata: {}
+        }
+        const result = plugin.interceptQuery!(insertQb as unknown as AnyQueryBuilder, insertContext)
+        expect(result).toBe(insertQb)
+        expect(insertQb.getWhereCalls()).toHaveLength(0)
+        expect(insertContext.metadata['__rlsRequired']).toBeUndefined()
       })
     })
 

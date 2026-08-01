@@ -208,6 +208,57 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     return value
   }
 
+  /**
+   * Secure-by-default handling when no RLS context is active
+   * (SECURITY FIX CRIT-2). SELECT/UPDATE/DELETE get an impossible or scoped
+   * predicate so they touch nothing; INSERT passes through (no WHERE to
+   * narrow — value-level checks run in the repository wrappers).
+   */
+  function handleMissingContext<QB>(
+    qb: QB,
+    operation: QueryBuilderContext['operation'],
+    table: string,
+    transformer: SelectTransformer<DB>
+  ): QB {
+    if (requireContext) {
+      throw new RLSContextError(
+        `RLS context required but not found for ${operation} on ${table}. ` +
+          `This prevents unfiltered database access. ` +
+          `Either provide RLS context or set 'requireContext: false' with 'allowUnfilteredQueries: true' if intentional.`
+      )
+    }
+
+    if (!allowUnfilteredQueries) {
+      // Log warning and return safe empty result
+      logger.warn?.(
+        `[RLS] Missing context for ${operation} on ${table}. ` +
+          `Queries will return empty results for security. ` +
+          `Set 'allowUnfilteredQueries: true' to allow unfiltered access (not recommended).`
+      )
+      // For SELECT, apply impossible condition to return no rows
+      if (operation === 'select') {
+        return transformQueryBuilder(qb, operation, selectQb =>
+          applyImpossibleCondition(selectQb)
+        )
+      }
+      // For UPDATE/DELETE, the same impossible predicate makes the statement
+      // touch no rows — without it, a missing context would let DAL-path
+      // writes mutate ANY tenant's rows
+      if (operation === 'update' || operation === 'delete') {
+        return transformer.transformMutation(qb, table)
+      }
+      return qb
+    }
+
+    // allowUnfilteredQueries is true - allow but log warning
+    logger.warn?.(
+      `[RLS] No context for ${operation} on ${table}. ` +
+        `Allowing unfiltered query due to 'allowUnfilteredQueries: true'. ` +
+        `This may expose sensitive data.`
+    )
+    return qb
+  }
+
   return {
     name: '@kysera/rls',
     version: VERSION,
@@ -279,46 +330,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
       const ctx = rlsContext.getContextOrNull()
 
       if (!ctx) {
-        // SECURITY FIX (CRIT-2): Secure-by-default behavior for missing context
-        if (requireContext) {
-          throw new RLSContextError(
-            `RLS context required but not found for ${operation} on ${table}. ` +
-              `This prevents unfiltered database access. ` +
-              `Either provide RLS context or set 'requireContext: false' with 'allowUnfilteredQueries: true' if intentional.`
-          )
-        }
-
-        if (!allowUnfilteredQueries) {
-          // Log warning and return safe empty result
-          logger.warn?.(
-            `[RLS] Missing context for ${operation} on ${table}. ` +
-              `Queries will return empty results for security. ` +
-              `Set 'allowUnfilteredQueries: true' to allow unfiltered access (not recommended).`
-          )
-          // For SELECT, apply impossible condition to return no rows
-          if (operation === 'select') {
-            return transformQueryBuilder(qb, operation, selectQb =>
-              applyImpossibleCondition(selectQb)
-            )
-          }
-          // For UPDATE/DELETE, the same impossible predicate makes the
-          // statement touch no rows — without it, a missing context would
-          // let DAL-path writes mutate ANY tenant's rows
-          if (operation === 'update' || operation === 'delete') {
-            return transformer.transformMutation(qb, table)
-          }
-          // INSERT has no WHERE to narrow; value-level validation happens in
-          // the repository wrappers (see extendRepository)
-          return qb
-        }
-
-        // allowUnfilteredQueries is true - allow but log warning
-        logger.warn?.(
-          `[RLS] No context for ${operation} on ${table}. ` +
-            `Allowing unfiltered query due to 'allowUnfilteredQueries: true'. ` +
-            `This may expose sensitive data.`
-        )
-        return qb
+        return handleMissingContext(qb, operation, table, transformer)
       }
 
       // Check if system user (bypass RLS)

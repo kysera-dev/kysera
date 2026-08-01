@@ -12,8 +12,7 @@ import { RLSError, RLSErrorCodes } from '../errors.js'
 import {
   createQualifiedColumn,
   applyWhereCondition,
-  applyImpossibleCondition,
-  createRawCondition
+  applyImpossibleCondition
 } from '../utils/type-utils.js'
 
 /**
