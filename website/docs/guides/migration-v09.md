@@ -132,6 +132,51 @@ wrong timestamp formats to plugins on SQLite.
 - `getDatabaseSize` converts the DECIMAL/BIGINT strings drivers return into
   numbers (PostgreSQL adapter too)
 
+## Security Hardening (Plugin Layer)
+
+### RLS now enforces filter policies on DAL-path mutations
+
+Previously `executor.updateTable(...)` / `executor.deleteFrom(...)` (the DAL
+path) received **no RLS check at all** — a tenant-1 context could rewrite or
+delete tenant-2 rows. UPDATE and DELETE statements now get the same filter
+predicates as SELECT appended at the SQL level; with a missing context (and
+`allowUnfilteredQueries: false`) they match zero rows.
+
+**INSERT limitation:** an INSERT has no WHERE clause to narrow. Value-level
+policy checks (`allow`/`validate`) run in the repository wrappers — route
+inserts through repositories, or use database-native RLS as a backstop.
+
+### soft-delete: "with deleted" methods no longer bypass other plugins
+
+`findAllWithDeleted()` / `findWithDeleted()` / `findDeleted()` / `restore()` /
+`hardDelete()` used the raw Kysely instance, silently bypassing **every**
+plugin — combined with RLS this leaked other tenants' rows. They now use a
+scoped opt-out (`withPluginMetadata(executor, { includeDeleted: true })` from
+`@kysera/executor`): only the soft-delete predicate is skipped, RLS and
+friends stay enforced.
+
+### soft-delete narrows UPDATE/DELETE
+
+Generic updates/deletes through the executor now carry
+`deleted_at IS NULL` — soft-deleted rows can no longer be silently modified
+or hard-deleted through the generic path. `softDelete`/`restore`/`hardDelete`
+opt out internally (softDelete stays idempotent).
+
+### CTE names are excluded from plugin interception
+
+`executor.with('t', qb => ...)` previously treated `t` as a real table —
+soft-delete emitted `t.deleted_at` (invalid SQL). CTE bodies are still
+intercepted; registered CTE names are skipped. The callback name-builder form
+(`with(cte => cte('name')...)`) has no statically known name and is not
+tracked.
+
+### ORM repositories keep plugins inside transactions
+
+`repo.withTransaction(trx)` on a repository created via `createORM` used to
+return an **unplugged** repository — no soft-delete methods, no timestamps,
+no audit rows, no RLS checks, silently. It now re-runs the full plugin
+extension chain against a plugin-wrapped transaction.
+
 ## Recommended Pattern Reminder
 
 `repo.transaction(fn)` gives the callback a raw kysely `Transaction`. Calls on

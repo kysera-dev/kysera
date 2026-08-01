@@ -329,6 +329,44 @@ const allUsers = await rawDb.selectFrom('users').selectAll().execute()
 **Safety:**
 
 Use with caution - bypassing plugins can expose deleted records, violate RLS policies, etc.
+**Prefer `withPluginMetadata` when you only need to opt out of ONE plugin's
+behavior** — `getRawDb` disables every plugin at once.
+
+### withPluginMetadata
+
+Derive an executor whose plugin contexts start with the given metadata —
+the safe, scoped alternative to `getRawDb`.
+
+```typescript
+function withPluginMetadata<DB>(
+  executor: Kysely<DB>,
+  metadata: Readonly<Record<string, unknown>>
+): Kysely<DB>
+```
+
+**Parameters:**
+
+- `executor` - Kysely or KyseraExecutor instance (returned unchanged when not a KyseraExecutor)
+- `metadata` - Base metadata merged into every `QueryBuilderContext.metadata`
+
+**Example:**
+
+```typescript
+import { withPluginMetadata } from '@kysera/executor'
+
+const executor = await createExecutor(db, [rlsPlugin({ schema }), softDeletePlugin()])
+
+// Soft-delete filter OFF, RLS still ENFORCED:
+const withDeleted = withPluginMetadata(executor, { includeDeleted: true })
+const rows = await withDeleted.selectFrom('users').selectAll().execute()
+```
+
+**Use Cases:**
+
+- Plugin-internal queries that must skip only that plugin's own predicate
+  (soft-delete's `findAllWithDeleted`/`restore`/`hardDelete` use exactly this)
+- Passing per-call flags any plugin reads from `context.metadata`
+  (e.g. `{ skipRLS: true }` for an explicitly-audited admin path)
 
 ### wrapTransaction
 

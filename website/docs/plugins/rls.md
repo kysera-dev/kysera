@@ -813,20 +813,30 @@ await rlsContext.runAsync(
 
 ### What Works with DAL
 
-| Feature                         | Works in DAL? | Notes                                |
-| ------------------------------- | ------------- | ------------------------------------ |
-| `rlsContext.runAsync()`         | ✅ Yes        | Context management                   |
-| `rlsContext.getContextOrNull()` | ✅ Yes        | Context access                       |
-| `rlsContext.asSystemAsync()`    | ✅ Yes        | System bypass                        |
-| **Automatic SELECT filtering**  | ✅ **Yes**    | Via `interceptQuery`                 |
-| Automatic mutation validation   | ❌ No         | Repository only (`extendRepository`) |
-| `repo.withoutRLS()`             | ❌ No         | Repository method only               |
-| `repo.canAccess()`              | ❌ No         | Repository method only               |
+| Feature                               | Works in DAL? | Notes                                |
+| ------------------------------------- | ------------- | ------------------------------------ |
+| `rlsContext.runAsync()`               | ✅ Yes        | Context management                   |
+| `rlsContext.getContextOrNull()`       | ✅ Yes        | Context access                       |
+| `rlsContext.asSystemAsync()`          | ✅ Yes        | System bypass                        |
+| **Automatic SELECT filtering**        | ✅ **Yes**    | Via `interceptQuery`                 |
+| **UPDATE/DELETE row-scope filtering** | ✅ **Yes**    | Filter predicates appended to WHERE  |
+| Value-level mutation validation       | ❌ No         | Repository only (`extendRepository`) |
+| INSERT policy checks                  | ❌ No         | No WHERE to narrow — use Repository  |
+| `repo.withoutRLS()`                   | ❌ No         | Repository method only               |
+| `repo.canAccess()`                    | ❌ No         | Repository method only               |
+
+:::warning INSERT via DAL is not policy-checked
+An INSERT statement has no WHERE clause for RLS to narrow, and builder-level
+interception cannot see the values passed later to `.values()`. Route inserts
+through repositories (where `allow`/`validate`/`deny` policies run), or add
+database-native RLS as a backstop.
+:::
 
 ### Filter vs Validation Policies
 
-- **Filter policies** (`filter()`) work in **both Repository and DAL** - applied via `interceptQuery()`
-- **Validation policies** (`allow()`, `deny()`, `validate()`) work in **Repository only** - applied via `extendRepository()`
+- **Filter policies** (`filter()`) work in **both Repository and DAL** — applied via `interceptQuery()`
+  to SELECT **and, since v0.9, to UPDATE/DELETE row scope**
+- **Validation policies** (`allow()`, `deny()`, `validate()`) work in **Repository only** — applied via `extendRepository()`
 
 For comprehensive comparison, see [Repository vs DAL Guide](/docs/guides/dal-vs-repository).
 
