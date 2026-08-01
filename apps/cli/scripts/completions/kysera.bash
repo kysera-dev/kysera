@@ -22,7 +22,7 @@ _kysera_completions() {
             return 0
             ;;
         migrate|m)
-            COMPREPLY=( $(compgen -W "create up down status list reset fresh rollback" -- ${cur}) )
+            COMPREPLY=( $(compgen -W "create up down status list reset fresh" -- ${cur}) )
             return 0
             ;;
         generate|g)
@@ -96,10 +96,10 @@ _kysera_completions() {
                     COMPREPLY=( $(compgen -W "${global_opts} --dialect --typescript --javascript --with-examples --skip-git" -- ${cur}) )
                     ;;
                 migrate)
-                    COMPREPLY=( $(compgen -W "${global_opts} --name --table --all --step --to" -- ${cur}) )
+                    COMPREPLY=( $(compgen -W "${global_opts} --name --all --step --to" -- ${cur}) )
                     ;;
                 generate)
-                    COMPREPLY=( $(compgen -W "${global_opts} --table --output --with-validation --with-tests --api --crud" -- ${cur}) )
+                    COMPREPLY=( $(compgen -W "${global_opts} --table --output --with-validation --crud" -- ${cur}) )
                     ;;
                 db)
                     COMPREPLY=( $(compgen -W "${global_opts} --force --output --format --env" -- ${cur}) )

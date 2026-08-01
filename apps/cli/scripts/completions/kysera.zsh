@@ -63,7 +63,6 @@ _kysera() {
                         'list:List all migrations'
                         'reset:Reset all migrations'
                         'fresh:Drop all tables and re-run migrations'
-                        'rollback:Rollback migrations'
                     )
                     _arguments \
                         '1: :_describe "migrate commands" migrate_cmds' \
@@ -89,8 +88,6 @@ _kysera() {
                         '--table[Table name]:table:' \
                         '--output[Output directory]:directory:_files -/' \
                         '--with-validation[Include validation]' \
-                        '--with-tests[Generate tests]' \
-                        '--api[Generate API endpoints]' \
                         '--crud[Generate CRUD operations]' \
                         '--validation[Validation library]:library:(zod yup joi none)' \
                         $global_opts

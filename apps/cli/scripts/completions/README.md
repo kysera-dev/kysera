@@ -61,7 +61,7 @@ sudo cp kysera.fish /usr/share/fish/vendor_completions.d/
 
 Each main command has intelligent subcommand completion:
 
-- `migrate`: create, up, down, status, list, reset, fresh, rollback
+- `migrate`: create, up, down, status, list, reset, fresh
 - `generate`: model, repository, schema, crud, migration
 - `db`: seed, reset, tables, dump, restore, introspect, console
 - `health`: check, watch, metrics
@@ -110,8 +110,6 @@ The completion scripts include context-aware option completion for each command:
 - `--table`
 - `--output` (with directory completion)
 - `--with-validation`
-- `--with-tests`
-- `--api`
 - `--crud`
 - `--validation` (zod, yup, joi, none)
 

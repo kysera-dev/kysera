@@ -38,14 +38,13 @@ complete -c kysera -n "__fish_seen_subcommand_from init" -l with-examples -d "In
 complete -c kysera -n "__fish_seen_subcommand_from init" -l skip-git -d "Skip git initialization"
 
 # migrate subcommands
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh rollback" -a create -d "Create a new migration file"
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh rollback" -a up -d "Run pending migrations"
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh rollback" -a down -d "Rollback the last migration"
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh rollback" -a status -d "Show migration status"
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh rollback" -a list -d "List all migrations"
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh rollback" -a reset -d "Reset all migrations"
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh rollback" -a fresh -d "Drop all tables and re-run migrations"
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh rollback" -a rollback -d "Rollback migrations"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh" -a create -d "Create a new migration file"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh" -a up -d "Run pending migrations"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh" -a down -d "Rollback the last migration"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh" -a status -d "Show migration status"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh" -a list -d "List all migrations"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh" -a reset -d "Reset all migrations"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create up down status list reset fresh" -a fresh -d "Drop all tables and re-run migrations"
 
 # migrate command options
 complete -c kysera -n "__fish_seen_subcommand_from migrate" -l name -d "Migration name" -r
@@ -65,8 +64,6 @@ complete -c kysera -f -n "__fish_seen_subcommand_from generate; and not __fish_s
 complete -c kysera -n "__fish_seen_subcommand_from generate" -l table -d "Table name" -r
 complete -c kysera -n "__fish_seen_subcommand_from generate" -l output -d "Output directory" -r -F
 complete -c kysera -n "__fish_seen_subcommand_from generate" -l with-validation -d "Include validation"
-complete -c kysera -n "__fish_seen_subcommand_from generate" -l with-tests -d "Generate tests"
-complete -c kysera -n "__fish_seen_subcommand_from generate" -l api -d "Generate API endpoints"
 complete -c kysera -n "__fish_seen_subcommand_from generate" -l crud -d "Generate CRUD operations"
 complete -c kysera -n "__fish_seen_subcommand_from generate" -l validation -d "Validation library" -r -f -a "zod yup joi none"
 
