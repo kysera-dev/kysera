@@ -76,7 +76,21 @@ Column-name validation no longer depends on `NODE_ENV`: identifier-shape
 checks always run (cheap), and strict whitelist checks run when you provide
 `allowedColumns`. Development and production now behave identically.
 
-### 5. `testWithIsolation` uses kysely's `setIsolationLevel`
+### 5. DAL `withTransaction` fixes: isolationLevel, schema-scoped nesting
+
+Two silent failures in `@kysera/dal` are corrected:
+
+- `withTransaction(db, fn, { isolationLevel })` actually applies the level
+  now. Kysely builders are immutable — the previous code discarded the
+  builder returned by `setIsolationLevel()`, so every transaction ran at the
+  dialect default while looking configured.
+- A schema-scoped context created inside a transaction
+  (`createContext(ctx.db.withSchema(...), ...)`) no longer loses transaction
+  detection: nested `withTransaction` over it now correctly opens a
+  **savepoint** instead of attempting a second top-level transaction
+  (kysely 0.29 rejects that; single-connection SQLite deadlocked).
+
+### 6. `testWithIsolation` uses kysely's `setIsolationLevel`
 
 `@kysera/testing`'s `testWithIsolation` no longer issues a raw
 `SET TRANSACTION ISOLATION LEVEL` (which failed inside active MySQL
