@@ -649,27 +649,27 @@ type ParallelResult<T extends Record<string, QueryFunction<any, any, any>>> = {
 
 ## Transaction Features
 
-### Savepoint Management
+### Nested Transactions & Savepoints
 
-The DAL provides savepoint support for nested transaction rollback points:
+Savepoints are automatic: when `withTransaction` is called with a context that is already inside a transaction, the nested call creates a `SAVEPOINT` instead of a new transaction. If the nested operation throws, only the savepoint is rolled back — the parent transaction stays intact:
 
 ```typescript
-import { withTransaction, withSavepoint } from '@kysera/dal'
+import { withTransaction } from '@kysera/dal'
 
 await withTransaction(executor, async ctx => {
-  // Create a user
+  // Create a user (outer transaction)
   const user = await createUser(ctx, { email: 'test@example.com', name: 'Test' })
 
-  // Create a savepoint before risky operation
   try {
-    await withSavepoint(ctx, 'before_post', async spCtx => {
+    // Nested call — runs inside a savepoint
+    await withTransaction(ctx, async spCtx => {
       const post = await createPost(spCtx, { userId: user.id, title: 'Test Post' })
 
       // This might fail
       await someRiskyOperation(spCtx, post.id)
     })
   } catch (error) {
-    // Rollback to savepoint - user creation is preserved
+    // Savepoint rolled back — user creation is preserved
     console.log('Post creation failed, but user was still created')
   }
 
@@ -677,25 +677,13 @@ await withTransaction(executor, async ctx => {
 })
 ```
 
-**Savepoint Validation:**
+**Savepoint naming:**
 
-Savepoint names must be positive integers (1, 2, 3, etc.) for PostgreSQL compatibility:
-
-```typescript
-// ✅ Valid savepoint names
-await withSavepoint(ctx, '1', async spCtx => { /* ... */ })
-await withSavepoint(ctx, '2', async spCtx => { /* ... */ })
-await withSavepoint(ctx, '999', async spCtx => { /* ... */ })
-
-// ❌ Invalid savepoint names (will throw error)
-await withSavepoint(ctx, 'my-savepoint', async spCtx => { /* ... */ }) // Not a positive integer
-await withSavepoint(ctx, '0', async spCtx => { /* ... */ }) // Zero not allowed
-await withSavepoint(ctx, '-1', async spCtx => { /* ... */ }) // Negative not allowed
-```
+Savepoint names are generated internally (`kysera_sp_1`, `kysera_sp_2`, ...) from a process-global counter, so two concurrent transactions never reuse the same name. PostgreSQL, MySQL and SQLite use `SAVEPOINT` / `RELEASE SAVEPOINT`; MSSQL uses `SAVE TRANSACTION` (MSSQL has no RELEASE — its savepoints are released automatically on commit).
 
 ### Rollback Error Handling
 
-When a transaction or savepoint is rolled back due to an error, the DAL logs the rollback operation but preserves the original error:
+When a transaction or savepoint is rolled back due to an error, the original error is always re-thrown to the caller:
 
 ```typescript
 import { withTransaction } from '@kysera/dal'
@@ -710,19 +698,27 @@ try {
 } catch (error) {
   console.error(error.message) // "Something went wrong"
   // Transaction was rolled back automatically
-  // Rollback is logged internally for debugging
 }
 ```
 
-**Internal logging:**
+If rolling back a savepoint itself fails (e.g. the connection died mid-transaction), the `rollbackErrorMode` option controls how the rollback failure is handled:
 
-When a rollback occurs, the DAL logs it using `console.error`:
+```typescript
+import { consoleLogger } from '@kysera/core'
+import { withTransaction } from '@kysera/dal'
 
+await withTransaction(executor, fn, {
+  logger: consoleLogger,         // default: silentLogger (no output)
+  rollbackErrorMode: 'callback', // 'log-only' (default) | 'throw' | 'callback'
+  onRollbackError: async (originalError, rollbackError) => {
+    await alerting.notify({ originalError, rollbackError })
+  }
+})
 ```
-Transaction/savepoint rolled back due to error: [error message]
-```
 
-This helps with debugging while ensuring the original error is always re-thrown to the caller.
+- `'log-only'` (default) — log the rollback failure via `logger`, then re-throw the original error
+- `'throw'` — throw the rollback error instead of the original error (useful for debugging)
+- `'callback'` — invoke `onRollbackError(originalError, rollbackError)`, then re-throw the original error
 
 ### Plugin Propagation in Transactions
 
@@ -930,9 +926,9 @@ const post = await getPostWithAuthor(executor, postId)
 
 ## Requirements
 
-- **Node.js**: >=20.0.0
+- **Node.js**: >=22.0.0
 - **Bun**: >=1.0.0
-- **Kysely**: >=0.28.8 (peer dependency)
+- **Kysely**: >=0.29.0 (peer dependency)
 - **@kysera/executor**: >=0.7.0 (dependency)
 
 ## License

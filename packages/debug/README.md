@@ -24,7 +24,7 @@ bun add @kysera/debug
 - **Performance Metrics** - Collect and analyze query performance data
 - **Slow Query Detection** - Identify and alert on slow database queries
 - **SQL Formatting** - Format and highlight SQL for better readability
-- **Query Profiling** - Detailed performance analysis with statistics using O(1) index-based metrics
+- **Query Profiling** - Detailed performance analysis with statistics computed in a single pass over the ring buffer
 - **Circular Buffer** - O(1) memory-efficient metrics storage with automatic cleanup (ring buffer implementation)
 - **Zero Dependencies** - Only depends on `@kysera/core` and peer-depends on `kysely`
 
@@ -196,7 +196,7 @@ class QueryProfiler {
   /** Record a query metric */
   record(metric: QueryMetrics): void
 
-  /** Get profiling summary (O(1) using index-based metrics) */
+  /** Get profiling summary (single pass over the ring buffer) */
   getSummary(): ProfilerSummary
 
   /** Get the slowest N queries */
@@ -654,7 +654,7 @@ For production environments:
 
 ## Runtime Compatibility
 
-- Node.js >= 20.0.0
+- Node.js >= 22.0.0
 - Bun >= 1.0.0
 - Deno (with Kysely Deno support)
 

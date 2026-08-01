@@ -49,10 +49,11 @@ npm install kysely @kysera/core @kysera/executor @kysera/repository
 ## Quick Start
 
 ```typescript
-import { Kysely, PostgresDialect } from 'kysely'
+import { Kysely, PostgresDialect, type Generated } from 'kysely'
 import { Pool } from 'pg'
+import { z } from 'zod'
 import { createExecutor } from '@kysera/executor'
-import { createORM } from '@kysera/repository'
+import { createORM, createRepositoryFactory, zodAdapter } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { timestampsPlugin } from '@kysera/timestamps'
 
@@ -79,12 +80,17 @@ const executor = await createExecutor(db, [
   timestampsPlugin()
 ])
 
-// Create ORM and repository
+// Create ORM and repository (plugins are inherited from the executor)
 const orm = await createORM(executor, [])
-const userRepo = orm.createRepository({
-  tableName: 'users',
-  schemas: { entity: UserSchema, create: CreateUserSchema }
-})
+const userRepo = orm.createRepository(exec =>
+  createRepositoryFactory(exec).create({
+    tableName: 'users',
+    mapRow: row => row,
+    schemas: {
+      create: zodAdapter(z.object({ email: z.string(), name: z.string() }))
+    }
+  })
+)
 
 // Query — plugins apply transparently
 const users = await userRepo.findAll()           // filters deleted, includes timestamps
@@ -187,8 +193,9 @@ const getUserPosts = createQuery((ctx, userId: number) =>
 const ctx = createContext(executor)
 const user = await getUserById(ctx, 1)
 
-// Parallel queries
-const [user, posts] = await parallel(ctx, getUserById, getUserPosts)(ctx, 1, 1)
+// Parallel queries — one object map, every query gets the same arguments
+const dashboard = await parallel({ user: getUserById, posts: getUserPosts })(ctx, 1)
+// → { user: {...}, posts: [...] }
 
 // Transactions preserve plugins
 await withTransaction(ctx, async (txCtx) => {
@@ -201,17 +208,15 @@ await withTransaction(ctx, async (txCtx) => {
 Declarative policies that transform queries at the executor level:
 
 ```typescript
-import { createRLSSchema, allow, filter } from '@kysera/rls'
+import { defineRLSSchema, allow, filter, rlsPlugin } from '@kysera/rls'
 
-const rlsSchema = createRLSSchema({
+const rlsSchema = defineRLSSchema<Database>({
   users: {
     policies: [
-      allow('select').to('admin'),
-      filter('select').to('user').where((ctx) => ({
-        column: 'tenant_id',
-        op: '=',
-        value: ctx.tenantId
-      }))
+      // Admins can do everything
+      allow('all', ctx => ctx.auth.roles.includes('admin')),
+      // Everyone else only sees rows in their own tenant
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
     ]
   }
 })
@@ -263,24 +268,26 @@ const feed = await paginateCursor(query, {
 Production-ready resilience and observability:
 
 ```typescript
-import { createHealthCheck } from '@kysera/infra/health'
-import { withRetry, createCircuitBreaker } from '@kysera/infra/resilience'
+import { checkDatabaseHealth, HealthMonitor } from '@kysera/infra/health'
+import { withRetry, CircuitBreaker } from '@kysera/infra/resilience'
 import { gracefulShutdown } from '@kysera/infra/shutdown'
 
 // Health checks
-const health = createHealthCheck(db, { interval: 30_000 })
+const health = await checkDatabaseHealth(db)
+const monitor = new HealthMonitor(db, { intervalMs: 30_000 })
+monitor.start()
 
 // Retry with exponential backoff
 const result = await withRetry(() => fetchData(), {
-  maxRetries: 3,
-  backoff: 'exponential'
+  maxAttempts: 3,
+  backoff: true
 })
 
 // Circuit breaker
-const breaker = createCircuitBreaker({ threshold: 5, timeout: 30_000 })
+const breaker = new CircuitBreaker({ threshold: 5, resetTimeMs: 30_000 })
 
 // Graceful shutdown
-gracefulShutdown({ db, onShutdown: () => console.log('bye') })
+process.on('SIGTERM', () => gracefulShutdown(db, { onShutdown: () => console.log('bye') }))
 ```
 
 ## CLI
@@ -295,17 +302,17 @@ kysera init
 kysera migrate create add-users-table
 kysera migrate up
 kysera migrate status
-kysera migrate rollback --steps 1
+kysera migrate down --steps 1
 
 # Code generation
-kysera generate model User
-kysera generate repository User --with-tests
-kysera generate crud User --with-api
+kysera generate model users
+kysera generate repository users
+kysera generate crud users
 
 # Database tools
 kysera db seed
 kysera health check
-kysera debug explain "SELECT * FROM users"
+kysera query explain -q "SELECT * FROM users"
 ```
 
 ## Architecture
@@ -351,7 +358,7 @@ pnpm typecheck        # Type checking
 pnpm lint             # ESLint
 ```
 
-**Requirements:** Node.js >=20, pnpm >=10, TypeScript ^5.9
+**Requirements:** Node.js >=22, pnpm >=10, TypeScript ^6.0.3
 
 ## Documentation
 

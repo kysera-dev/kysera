@@ -788,7 +788,7 @@ try {
 
 ## Runtime Support
 
-- **Node.js** - v20.0.0 or higher
+- **Node.js** - v22.0.0 or higher
 - **Bun** - v1.0.0 or higher
 - **Deno** - Latest version (with npm compatibility)
 

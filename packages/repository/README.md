@@ -6,7 +6,7 @@ Repository pattern implementation with unified plugin support for Kysera.
 
 [![Version](https://img.shields.io/npm/v/@kysera/repository.svg)](https://www.npmjs.com/package/@kysera/repository)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue)](https://www.typescriptlang.org/)
 
 ## Overview
 
@@ -325,6 +325,39 @@ const exists = await repo.exists({ where: { email: 'alice@example.com' } })
 // Find by IDs
 const users = await repo.findByIds([1, 2, 3])
 ```
+
+### Query Operators
+
+`find()` accepts MongoDB-style operators in `where` — 18 in total:
+
+| Category   | Operators                                              |
+| ---------- | ------------------------------------------------------ |
+| Comparison | `$eq` `$ne` `$gt` `$gte` `$lt` `$lte`                  |
+| Array      | `$in` `$nin`                                           |
+| String     | `$like` `$ilike` `$contains` `$startsWith` `$endsWith` |
+| Null       | `$isNull` `$isNotNull`                                 |
+| Range      | `$between`                                             |
+| Logical    | `$or` `$and`                                           |
+
+```typescript
+const users = await repo.find({
+  where: {
+    age: { $gte: 18, $lte: 65 },
+    status: { $in: ['active', 'pending'] },
+    email: { $contains: '@company.com' },
+    deleted_reason: null, // plain null compiles to IS NULL
+    $or: [{ role: 'admin' }, { verified: true }]
+  }
+})
+```
+
+**Semantics:**
+
+- `$ne` and `$nin` follow MongoDB NULL semantics: rows where the column is NULL also match — `$ne` compiles to `(col <> ? OR col IS NULL)`
+- `$ilike` is portable across all dialects — it compiles to `LOWER(col) LIKE LOWER(pattern)` rather than PostgreSQL-only `ILIKE`
+- `$contains`, `$startsWith` and `$endsWith` escape `%` and `_` in the value, so user input cannot inject wildcards
+- `{ column: null }` compiles to `col IS NULL`; `$eq: null` / `$ne: null` map to `IS NULL` / `IS NOT NULL`
+- Malformed operator values (e.g. `$in` without an array, `$between` without a `[min, max]` tuple) throw `InvalidOperatorValueError` instead of silently building an unfiltered query
 
 ### Pagination
 

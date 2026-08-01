@@ -4,7 +4,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@kysera/migrations.svg)](https://www.npmjs.com/package/@kysera/migrations)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue)](https://www.typescriptlang.org/)
 
 ## Features
 
@@ -224,8 +224,12 @@ interface MigrationRunnerOptions {
   useTransactions?: boolean // Wrap in transactions (default: false)
   stopOnError?: boolean // Stop on first error (default: true)
   verbose?: boolean // Show metadata (default: true)
+  advisoryLock?: boolean // Serialize concurrent runners via a DB lock (default: true)
+  lockTimeoutMs?: number // Max wait for the advisory lock in ms (default: 60000)
 }
 ```
+
+With `advisoryLock` enabled (the default), the runner takes a database-level lock before executing, so two application instances deploying at once cannot both run the same pending migrations — PostgreSQL uses `pg_try_advisory_lock`, MySQL uses `GET_LOCK`, while SQLite (single-writer by nature) and MSSQL are no-ops. If the lock cannot be acquired within `lockTimeoutMs`, the runner throws a `MigrationLockError`.
 
 #### `MigrationDefinition`
 
@@ -559,6 +563,23 @@ try {
     // Serialize for logging
     console.log(error.toJSON())
     // { name, message, code, detail, migrationName, operation, cause }
+  }
+}
+```
+
+### MigrationLockError
+
+Thrown when the migration advisory lock cannot be acquired within `lockTimeoutMs` — usually means another instance is still migrating:
+
+```typescript
+import { MigrationLockError } from '@kysera/migrations'
+
+try {
+  await runner.up()
+} catch (error) {
+  if (error instanceof MigrationLockError) {
+    // Another migration runner is probably active — retry later,
+    // increase lockTimeoutMs, or set advisoryLock: false to bypass (unsafe)
   }
 }
 ```

@@ -4,7 +4,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@kysera/rls.svg)](https://www.npmjs.com/package/@kysera/rls)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9%2B-blue)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0%2B-blue)](https://www.typescriptlang.org/)
 
 ---
 
@@ -42,7 +42,7 @@ yarn add @kysera/rls kysely
 
 **Dependencies:**
 
-- `kysely` >= 0.28.8 (peer dependency)
+- `kysely` >= 0.29.0 (peer dependency)
 - `@kysera/core` >= 0.7.0 - Core utilities (auto-installed)
 - `@kysera/executor` >= 0.7.0 - Unified Execution Layer (auto-installed)
 - `@kysera/repository` >= 0.7.0 or `@kysera/dal` >= 0.7.0 - For Repository or DAL patterns (install as needed)
@@ -814,13 +814,13 @@ interface RLSPluginOptions<DB = unknown> {
 
 ```typescript
 import { rlsPlugin } from '@kysera/rls'
-import { createLogger } from '@kysera/core'
+import { consoleLogger } from '@kysera/core'
 
 const plugin = rlsPlugin({
   schema: rlsSchema,
   excludeTables: ['audit_logs', 'migrations'],
   bypassRoles: ['admin', 'system'],
-  logger: createLogger({ level: 'info' }),
+  logger: consoleLogger,
   requireContext: true,
   auditDecisions: true,
   onViolation: violation => {

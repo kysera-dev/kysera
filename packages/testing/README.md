@@ -922,8 +922,8 @@ afterEach(async () => {
 
 ## Requirements
 
-- **Kysely**: >=0.28.8
-- **Node.js**: >=20.0.0
+- **Kysely**: >=0.29.0
+- **Node.js**: >=22.0.0
 - **Bun**: >=1.0.0 (optional)
 
 ## License

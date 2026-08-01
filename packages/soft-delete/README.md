@@ -4,7 +4,7 @@ Soft delete plugin for Kysera. Implements soft delete functionality through @kys
 
 ## Features
 
-- Automatic filtering of soft-deleted records in SELECT queries via @kysera/executor's plugin interception
+- Automatic filtering of soft-deleted records in SELECT, UPDATE and DELETE queries via @kysera/executor's plugin interception
 - Repository methods for soft delete operations (softDelete, restore, hardDelete)
 - Bulk operations (softDeleteMany, restoreMany, hardDeleteMany) with optimized single-query fetching
 - Query methods for deleted records (findWithDeleted, findAllWithDeleted, findDeleted)
@@ -31,8 +31,8 @@ bun add @kysera/soft-delete
 ```json
 {
   "@kysera/executor": ">=0.7.0",
-  "kysely": ">=0.28.9",
-  "zod": ">=4.1.13"
+  "kysely": ">=0.29.0",
+  "zod": "^4.3.6"
 }
 ```
 
@@ -190,22 +190,27 @@ interface Plugin {
 
 #### interceptQuery
 
-Modifies SELECT query builders to automatically filter out soft-deleted records:
+Narrows SELECT, UPDATE and DELETE query builders so soft-deleted records stay invisible:
 
 ```typescript
 interceptQuery<QB>(qb: QB, context: QueryBuilderContext): QB {
   // Check if table supports soft delete
-  const supportsSoftDelete = !tables || tables.includes(context.table);
+  const supportsSoftDelete = shouldApplyToTable(context.table, { tables, excludeTables });
 
-  // Only filter SELECT queries when not explicitly including deleted
+  if (!supportsSoftDelete || context.metadata['includeDeleted'] === true || includeDeleted) {
+    return qb;
+  }
+
+  // Soft-deleted rows are invisible to reads AND generic mutations:
+  // SELECT, UPDATE and DELETE are all narrowed with deleted_at IS NULL
   if (
-    supportsSoftDelete &&
-    context.operation === 'select' &&
-    !context.metadata['includeDeleted'] &&
-    !includeDeleted
+    context.operation === 'select' ||
+    context.operation === 'update' ||
+    context.operation === 'delete'
   ) {
-    // Add WHERE deleted_at IS NULL to the query builder
-    return qb.where(`${context.table}.${deletedAtColumn}`, 'is', null);
+    // Qualify with the alias when the table is aliased ('users as u' -> 'u')
+    const reference = context.alias ?? context.table;
+    return qb.where(`${reference}.${deletedAtColumn}`, 'is', null);
   }
 
   return qb;
@@ -223,22 +228,21 @@ extendRepository<T extends object>(repo: T): T {
 }
 ```
 
-### Using getRawDb
+### Using withPluginMetadata
 
-The plugin uses `getRawDb()` from `@kysera/executor` to bypass interceptors when needed:
+To reach soft-deleted rows, the plugin's extended methods opt out through plugin metadata instead of bypassing the executor. `withPluginMetadata()` from `@kysera/executor` derives an executor whose queries carry `includeDeleted: true` — the soft-delete filter skips itself, while every other plugin (RLS, audit, ...) stays active:
 
 ```typescript
-import { getRawDb } from '@kysera/executor'
+import { withPluginMetadata } from '@kysera/executor'
 
 // Inside plugin's extendRepository method
-const rawDb = getRawDb(repo.executor)
+const withDeleted = withPluginMetadata(repo.executor, { includeDeleted: true })
 
-// Use rawDb to bypass soft-delete filter
-// (needed for findWithDeleted, restore, etc.)
-const allRecords = await rawDb.selectFrom('users').selectAll().execute() // No soft-delete filter applied
+// Soft-delete filter off, all other plugins still applied
+const allRecords = await withDeleted.selectFrom('users').selectAll().execute()
 ```
 
-This is critical for methods like `findWithDeleted()` and `restore()` that need to access soft-deleted records.
+This is how methods like `findWithDeleted()` and `restore()` access soft-deleted records. Avoid `getRawDb()` for this — it bypasses ALL plugins, including security plugins like RLS, which can leak rows across tenants.
 
 ## Configuration Options
 
@@ -487,7 +491,7 @@ const user = await getUserById(ctx, 1)
 
 ### Query Interception
 
-The plugin's `interceptQuery` method modifies SELECT query builders:
+The plugin's `interceptQuery` method narrows SELECT, UPDATE and DELETE query builders:
 
 ```typescript
 // Original query
@@ -495,23 +499,29 @@ ctx.db.selectFrom('users').selectAll()
 
 // After plugin interception
 ctx.db.selectFrom('users').selectAll().where('users.deleted_at', 'is', null) // Added automatically
+
+// UPDATE and DELETE statements are narrowed the same way
+ctx.db.updateTable('users').set({ name: 'X' }).where('id', '=', 1)
+// → ... .where('users.deleted_at', 'is', null) added automatically
 ```
 
-### Operations Not Intercepted
+### What Gets Intercepted
 
-The plugin uses Method Override pattern, not full query interception:
+Soft-deleted rows are invisible to reads and to generic mutations:
 
-- **SELECT queries**: Automatically filtered
+- **SELECT queries**: Filtered with `deleted_at IS NULL`
+- **UPDATE queries**: Narrowed with `deleted_at IS NULL` — soft-deleted rows cannot be modified through generic update paths
+- **DELETE queries**: Narrowed with `deleted_at IS NULL`, but NOT converted to soft deletes — a `deleteFrom()` still hard-deletes the rows it can see
 - **INSERT queries**: Not affected
-- **UPDATE queries**: Not affected
-- **DELETE queries**: NOT converted to soft deletes
+
+Internal methods (`softDelete()`, `restore()`, `hardDelete()`, `findWithDeleted()`, ...) opt out via `metadata.includeDeleted`, so they can still reach soft-deleted rows.
 
 To perform soft deletes, use the `softDelete()` method explicitly:
 
 ```typescript
 import { sql } from 'kysely'
 
-// ❌ This performs a real DELETE (not soft delete)
+// ❌ Still a real DELETE (of rows that are not already soft-deleted)
 await ctx.db.deleteFrom('users').where('id', '=', 1).execute()
 
 // ✅ Use softDelete method instead (in Repository pattern)
@@ -762,7 +772,7 @@ CREATE INDEX idx_posts_deleted_at ON posts(deleted_at);
 
 ### Query Performance
 
-The plugin adds a `WHERE deleted_at IS NULL` condition to all SELECT queries. With proper indexing, this has minimal performance impact.
+The plugin adds a `WHERE deleted_at IS NULL` condition to all SELECT, UPDATE and DELETE queries. With proper indexing, this has minimal performance impact.
 
 ```sql
 -- Without index: Full table scan
@@ -789,11 +799,11 @@ await userRepo.softDeleteMany(userIds)
 
 ## Architecture Notes
 
-### Method Override Pattern
+### Explicit Soft Deletes
 
-The plugin uses Method Override, not full query interception:
+Query interception narrows what generic statements can touch, but never rewrites them:
 
-- **SELECT queries**: Automatically filtered using `interceptQuery`
+- **SELECT/UPDATE/DELETE queries**: Automatically narrowed with `deleted_at IS NULL` by `interceptQuery`
 - **DELETE operations**: NOT automatically converted to soft deletes
 - Use `softDelete()` method explicitly instead of `delete()`
 - Use `hardDelete()` method to bypass soft delete and perform real DELETE
@@ -803,13 +813,13 @@ This design is intentional for simplicity and explicitness.
 ### Plugin Execution Flow
 
 1. Plugin is registered with `createORM()` or `createExecutor()`
-2. `interceptQuery()` modifies SELECT query builders to add `WHERE deleted_at IS NULL`
+2. `interceptQuery()` narrows SELECT, UPDATE and DELETE query builders with `WHERE deleted_at IS NULL`
 3. `extendRepository()` adds soft delete methods to repositories (Repository pattern only)
 4. Query execution flows through the executor with plugin interception applied
 
-### Raw Database Access
+### Accessing Soft-Deleted Rows
 
-The plugin uses `getRawDb()` to access the underlying Kysely instance without plugin interception. This is necessary for:
+Extended methods that must see soft-deleted rows derive an executor via `withPluginMetadata()` with `includeDeleted: true`, which disables only the soft-delete filter. This is necessary for:
 
 - `findWithDeleted()`: Needs to see soft-deleted records
 - `findAllWithDeleted()`: Needs to see all records
@@ -817,13 +827,13 @@ The plugin uses `getRawDb()` to access the underlying Kysely instance without pl
 - `softDelete()`, `restore()`: Need to fetch records after update
 
 ```typescript
-import { getRawDb } from '@kysera/executor'
+import { withPluginMetadata } from '@kysera/executor'
 
 // Inside plugin
-const rawDb = getRawDb(repo.executor)
+const withDeleted = withPluginMetadata(repo.executor, { includeDeleted: true })
 
-// Bypass soft-delete filter
-const allRecords = await rawDb.selectFrom('users').selectAll().execute()
+// Soft-delete filter off, every other plugin (RLS, audit, ...) still active
+const allRecords = await withDeleted.selectFrom('users').selectAll().execute()
 ```
 
 ## Testing

@@ -198,24 +198,42 @@ Get the raw Kysely instance, bypassing all plugin interceptors.
 function getRawDb<DB>(executor: Kysely<DB>): Kysely<DB>
 ```
 
-**Use Case:** For internal plugin operations that should not trigger other plugins.
+**Use Case:** Internal operations that must not run through ANY plugin — e.g. dialect detection or a plugin's own bookkeeping tables.
 
 **Example:**
 
 ```typescript
-// Inside a soft-delete plugin's restore method:
-const rawDb = getRawDb(executor)
-
-// This query bypasses soft-delete filter to find deleted records
-const deletedUser = await rawDb
-  .selectFrom('users')
-  .where('id', '=', userId)
-  .where('deleted_at', 'is not', null)
-  .selectAll()
-  .executeTakeFirst()
+// Inside a plugin: detect the dialect from the raw Kysely instance
+const dialect = detectDialect(getRawDb(executor))
 ```
 
-**Important:** Use with caution. Bypassing plugins can lead to inconsistent behavior.
+**Important:** `getRawDb` strips every plugin, including security plugins like RLS. To opt out of a single plugin's behavior (e.g. reading soft-deleted rows), use `withPluginMetadata` instead.
+
+---
+
+#### `withPluginMetadata(executor, metadata)`
+
+Derive an executor whose plugin contexts start with the given metadata. This is the safe alternative to `getRawDb` when a caller needs to opt out of ONE plugin's behavior while keeping every other plugin active.
+
+```typescript
+function withPluginMetadata<DB>(
+  executor: Kysely<DB>,
+  metadata: Readonly<Record<string, unknown>>
+): Kysely<DB>
+```
+
+Plugins read the metadata in `interceptQuery` — e.g. soft-delete skips its filter when `metadata.includeDeleted === true`. Returns the executor unchanged when it is not a `KyseraExecutor` (no plugins to parameterize).
+
+**Example:**
+
+```typescript
+const withDeleted = withPluginMetadata(executor, { includeDeleted: true })
+
+// Soft-delete's own filter is off; every other plugin still applies:
+const rows = await withDeleted.selectFrom('users').selectAll().execute()
+```
+
+**Security contract for plugin authors:** this channel is reachable by any caller holding the executor, without any authentication context. Plugins may honor _behavioral_ opt-outs here (visibility of soft-deleted rows, verbosity, ...), but MUST NOT honor security bypasses — `@kysera/rls` deliberately ignores this channel entirely for that reason.
 
 ---
 
@@ -458,16 +476,34 @@ Context passed to `interceptQuery` hook.
 
 ```typescript
 interface QueryBuilderContext {
-  /** Type of operation: 'select' | 'insert' | 'update' | 'delete' */
-  readonly operation: 'select' | 'insert' | 'update' | 'delete'
+  /** Type of operation */
+  readonly operation: 'select' | 'insert' | 'update' | 'delete' | 'replace' | 'merge'
 
-  /** Table name being queried */
+  /**
+   * Base table name without schema qualifier or alias.
+   * For selectFrom('public.users as u') this is 'users'.
+   */
   readonly table: string
+
+  /** Table alias when the reference was aliased ('users as u' -> 'u') */
+  readonly alias?: string
+
+  /** The original table expression as written (e.g. 'public.users as u') */
+  readonly tableExpression?: string
+
+  /**
+   * Current schema context. Set from withSchema(...), or from an explicit
+   * qualifier in the table expression ('auth.users' -> 'auth'), which takes
+   * precedence. undefined means the default schema is being used.
+   */
+  readonly schema?: string
 
   /** Additional metadata (extensible) */
   readonly metadata: Record<string, unknown>
 }
 ```
+
+**Qualifying columns:** when adding column conditions, qualify with `context.alias ?? context.table` — once a table is aliased, SQL only exposes the alias as the correlation name (`'users as u'` requires `u.deleted_at`, not `users.deleted_at`).
 
 **Example:**
 

@@ -44,11 +44,11 @@ kysera migrate create add_users_table
 kysera migrate up
 
 # Generate models and repositories
-kysera generate model User --table users
-kysera generate repository User --with-validation
+kysera generate model users
+kysera generate repository users --with-validation
 
-# Generate complete CRUD with API
-kysera generate crud Post --api --tests
+# Generate complete CRUD scaffolding
+kysera generate crud posts
 
 # Check database health
 kysera health check
@@ -141,7 +141,7 @@ kysera <TAB>
 # Shows: init migrate generate db health audit debug query repository test plugin help
 
 kysera migrate <TAB>
-# Shows: create up down status list reset fresh rollback
+# Shows: create up down status list reset fresh
 
 kysera generate --validation <TAB>
 # Shows: zod yup joi none
