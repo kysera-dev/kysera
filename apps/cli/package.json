@@ -49,9 +49,9 @@
     "directory": "apps/cli"
   },
   "bugs": {
-    "url": "https://github.com/kysera/kysera/issues"
+    "url": "https://github.com/kysera-dev/kysera/issues"
   },
-  "homepage": "https://github.com/kysera/kysera#readme",
+  "homepage": "https://github.com/kysera-dev/kysera#readme",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
