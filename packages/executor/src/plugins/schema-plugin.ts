@@ -156,7 +156,10 @@ export function schemaPlugin(options: SchemaPluginOptions = {}): Plugin {
   return {
     name: '@kysera/schema',
     version: '1.0.0',
-    priority: 1000, // Run early to set schema context for other plugins
+    // CONTEXT tier: must run BEFORE security plugins (RLS is 1000) so that
+    // getResolvedSchema() consumers see the resolved schema. At equal 1000 the
+    // alphabetical tie-break put @kysera/rls first and this ran too late.
+    priority: 1100,
 
     async onInit(_db) {
       // Validate default schema during initialization

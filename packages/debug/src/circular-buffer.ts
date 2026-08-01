@@ -37,8 +37,10 @@ export class CircularBuffer<T> {
    * @param maxSize - Maximum number of items to store
    */
   constructor(maxSize: number) {
-    if (maxSize <= 0) {
-      throw new Error('CircularBuffer maxSize must be positive')
+    // NaN/Infinity/fractions silently corrupt the ring (writes land on
+    // non-index keys and every metric is discarded) — reject them here
+    if (!Number.isInteger(maxSize) || maxSize <= 0) {
+      throw new Error(`CircularBuffer maxSize must be a positive integer, got ${String(maxSize)}`)
     }
     this.maxSize = maxSize
   }

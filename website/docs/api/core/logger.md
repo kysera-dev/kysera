@@ -182,5 +182,5 @@ const logger = process.env.NODE_ENV === 'test' ? silentLogger : consoleLogger
 
 ## Related
 
-- [Debug Module](/docs/api/core/debug) - Query profiling with logging
-- [Health Module](/docs/api/core/health) - Health monitoring with logging
+- [@kysera/debug](/docs/api/debug) - Query profiling with logging
+- [@kysera/infra](/docs/api/infra) - Health monitoring with logging

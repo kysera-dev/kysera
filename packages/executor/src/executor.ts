@@ -219,6 +219,14 @@ function detectCircularDependencies(plugins: readonly Plugin[]): void {
 }
 
 /**
+ * Deterministic plugin-name comparator (code units, locale-independent).
+ * @internal
+ */
+function comparePluginNames(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+/**
  * Resolve plugin execution order using topological sort with priority
  */
 export function resolvePluginOrder(plugins: readonly Plugin[]): Plugin[] {
@@ -257,7 +265,7 @@ export function resolvePluginOrder(plugins: readonly Plugin[]): Plugin[] {
       const mid = (left + right) >>> 1
       const midPriority = arr[mid]!.priority ?? 0
       // If mid has higher priority, or same priority but earlier name, insert after mid
-      if (midPriority > priority || (midPriority === priority && arr[mid]!.name < plugin.name)) {
+      if (midPriority > priority || (midPriority === priority && comparePluginNames(arr[mid]!.name, plugin.name) < 0)) {
         left = mid + 1
       } else {
         right = mid
@@ -266,11 +274,13 @@ export function resolvePluginOrder(plugins: readonly Plugin[]): Plugin[] {
     arr.splice(left, 0, plugin)
   }
 
-  // Initial sort: descending priority (high to low), then alphabetical
+  // Initial sort: descending priority (high to low), then by name.
+  // Deterministic code-unit comparison — localeCompare is ICU/locale-dependent
+  // and disagreed with insertSorted's < comparator, breaking sortedness.
   available.sort((a, b) => {
     const pA = a.priority ?? 0
     const pB = b.priority ?? 0
-    return pA !== pB ? pB - pA : a.name.localeCompare(b.name)
+    return pA !== pB ? pB - pA : comparePluginNames(a.name, b.name)
   })
 
   while (available.length > 0) {

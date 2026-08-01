@@ -1,6 +1,13 @@
 import type { Kysely, Transaction } from 'kysely'
 import type { AnyQueryBuilder } from './types.js'
-import { createExecutor, getPlugins, wrapTransaction, type Plugin } from '@kysera/executor'
+import {
+  createExecutor,
+  getPlugins,
+  getRawDb,
+  isKyseraExecutor,
+  wrapTransaction,
+  type Plugin
+} from '@kysera/executor'
 import { createContext as createDalContext, withTransaction, type DbContext } from '@kysera/dal'
 
 /**
@@ -47,11 +54,25 @@ export async function createORM<DB>(
   db: Kysely<DB>,
   plugins: Plugin[] = []
 ): Promise<PluginOrm<DB>> {
-  // Create executor with plugins (handles validation, resolution, and initialization)
-  const executor = await createExecutor(db, plugins)
+  // Shared-executor pattern: when a KyseraExecutor is passed in, REUSE its
+  // plugin set instead of re-wrapping. Re-wrapping produced a marker-only
+  // proxy whose __plugins was empty — interception still worked (inherited
+  // from the inner proxy) but extendRepository never ran, so repositories
+  // silently lost softDelete()/audit/RLS methods.
+  let executor: Kysely<DB>
+  if (isKyseraExecutor(db) && plugins.length === 0) {
+    executor = db
+  } else if (isKyseraExecutor(db)) {
+    // Mixing executor plugins with additional ones: rebuild over the raw db
+    // with the combined set. NOTE: onInit re-runs for the existing plugins.
+    executor = await createExecutor(getRawDb(db), [...getPlugins(db), ...plugins])
+  } else {
+    // Create executor with plugins (handles validation, resolution, initialization)
+    executor = await createExecutor(db, plugins)
+  }
 
   // Get the resolved plugin order from executor
-  const resolvedPlugins = getPlugins(executor)
+  const resolvedPlugins = getPlugins(executor as never)
 
   // Helper to apply plugin interceptors to queries
   function applyPlugins<QB extends AnyQueryBuilder>(

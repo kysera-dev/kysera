@@ -314,19 +314,17 @@ describe.each(getDatabaseTypes())('Query Operators Integration Tests (%s)', dbTy
       users.forEach((u: User) => expect(u.name).toMatch(/e$/))
     })
 
-    // PostgreSQL-specific test
-    if (dbType === 'postgres') {
-      it('$ilike - should find records with case-insensitive match (PostgreSQL only)', async () => {
-        const users = await userRepository.find({
-          where: {
-            name: { $ilike: 'ALICE' }
-          }
-        })
-
-        expect(users).toHaveLength(1)
-        expect(users[0]?.name).toBe('Alice')
+    // $ilike compiles to LOWER(col) LIKE LOWER(?) — portable to every dialect
+    it('$ilike - case-insensitive match on all dialects', async () => {
+      const users = await userRepository.find({
+        where: {
+          name: { $ilike: 'ALICE' }
+        }
       })
-    }
+
+      expect(users).toHaveLength(1)
+      expect(users[0]?.name).toBe('Alice')
+    })
   })
 
   // ============================================================================

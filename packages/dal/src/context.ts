@@ -218,24 +218,36 @@ function markAsInTransaction<T>(obj: T): T {
 }
 
 /**
- * Increment and return the savepoint counter for a transaction.
+ * Process-global savepoint sequence.
+ *
+ * Savepoint names only need uniqueness within a transaction, but the counter
+ * used to live on the transaction OBJECT — and derived instances (withSchema,
+ * executor re-wraps) are new objects that restarted at 1. Two nesting levels
+ * then both issued `SAVEPOINT kysera_sp_1`, and the inner ROLLBACK silently
+ * shadowed the outer one (verified: partial rollback kept discarded work).
+ * A global monotonic counter is collision-free by construction.
+ * @internal
+ */
+let savepointSequence = 0
+
+/**
+ * Return the next unique savepoint id.
  * Validates the counter to prevent SQL injection through malformed savepoint names.
  * @internal
  */
 function incrementSavepointCounter<DB>(
   db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>
 ): number {
-  const obj = db as unknown as Record<symbol, number>
-  const current = obj[SAVEPOINT_COUNTER_SYMBOL] ?? 0
-  const nextId = current + 1
+  const nextId = ++savepointSequence
 
   // CRITICAL: Explicit validation to prevent SQL injection
   // Savepoint ID must be a positive integer to ensure safe identifier construction
-  if (!Number.isInteger(nextId) || nextId < 1 || nextId > 1_000_000) {
+  if (!Number.isInteger(nextId) || nextId < 1 || nextId > Number.MAX_SAFE_INTEGER) {
     throw new Error('Invalid savepoint counter: expected positive integer, got ' + String(nextId))
   }
 
-  obj[SAVEPOINT_COUNTER_SYMBOL] = nextId
+  // Keep the per-object mirror for introspection/backwards compatibility
+  ;(db as unknown as Record<symbol, number>)[SAVEPOINT_COUNTER_SYMBOL] = nextId
   return nextId
 }
 

@@ -293,7 +293,13 @@ function buildDynamicWhere<DB, TableName extends keyof DB>(
   for (const [key, value] of Object.entries(validatedConditions)) {
     // Type assertion needed: Column names are dynamic at runtime
     // Runtime safety: Validated by validateConditions above
-    result = result.where(key as never, '=', value as never) as DynamicSelectQuery<DB, TableName>
+    // NULL needs IS: `col = NULL` is never true in SQL, so { col: null }
+    // silently matched zero rows before this branch existed
+    result = (
+      value === null
+        ? result.where(key as never, 'is', null as never)
+        : result.where(key as never, '=', value as never)
+    ) as DynamicSelectQuery<DB, TableName>
   }
   return result
 }
@@ -696,7 +702,8 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
 
       if (conditions) {
         for (const [key, value] of Object.entries(conditions)) {
-          query = query.where(key, '=', value)
+          // NULL needs IS (see buildDynamicWhere)
+          query = value === null ? query.where(key, 'is', null) : query.where(key, '=', value)
         }
       }
 
@@ -891,10 +898,12 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
             applyWhereClause(eb, where as Record<string, unknown>)
           )
         } else {
-          // Simple equality - use inline where
+          // Simple equality - use inline where (NULL needs IS, see buildDynamicWhere)
           for (const [key, value] of Object.entries(where)) {
             query = query.where((eb: ExpressionBuilder<DB, TableName>) =>
-              eb(key as never, '=', value as never)
+              value === null
+                ? eb(key as never, 'is', null as never)
+                : eb(key as never, '=', value as never)
             )
           }
         }

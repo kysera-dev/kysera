@@ -52,10 +52,10 @@ describe('SchemaPlugin', () => {
       expect(executor.__plugins.length).toBe(1)
     })
 
-    it('should have high priority (1000)', async () => {
+    it('runs before security plugins (priority 1100 > RLS 1000)', async () => {
       const executor = await createExecutor(db, [schemaPlugin()])
 
-      expect(executor.__plugins[0]!.priority).toBe(1000)
+      expect(executor.__plugins[0]!.priority).toBe(1100)
     })
   })
 

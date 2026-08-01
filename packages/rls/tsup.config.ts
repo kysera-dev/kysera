@@ -15,6 +15,7 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   splitting: false,
+  minify: true,
   treeshake: true,
   tsconfig: './tsconfig.build.json',
   external: [

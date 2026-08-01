@@ -50,6 +50,40 @@ describe('schema-scoped context keeps transaction detection', () => {
     expect(rows.map(r => r.name)).toEqual(['nested'])
   })
 
+  it('savepoint names never collide across derived instances (silent-partial-rollback regression)', async () => {
+    // Outer tx → nested tx (savepoint A) → withSchema-derived context inside
+    // it → deeper nested tx (savepoint B). With the old per-object counter
+    // both levels issued `kysera_sp_1`; the inner rollback then shadowed the
+    // outer savepoint and level-1 work SURVIVED its own rollback.
+    await withTransaction(db, async outer => {
+      await outer.db.insertInto('users').values({ name: 'outer-work' }).execute()
+
+      await expect(
+        withTransaction(outer, async lvl1 => {
+          await lvl1.db.insertInto('users').values({ name: 'lvl1-work' }).execute()
+
+          const derived = createContext(lvl1.db.withSchema('main'), { schema: 'main' })
+          await expect(
+            withTransaction(derived, async lvl2 => {
+              await lvl2.db.insertInto('users').values({ name: 'lvl2-work' }).execute()
+              throw new Error('rollback lvl2')
+            })
+          ).rejects.toThrow('rollback lvl2')
+
+          // lvl2 rolled back, lvl1 work still visible
+          const mid = await lvl1.db.selectFrom('users').selectAll().execute()
+          expect(mid.map(r => r.name).sort()).toEqual(['lvl1-work', 'outer-work'])
+
+          throw new Error('rollback lvl1')
+        })
+      ).rejects.toThrow('rollback lvl1')
+
+      // lvl1 (and lvl2) fully rolled back — with colliding names lvl1-work survived
+      const after = await outer.db.selectFrom('users').selectAll().execute()
+      expect(after.map(r => r.name)).toEqual(['outer-work'])
+    })
+  })
+
   it('inner savepoint rollback does not kill the outer transaction', async () => {
     await withTransaction(db, async ctx => {
       await ctx.db.insertInto('users').values({ name: 'outer' }).execute()

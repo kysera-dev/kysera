@@ -158,8 +158,10 @@ export function getMetrics<DB>(
 
     const totalDuration = durations.reduce((sum, d) => sum + d, 0)
     const avgDuration = totalDuration / durations.length
-    const minDuration = Math.min(...durations)
-    const maxDuration = Math.max(...durations)
+    // sortedDurations is already computed — spreading into Math.min/max
+    // throws RangeError past ~124k elements (maxMetrics is user-controlled)
+    const minDuration = sortedDurations[0] ?? 0
+    const maxDuration = sortedDurations[sortedDurations.length - 1] ?? 0
     const p95Duration = calculatePercentile(sortedDurations, 95)
     const p99Duration = calculatePercentile(sortedDurations, 99)
     const slowCount = durations.filter(d => d > slowQueryThreshold).length
@@ -194,7 +196,9 @@ export function getMetrics<DB>(
 
   // Add connection pool recommendations if applicable
   if (result.connections) {
-    const utilizationRate = result.connections.active / result.connections.total
+    // Guard total=0: 0/0 is NaN (check silently skipped), n/0 is Infinity
+    const utilizationRate =
+      result.connections.total > 0 ? result.connections.active / result.connections.total : 0
     if (utilizationRate > 0.8) {
       result.recommendations = result.recommendations ?? []
       result.recommendations.push(

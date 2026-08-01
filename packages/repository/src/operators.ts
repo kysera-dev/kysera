@@ -189,20 +189,6 @@ export const ALL_OPERATORS = [
 
 export type OperatorKey = (typeof ALL_OPERATORS)[number]
 
-/** Operator to SQL mapping */
-export const OPERATOR_TO_SQL: Record<string, string> = {
-  $eq: '=',
-  $ne: '<>',
-  $gt: '>',
-  $gte: '>=',
-  $lt: '<',
-  $lte: '<=',
-  $in: 'in',
-  $nin: 'not in',
-  $like: 'like',
-  $ilike: 'ilike'
-}
-
 // ============================================================================
 // Type Guards
 // ============================================================================
