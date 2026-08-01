@@ -393,3 +393,8 @@ WHERE changed_at < NOW() - INTERVAL '1 year';
 DELETE FROM audit_logs
 WHERE changed_at < NOW() - INTERVAL '1 year';
 ```
+
+## See Also
+
+- [@kysera/audit API Reference](/docs/api/audit)
+- [Timestamps Plugin Guide](/docs/plugins/timestamps)

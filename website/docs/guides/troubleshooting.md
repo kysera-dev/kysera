@@ -679,11 +679,11 @@ await orm.transaction(async ctx => {
 - [Pagination Guide](/docs/guides/pagination)
 - [Error Handling Guide](/docs/core-concepts/error-handling)
 - [Plugin Development](/docs/plugins/authoring-guide)
-- [GitHub Issues](https://github.com/omnitron-dev/kysera/issues)
+- [GitHub Issues](https://github.com/kysera-dev/kysera/issues)
 
 ---
 
-**Still having issues?** [Open an issue on GitHub](https://github.com/omnitron-dev/kysera/issues/new) with:
+**Still having issues?** [Open an issue on GitHub](https://github.com/kysera-dev/kysera/issues/new) with:
 - Kysera version (`@kysera/core`, `@kysera/executor`, etc.)
 - Database type and version
 - Minimal reproduction code

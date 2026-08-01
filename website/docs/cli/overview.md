@@ -133,7 +133,7 @@ kysera test seed
 kysera test teardown
 ```
 
-### audit
+### [audit](/docs/cli/audit)
 
 Audit logging and history tracking.
 
@@ -145,7 +145,7 @@ kysera audit stats             # Audit statistics
 kysera audit cleanup           # Clean old logs
 ```
 
-### debug
+### [debug](/docs/cli/debug)
 
 Debug and performance analysis tools.
 
@@ -157,7 +157,7 @@ kysera debug circuit-breaker   # Circuit breaker status
 kysera debug analyzer          # Query analyzer
 ```
 
-### query
+### [query](/docs/cli/query)
 
 Database query utilities.
 
@@ -168,7 +168,7 @@ kysera query analyze           # Analyze query performance
 kysera query explain           # Show execution plan
 ```
 
-### repository
+### [repository](/docs/cli/repository)
 
 Repository introspection and management.
 
@@ -179,7 +179,7 @@ kysera repository validate     # Validate schemas
 kysera repository methods      # Show available methods
 ```
 
-### plugin
+### [plugin](/docs/cli/plugin)
 
 Plugin management and configuration.
 

@@ -82,7 +82,8 @@ await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: ['user']
 interface RLSPluginOptions<DB = unknown> {
   schema: RLSSchema<DB> // RLS policy schema (required)
 
-  // Table exclusion
+  // Table selection
+  tables?: string[]        // Whitelist: only these tables get RLS (takes precedence over excludeTables)
   excludeTables?: string[] // Tables to exclude from RLS
 
   // Security settings
@@ -162,7 +163,7 @@ const plugin = rlsPlugin({
 ```
 
 **Behavior:**
-- Missing context logs warning and **returns empty results**
+- Missing context logs warning and **returns empty results** — reads come back empty, and UPDATE/DELETE are narrowed to match zero rows
 - Safe but doesn't throw errors
 - Useful during RLS migration
 
@@ -173,7 +174,7 @@ const plugin = rlsPlugin({
 | requireContext | allowUnfilteredQueries | Missing Context Behavior                      | Use Case                    |
 |----------------|------------------------|-----------------------------------------------|-----------------------------|
 | `true` (default) | N/A                  | **Throws `RLSContextError`** (secure)         | Production apps (default)   |
-| `false`        | `false` (default)    | **Returns empty results** (safe)              | RLS migration, defensive    |
+| `false`        | `false` (default)    | **Returns empty results; UPDATE/DELETE match zero rows** (safe) | RLS migration, defensive    |
 | `false`        | `true`               | **Allows unfiltered access** (⚠️ unsafe)      | Background jobs, migrations |
 
 :::danger Security Warning
@@ -349,7 +350,7 @@ deny('all')
 
 ### filter
 
-Add WHERE conditions to SELECT queries. Returns an object with column-value pairs.
+Add WHERE conditions to queries. Returns an object with column-value pairs. Filter predicates are applied to SELECT queries **and to the row scope of UPDATE and DELETE statements** — the policy registry ignores the declared operation when collecting filters, so a `filter('read', ...)` also narrows which rows an UPDATE or DELETE can touch.
 
 :::warning Synchronous Only
 **Filter conditions must be synchronous functions.** Async filter policies are not supported because filters are applied directly to query builders at query construction time. Use `allow()` or `validate()` policies if you need async operations.
@@ -597,6 +598,15 @@ Policies are evaluated differently depending on operation type:
 4. Return transformed query
 ```
 
+**For UPDATE/DELETE statements (`interceptQuery`):**
+
+```
+1. Check bypass conditions (excludeTables, isSystem, bypassRoles)
+2. Get filter policies for table → registry.getFilters(table)
+3. Append each filter's conditions to the statement's WHERE clause
+   → the mutation can only touch rows the context is allowed to see
+```
+
 **For mutations (create/update/delete via `extendRepository`):**
 
 ```
@@ -616,7 +626,7 @@ Policies are evaluated differently depending on operation type:
 
 | Type         | Operations     | Evaluation              | Behavior              |
 | ------------ | -------------- | ----------------------- | --------------------- |
-| **filter**   | SELECT only    | `interceptQuery`        | Adds WHERE conditions |
+| **filter**   | SELECT + UPDATE/DELETE row scope | `interceptQuery`        | Adds WHERE conditions |
 | **deny**     | All mutations  | First in mutation guard | If true → throw       |
 | **validate** | create, update | After deny              | All must be true      |
 | **allow**    | All mutations  | Last                    | ≥1 must be true       |
@@ -850,15 +860,16 @@ The RLS plugin implements row-level security at the **application layer** using 
 2. The executor wraps Kysely with a Proxy that intercepts query methods
 3. RLS plugin's `interceptQuery` hook is called for every query operation
 4. For SELECT queries, filter policies add WHERE conditions
-5. For mutations (INSERT/UPDATE/DELETE), validation happens in `extendRepository`
-6. **Works with both Repository and DAL patterns** via unified Plugin interface
+5. For UPDATE/DELETE statements, filter predicates are appended to the WHERE clause in `interceptQuery` (v0.9), so mutations can only touch rows the context is allowed to see
+6. Value-level mutation policies (`allow`/`deny`/`validate`) remain Repository-only, applied in `extendRepository`
+7. **Works with both Repository and DAL patterns** via unified Plugin interface
 
 ### Query Interception
 
 ```typescript
 // Plugin implementation (simplified)
 interceptQuery(qb, context) {
-  const rlsCtx = rlsContext.getStore()
+  const rlsCtx = rlsContext.getContextOrNull()
 
   if (!rlsCtx && requireContext) {
     throw new RLSContextError()
@@ -884,9 +895,9 @@ interceptQuery(qb, context) {
 **Intercepted operations:**
 
 - `selectFrom` → Automatic filtering via `interceptQuery` (works in both Repository and DAL)
-- `insertInto` → Context available, validation in `extendRepository` (Repository only)
-- `updateTable` → Context available, validation in `extendRepository` (Repository only)
-- `deleteFrom` → Context available, validation in `extendRepository` (Repository only)
+- `insertInto` → Context available; value-level policy checks run in `extendRepository` (Repository only)
+- `updateTable` → Filter predicates appended to WHERE in `interceptQuery` (v0.9); value-level allow/validate policies remain Repository-only
+- `deleteFrom` → Filter predicates appended to WHERE in `interceptQuery` (v0.9); value-level allow/validate policies remain Repository-only
 
 ### getRawDb() for Internal Queries
 
@@ -1528,6 +1539,12 @@ await rlsContext.runAsync(enhancedCtx, async () => {
 
 Control access to individual columns with masking support.
 
+:::caution Standalone API
+Field-level access control is **not wired into `rlsPlugin()`** — queries do not
+mask columns automatically. Create the registry and processor yourself and call
+`maskRows()` on query results manually.
+:::
+
 ```typescript
 import {
   createFieldAccessRegistry,
@@ -1551,7 +1568,11 @@ const fieldSchema = {
 const registry = createFieldAccessRegistry(fieldSchema)
 const processor = createFieldAccessProcessor(registry)
 
-const maskedRows = processor.maskRows('users', rows, { auth })
+// Reads the active RLS context — call inside rlsContext.runAsync(...)
+const masked = await processor.maskRows('users', rows, { includeMetadata: true })
+// Each entry is a MaskedRow wrapper:
+// { data: { ...row with masking applied }, maskedFields: ['ssn'], omittedFields: [] }
+const safeRows = masked.map(m => m.data)
 ```
 
 **Predefined Patterns:**
@@ -1563,6 +1584,12 @@ const maskedRows = processor.maskRows('users', rows, { auth })
 ### Relationship-Based Access Control (ReBAC)
 
 Define access based on relationships using EXISTS subqueries.
+
+:::caution Standalone API
+ReBAC is **not wired into `rlsPlugin()`** — relationship policies are not
+applied to intercepted queries. Create the registry and transformer yourself
+and run queries through `transformSelect()` manually.
+:::
 
 ```typescript
 import {

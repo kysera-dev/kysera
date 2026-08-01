@@ -246,11 +246,11 @@ try {
 } catch (error) {
   if (error instanceof z.ZodError) {
     // Validation failed
-    console.log(error.errors)
+    console.log(error.issues)
     /*
     [
-      { path: ['email'], message: 'Invalid email' },
-      { path: ['name'], message: 'Required' }
+      { code: 'invalid_format', path: ['email'], message: 'Invalid email address' },
+      { code: 'invalid_type', path: ['name'], message: 'Invalid input: expected string, received undefined' }
     ]
     */
   }

@@ -24,10 +24,10 @@ import { TransactionRequiredError } from './errors.js'
  *
  * @example Basic query
  * ```typescript
- * import { createQuery } from '@kysera/dal';
+ * import { createQuery, type DbContext } from '@kysera/dal';
  *
  * const getUserById = createQuery(
- *   (ctx, id: number) =>
+ *   (ctx: DbContext<Database>, id: number) =>
  *     ctx.db
  *       .selectFrom('users')
  *       .select(['id', 'email', 'name'])
@@ -42,13 +42,13 @@ import { TransactionRequiredError } from './errors.js'
  *
  * @example With KyseraExecutor (plugins applied)
  * ```typescript
- * import { createQuery } from '@kysera/dal';
+ * import { createQuery, type DbContext } from '@kysera/dal';
  * import { createExecutor } from '@kysera/executor';
  * import { softDeletePlugin } from '@kysera/soft-delete';
  *
  * const executor = await createExecutor(db, [softDeletePlugin()]);
  *
- * const getUsers = createQuery((ctx) =>
+ * const getUsers = createQuery((ctx: DbContext<Database>) =>
  *   ctx.db.selectFrom('users').selectAll().execute()
  * );
  *
@@ -88,10 +88,10 @@ export function createQuery<DB, TArgs extends readonly unknown[], TResult>(
  *
  * @example
  * ```typescript
- * import { createTransactionalQuery, withTransaction } from '@kysera/dal';
+ * import { createTransactionalQuery, withTransaction, type DbContext } from '@kysera/dal';
  *
  * const transferFunds = createTransactionalQuery(
- *   async (ctx, fromId: number, toId: number, amount: number) => {
+ *   async (ctx: DbContext<Database>, fromId: number, toId: number, amount: number) => {
  *     await ctx.db
  *       .updateTable('accounts')
  *       .set((eb) => ({ balance: eb('balance', '-', amount) }))

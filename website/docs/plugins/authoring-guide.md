@@ -36,10 +36,11 @@ interface Plugin {
   readonly conflictsWith?: readonly string[] // Incompatible plugins
 
   // Lifecycle: Initialize plugin (called once during setup)
-  onInit?<DB>(executor: Kysely<DB>): Promise<void> | void
+  // Receives the RAW Kysely instance — queries here run without interception
+  onInit?<DB>(db: Kysely<DB>): Promise<void> | void
 
   // Query interception: Works in both Repository and DAL patterns
-  // Applied to: selectFrom, insertInto, updateTable, deleteFrom
+  // Applied to: selectFrom, insertInto, updateTable, deleteFrom, replaceInto, mergeInto
   interceptQuery?<QB>(qb: QB, context: QueryBuilderContext): QB
 
   // Repository extension: Repository pattern only
@@ -51,29 +52,34 @@ interface Plugin {
 }
 
 interface QueryBuilderContext {
-  readonly operation: 'select' | 'insert' | 'update' | 'delete'
-  readonly table: string
+  readonly operation: 'select' | 'insert' | 'update' | 'delete' | 'replace' | 'merge'
+  readonly table: string // Base table name (alias and schema stripped)
+  readonly alias?: string // Table alias ('users as u' → 'u')
+  readonly tableExpression?: string // Original expression as written
   readonly schema?: string // Set when withSchema() was called
-  readonly metadata: Record<string, unknown> // For plugin-to-plugin communication
+  readonly metadata: Record<string, unknown> // Plugin communication + app-seeded opt-outs
 }
 ```
 
 **Context Properties:**
 
 - **`schema`**: Set when user calls `executor.withSchema('schema_name')`. Use this to access user-specified schema in multi-tenant applications.
-- **`metadata`**: For plugin-to-plugin communication only. Plugins can write values that other plugins read. Not settable from application code.
+- **`alias` / `tableExpression`**: Qualify column conditions with `context.alias ?? context.table` — once a table is aliased, SQL exposes only the alias as correlation name.
+- **`metadata`**: Plugin-to-plugin communication, and also seedable from application code via `withPluginMetadata(executor, {...})`. Plugins may honor *behavioral* opt-outs from it (row visibility, verbosity), but must NOT honor security bypasses — the channel is reachable by any caller holding the executor.
 
 ### Intercepted Methods
 
 The executor intercepts these Kysely methods for plugin processing:
 
 ```typescript
-// From @kysera/executor/src/types.ts
+// From @kysera/executor/src/executor.ts
 const INTERCEPTED_METHODS = [
   'selectFrom',   // SELECT queries → operation: 'select'
   'insertInto',   // INSERT queries → operation: 'insert'
   'updateTable',  // UPDATE queries → operation: 'update'
-  'deleteFrom'    // DELETE queries → operation: 'delete'
+  'deleteFrom',   // DELETE queries → operation: 'delete'
+  'replaceInto',  // MySQL REPLACE → operation: 'replace'
+  'mergeInto'     // SQL MERGE → operation: 'merge'
 ] as const
 ```
 
@@ -108,10 +114,12 @@ export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
     version: '1.0.0',
     priority: 0, // Default priority
 
-    async onInit(executor) {
+    async onInit(db) {
       logger.info('MyPlugin initialized')
-      // Setup code (e.g., verify tables exist)
-      const result = await executor
+      // Setup code (e.g., verify tables exist).
+      // onInit receives the RAW Kysely instance: queries here run without
+      // plugin interception, so no filters recurse into your own plugin.
+      const result = await db
         .selectFrom('information_schema.tables')
         .where('table_name', '=', 'my_table')
         .executeTakeFirst()
@@ -220,6 +228,8 @@ const myPlugin = (): Plugin => ({
 - `insertInto` → `operation: 'insert'`
 - `updateTable` → `operation: 'update'`
 - `deleteFrom` → `operation: 'delete'`
+- `replaceInto` → `operation: 'replace'`
+- `mergeInto` → `operation: 'merge'`
 
 ### 2. Repository Extension (Recommended for new methods)
 
@@ -436,11 +446,13 @@ export const myPlugin = (): Plugin => ({
   conflictsWith: ['@other/similar-plugin'],
 
   // Priority: Higher runs first (default: 0)
-  // 50: Security plugins (RLS)
-  // 10: Validation plugins
-  // 0: Standard plugins
-  // -10: Logging/audit plugins
-  priority: 10
+  // 1100: Schema/context plugins
+  // 1000: Security plugins (RLS)
+  //  500: Filter plugins (soft-delete)
+  //  100: Transform plugins (timestamps)
+  //   50: Audit plugins
+  //    0: Standard plugins (default)
+  priority: 100
 })
 ```
 

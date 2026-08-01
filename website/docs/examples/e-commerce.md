@@ -466,6 +466,9 @@ This would provide a complete audit trail of all inventory changes for reconcili
 
 ## Running the Example
 
+The full runnable application lives in the repository at
+[examples/e-commerce](https://github.com/kysera-dev/kysera/tree/main/examples/e-commerce).
+
 To run this example:
 
 ```bash
@@ -502,7 +505,10 @@ This example uses the following packages:
 examples/e-commerce/src/
 ├── db/
 │   ├── schema.ts          # TypeScript schema types
-│   └── connection.ts       # Database connection
+│   ├── connection.ts      # Database connection
+│   ├── migrations.ts      # Migration definitions
+│   ├── migrate.ts         # Migration runner
+│   └── seed.ts            # Seed data
 ├── repositories/
 │   ├── product.repository.ts   # Product CRUD + stock management
 │   ├── cart.repository.ts      # Shopping cart operations

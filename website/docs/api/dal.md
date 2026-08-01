@@ -48,14 +48,14 @@ npm install @kysera/soft-delete @kysera/rls @kysera/audit
 
 ```typescript
 import { Kysely } from 'kysely'
-import { createQuery, withTransaction } from '@kysera/dal'
+import { createQuery, withTransaction, type DbContext } from '@kysera/dal'
 
 // Create query functions
-const getUserById = createQuery((ctx, id: number) =>
+const getUserById = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('users').select(['id', 'email', 'name']).where('id', '=', id).executeTakeFirst()
 )
 
-const createUser = createQuery((ctx, data: { email: string; name: string }) =>
+const createUser = createQuery((ctx: DbContext<Database>, data: { email: string; name: string }) =>
   ctx.db.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
 )
 
@@ -74,13 +74,13 @@ const result = await withTransaction(db, async ctx => {
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { rlsPlugin } from '@kysera/rls'
-import { createQuery, withTransaction } from '@kysera/dal'
+import { createQuery, withTransaction, type DbContext } from '@kysera/dal'
 
 // Create executor with plugins
 const executor = await createExecutor(db, [softDeletePlugin(), rlsPlugin({ schema: rlsSchema })])
 
 // Define query functions - plugins automatically applied
-const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 
 // Soft-deleted records automatically filtered + RLS policies applied
 const users = await getUsers(executor)
@@ -100,25 +100,25 @@ const result = await withTransaction(executor, async ctx => {
 Query functions are the building blocks of the Functional DAL. They accept a database context and arguments, returning a Promise with the result:
 
 ```typescript
-import { createQuery } from '@kysera/dal'
+import { createQuery, type DbContext } from '@kysera/dal'
 
 // Select query
-const findUserByEmail = createQuery((ctx, email: string) =>
+const findUserByEmail = createQuery((ctx: DbContext<Database>, email: string) =>
   ctx.db.selectFrom('users').selectAll().where('email', '=', email).executeTakeFirst()
 )
 
 // Insert query
-const insertPost = createQuery((ctx, data: { title: string; userId: number }) =>
+const insertPost = createQuery((ctx: DbContext<Database>, data: { title: string; userId: number }) =>
   ctx.db.insertInto('posts').values(data).returningAll().executeTakeFirstOrThrow()
 )
 
 // Update query
-const updateUserName = createQuery((ctx, id: number, name: string) =>
+const updateUserName = createQuery((ctx: DbContext<Database>, id: number, name: string) =>
   ctx.db.updateTable('users').set({ name }).where('id', '=', id).returningAll().executeTakeFirst()
 )
 
 // Delete query
-const deletePost = createQuery((ctx, id: number) =>
+const deletePost = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.deleteFrom('posts').where('id', '=', id).executeTakeFirst()
 )
 ```
@@ -150,7 +150,7 @@ const users = await withContext(db, async ctx => {
 })
 
 // Check if in transaction
-const myQuery = createQuery((ctx, id: number) => {
+const myQuery = createQuery((ctx: DbContext<Database>, id: number) => {
   if (isInTransaction(ctx)) {
     console.log('Running inside transaction')
   }
@@ -163,7 +163,7 @@ const myQuery = createQuery((ctx, id: number) => {
 Execute multiple queries atomically within a transaction:
 
 ```typescript
-import { withTransaction, createTransactionalQuery } from '@kysera/dal'
+import { withTransaction, createTransactionalQuery, type DbContext } from '@kysera/dal'
 
 // Regular transaction
 const result = await withTransaction(db, async ctx => {
@@ -174,7 +174,7 @@ const result = await withTransaction(db, async ctx => {
 
 // Query that REQUIRES a transaction
 const transferFunds = createTransactionalQuery(
-  async (ctx, fromId: number, toId: number, amount: number) => {
+  async (ctx: DbContext<Database>, fromId: number, toId: number, amount: number) => {
     await ctx.db
       .updateTable('accounts')
       .set(eb => ({ balance: eb('balance', '-', amount) }))
@@ -430,7 +430,7 @@ function isInTransaction<DB>(ctx: DbContext<DB>): boolean
 **Example:**
 
 ```typescript
-const myQuery = createQuery((ctx, id: number) => {
+const myQuery = createQuery((ctx: DbContext<Database>, id: number) => {
   if (isInTransaction(ctx)) {
     console.log('Running inside transaction')
   }
@@ -455,9 +455,9 @@ Query functions are the core building blocks of Functional DAL. They receive a d
 **Example:**
 
 ```typescript
-import { createQuery } from '@kysera/dal'
+import { createQuery, type DbContext } from '@kysera/dal'
 
-const getUserById = createQuery((ctx, id: number) =>
+const getUserById = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('users').select(['id', 'email', 'name']).where('id', '=', id).executeTakeFirst()
 )
 
@@ -481,10 +481,10 @@ Throws an error if called outside a transaction context.
 **Example:**
 
 ```typescript
-import { createTransactionalQuery, withTransaction } from '@kysera/dal'
+import { createTransactionalQuery, withTransaction, type DbContext } from '@kysera/dal'
 
 const transferFunds = createTransactionalQuery(
-  async (ctx, fromId: number, toId: number, amount: number) => {
+  async (ctx: DbContext<Database>, fromId: number, toId: number, amount: number) => {
     await ctx.db
       .updateTable('accounts')
       .set(eb => ({ balance: eb('balance', '-', amount) }))
@@ -610,13 +610,13 @@ function compose<DB, TArgs extends readonly unknown[], TFirst, TResult>(
 **Example:**
 
 ```typescript
-import { createQuery, compose } from '@kysera/dal'
+import { createQuery, compose, type DbContext } from '@kysera/dal'
 
-const getUserById = createQuery((ctx, id: number) =>
+const getUserById = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirstOrThrow()
 )
 
-const getPostsByUserId = createQuery((ctx, userId: number) =>
+const getPostsByUserId = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db.selectFrom('posts').selectAll().where('user_id', '=', userId).execute()
 )
 
@@ -651,9 +651,9 @@ function chain<DB, TArgs extends readonly unknown[], T1, T2, T3, T4>(
 **Example:**
 
 ```typescript
-import { createQuery, chain } from '@kysera/dal'
+import { createQuery, chain, type DbContext } from '@kysera/dal'
 
-const getUser = createQuery((ctx, id: number) =>
+const getUser = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirstOrThrow()
 )
 
@@ -685,17 +685,17 @@ function parallel<
 **Example:**
 
 ```typescript
-import { createQuery, parallel } from '@kysera/dal'
+import { createQuery, parallel, type DbContext } from '@kysera/dal'
 
-const getUserById = createQuery((ctx, id: number) =>
+const getUserById = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
 )
 
-const getUserStats = createQuery((ctx, id: number) =>
+const getUserStats = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('user_stats').selectAll().where('user_id', '=', id).executeTakeFirst()
 )
 
-const getNotifications = createQuery((ctx, id: number) =>
+const getNotifications = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('notifications').selectAll().where('user_id', '=', id).execute()
 )
 
@@ -726,7 +726,7 @@ function conditional<DB, TArgs extends readonly unknown[], TResult, TFallback = 
 ```typescript
 import { conditional } from '@kysera/dal'
 
-const getPremiumFeatures = createQuery((ctx, userId: number) =>
+const getPremiumFeatures = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db.selectFrom('premium_features').selectAll().where('user_id', '=', userId).execute()
 )
 
@@ -753,7 +753,7 @@ function mapResult<DB, TArgs extends readonly unknown[], TItem, TResult>(
 ```typescript
 import { mapResult } from '@kysera/dal'
 
-const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 
 const getUserNames = mapResult(getUsers, user => user.name)
 
@@ -913,9 +913,9 @@ class TransactionRequiredError extends Error {
 **Example:**
 
 ```typescript
-import { createTransactionalQuery, withTransaction, TransactionRequiredError } from '@kysera/dal'
+import { createTransactionalQuery, withTransaction, TransactionRequiredError, type DbContext } from '@kysera/dal'
 
-const transferFunds = createTransactionalQuery(async (ctx, from, to, amount) => {
+const transferFunds = createTransactionalQuery(async (ctx: DbContext<Database>, from, to, amount) => {
   // ... transfer logic
 })
 
@@ -1099,13 +1099,13 @@ To use plugins with DAL, create a `KyseraExecutor` with your plugins and pass it
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { rlsPlugin } from '@kysera/rls'
-import { createQuery } from '@kysera/dal'
+import { createQuery, type DbContext } from '@kysera/dal'
 
 // Create plugin-aware executor
 const executor = await createExecutor(db, [softDeletePlugin(), rlsPlugin({ schema: rlsSchema })])
 
 // Define DAL query
-const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 
 // Plugins automatically applied via interceptQuery!
 const users = await getUsers(executor)
@@ -1139,7 +1139,7 @@ DAL gets automatic filtering and policies, but not the convenience methods. This
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { rlsPlugin } from '@kysera/rls'
-import { createQuery, withTransaction } from '@kysera/dal'
+import { createQuery, withTransaction, type DbContext } from '@kysera/dal'
 
 // Create executor with multiple plugins
 const executor = await createExecutor(db, [
@@ -1148,7 +1148,7 @@ const executor = await createExecutor(db, [
 ])
 
 // Define query functions - same as without plugins!
-const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 
 // Queries automatically have all plugin interceptors applied
 const users = await getUsers(executor)
@@ -1192,7 +1192,7 @@ If you don't use `KyseraExecutor`, you can still implement plugin-like behavior 
 #### Soft Delete in DAL
 
 ```typescript
-const getActiveUsers = createQuery(ctx =>
+const getActiveUsers = createQuery((ctx: DbContext<Database>) =>
   ctx.db
     .selectFrom('users')
     .selectAll()
@@ -1200,7 +1200,7 @@ const getActiveUsers = createQuery(ctx =>
     .execute()
 )
 
-const softDeleteUser = createQuery((ctx, id: number) =>
+const softDeleteUser = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db
     .updateTable('users')
     .set({ deleted_at: new Date().toISOString() })
@@ -1212,7 +1212,7 @@ const softDeleteUser = createQuery((ctx, id: number) =>
 #### Timestamps in DAL
 
 ```typescript
-const createUser = createQuery((ctx, data: CreateUserInput) =>
+const createUser = createQuery((ctx: DbContext<Database>, data: CreateUserInput) =>
   ctx.db
     .insertInto('users')
     .values({
@@ -1232,7 +1232,7 @@ RLS context (`rlsContext`) can be accessed in DAL, but you must apply filters ma
 ```typescript
 import { rlsContext } from '@kysera/rls'
 
-const getUsersByTenant = createQuery(ctx => {
+const getUsersByTenant = createQuery((ctx: DbContext<Database>) => {
   const rlsCtx = rlsContext.getContextOrNull()
 
   let query = ctx.db.selectFrom('users').selectAll()
@@ -1278,7 +1278,7 @@ function excludeDeleted<T>(
 }
 
 // Usage
-const getUsers = createQuery(ctx =>
+const getUsers = createQuery((ctx: DbContext<Database>) =>
   excludeDeleted(
     withTenantFilter(ctx.db.selectFrom('users').selectAll(), 'users'),
     'users'
@@ -1313,7 +1313,7 @@ Use a single `KyseraExecutor` for both DAL queries and Repository patterns. This
 import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
-import { withTransaction, createQuery } from '@kysera/dal'
+import { withTransaction, createQuery, type DbContext } from '@kysera/dal'
 
 // Create executor with plugins
 const executor = await createExecutor(db, [softDeletePlugin()])
@@ -1322,7 +1322,7 @@ const executor = await createExecutor(db, [softDeletePlugin()])
 const orm = await createORM(db, [softDeletePlugin()])
 
 // Define DAL queries - use executor for plugin support
-const getUserStats = createQuery((ctx, userId: number) =>
+const getUserStats = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db.selectFrom('user_stats').selectAll().where('user_id', '=', userId).executeTakeFirst()
 )
 
@@ -1346,13 +1346,13 @@ Use the repository manager's transaction context directly for both Repository an
 ```typescript
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
-import { createQuery } from '@kysera/dal'
+import { createQuery, type DbContext } from '@kysera/dal'
 
 // Create repository manager with plugins
 const orm = await createORM(db, [softDeletePlugin()])
 
 // Define DAL query functions
-const getUserStats = createQuery((ctx, userId: number) =>
+const getUserStats = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db.selectFrom('user_stats').selectAll().where('user_id', '=', userId).executeTakeFirst()
 )
 
@@ -1396,7 +1396,7 @@ import { Pool } from 'pg'
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { rlsPlugin } from '@kysera/rls'
-import { createQuery, withTransaction, parallel, compose } from '@kysera/dal'
+import { createQuery, withTransaction, parallel, compose, type DbContext } from '@kysera/dal'
 
 // Database schema
 interface Database {
@@ -1444,19 +1444,19 @@ const executor = await createExecutor(db, [
 ])
 
 // Define query functions
-const getUserById = createQuery((ctx, id: number) =>
+const getUserById = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
 )
 
-const getPostsByUserId = createQuery((ctx, userId: number) =>
+const getPostsByUserId = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db.selectFrom('posts').selectAll().where('user_id', '=', userId).execute()
 )
 
-const getUserStats = createQuery((ctx, userId: number) =>
+const getUserStats = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db.selectFrom('user_stats').selectAll().where('user_id', '=', userId).executeTakeFirst()
 )
 
-const createUser = createQuery((ctx, data: { email: string; name: string; tenant_id: number }) =>
+const createUser = createQuery((ctx: DbContext<Database>, data: { email: string; name: string; tenant_id: number }) =>
   ctx.db
     .insertInto('users')
     .values({

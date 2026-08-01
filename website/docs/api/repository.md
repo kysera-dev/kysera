@@ -111,6 +111,15 @@ export { PluginValidationError, validatePlugins, resolvePluginOrder } from '@kys
 export * from './types'
 ```
 
+:::note Operator errors
+`InvalidOperatorError` is thrown for unknown operator names (e.g. `$regex`),
+while `InvalidOperatorValueError` is thrown when a valid operator receives a
+malformed value (`$in` without an array, `$between` without a two-element
+tuple, a string operator with a non-string, `$isNull` with a non-boolean).
+Both fail loudly instead of silently dropping the filter, which would return
+the whole table. See [Query Operators](/docs/api/repository/operators#error-handling).
+:::
+
 ## createRepositoryFactory
 
 Create a typed repository factory that provides methods for creating individual repositories.
@@ -389,7 +398,7 @@ interface FindOptions<Entity, Cols extends keyof Entity = keyof Entity> {
 | `$in` | Value in array | `{ status: { $in: ['active', 'pending'] } }` |
 | `$nin` | Value not in array | `{ role: { $nin: ['admin', 'super'] } }` |
 | `$like` | SQL LIKE pattern | `{ email: { $like: '%@example.com' } }` |
-| `$ilike` | Case-insensitive LIKE (PostgreSQL) | `{ name: { $ilike: '%john%' } }` |
+| `$ilike` | Case-insensitive LIKE (all dialects) | `{ name: { $ilike: '%john%' } }` |
 | `$contains` | Contains substring | `{ title: { $contains: 'hello' } }` |
 | `$startsWith` | Starts with | `{ code: { $startsWith: 'PRE_' } }` |
 | `$endsWith` | Ends with | `{ filename: { $endsWith: '.pdf' } }` |
@@ -398,6 +407,15 @@ interface FindOptions<Entity, Cols extends keyof Entity = keyof Entity> {
 | `$isNotNull` | Is NOT NULL | `{ email: { $isNotNull: true } }` |
 | `$or` | Logical OR | `{ $or: [{ status: 'a' }, { status: 'b' }] }` |
 | `$and` | Logical AND | `{ $and: [{ age: { $gte: 18 } }, { age: { $lte: 65 } }] }` |
+
+:::info MongoDB NULL semantics
+`$ne` and `$nin` follow MongoDB semantics: rows where the column is `NULL`
+**match**. Kysera compiles them to `(col <> ? OR col IS NULL)` and
+`(col NOT IN (...) OR col IS NULL)` — plain SQL `<>` / `NOT IN` would silently
+drop NULL rows. To also exclude NULLs, add `null` to the list
+(`$nin: [x, null]`) or combine with `$isNotNull: true`. Symmetrically,
+`$in: [x, null]` matches NULL rows, and `$ne: null` compiles to `IS NOT NULL`.
+:::
 
 **Examples:**
 

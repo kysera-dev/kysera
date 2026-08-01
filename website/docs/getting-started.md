@@ -13,8 +13,8 @@ Get up and running with Kysera in 5 minutes.
 
 ### Prerequisites
 
-- **Runtime**: Node.js >=20.0.0, Bun >=1.0.0, or Deno (experimental)
-- **TypeScript**: ^6.0.2 (recommended)
+- **Runtime**: Node.js >=22.0.0, Bun >=1.0.0, or Deno (experimental)
+- **TypeScript**: ^6.0.3 (recommended)
 - **Module System**: ESM-only (no CommonJS)
 
 ### Step 1: Install Core Dependencies
@@ -337,7 +337,7 @@ Some plugins add methods to repositories:
 await userRepo.softDelete(userId)        // Sets deleted_at timestamp
 await userRepo.restore(userId)           // Clears deleted_at
 await userRepo.findAllWithDeleted()      // Include soft-deleted records
-await userRepo.findDeletedOnly()         // Only soft-deleted records
+await userRepo.findDeleted()             // Only soft-deleted records
 
 // Audit methods (Repository pattern only)
 const history = await userRepo.getAuditHistory(userId)
@@ -381,7 +381,7 @@ try {
 } catch (error) {
   if (error instanceof ZodError) {
     // Validation error from Zod schema
-    console.error('Invalid input:', error.errors)
+    console.error('Invalid input:', error.issues)
   } else if (error instanceof UniqueConstraintError) {
     console.error('Email already exists:', error.constraint)
   } else if (error instanceof ForeignKeyError) {

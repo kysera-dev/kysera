@@ -584,3 +584,30 @@ await rlsContext.runAsync(
   }
 )
 ```
+
+## Running the Example
+
+The full runnable application lives in the repository at
+[examples/multi-tenant-saas](https://github.com/kysera-dev/kysera/tree/main/examples/multi-tenant-saas).
+
+```bash
+# Clone the repository
+git clone https://github.com/kysera-dev/kysera.git
+cd kysera/examples/multi-tenant-saas
+
+# Install dependencies
+pnpm install
+
+# Set up PostgreSQL database
+createdb multitenant_example
+export DATABASE_URL="postgresql://localhost/multitenant_example"
+
+# Run migrations and seed test data (2 tenants with users, projects, tasks)
+pnpm migrate
+pnpm seed
+
+# Run the example
+pnpm dev
+```
+
+See the app's [README](https://github.com/kysera-dev/kysera/tree/main/examples/multi-tenant-saas#readme) for the full walkthrough.

@@ -19,6 +19,9 @@ npm install @kysera/migrations zod
 **Dependencies:** @kysera/core
 **Peer Dependencies:** zod (required for schema validation)
 
+The Zod option schemas are also available via the `@kysera/migrations/schemas`
+subpath export for tooling that validates migration configuration.
+
 ## Creating Migrations
 
 ### createMigration
@@ -135,8 +138,17 @@ interface MigrationRunnerOptions {
   useTransactions?: boolean
   stopOnError?: boolean
   verbose?: boolean
+  /** Serialize concurrent runners via a database advisory lock (default: true) */
+  advisoryLock?: boolean
+  /** How long to wait for the advisory lock before failing (default: 60000) */
+  lockTimeoutMs?: number
 }
 ```
+
+With `advisoryLock` enabled (the default), concurrent `up()` runs from several
+application instances are serialized through a database advisory lock; a
+runner that cannot acquire the lock within `lockTimeoutMs` throws
+`MigrationLockError`. The lock is skipped for dry runs.
 
 ### Runner Methods
 
@@ -309,12 +321,17 @@ const runner = await createMigrationRunnerWithPlugins(db, migrations, {
 ## Error Handling
 
 ```typescript
-import { MigrationError } from '@kysera/migrations'
+import { MigrationError, MigrationLockError } from '@kysera/migrations'
 
 try {
   await runner.up()
 } catch (error) {
-  if (error instanceof MigrationError) {
+  if (error instanceof MigrationLockError) {
+    // Another instance holds the migration advisory lock and did not release
+    // it within lockTimeoutMs. Increase lockTimeoutMs, or set
+    // advisoryLock: false to bypass (unsafe with concurrent runners).
+    console.error(error.message)
+  } else if (error instanceof MigrationError) {
     console.error(`Migration ${error.migrationName} failed:`, error.cause)
     console.error(`Operation: ${error.operation}`)
   }

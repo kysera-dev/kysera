@@ -45,6 +45,42 @@ describe('User Repository', () => {
 })
 ```
 
+### Savepoints for Nested Transactions
+
+When the code under test opens its own nested transactions, use
+`testWithSavepoints` — it creates a savepoint before the test body and rolls
+back to it afterwards (an optional third `logger` argument reports unexpected
+rollback errors):
+
+```typescript
+import { testWithSavepoints } from '@kysera/testing'
+
+it('handles nested operations', async () => {
+  await testWithSavepoints(db, async (trx) => {
+    await createUserWithProfile(trx, userData)
+
+    const user = await trx.selectFrom('users').selectAll().executeTakeFirst()
+    expect(user).toBeDefined()
+  })
+})
+```
+
+### Testing Under a Specific Isolation Level
+
+`testWithIsolation` runs the rollback-transaction with an explicit isolation
+level (`'read uncommitted'`, `'read committed'`, `'repeatable read'`,
+`'serializable'`), using kysely's dialect-aware `setIsolationLevel()`:
+
+```typescript
+import { testWithIsolation } from '@kysera/testing'
+
+it('detects write skew under serializable', async () => {
+  await testWithIsolation(db, 'serializable', async (trx) => {
+    // Test behavior under serializable isolation
+  })
+})
+```
+
 ## Test Data Factories
 
 Create consistent test data with factories:
@@ -274,9 +310,11 @@ beforeEach(async () => {
 
 ```typescript
 afterAll(async () => {
-  await cleanDatabase(db, 'truncate')
+  await cleanDatabase(db, 'truncate', ['posts', 'users'])
 })
 ```
+
+Both the `'delete'` and `'truncate'` strategies require the table list.
 
 ## Integration Testing
 
@@ -308,7 +346,7 @@ describe('Integration', () => {
   })
 
   afterAll(async () => {
-    await cleanDatabase(db, 'truncate')
+    await cleanDatabase(db, 'truncate', ['posts', 'users'])
   })
 
   it('should handle complex query', async () => {

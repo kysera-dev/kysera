@@ -402,6 +402,9 @@ main().catch(error => {
 
 ## Running the Example
 
+The full runnable application lives in the repository at
+[examples/blog-app](https://github.com/kysera-dev/kysera/tree/main/examples/blog-app).
+
 ```bash
 # Install dependencies
 pnpm install

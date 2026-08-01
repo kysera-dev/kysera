@@ -12,10 +12,10 @@
  *
  * @example Basic usage
  * ```typescript
- * import { createQuery, withTransaction, parallel } from "@kysera/dal";
+ * import { createQuery, withTransaction, parallel, type DbContext } from "@kysera/dal";
  *
- * // Define query functions
- * const getUserById = createQuery((ctx, id: number) =>
+ * // Define query functions (annotate ctx so DB is known to the query body)
+ * const getUserById = createQuery((ctx: DbContext<Database>, id: number) =>
  *   ctx.db
  *     .selectFrom("users")
  *     .select(["id", "email", "name"])
@@ -23,7 +23,7 @@
  *     .executeTakeFirst()
  * );
  *
- * const createUser = createQuery((ctx, data: { email: string; name: string }) =>
+ * const createUser = createQuery((ctx: DbContext<Database>, data: { email: string; name: string }) =>
  *   ctx.db
  *     .insertInto("users")
  *     .values(data)
@@ -45,11 +45,11 @@
  * ```typescript
  * import { createExecutor } from "@kysera/executor";
  * import { softDeletePlugin } from "@kysera/soft-delete";
- * import { createQuery, withTransaction } from "@kysera/dal";
+ * import { createQuery, withTransaction, type DbContext } from "@kysera/dal";
  *
  * const executor = await createExecutor(db, [softDeletePlugin()]);
  *
- * const getUsers = createQuery((ctx) =>
+ * const getUsers = createQuery((ctx: DbContext<Database>) =>
  *   ctx.db.selectFrom("users").selectAll().execute()
  * );
  *

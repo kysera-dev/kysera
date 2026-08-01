@@ -63,6 +63,15 @@ interface FindOptions<Entity, Cols extends keyof Entity = keyof Entity> {
 | `$lt` | `<` | Less than |
 | `$lte` | `<=` | Less than or equal |
 
+:::info MongoDB NULL semantics
+`$ne` and `$nin` follow MongoDB semantics: rows where the column is `NULL` **match**.
+Kysera compiles `$ne` to `(col <> ? OR col IS NULL)` and `$nin` to
+`(col NOT IN (...) OR col IS NULL)` — plain SQL `<>` / `NOT IN` would silently drop
+NULL rows. To also exclude NULLs, add `null` to the list (`$nin: [x, null]`) or
+combine with `$isNotNull: true`. Symmetrically, `$in: [x, null]` matches NULL rows,
+and `$ne: null` compiles to `IS NOT NULL`.
+:::
+
 ```typescript
 // Explicit equality
 const user = await repo.find({ where: { id: { $eq: 5 } } })
@@ -122,7 +131,7 @@ const allMatch = await repo.find({
 | Operator | SQL Equivalent | Description |
 |----------|---------------|-------------|
 | `$like` | `LIKE` | SQL LIKE pattern (use `%` for wildcards) |
-| `$ilike` | `ILIKE` | Case-insensitive LIKE (PostgreSQL only) |
+| `$ilike` | `LOWER(col) LIKE LOWER(?)` | Case-insensitive LIKE (all dialects) |
 | `$contains` | `LIKE '%...%' ESCAPE '\'` | Contains substring (auto-escaped) |
 | `$startsWith` | `LIKE '...%' ESCAPE '\'` | Starts with value (auto-escaped) |
 | `$endsWith` | `LIKE '%...' ESCAPE '\'` | Ends with value (auto-escaped) |
@@ -143,7 +152,7 @@ const gmailUsers = await repo.find({
   }
 })
 
-// Case-insensitive search (PostgreSQL only, no escaping)
+// Case-insensitive search (all dialects, no escaping)
 const johns = await repo.find({
   where: {
     name: { $ilike: '%john%' }
@@ -518,7 +527,7 @@ const { items, total } = await repo.findAndCount({
 | `$in` | ✓ | ✓ | ✓ | ✓ |
 | `$nin` | ✓ | ✓ | ✓ | ✓ |
 | `$like` | ✓ | ✓ | ✓ | ✓ |
-| `$ilike` | ✓ | ✗ | ✗ | ✗ |
+| `$ilike` | ✓ | ✓ | ✓ | ✓ |
 | `$contains` | ✓ | ✓ | ✓ | ✓ |
 | `$startsWith` | ✓ | ✓ | ✓ | ✓ |
 | `$endsWith` | ✓ | ✓ | ✓ | ✓ |
@@ -528,8 +537,12 @@ const { items, total } = await repo.findAndCount({
 | `$or` | ✓ | ✓ | ✓ | ✓ |
 | `$and` | ✓ | ✓ | ✓ | ✓ |
 
-:::warning PostgreSQL Only
-The `$ilike` operator (case-insensitive LIKE) is only supported in PostgreSQL. For other databases, use `$like` with appropriate case handling in your application logic.
+:::info Portable case-insensitive matching
+The `$ilike` operator works on every supported dialect: Kysera compiles it to
+`LOWER(col) LIKE LOWER(?)` rather than relying on PostgreSQL's native `ILIKE`.
+If you specifically need native `ILIKE` (for example, to hit a PostgreSQL
+trigram index), drop down to the DAL or raw Kysely and write that condition
+yourself.
 :::
 
 ## Type Definitions
@@ -615,6 +628,36 @@ try {
   }
 }
 ```
+
+### InvalidOperatorValueError
+
+Thrown when a valid operator receives a malformed value:
+
+- `$in` / `$nin` — value is not an array
+- `$like`, `$ilike`, `$contains`, `$startsWith`, `$endsWith` — value is not a string
+- `$isNull` / `$isNotNull` — value is not a boolean
+- `$between` — value is not a two-element tuple
+
+```typescript
+import { InvalidOperatorValueError } from '@kysera/repository'
+
+try {
+  await repo.find({
+    where: {
+      age: { $between: [18] }  // Malformed: needs [min, max]
+    }
+  })
+} catch (error) {
+  if (error instanceof InvalidOperatorValueError) {
+    console.log(error.operator)  // '$between'
+    console.log(error.field)     // 'age'
+  }
+}
+```
+
+Malformed values fail loudly by design: silently dropping the filter (the old
+behavior) would turn a typo into an unfiltered query that returns the whole
+table — a data-exposure hazard.
 
 ### Validation Helpers
 

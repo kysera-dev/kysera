@@ -305,7 +305,7 @@ try {
   // This will be a ZodError (or error from your validation library)
   // Not a Kysera ValidationError class
   if (error instanceof z.ZodError) {
-    console.log(error.errors)
+    console.log(error.issues)
   }
 }
 ```

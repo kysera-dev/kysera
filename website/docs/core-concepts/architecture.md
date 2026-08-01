@@ -241,7 +241,9 @@ Modify queries before execution through the executor:
   name: 'soft-delete',
   interceptQuery(qb, context) {
     if (context.operation === 'select') {
-      return qb.where('deleted_at', 'is', null)
+      // Qualify with the alias when the table reference has one
+      // ('users as u' exposes only 'u' as correlation name)
+      return qb.where(`${context.alias ?? context.table}.deleted_at`, 'is', null)
     }
     return qb
   }

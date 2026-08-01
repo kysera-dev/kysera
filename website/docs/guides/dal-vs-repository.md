@@ -76,7 +76,7 @@ await userRepo.restore(1)
 The Functional DAL provides **composable query functions** with automatic type inference:
 
 ```typescript
-import { createQuery, withTransaction, createContext } from '@kysera/dal'
+import { createQuery, withTransaction, createContext, type DbContext } from '@kysera/dal'
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
@@ -84,11 +84,11 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Define queries as functions
-const getUserById = createQuery((ctx, id: number) =>
+const getUserById = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
 )
 
-const getPostsByUserId = createQuery((ctx, userId: number) =>
+const getPostsByUserId = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db.selectFrom('posts').selectAll().where('user_id', '=', userId).execute()
 )
 
@@ -100,7 +100,7 @@ const ctx = createContext(executor)
 const user2 = await getUserById(ctx, 2)
 
 // Compose queries
-const getUserWithPosts = createQuery(async (ctx, id: number) => {
+const getUserWithPosts = createQuery(async (ctx: DbContext<Database>, id: number) => {
   const user = await getUserById(ctx, id)
   if (!user) return null
   const posts = await getPostsByUserId(ctx, user.id)
@@ -236,7 +236,7 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 const executor = await createExecutor(db, [softDeletePlugin()])
 
 // DAL query receives the executor
-const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 
 // ctx.db is KyseraExecutor, which intercepts selectFrom() via Proxy
 await getUsers(executor)
@@ -320,20 +320,20 @@ await userRepo.findAllWithDeleted()
 
 ```typescript
 import { createExecutor } from '@kysera/executor'
-import { createQuery } from '@kysera/dal'
+import { createQuery, type DbContext } from '@kysera/dal'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
 // Create executor with soft-delete plugin
 const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Define query function
-const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 
 // Pass executor directly - soft-deleted records filtered automatically!
 const users = await getUsers(executor)
 
 // Must implement soft delete manually (no extension methods)
-const softDeleteUser = createQuery((ctx, id: number) =>
+const softDeleteUser = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db
     .updateTable('users')
     .set({ deleted_at: new Date().toISOString() })
@@ -347,10 +347,10 @@ await softDeleteUser(executor, 1)
 **DAL without createExecutor (manual filtering):**
 
 ```typescript
-import { createQuery } from '@kysera/dal'
+import { createQuery, type DbContext } from '@kysera/dal'
 
 // Must add filter manually - no plugin interception
-const getActiveUsers = createQuery(ctx =>
+const getActiveUsers = createQuery((ctx: DbContext<Database>) =>
   ctx.db
     .selectFrom('users')
     .selectAll()
@@ -359,7 +359,7 @@ const getActiveUsers = createQuery(ctx =>
 )
 
 // Must implement soft delete manually
-const softDeleteUser = createQuery((ctx, id: number) =>
+const softDeleteUser = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db
     .updateTable('users')
     .set({ deleted_at: new Date().toISOString() })
@@ -408,7 +408,7 @@ RLS filtering works automatically with `createExecutor`:
 
 ```typescript
 import { createExecutor } from '@kysera/executor'
-import { createQuery } from '@kysera/dal'
+import { createQuery, type DbContext } from '@kysera/dal'
 import { rlsPlugin, defineRLSSchema, filter, rlsContext } from '@kysera/rls'
 
 const rlsSchema = defineRLSSchema<Database>({
@@ -420,7 +420,7 @@ const rlsSchema = defineRLSSchema<Database>({
 // Create executor with RLS plugin
 const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })])
 
-const getPosts = createQuery(ctx => ctx.db.selectFrom('posts').selectAll().execute())
+const getPosts = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('posts').selectAll().execute())
 
 await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: ['user'] } }, async () => {
   // Automatically filtered by tenant_id via interceptQuery
@@ -433,10 +433,10 @@ await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: ['user']
 Without `createExecutor`, RLS context is available but filtering is manual:
 
 ```typescript
-import { createQuery } from '@kysera/dal'
+import { createQuery, type DbContext } from '@kysera/dal'
 import { rlsContext } from '@kysera/rls'
 
-const getPostsByTenant = createQuery(ctx => {
+const getPostsByTenant = createQuery((ctx: DbContext<Database>) => {
   const rlsCtx = rlsContext.getContextOrNull()
 
   let query = ctx.db.selectFrom('posts').selectAll()
@@ -492,7 +492,7 @@ await db.transaction().execute(async (trx) => {
 ### DAL Transactions
 
 ```typescript
-import { withTransaction, createContext, createQuery } from '@kysera/dal'
+import { withTransaction, createContext, createQuery, type DbContext } from '@kysera/dal'
 import { createExecutor } from '@kysera/executor'
 
 // Using withTransaction with executor (plugins propagated)
@@ -505,7 +505,7 @@ const result = await withTransaction(executor, async ctx => {
 })
 
 // Transactional queries (throw if not in transaction)
-const transferFunds = createTransactionalQuery(async (ctx, from, to, amount) => {
+const transferFunds = createTransactionalQuery(async (ctx: DbContext<Database>, from, to, amount) => {
   await debit(ctx, from, amount)
   await credit(ctx, to, amount)
 })
@@ -519,7 +519,7 @@ You can use both patterns in the same application with the **CQRS-lite** pattern
 
 ```typescript
 import { createORM } from '@kysera/repository'
-import { createQuery } from '@kysera/dal'
+import { createQuery, type DbContext } from '@kysera/dal'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { sql } from 'kysely'
 
@@ -530,7 +530,7 @@ const orm = await createORM(db, [softDeletePlugin()])
 const userRepo = orm.createRepository(createUserRepository)
 
 // DAL for complex reads (analytics, reports)
-const getAnalytics = createQuery((ctx, userId: number) =>
+const getAnalytics = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db
     .selectFrom('events')
     .select([sql<number>`count(*)`.as('total'), sql<number>`count(distinct date)`.as('activeDays')])
@@ -601,11 +601,11 @@ const user = await userRepo.findById(1)
 const users = await userRepo.find({ where: { status: 'active' } })
 
 // After (DAL)
-const getUserById = createQuery((ctx, id: number) =>
+const getUserById = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
 )
 
-const getActiveUsers = createQuery(ctx =>
+const getActiveUsers = createQuery((ctx: DbContext<Database>) =>
   ctx.db.selectFrom('users').selectAll().where('status', '=', 'active').execute()
 )
 
@@ -617,7 +617,7 @@ const users = await getActiveUsers(db)
 
 ```typescript
 // Before (DAL)
-const createUser = createQuery((ctx, data: CreateUserInput) =>
+const createUser = createQuery((ctx: DbContext<Database>, data: CreateUserInput) =>
   ctx.db.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
 )
 

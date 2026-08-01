@@ -141,8 +141,7 @@ Plugins are:
 
 **Performance:**
 
-- **No plugins:** Returns augmented Kysely instance (zero overhead)
-- **No interceptors:** Returns augmented Kysely instance (minimal overhead)
+- **No plugins / no interceptors:** Returns a marker-only Proxy that adds the `__kysera*` properties and passes everything else straight through (near-zero overhead)
 - **With interceptors:** Uses optimized Proxy with method caching
 
 ### destroyExecutor
@@ -184,7 +183,7 @@ await destroyExecutor(executor)
 
 - Calls `onDestroy()` hook for each plugin in reverse order (dependencies last)
 - Ignores plugins without `onDestroy` hook
-- Errors in `onDestroy` hooks propagate (not caught internally)
+- Errors in `onDestroy` hooks are collected — every hook still runs, then one aggregate error is thrown at the end
 - Calling multiple times will invoke `onDestroy` hooks again -- ensure you only call it once
 
 ### createExecutorSync
@@ -541,10 +540,45 @@ console.log(sorted.map(p => p.name))
 
 **Priority Guidelines:**
 
-- **50**: Security plugins (RLS) - must filter before other plugins see data
-- **10**: Validation plugins - validate early
+- **1100**: Schema/context plugins - establish context before anything else runs
+- **1000**: Security plugins (RLS) - must filter before other plugins see data
+- **500**: Filter plugins (soft-delete) - row visibility
+- **100**: Transform plugins (timestamps) - modify values
+- **50**: Audit plugins - capture final state
 - **0**: Standard plugins (default)
-- **-10**: Logging/audit plugins - capture final state
+
+### parseTableReference
+
+Parse a table expression string exactly the way Kysely does. Useful for custom
+plugins and tooling that need to resolve base table names from expressions.
+
+```typescript
+function parseTableReference(expression: string): ParsedTableReference
+
+interface ParsedTableReference {
+  /** Base table name without schema qualifier or alias */
+  readonly table: string
+  /** Schema qualifier when present ('public.users' → 'public') */
+  readonly schema?: string
+  /** Alias when present ('users as u' → 'u') */
+  readonly alias?: string
+}
+```
+
+**Examples:**
+
+```typescript
+import { parseTableReference } from '@kysera/executor'
+
+parseTableReference('users')           // { table: 'users' }
+parseTableReference('users as u')      // { table: 'users', alias: 'u' }
+parseTableReference('auth.users')      // { table: 'users', schema: 'auth' }
+parseTableReference('auth.users as u') // { table: 'users', schema: 'auth', alias: 'u' }
+```
+
+Mirroring Kysely's own grammar (`parseAliasedTable`), the alias separator is
+the literal **lowercase** string `' as '` — `'users AS u'` is not split — and
+the schema separator is `.`.
 
 ## Types
 
@@ -627,8 +661,12 @@ Context passed to `interceptQuery` hooks.
 interface QueryBuilderContext {
   /** Type of operation */
   readonly operation: 'select' | 'insert' | 'update' | 'delete' | 'replace' | 'merge'
-  /** Table name */
+  /** Base table name (alias and schema stripped) */
   readonly table: string
+  /** Table alias, if the reference used one ('users as u' → 'u') */
+  readonly alias?: string
+  /** Original table expression as written ('auth.users as u') */
+  readonly tableExpression?: string
   /** Current schema context (if withSchema was called) */
   readonly schema?: string
   /** Additional metadata (shared across plugin chain) */
@@ -668,10 +706,13 @@ interceptQuery: (qb, context) => {
 
 **Metadata Usage:**
 
-The `metadata` object is for **plugin-to-plugin communication only**. It cannot be set from application code before queries run. Plugins can write values that other plugins in the chain can read:
+The `metadata` object serves two purposes: plugins can write values that other plugins in the chain read, and application code can seed it via `withPluginMetadata(executor, {...})` to opt out of a specific plugin's behavior (e.g., `{ includeDeleted: true }` for soft-delete).
 
-:::note
-If you need to pass user-controlled values to plugins, use `withSchema()` for schema context, or create a custom plugin that reads from a request-scoped store (e.g., AsyncLocalStorage).
+:::note Security contract
+The metadata channel is reachable by any caller holding the executor, without
+any authentication context. Plugins may honor *behavioral* opt-outs from it
+(row visibility, verbosity, ...) but must NOT honor security bypasses —
+`@kysera/rls` deliberately ignores this channel entirely.
 :::
 
 Plugins can use `context.metadata` to communicate:
@@ -936,7 +977,7 @@ The method-to-operation mapping is handled internally:
 | `deleteFrom(table)`  | `'delete'`     | ✅ Yes          |
 | `replaceInto(table)` | `'replace'`    | ✅ Yes          |
 | `mergeInto(table)`   | `'merge'`      | ✅ Yes          |
-| All other methods    | N/A            | ❌ Pass-through |
+| Methods not listed above | N/A        | ❌ Pass through (bound to the target) |
 
 **What this means:**
 
@@ -944,6 +985,7 @@ The method-to-operation mapping is handled internally:
 - Builder methods (`.where()`, `.select()`, `.join()`, etc.) pass through unchanged
 - Execution methods (`.execute()`, `.executeTakeFirst()`) pass through unchanged
 - Schema methods (`.schema`, `.introspection`) pass through unchanged
+- Derived-instance methods (`withSchema()`, `transaction()`, `with()`, ...) are re-wrapped so interception is never silently lost — see the derived-instances list in [Quick Start](#quick-start)
 
 **Example:**
 
@@ -1204,30 +1246,21 @@ const users = await executor.selectFrom('users').selectAll().execute()
 
 The executor uses different strategies based on plugin configuration:
 
-**1. Zero Overhead Path** (no plugins or disabled):
+**1. Marker-Only Path** (no plugins, or no plugin has `interceptQuery`):
 
 ```typescript
-// Returns augmented Kysely with marker properties only
-return Object.assign(db, {
-  __kysera: true,
-  __plugins: [],
-  __rawDb: db
-})
+// Returns a lightweight Proxy that only answers the marker properties
+// (__kysera, __plugins = the plugins you passed, __rawDb) and forwards
+// everything else to Kysely unchanged — near-zero overhead
+return createMarkerProxy(db, sortedPlugins)
 ```
 
-**2. Minimal Overhead Path** (no interceptors):
+The instance is never mutated with `Object.assign` — Kysely relies on
+`#private` fields, and mutating the caller's instance would leak the markers
+onto it. `__plugins` always reflects the plugins you passed (they may still
+provide `extendRepository` or lifecycle hooks even without interceptors).
 
-```typescript
-// Plugins have no interceptQuery hooks
-// Returns augmented Kysely without Proxy
-return Object.assign(db, {
-  __kysera: true,
-  __plugins: sortedPlugins,
-  __rawDb: db
-})
-```
-
-**3. Proxy Path** (with interceptors):
+**2. Proxy Path** (with interceptors):
 
 ```typescript
 // Creates Proxy to intercept method calls
@@ -1261,7 +1294,7 @@ These methods trigger plugin interception:
 | `replaceInto(table)` | `'replace'` | Query builder for REPLACE |
 | `mergeInto(table)`   | `'merge'`   | Query builder for MERGE   |
 
-All other Kysely methods (`.where()`, `.select()`, `.execute()`, etc.) pass through without interception.
+Methods not listed above pass through without interception (bound to the target); derived-instance methods (`withSchema()`, `transaction()`, `with()`, ...) return re-wrapped instances so plugins are never silently lost.
 
 ### Plugin Lifecycle
 
@@ -1284,15 +1317,18 @@ executor.transaction().execute(async trx => {
 
 Manual wrapping is also supported via `wrapTransaction(trx, plugins)`.
 
+Note that the wrapped transaction and connection builders are structurally
+compatible with Kysely's builders but are **not** `instanceof` them; when a
+library insists on the native classes, `__rawDb` is the escape hatch.
+
 ## Performance
 
 ### Zero Overhead Fast Paths
 
 The executor uses multiple optimization strategies:
 
-1. **No plugins:** Returns augmented Kysely instance (zero overhead)
-2. **No interceptors:** Returns augmented Kysely instance (minimal overhead)
-3. **With interceptors:** Uses optimized Proxy with:
+1. **No plugins / no interceptors:** Returns a marker-only Proxy (near-zero overhead)
+2. **With interceptors:** Uses optimized Proxy with:
    - Method caching (avoid repeated `.bind()` calls)
    - Set-based lookups (O(1) instead of O(n))
    - Cached intercepted methods

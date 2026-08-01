@@ -767,8 +767,8 @@ chmod +x kysera-v08-migrate.sh
 
 After successfully migrating to v0.8:
 
-1. **Review the Changelog:** [v0.8.0 Release Notes](https://github.com/kysera/kysera/releases/tag/v0.8.0)
-2. **Check for v1.0 Roadmap:** [Kysera v1.0 Planning](https://github.com/kysera/kysera/discussions)
+1. **Review the Changelog:** [v0.8.0 Release Notes](https://github.com/kysera-dev/kysera/releases/tag/v0.8.0)
+2. **Check for v1.0 Roadmap:** [Kysera v1.0 Planning](https://github.com/kysera-dev/kysera/discussions)
 3. **Update CI/CD:** Ensure deployment pipelines use v0.8.x
 4. **Monitor for Issues:** Watch for edge cases in production
 5. **Plan for v1.0:** v0.8 is the last major release before v1.0
@@ -778,8 +778,8 @@ After successfully migrating to v0.8:
 If you encounter issues during migration:
 
 - **Documentation:** Check the [API Reference](/docs/api/overview)
-- **GitHub Issues:** [Report a bug](https://github.com/kysera/kysera/issues)
-- **Discussions:** [Ask questions](https://github.com/kysera/kysera/discussions)
+- **GitHub Issues:** [Report a bug](https://github.com/kysera-dev/kysera/issues)
+- **Discussions:** [Ask questions](https://github.com/kysera-dev/kysera/discussions)
 - **Discord:** Join our [community Discord](https://discord.gg/kysera)
 
 ## See Also
@@ -789,4 +789,4 @@ If you encounter issues during migration:
 - [Dialects API](/docs/api/dialects) - Database dialect support
 - [Testing Guide](/docs/guides/testing) - Testing best practices
 - [Best Practices](/docs/guides/best-practices) - Production patterns
-- [Changelog](https://github.com/kysera/kysera/blob/main/CHANGELOG.md) - Full changelog
+- [Changelog](https://github.com/kysera-dev/kysera/blob/main/CHANGELOG.md) - Full changelog

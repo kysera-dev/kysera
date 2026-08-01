@@ -20,13 +20,13 @@ import { toContext } from './context.js'
  *
  * @example
  * ```typescript
- * import { createQuery, compose } from '@kysera/dal';
+ * import { createQuery, compose, type DbContext } from '@kysera/dal';
  *
- * const getUserById = createQuery((ctx, id: number) =>
+ * const getUserById = createQuery((ctx: DbContext<Database>, id: number) =>
  *   ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirstOrThrow()
  * );
  *
- * const getPostsByUserId = createQuery((ctx, userId: number) =>
+ * const getPostsByUserId = createQuery((ctx: DbContext<Database>, userId: number) =>
  *   ctx.db.selectFrom('posts').selectAll().where('user_id', '=', userId).execute()
  * );
  *
@@ -59,18 +59,19 @@ export function compose<DB, TArgs extends readonly unknown[], TFirst, TResult>(
 /**
  * Chain multiple operations on a query result.
  *
- * Supports up to 8 type-safe transforms. For more than 8 transforms,
- * the return type falls back to `unknown` (use type assertion if needed).
+ * Supports up to 7 type-safe transforms. Passing more than 7 is a compile
+ * error — there is no untyped fallback overload. Chain the result of a
+ * chained query if you need more steps.
  *
  * @param query - Initial query function
- * @param transforms - Array of transform functions (up to 8 with full type safety)
+ * @param transforms - Transform functions (up to 7, fully type-safe)
  * @returns Chained query function
  *
  * @example Basic usage (2 transforms)
  * ```typescript
- * import { createQuery, chain } from '@kysera/dal';
+ * import { createQuery, chain, type DbContext } from '@kysera/dal';
  *
- * const getUser = createQuery((ctx, id: number) =>
+ * const getUser = createQuery((ctx: DbContext<Database>, id: number) =>
  *   ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirstOrThrow()
  * );
  *
@@ -82,7 +83,7 @@ export function compose<DB, TArgs extends readonly unknown[], TFirst, TResult>(
  * // Type: QueryFunction<DB, [number], { ...user, posts: Post[], followers: User[] }>
  * ```
  *
- * @example Maximum type-safe transforms (8)
+ * @example Maximum type-safe transforms (7)
  * ```typescript
  * const complexQuery = chain(
  *   getUser,
@@ -92,20 +93,18 @@ export function compose<DB, TArgs extends readonly unknown[], TFirst, TResult>(
  *   async (ctx, data) => ({ ...data, shares: await getShares(ctx, data.id) }),
  *   async (ctx, data) => ({ ...data, followers: await getFollowers(ctx, data.id) }),
  *   async (ctx, data) => ({ ...data, following: await getFollowing(ctx, data.id) }),
- *   async (ctx, data) => ({ ...data, stats: await getStats(ctx, data.id) }),
- *   async (ctx, data) => ({ ...data, metadata: await getMetadata(ctx, data.id) })
+ *   async (ctx, data) => ({ ...data, stats: await getStats(ctx, data.id) })
  * );
  * // Type is still inferred correctly!
  * ```
  *
- * @example More than 8 transforms (fallback to unknown)
+ * @example More than 7 transforms (compile error)
  * ```typescript
- * const veryComplexQuery = chain(
- *   getUser,
- *   t1, t2, t3, t4, t5, t6, t7, t8, t9  // 9 transforms
- * );
- * // Type: QueryFunction<DB, [number], unknown>
- * // Use type assertion: const result = await veryComplexQuery(db, 1) as MyType
+ * // chain(getUser, t1, t2, t3, t4, t5, t6, t7, t8)  // ✗ does not compile
+ *
+ * // Chain the chained query instead:
+ * const firstSeven = chain(getUser, t1, t2, t3, t4, t5, t6, t7);
+ * const allNine = chain(firstSeven, t8, t9);
  * ```
  */
 export function chain<DB, TArgs extends readonly unknown[], T1, T2>(
@@ -198,17 +197,17 @@ export type ParallelResult<
  *
  * @example
  * ```typescript
- * import { createQuery, parallel } from '@kysera/dal';
+ * import { createQuery, parallel, type DbContext } from '@kysera/dal';
  *
- * const getUserById = createQuery((ctx, id: number) =>
+ * const getUserById = createQuery((ctx: DbContext<Database>, id: number) =>
  *   ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
  * );
  *
- * const getUserStats = createQuery((ctx, id: number) =>
+ * const getUserStats = createQuery((ctx: DbContext<Database>, id: number) =>
  *   ctx.db.selectFrom('user_stats').selectAll().where('user_id', '=', id).executeTakeFirst()
  * );
  *
- * const getNotifications = createQuery((ctx, id: number) =>
+ * const getNotifications = createQuery((ctx: DbContext<Database>, id: number) =>
  *   ctx.db.selectFrom('notifications').selectAll().where('user_id', '=', id).execute()
  * );
  *
@@ -259,9 +258,9 @@ export function parallel<
  *
  * @example
  * ```typescript
- * import { createQuery, conditional } from '@kysera/dal';
+ * import { createQuery, conditional, type DbContext } from '@kysera/dal';
  *
- * const getPremiumFeatures = createQuery((ctx, userId: number) =>
+ * const getPremiumFeatures = createQuery((ctx: DbContext<Database>, userId: number) =>
  *   ctx.db.selectFrom('premium_features').selectAll().where('user_id', '=', userId).execute()
  * );
  *
@@ -299,9 +298,9 @@ export function conditional<DB, TArgs extends readonly unknown[], TResult, TFall
  *
  * @example
  * ```typescript
- * import { createQuery, mapResult } from '@kysera/dal';
+ * import { createQuery, mapResult, type DbContext } from '@kysera/dal';
  *
- * const getUsers = createQuery((ctx) =>
+ * const getUsers = createQuery((ctx: DbContext<Database>) =>
  *   ctx.db.selectFrom('users').selectAll().execute()
  * );
  *

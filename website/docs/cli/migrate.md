@@ -8,6 +8,15 @@ description: Database migration commands
 
 Database migration management commands.
 
+:::caution CLI runner vs library runner
+The CLI ships its **own** migration runner, which differs from the
+`@kysera/migrations` library runner in two ways: it does **not** take the
+database advisory lock, and it tracks state in the `kysera_migrations` table
+(the library runner uses `migrations`). Running `kysera migrate up` from
+several instances at once is therefore not serialized — coordinate deploys
+externally, or use the library runner when concurrent execution is possible.
+:::
+
 ## Commands
 
 ### create

@@ -19,7 +19,7 @@ Kysera is a lightweight, modular data access toolkit that builds upon [Kysely](h
 - **Infrastructure Utilities** (health checks, retry, circuit breaker) as opt-in packages
 - **Zero External Dependencies** in core packages
 - **Full TypeScript** with strict mode support
-- **Cross-Runtime Compatibility** - Node.js >=20.0.0, Bun >=1.0.0, Deno (experimental)
+- **Cross-Runtime Compatibility** - Node.js >=22.0.0, Bun >=1.0.0, Deno (experimental)
 
 ## Philosophy
 
@@ -190,8 +190,8 @@ await withTransaction(executor, async (txCtx) => {
 
 ## Requirements
 
-- **Runtime**: Node.js >=20.0.0, Bun >=1.0.0, or Deno (experimental)
-- **TypeScript**: ^6.0.2 (recommended for best type inference)
+- **Runtime**: Node.js >=22.0.0, Bun >=1.0.0, or Deno (experimental)
+- **TypeScript**: ^6.0.3 (recommended for best type inference)
 - **Kysely**: >=0.29.0 (peer dependency)
 - **Validation library** (optional): Zod ^4.3.6, Valibot, TypeBox, or none
 - **Module System**: ESM-only (no CommonJS)

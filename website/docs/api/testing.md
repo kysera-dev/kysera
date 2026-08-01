@@ -18,7 +18,8 @@ npm install --save-dev @kysera/testing
 
 ## Overview
 
-**Dependencies:** None (peer: kysely >=0.29.0)
+**Dependencies:** @kysera/core
+**Peer Dependencies:** kysely >=0.29.0; optional: @kysera/executor, better-sqlite3
 
 :::info Package Type
 This is a **utility package** for testing. It's not part of the Repository/DAL pattern - it provides testing helpers that work with Kysely instances directly.
@@ -91,6 +92,9 @@ it('handles nested operations', async () => {
 })
 ```
 
+An optional third `logger` argument (defaults to `silentLogger`) receives
+warnings when an unexpected error occurs while rolling back to the savepoint.
+
 ### testWithIsolation()
 
 Test with specific transaction isolation level.
@@ -130,7 +134,21 @@ afterEach(async () => {
 afterEach(async () => {
   await cleanDatabase(db, 'delete', ['order_items', 'orders', 'users'])
 })
+
+// Options form - pass the dialect explicitly (recommended)
+afterEach(async () => {
+  await cleanDatabase(db, 'truncate', {
+    dialect: 'postgres',
+    tables: ['users', 'orders', 'order_items']
+  })
+})
 ```
+
+The third argument is either the table list or a `CleanupOptions` object
+(`{ tables, dialect?, logger? }`). When `dialect` is omitted, `cleanDatabase`
+attempts to detect it from the Kysely instance; passing it explicitly is
+recommended. The `tables` list is required for the `'delete'` and
+`'truncate'` strategies.
 
 **Strategies:**
 
@@ -139,23 +157,8 @@ afterEach(async () => {
 - `'truncate'` - TRUNCATE TABLE (fastest bulk clean, handles FKs automatically)
 
 **Security Features:**
-- **SQL injection prevention** - Table names are validated against database schema
+- **SQL injection prevention** - Table names are validated with a strict identifier regex (must start with a letter or underscore; letters, digits, and underscores only)
 - **Safe identifier escaping** - Uses dialect-specific escaping for table names
-- Only whitelisted tables from the schema can be truncated/deleted
-
-:::warning Deprecated: Dialect Detection
-Dialect detection via Kysely internals is deprecated and will be removed in a future version. Always pass the `dialect` parameter explicitly:
-
-```typescript
-// ❌ Deprecated - relies on internal Kysely APIs
-await cleanDatabase(db, 'truncate', ['users'])
-
-// ✅ Recommended - explicit dialect
-await cleanDatabase(db, 'truncate', ['users'], { dialect: 'postgres' })
-```
-
-The automatic dialect detection may fail in future Kysely versions as it relies on internal APIs that are not part of Kysely's public contract.
-:::
 
 ## Test Data Factories
 

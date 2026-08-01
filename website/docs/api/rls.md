@@ -71,6 +71,12 @@ interface RLSPluginOptions<DB = unknown> {
   schema: RLSSchema<DB>
 
   /**
+   * Whitelist: apply RLS only to these tables
+   * Takes precedence over excludeTables
+   */
+  tables?: string[]
+
+  /**
    * Tables to exclude from RLS entirely (global bypass)
    */
   excludeTables?: string[]
@@ -292,7 +298,7 @@ deny(['create', 'update', 'delete'], ctx => ctx.auth.roles?.includes('guest'))
 
 ### filter
 
-Add WHERE conditions to queries automatically.
+Add WHERE conditions to queries automatically. Filter predicates apply to SELECT queries **and to the row scope of UPDATE and DELETE statements** — the policy registry ignores the declared operation when collecting filters, so any filter policy also narrows which rows a mutation can touch.
 
 :::warning Synchronous Only
 **Filter conditions must be synchronous functions.** Async filter policies are not currently supported and will result in runtime errors. Use `allow()` or `validate()` for policies that require async operations.
@@ -899,15 +905,16 @@ const posts = await postRepo.findAll()
 2. The executor wraps Kysely with a Proxy that intercepts query methods
 3. RLS plugin's `interceptQuery` hook is called for every query operation
 4. For SELECT queries, filter policies add WHERE conditions
-5. For mutations (INSERT/UPDATE/DELETE), validation happens in `extendRepository`
-6. **Works with both Repository and DAL patterns** via unified Plugin interface
+5. For UPDATE/DELETE statements, filter predicates are appended to the WHERE clause in `interceptQuery` (v0.9), so mutations can only touch rows the context is allowed to see
+6. Value-level mutation policies (`allow`/`deny`/`validate`) remain Repository-only, applied in `extendRepository`
+7. **Works with both Repository and DAL patterns** via unified Plugin interface
 
 ### Query Interception
 
 ```typescript
 // Plugin implementation (simplified)
 interceptQuery(qb, context) {
-  const rlsCtx = rlsContext.getStore()
+  const rlsCtx = rlsContext.getContextOrNull()
 
   if (!rlsCtx && requireContext) {
     throw new RLSContextError()
@@ -933,9 +940,23 @@ interceptQuery(qb, context) {
 **Intercepted operations:**
 
 - `selectFrom` → Automatic filtering via `interceptQuery`
-- `insertInto` → Context available, validation in `extendRepository`
-- `updateTable` → Context available, validation in `extendRepository`
-- `deleteFrom` → Context available, validation in `extendRepository`
+- `insertInto` → Context available; value-level policy checks run in `extendRepository` (Repository only)
+- `updateTable` → Filter predicates appended to WHERE in `interceptQuery` (v0.9); value-level allow/validate policies remain Repository-only
+- `deleteFrom` → Filter predicates appended to WHERE in `interceptQuery` (v0.9); value-level allow/validate policies remain Repository-only
+
+### DAL Mutations
+
+Because filter predicates are applied in `interceptQuery`, UPDATE and DELETE
+statements built through the DAL (or raw executor queries) are automatically
+narrowed to the rows the current context may see. Value-level policies
+(`allow`, `deny`, `validate`) still run only through repositories.
+
+:::warning INSERT via DAL is not policy-checked
+An INSERT statement has no WHERE clause for RLS to narrow, and builder-level
+interception cannot see the values passed later to `.values()`. Route inserts
+through repositories (where `allow`/`validate`/`deny` policies run), or add
+database-native RLS as a backstop.
+:::
 
 ### getRawDb() for Internal Queries
 
@@ -1117,7 +1138,7 @@ await rlsContext.runAsync(
 )
 ```
 
-**Note**: DAL pattern supports **filter policies only**. Validation policies (`allow`, `deny`, `validate`) only work with Repository pattern since they require repository method interception.
+**Note**: DAL pattern supports **filter policies only** — they filter SELECT queries and also narrow the row scope of UPDATE/DELETE statements. Validation policies (`allow`, `deny`, `validate`) only work with Repository pattern since they require repository method interception.
 
 ## CQRS-lite Pattern (Repository + DAL)
 
@@ -1825,6 +1846,7 @@ export { RLSError, RLSContextError, RLSPolicyViolation, RLSPolicyEvaluationError
 
 ## See Also
 
+- [RLS Plugin Guide](/docs/plugins/rls)
 - [Executor API Reference](/docs/api/executor)
 - [DAL API Reference](/docs/api/dal)
 - [Repository API Reference](/docs/api/repository)

@@ -938,7 +938,7 @@ const adapter = createMSSQLAdapter()
 const adapter = createMSSQLAdapter({ defaultSchema: 'app' })
 ```
 
-### Schema Management Methods
+### Schema Management Methods (MSSQL)
 
 MSSQL adapter provides schema management similar to PostgreSQL:
 
@@ -1265,7 +1265,7 @@ async function monitorDatabase(db: Kysely<any>) {
 
 ## Cross-Runtime Support
 
-Works on Node.js >=20, Bun >=1.0, and Deno (experimental):
+Works on Node.js >=22, Bun >=1.0, and Deno (experimental):
 
 ```typescript
 // Node.js with pg

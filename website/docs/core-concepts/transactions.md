@@ -740,4 +740,4 @@ For detailed implementation examples, see:
 - Repository: `packages/repository/test/orm.test.ts`
 - Nested: `packages/testing/test/transaction.test.ts`
 
-For issues or discussions, visit the [Kysera GitHub repository](https://github.com/kysera/kysera).
+For issues or discussions, visit the [Kysera GitHub repository](https://github.com/kysera-dev/kysera).
