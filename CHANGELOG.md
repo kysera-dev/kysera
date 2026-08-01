@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-08-01
+
+_Packages: audit, cli, core, dal, debug, dialects, executor, infra, migrations, repository, rls, soft-delete, testing, timestamps · [v0.8.8...v0.9.0](https://github.com/kysera-dev/kysera/compare/v0.8.8...v0.9.0)_
+
+### ⚠️ BREAKING CHANGES
+
+- **rls:** remove skipRLS metadata bypass (security regression) (482e1c7)
+
+### ✨ Features
+
+- **audit:** soft-delete operations are now audited; restore works on soft-deleted rows (0456fdd)
+- **core:** named CONTEXT tier (1100) in PLUGIN_PRIORITIES (d093834)
+- **release:** aggregate full commit range into changelog, safe ordering (232f296)
+
+### 🐛 Bug Fixes
+
+- **audit:** per-row gating for mixed-batch bulkDelete audit records (b4e4d8b)
+- **audit:** atomicity, idempotent extension, tagged serialization (7735894)
+- **cli:** shell completions no longer offer nonexistent commands/flags (407ffb2)
+- **dal:** schema-scoped contexts keep transaction detection (e396ae5)
+- **dal:** isolationLevel was silently dropped (immutable builder) (7bfbad0)
+- **plugins:** packaging correctness for executor peer and rls zod entry (c70b283)
+- **repository:** plugin-aware withTransaction lint cleanup (9379779)
+- **rls:** remove skipRLS metadata bypass (security regression) (482e1c7)
+- **rls:** finalize DAL-path mutation enforcement (29fd57a)
+- audit round 2 — correctness and consistency batch (df6f512)
+
+### ♻️ Refactoring
+
+- **infra:** extract recommendation builders (complexity gate) (c5fae3e)
+
+### 📚 Documentation
+
+- **readme:** sync all package READMEs with the 0.9 reality (7d10e7c)
+- apply full verified-correction batch (website + dal JSDoc) (018f135)
+- DAL isolationLevel + schema-scoped nesting fixes in v0.9 guide (a6f680f)
+- security-hardening semantics for v0.9 plugin layer (c8dc2a8)
+
+### 🧪 Tests
+
+- **debug:** align CircularBuffer error-message assertions (fe774e1)
+- **soft-delete:** fix CTE test typings (aliased pid column, typed opt-out) (bd110d2)
+- **soft-delete:** audit-repro regressions — CTE names, mutation narrowing (ec07d6a)
+
+### 🔧 Maintenance
+
+- **cli:** normalize bugs/homepage URLs to kysera-dev org (5bc5961)
+- **deps:** upgrade to kysely 0.29.4, TS 6.0.3, vitest 4.1.10; node >=22 (e0ccf29)
+- **migrations:** expose ./schemas subpath (dist output was orphaned) (553d76b)
+- **timestamps:** enforce standard coverage thresholds (95/95/85/95) (584f7c1)
+
 ## [0.8.8] - 2026-04-08
 
 ### ✨ Features
