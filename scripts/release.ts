@@ -568,6 +568,51 @@ function isAlreadyPublished(name: string, version: string): boolean {
 }
 
 /**
+ * Order packages so dependencies publish before dependents — a mid-run
+ * failure then never leaves a package on npm whose @kysera deps are absent.
+ * (glob() directory order is not guaranteed; a live run once tried
+ * @kysera/cli first.)
+ */
+async function sortByDependencyOrder(packages: Package[]): Promise<Package[]> {
+  const names = new Set(packages.map(pkg => pkg.name))
+  const depsByName = new Map<string, Set<string>>()
+
+  for (const pkg of packages) {
+    const manifest = JSON.parse(
+      await fs.readFile(path.join(pkg.path, 'package.json'), 'utf-8')
+    ) as {
+      dependencies?: Record<string, string>
+      peerDependencies?: Record<string, string>
+      optionalDependencies?: Record<string, string>
+    }
+    const all = {
+      ...manifest.dependencies,
+      ...manifest.peerDependencies,
+      ...manifest.optionalDependencies
+    }
+    depsByName.set(pkg.name, new Set(Object.keys(all).filter(dep => names.has(dep))))
+  }
+
+  const ordered: Package[] = []
+  const placed = new Set<string>()
+  const remaining = [...packages].sort((a, b) => a.name.localeCompare(b.name))
+
+  while (remaining.length > 0) {
+    const readyIndex = remaining.findIndex(pkg =>
+      [...(depsByName.get(pkg.name) ?? [])].every(dep => placed.has(dep))
+    )
+    // readyIndex === -1 would mean a dependency cycle — emit head to make progress
+    const [next] = remaining.splice(readyIndex === -1 ? 0 : readyIndex, 1)
+    if (next) {
+      ordered.push(next)
+      placed.add(next.name)
+    }
+  }
+
+  return ordered
+}
+
+/**
  * Publish packages to npm
  */
 async function publishPackages(
@@ -575,7 +620,7 @@ async function publishPackages(
   version: string,
   options: ReleaseOptions
 ): Promise<void> {
-  const publishable = packages.filter(pkg => !pkg.private)
+  const publishable = await sortByDependencyOrder(packages.filter(pkg => !pkg.private))
   // Never let a prerelease hijack the `latest` dist-tag
   const distTagArg = semver.prerelease(version) ? ' --tag next' : ''
 
@@ -725,7 +770,14 @@ async function main() {
     if (!semver.valid(newVersion)) {
       throw new Error(`Invalid version: ${newVersion}`)
     }
-    if (!options.force && !semver.gt(newVersion, currentVersion)) {
+    if (semver.eq(newVersion, currentVersion)) {
+      // Resume mode: versions were already bumped by a previous run that
+      // failed mid-publish. Everything downstream is idempotent (published
+      // packages are skipped, existing tag/commit/changelog are kept).
+      console.log(
+        prism.yellow(`⚠️  Version ${newVersion} matches current — resuming interrupted release`)
+      )
+    } else if (!options.force && !semver.gt(newVersion, currentVersion)) {
       throw new Error(
         `Version ${newVersion} must be greater than current ${currentVersion} (use --force to override)`
       )
@@ -733,12 +785,18 @@ async function main() {
 
     console.log(prism.bold(prism.green(`\n📦 Releasing version ${newVersion}\n`)))
 
-    // 4. Generate changelog and show it BEFORE mutating anything
-    const changelogEntry = await generateChangelog(newVersion, packages)
-    console.log(prism.bold(prism.cyan('📄 Changelog preview:\n')))
-    console.log(changelogEntry)
+    // 4. Generate changelog and show it BEFORE mutating anything.
+    // On resume the entry already exists — keep it untouched.
+    let changelogEntry: string | null = null
+    if ((await readExistingChangelog()).includes(`## [${newVersion}]`)) {
+      console.log(prism.gray(`📄 CHANGELOG.md already has a ${newVersion} entry — keeping it`))
+    } else {
+      changelogEntry = await generateChangelog(newVersion, packages)
+      console.log(prism.bold(prism.cyan('📄 Changelog preview:\n')))
+      console.log(changelogEntry)
+    }
 
-    if (!options.dryRun && !options.version) {
+    if (!options.dryRun && !options.version && changelogEntry) {
       const proceed = await confirm({
         message: `Release v${newVersion} with the changelog above?`,
         initial: true
@@ -762,8 +820,10 @@ async function main() {
       }
       console.log(prism.green('✅ Versions updated'))
 
-      await updateChangelog(changelogEntry)
-      console.log(prism.green('✅ Changelog updated'))
+      if (changelogEntry) {
+        await updateChangelog(changelogEntry)
+        console.log(prism.green('✅ Changelog updated'))
+      }
     }
 
     // 6. Build packages
