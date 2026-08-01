@@ -189,13 +189,23 @@ export function createSchemaContext<DB>(
 }
 
 /**
- * Check if a database instance has the in-transaction marker.
+ * Check if a database instance is inside a transaction.
+ *
+ * Primary signal is the DAL marker symbol (carries the savepoint counter's
+ * home object). Fallback is kysely's own `isTransaction` getter: derived
+ * instances (`withSchema(...)`, executor re-wraps) are NEW objects that lose
+ * the symbol but keep the getter — without the fallback a schema-scoped
+ * transaction context would open a nested top-level transaction, which
+ * kysely 0.29 rejects (and which deadlocks single-connection SQLite).
  * @internal
  */
 function hasInTransactionMarker<DB>(
   db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>
 ): boolean {
-  return (db as unknown as Record<symbol, boolean>)[IN_TRANSACTION_SYMBOL] === true
+  if ((db as unknown as Record<symbol, boolean>)[IN_TRANSACTION_SYMBOL] === true) {
+    return true
+  }
+  return (db as { isTransaction?: boolean }).isTransaction === true
 }
 
 /**
