@@ -1,6 +1,6 @@
 import type { Kysely } from 'kysely'
 import type { Plugin, BaseRepositoryLike } from '@kysera/executor'
-import { isRepositoryLike, isKyseraExecutor, getPlugins } from '@kysera/executor'
+import { isRepositoryLike, isKyseraExecutor, getPlugins, withPluginMetadata } from '@kysera/executor'
 import { NotFoundError, AuditError, AuditRestoreError, AuditMissingValuesError, shouldApplyToTable, type KyseraLogger, silentLogger, formatTimestampForDb, detectDialect } from '@kysera/core'
 import type { Dialect } from '@kysera/core'
 import { VERSION } from './version.js'
@@ -285,6 +285,15 @@ interface AuditBaseRepository<T = unknown> {
   bulkCreate?: (data: Partial<T>[]) => Promise<T[]>
   bulkUpdate?: (updates: { id: number | string; data: Partial<T> }[]) => Promise<T[]>
   bulkDelete?: (ids: (number | string)[]) => Promise<number>
+  // Soft-delete plugin surface (duck-typed by name: audit runs after
+  // soft-delete in the extension chain, so these are present whenever the
+  // soft-delete plugin extended the repository first)
+  softDelete?: (id: number | string) => Promise<T>
+  restore?: (id: number | string) => Promise<T>
+  hardDelete?: (id: number | string) => Promise<void>
+  softDeleteMany?: (ids: (number | string)[]) => Promise<T[]>
+  restoreMany?: (ids: (number | string)[]) => Promise<T[]>
+  hardDeleteMany?: (ids: (number | string)[]) => Promise<void>
 }
 
 /**
@@ -720,27 +729,66 @@ async function createBulkAuditLogEntries<DB>(
 // ============================================================================
 
 /**
- * Determine whether audited mutations on this repository can be executed
- * atomically (mutation + audit entry in one implicit transaction), and if so,
- * return the executor's resolved plugin list needed to rebuild the repository
- * on a transaction. Returns null when the sequential path must be used:
- * - the executor is already a transaction (the caller controls atomicity),
+ * Determine whether this repository can be rebuilt on another executor
+ * (transaction or metadata-scoped executor) with the full plugin chain, and
+ * if so, return the executor's resolved plugin list. Returns null when
+ * rebinding is impossible:
  * - the executor is a plain Kysely instance without plugin metadata,
  * - the repository has no withTransaction() to rebind with, or
  * - this audit plugin is not part of the executor's plugin chain (a rebuilt
  *   repository would silently skip audit logging).
  */
-function resolveAtomicPlugins(
+function resolveRebindPlugins(
   executor: Kysely<unknown>,
   baseRepo: object,
   selfPlugin: Plugin
 ): readonly Plugin[] | null {
-  if (executor.isTransaction) return null
   if (!isKyseraExecutor(executor)) return null
   if (typeof (baseRepo as TransactionBindableRepository).withTransaction !== 'function') return null
 
   const plugins = getPlugins(executor)
   return plugins.includes(selfPlugin) ? plugins : null
+}
+
+/**
+ * Rebuild the repository bound to the given executor and re-apply the plugin
+ * chain in resolved order (exactly what `createORM().createRepository()`
+ * does). A plugin-aware withTransaction may already return an extended
+ * repository (marker present); the chain is only re-applied for plain rebinds.
+ */
+function rebindRepository(
+  baseRepo: object,
+  withTransaction: (trx: Kysely<unknown>) => object,
+  targetExecutor: Kysely<unknown>,
+  plugins: readonly Plugin[]
+): object {
+  let txRepo: object = withTransaction.call(baseRepo, targetExecutor)
+  if ((txRepo as Record<symbol, unknown>)[AUDIT_EXTENDED] !== true) {
+    for (const plugin of plugins) {
+      if (plugin.extendRepository) {
+        txRepo = plugin.extendRepository(txRepo)
+      }
+    }
+  }
+  return txRepo
+}
+
+/**
+ * Invoke a named method on a rebuilt repository.
+ */
+async function dispatchRepositoryMethod<R>(
+  txRepo: object,
+  method: string,
+  args: readonly unknown[]
+): Promise<R> {
+  const fn = (txRepo as Record<string, unknown>)[method]
+  if (typeof fn !== 'function') {
+    // Unreachable in practice: withTransaction() mirrors the base repository
+    throw new AuditError(
+      `Cannot execute '${method}' on rebound repository: method missing`
+    )
+  }
+  return (await fn.apply(txRepo, args as unknown[])) as R
 }
 
 /**
@@ -751,15 +799,14 @@ function resolveAtomicPlugins(
  * it would still execute on the root executor — outside the transaction on
  * pooled drivers, and deadlocking on single-connection drivers like SQLite.
  * Instead, the repository is rebuilt on the transaction via `withTransaction()`
- * and — unless withTransaction already re-applied the plugin chain (repos from
- * `createORM().createRepository()` do since the plugin-aware withTransaction) —
- * the plugin chain is re-applied here in resolved order. The re-dispatched
- * call then runs the same plugin stack; this audit plugin sees a transaction
- * executor and takes the same-transaction path, so mutation and audit entry
- * commit or roll back together.
+ * with the full plugin chain re-applied (see rebindRepository). The
+ * re-dispatched call then runs the same plugin stack; this audit plugin sees
+ * a transaction executor and takes the same-transaction path, so mutation and
+ * audit entry commit or roll back together.
  *
- * Returns null when atomic execution is not possible (see
- * resolveAtomicPlugins); callers then use the sequential (best-effort) path.
+ * Returns null when atomic execution is not possible (executor already a
+ * transaction — the caller controls atomicity — or rebinding unavailable);
+ * callers then use the sequential (best-effort) path.
  */
 function executeAtomically<R>(
   executor: Kysely<unknown>,
@@ -773,27 +820,51 @@ function executeAtomically<R>(
   const withTransaction = (baseRepo as TransactionBindableRepository).withTransaction
   if (typeof withTransaction !== 'function') return null
 
-  return executor.transaction().execute(async trx => {
-    let txRepo: object = withTransaction.call(baseRepo, trx as unknown as Kysely<unknown>)
-    // A plugin-aware withTransaction returns an already-extended repository
-    // (marker present); only re-apply the chain for plain rebinds
-    if ((txRepo as Record<symbol, unknown>)[AUDIT_EXTENDED] !== true) {
-      for (const plugin of atomicPlugins) {
-        if (plugin.extendRepository) {
-          txRepo = plugin.extendRepository(txRepo)
-        }
-      }
-    }
-
-    const fn = (txRepo as Record<string, unknown>)[method]
-    if (typeof fn !== 'function') {
-      // Unreachable in practice: withTransaction() mirrors the base repository
-      throw new AuditError(
-        `Cannot execute '${method}' atomically: method missing on transaction-bound repository`
-      )
-    }
-    return (await fn.apply(txRepo, args as unknown[])) as R
+  return executor.transaction().execute(trx => {
+    const txRepo = rebindRepository(
+      baseRepo,
+      withTransaction,
+      trx as unknown as Kysely<unknown>,
+      atomicPlugins
+    )
+    return dispatchRepositoryMethod<R>(txRepo, method, args)
   })
+}
+
+/**
+ * Re-dispatch a repository method through a rebuilt repository whose executor
+ * carries `{ includeDeleted: true }` plugin metadata, so the soft-delete
+ * plugin does not narrow the statement with `deleted_at IS NULL`. Used by
+ * restoreFromAudit to revert an audited UPDATE on a row that has been
+ * soft-deleted since (the plain update path would raise NotFoundError).
+ *
+ * Runs on the current transaction when the executor already is one, otherwise
+ * inside a new implicit transaction (keeping the rollback + its audit entry
+ * atomic). Returns null when rebinding is unavailable; callers then use the
+ * plain method (correct for raw executors, which have no narrowing plugins).
+ */
+function dispatchWithIncludeDeleted<R>(
+  executor: Kysely<unknown>,
+  baseRepo: object,
+  rebindPlugins: readonly Plugin[] | null,
+  method: string,
+  args: readonly unknown[]
+): Promise<R> | null {
+  if (!rebindPlugins) return null
+
+  const withTransaction = (baseRepo as TransactionBindableRepository).withTransaction
+  if (typeof withTransaction !== 'function') return null
+
+  const run = (targetExecutor: Kysely<unknown>): Promise<R> => {
+    const includeDeletedExecutor = withPluginMetadata(targetExecutor, { includeDeleted: true })
+    const txRepo = rebindRepository(baseRepo, withTransaction, includeDeletedExecutor, rebindPlugins)
+    return dispatchRepositoryMethod<R>(txRepo, method, args)
+  }
+
+  if (executor.isTransaction) {
+    return run(executor)
+  }
+  return executor.transaction().execute(trx => run(trx as unknown as Kysely<unknown>))
 }
 
 /**
@@ -1112,7 +1183,11 @@ function wrapBulkDeleteMethod<T = unknown>(
 
     const result = await originalBulkDelete(ids)
 
-    if (!skipSystemOperations && ids.length > 0) {
+    // Gate on the actual delete count, mirroring the single-row delete
+    // wrapper: a bulkDelete that removed nothing (e.g. every target was
+    // already soft-deleted, so the narrowed DELETE matched no rows) must not
+    // fabricate DELETE audit entries for rows that were never deleted
+    if (!skipSystemOperations && result > 0) {
       // Prepare all audit entries in memory
       const auditEntries = ids.map(id =>
         prepareAuditEntry(tableName, id, 'DELETE', oldValuesMap.get(id) ?? null, null, options, dialect)
@@ -1123,6 +1198,246 @@ function wrapBulkDeleteMethod<T = unknown>(
     }
 
     return result
+  }
+}
+
+/**
+ * Wrap a soft-delete plugin single-row state transition (softDelete/restore)
+ * with audit logging. Both operations are UPDATEs of the deleted_at marker,
+ * so they are recorded as UPDATE entries with old and new values.
+ *
+ * Old values are fetched through an includeDeleted-scoped executor: restore
+ * targets rows that ARE soft-deleted (invisible to the narrowed executor),
+ * and softDelete is documented as idempotent on already-deleted rows.
+ */
+function wrapSoftDeleteLikeMethod<T = unknown>(
+  baseRepo: AuditBaseRepository<T>,
+  method: 'softDelete' | 'restore',
+  executor: Kysely<unknown>,
+  includeDeletedExecutor: Kysely<unknown>,
+  atomicPlugins: readonly Plugin[] | null,
+  auditTable: string,
+  tableName: string,
+  primaryKeyColumn: string,
+  captureOldValues: boolean,
+  captureNewValues: boolean,
+  skipSystemOperations: boolean,
+  options: AuditOptions,
+  dialect?: Dialect
+): ((id: number | string) => Promise<T>) | undefined {
+  const original = baseRepo[method]?.bind(baseRepo)
+  if (!original) return undefined
+
+  return async function (id: number | string): Promise<T> {
+    if (!skipSystemOperations) {
+      const atomic = executeAtomically<T>(executor, baseRepo, atomicPlugins, method, [id])
+      if (atomic) return await atomic
+    }
+
+    let oldValues: unknown = null
+    if (captureOldValues) {
+      oldValues = await fetchEntityById(includeDeletedExecutor, tableName, id, primaryKeyColumn)
+    }
+
+    const result = await original(id)
+
+    if (!skipSystemOperations) {
+      await createAuditLogEntry(
+        executor,
+        auditTable,
+        tableName,
+        id,
+        'UPDATE',
+        oldValues,
+        captureNewValues ? result : null,
+        options,
+        dialect
+      )
+    }
+
+    return result
+  }
+}
+
+/**
+ * Wrap a soft-delete plugin bulk state transition (softDeleteMany/restoreMany)
+ * with audit logging. Entries are prepared per RETURNED record, so ids that
+ * matched no row produce no audit entry.
+ */
+function wrapSoftDeleteLikeManyMethod<T = unknown>(
+  baseRepo: AuditBaseRepository<T>,
+  method: 'softDeleteMany' | 'restoreMany',
+  executor: Kysely<unknown>,
+  includeDeletedExecutor: Kysely<unknown>,
+  atomicPlugins: readonly Plugin[] | null,
+  auditTable: string,
+  tableName: string,
+  primaryKeyColumn: string,
+  captureOldValues: boolean,
+  captureNewValues: boolean,
+  skipSystemOperations: boolean,
+  options: AuditOptions,
+  dialect?: Dialect
+): ((ids: (number | string)[]) => Promise<T[]>) | undefined {
+  const original = baseRepo[method]?.bind(baseRepo)
+  if (!original) return undefined
+
+  return async function (ids: (number | string)[]): Promise<T[]> {
+    if (!skipSystemOperations) {
+      const atomic = executeAtomically<T[]>(executor, baseRepo, atomicPlugins, method, [ids])
+      if (atomic) return await atomic
+    }
+
+    const oldValuesMap = new Map<number | string, unknown>()
+    if (captureOldValues && ids.length > 0) {
+      const fetchedOldValues = await fetchEntitiesByIds(
+        includeDeletedExecutor,
+        tableName,
+        ids,
+        primaryKeyColumn
+      )
+      for (const [id, entity] of fetchedOldValues) {
+        oldValuesMap.set(id, entity)
+      }
+    }
+
+    const results = await original(ids)
+
+    if (!skipSystemOperations && Array.isArray(results) && results.length > 0) {
+      const auditEntries = results.map(result => {
+        const pkValue = extractPrimaryKey(result, primaryKeyColumn)
+        return prepareAuditEntry(
+          tableName,
+          pkValue,
+          'UPDATE',
+          oldValuesMap.get(pkValue) ?? null,
+          captureNewValues ? result : null,
+          options,
+          dialect
+        )
+      })
+
+      await createBulkAuditLogEntries(executor, auditTable, auditEntries)
+    }
+
+    return results
+  }
+}
+
+/**
+ * Wrap the soft-delete plugin's hardDelete with audit logging (DELETE entry).
+ *
+ * hardDelete returns void, so the pre-delete fetch (includeDeleted: it may
+ * purge already-soft-deleted rows) doubles as the existence gate — deleting
+ * a nonexistent row writes no audit entry.
+ */
+function wrapHardDeleteMethod<T = unknown>(
+  baseRepo: AuditBaseRepository<T>,
+  executor: Kysely<unknown>,
+  includeDeletedExecutor: Kysely<unknown>,
+  atomicPlugins: readonly Plugin[] | null,
+  auditTable: string,
+  tableName: string,
+  primaryKeyColumn: string,
+  captureOldValues: boolean,
+  skipSystemOperations: boolean,
+  options: AuditOptions,
+  dialect?: Dialect
+): ((id: number | string) => Promise<void>) | undefined {
+  const original = baseRepo.hardDelete?.bind(baseRepo)
+  if (!original) return undefined
+
+  return async function (id: number | string): Promise<void> {
+    if (!skipSystemOperations) {
+      const atomic = executeAtomically<unknown>(executor, baseRepo, atomicPlugins, 'hardDelete', [id])
+      if (atomic) {
+        await atomic
+        return
+      }
+    }
+
+    const oldValues = await fetchEntityById(includeDeletedExecutor, tableName, id, primaryKeyColumn)
+
+    await original(id)
+
+    if (!skipSystemOperations && oldValues !== null) {
+      await createAuditLogEntry(
+        executor,
+        auditTable,
+        tableName,
+        id,
+        'DELETE',
+        captureOldValues ? oldValues : null,
+        null,
+        options,
+        dialect
+      )
+    }
+  }
+}
+
+/**
+ * Wrap the soft-delete plugin's hardDeleteMany with audit logging.
+ *
+ * hardDeleteMany returns void, so the pre-delete bulk fetch (includeDeleted)
+ * doubles as the existence gate: only ids that resolved to a row get a
+ * DELETE audit entry.
+ */
+function wrapHardDeleteManyMethod<T = unknown>(
+  baseRepo: AuditBaseRepository<T>,
+  executor: Kysely<unknown>,
+  includeDeletedExecutor: Kysely<unknown>,
+  atomicPlugins: readonly Plugin[] | null,
+  auditTable: string,
+  tableName: string,
+  primaryKeyColumn: string,
+  captureOldValues: boolean,
+  skipSystemOperations: boolean,
+  options: AuditOptions,
+  dialect?: Dialect
+): ((ids: (number | string)[]) => Promise<void>) | undefined {
+  const original = baseRepo.hardDeleteMany?.bind(baseRepo)
+  if (!original) return undefined
+
+  return async function (ids: (number | string)[]): Promise<void> {
+    if (!skipSystemOperations) {
+      const atomic = executeAtomically<unknown>(
+        executor,
+        baseRepo,
+        atomicPlugins,
+        'hardDeleteMany',
+        [ids]
+      )
+      if (atomic) {
+        await atomic
+        return
+      }
+    }
+
+    const oldValuesMap =
+      ids.length > 0
+        ? await fetchEntitiesByIds(includeDeletedExecutor, tableName, ids, primaryKeyColumn)
+        : new Map<number | string, unknown>()
+
+    await original(ids)
+
+    if (!skipSystemOperations && oldValuesMap.size > 0) {
+      const auditEntries = ids
+        .filter(id => oldValuesMap.has(id))
+        .map(id =>
+          prepareAuditEntry(
+            tableName,
+            id,
+            'DELETE',
+            captureOldValues ? (oldValuesMap.get(id) ?? null) : null,
+            null,
+            options,
+            dialect
+          )
+        )
+
+      await createBulkAuditLogEntries(executor, auditTable, auditEntries)
+    }
   }
 }
 
@@ -1152,12 +1467,22 @@ function parseAuditLogEntries(logs: unknown[], logger: KyseraLogger): ParsedAudi
  * so restore operations are themselves audited (and atomic where supported),
  * matching the behavior of regular repository mutations.
  *
+ * The UPDATE rollback runs through an includeDeleted-scoped rebind when the
+ * repository supports it (see dispatchWithIncludeDeleted): the soft-delete
+ * plugin narrows generic UPDATEs with `deleted_at IS NULL`, which would make
+ * restoring an audited UPDATE of a row that was soft-deleted since fail with
+ * NotFoundError. The row's soft-deleted state itself is untouched — the
+ * update schema strips columns it does not know, deleted_at included.
+ *
  * Values are parsed with auditJsonReviver so tagged BigInt/Date values (see
  * auditJsonReplacer) are written back with their original types instead of as
  * tagged JSON objects or strings.
  */
 function createRestoreMethod<T = unknown>(
   getAuditLog: (auditId: number) => Promise<AuditLogEntry | null>,
+  baseRepo: AuditBaseRepository<T>,
+  executor: Kysely<unknown>,
+  rebindPlugins: readonly Plugin[] | null,
   create: ((data: Partial<T>) => Promise<T>) | undefined,
   update: ((id: number | string, data: Partial<T>) => Promise<T>) | undefined,
   primaryKeyColumn: string,
@@ -1220,6 +1545,15 @@ function createRestoreMethod<T = unknown>(
       if (!update) {
         throw new AuditRestoreError(auditId, 'UPDATE', 'Repository does not support update operation')
       }
+
+      // Prefer the includeDeleted-scoped rebind so rows that were soft-deleted
+      // after the audited UPDATE can still be reverted; fall back to the plain
+      // audited update (raw executors have no soft-delete narrowing)
+      const rebound = dispatchWithIncludeDeleted<T>(executor, baseRepo, rebindPlugins, 'update', [
+        entityId,
+        parsedValues
+      ])
+      if (rebound) return await rebound
 
       return await update(entityId as number | string, parsedValues as Partial<T>)
     }
@@ -1380,6 +1714,10 @@ function createAuditQueryMethods(
  * - Query methods to retrieve and analyze audit history
  * - **Optimized bulk operations** - Uses single query to fetch old values
  * - **Configurable primary key** - Supports both numeric and string IDs (e.g., UUIDs)
+ * - **Soft-delete plugin coverage** - softDelete/restore (+Many) are audited as
+ *   UPDATE entries and hardDelete (+Many) as DELETE entries whenever the
+ *   soft-delete plugin extended the repository; old values are fetched through
+ *   an includeDeleted-scoped executor so soft-deleted rows are captured too
  *
  * ## Transaction Behavior
  *
@@ -1561,8 +1899,17 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
       // Typed read-only view of the repository; the original is never mutated
       const auditRepo = baseRepo as unknown as AuditBaseRepository
 
-      // Non-null when mutations can run atomically with their audit entries
-      const atomicPlugins = resolveAtomicPlugins(executor, auditRepo, plugin)
+      // Non-null when the repository can be rebuilt on another executor with
+      // the full plugin chain (used by the atomic path and restoreFromAudit)
+      const rebindPlugins = resolveRebindPlugins(executor, auditRepo, plugin)
+      // Non-null when mutations can run atomically with their audit entries;
+      // inside a transaction the caller already controls atomicity
+      const atomicPlugins = executor.isTransaction ? null : rebindPlugins
+
+      // Scoped opt-out of soft-delete narrowing for old-value fetches of
+      // soft-delete operations (restore/hardDelete target invisible rows);
+      // every other plugin stays active. No-op for plain Kysely executors.
+      const includeDeletedExecutor = withPluginMetadata(executor, { includeDeleted: true })
 
       const create = wrapCreateMethod(
         auditRepo,
@@ -1639,6 +1986,97 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         detectedDialect
       )
 
+      // Soft-delete plugin operations (present when the soft-delete plugin
+      // extended this repository first — it has the higher priority). They
+      // mutate rows like any other write, so they are audited: state
+      // transitions (softDelete/restore) as UPDATE, hard deletes as DELETE.
+      const softDelete = wrapSoftDeleteLikeMethod(
+        auditRepo,
+        'softDelete',
+        executor,
+        includeDeletedExecutor,
+        atomicPlugins,
+        auditTable,
+        tableName,
+        primaryKeyColumn,
+        captureOldValues,
+        captureNewValues,
+        skipSystemOperations,
+        options,
+        detectedDialect
+      )
+      const restore = wrapSoftDeleteLikeMethod(
+        auditRepo,
+        'restore',
+        executor,
+        includeDeletedExecutor,
+        atomicPlugins,
+        auditTable,
+        tableName,
+        primaryKeyColumn,
+        captureOldValues,
+        captureNewValues,
+        skipSystemOperations,
+        options,
+        detectedDialect
+      )
+      const softDeleteMany = wrapSoftDeleteLikeManyMethod(
+        auditRepo,
+        'softDeleteMany',
+        executor,
+        includeDeletedExecutor,
+        atomicPlugins,
+        auditTable,
+        tableName,
+        primaryKeyColumn,
+        captureOldValues,
+        captureNewValues,
+        skipSystemOperations,
+        options,
+        detectedDialect
+      )
+      const restoreMany = wrapSoftDeleteLikeManyMethod(
+        auditRepo,
+        'restoreMany',
+        executor,
+        includeDeletedExecutor,
+        atomicPlugins,
+        auditTable,
+        tableName,
+        primaryKeyColumn,
+        captureOldValues,
+        captureNewValues,
+        skipSystemOperations,
+        options,
+        detectedDialect
+      )
+      const hardDelete = wrapHardDeleteMethod(
+        auditRepo,
+        executor,
+        includeDeletedExecutor,
+        atomicPlugins,
+        auditTable,
+        tableName,
+        primaryKeyColumn,
+        captureOldValues,
+        skipSystemOperations,
+        options,
+        detectedDialect
+      )
+      const hardDeleteMany = wrapHardDeleteManyMethod(
+        auditRepo,
+        executor,
+        includeDeletedExecutor,
+        atomicPlugins,
+        auditTable,
+        tableName,
+        primaryKeyColumn,
+        captureOldValues,
+        skipSystemOperations,
+        options,
+        detectedDialect
+      )
+
       const queryMethods = createAuditQueryMethods(
         executor,
         auditTable,
@@ -1651,6 +2089,9 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
       // (and atomic) just like regular mutations
       const restoreFromAudit = createRestoreMethod(
         queryMethods.getAuditLog,
+        auditRepo,
+        executor,
+        rebindPlugins,
         create,
         update,
         primaryKeyColumn,
@@ -1665,6 +2106,12 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         ...(bulkCreate ? { bulkCreate } : {}),
         ...(bulkUpdate ? { bulkUpdate } : {}),
         ...(bulkDelete ? { bulkDelete } : {}),
+        ...(softDelete ? { softDelete } : {}),
+        ...(restore ? { restore } : {}),
+        ...(softDeleteMany ? { softDeleteMany } : {}),
+        ...(restoreMany ? { restoreMany } : {}),
+        ...(hardDelete ? { hardDelete } : {}),
+        ...(hardDeleteMany ? { hardDeleteMany } : {}),
         ...queryMethods,
         restoreFromAudit
       }

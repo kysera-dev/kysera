@@ -200,15 +200,25 @@ describe('M-18: Audit + Soft-delete Plugin Interaction', () => {
       // Soft delete the user
       await userRepo.softDelete(user.id)
 
-      // Check audit logs - softDelete uses rawDb directly (bypasses audit plugin),
-      // so the audit plugin does NOT create a log for the softDelete UPDATE.
-      // This is the current expected behavior: softDelete bypasses interceptors.
+      // The audit plugin wraps the soft-delete plugin's methods (audit extends
+      // the repository after soft-delete), so softDelete produces an UPDATE
+      // audit entry recording the deleted_at state transition.
       const auditLogs = await db.selectFrom('audit_logs').selectAll().execute()
 
-      // The soft-delete plugin uses rawDb for its UPDATE, which bypasses the audit
-      // interceptor. This is a design choice: soft-delete is explicit, not intercepted.
-      // We verify this is the case.
-      expect(auditLogs).toHaveLength(0)
+      expect(auditLogs).toHaveLength(1)
+
+      const log = auditLogs[0]!
+      expect(log.operation).toBe('UPDATE')
+      expect(log.entity_id).toBe(String(user.id))
+      expect(log.changed_by).toBe('soft-delete-user')
+
+      // Old values show the live row, new values the soft-deleted one
+      const oldValues = JSON.parse(log.old_values!)
+      expect(oldValues.name).toBe('Bob')
+      expect(oldValues.deleted_at).toBeNull()
+
+      const newValues = JSON.parse(log.new_values!)
+      expect(newValues.deleted_at).not.toBeNull()
     })
 
     it('should track the full lifecycle: create -> update -> soft-delete -> restore', async () => {
@@ -239,25 +249,23 @@ describe('M-18: Audit + Soft-delete Plugin Interaction', () => {
       // 1. Create
       const user = await userRepo.create({ email: 'lifecycle@test.com', name: 'Lifecycle User' })
 
-      // 2. Update (goes through audit)
+      // 2. Update (audited as UPDATE)
       await userRepo.update(user.id, { name: 'Updated Lifecycle' })
 
-      // 3. Soft delete (uses rawDb, bypasses audit)
+      // 3. Soft delete (audited as UPDATE of the deleted_at marker)
       await userRepo.softDelete(user.id)
 
-      // 4. Restore (uses rawDb, bypasses audit)
+      // 4. Restore (audited as UPDATE clearing the deleted_at marker)
       await userRepo.restore(user.id)
 
-      // Check audit logs
+      // Check audit logs: the full lifecycle is captured
       const auditLogs = await db
         .selectFrom('audit_logs')
         .selectAll()
         .orderBy('id', 'asc')
         .execute()
 
-      // We should see INSERT and UPDATE (soft-delete and restore bypass audit since
-      // they use rawDb for direct database access)
-      expect(auditLogs.length).toBeGreaterThanOrEqual(2)
+      expect(auditLogs).toHaveLength(4)
 
       // First log should be INSERT
       expect(auditLogs[0]!.operation).toBe('INSERT')
@@ -272,6 +280,16 @@ describe('M-18: Audit + Soft-delete Plugin Interaction', () => {
       const updateNewValues = JSON.parse(auditLogs[1]!.new_values!)
       expect(updateOldValues.name).toBe('Lifecycle User')
       expect(updateNewValues.name).toBe('Updated Lifecycle')
+
+      // Third log: the soft delete (deleted_at null -> set)
+      expect(auditLogs[2]!.operation).toBe('UPDATE')
+      expect(JSON.parse(auditLogs[2]!.old_values!).deleted_at).toBeNull()
+      expect(JSON.parse(auditLogs[2]!.new_values!).deleted_at).not.toBeNull()
+
+      // Fourth log: the restore (deleted_at set -> null)
+      expect(auditLogs[3]!.operation).toBe('UPDATE')
+      expect(JSON.parse(auditLogs[3]!.old_values!).deleted_at).not.toBeNull()
+      expect(JSON.parse(auditLogs[3]!.new_values!).deleted_at).toBeNull()
     })
   })
 
@@ -437,12 +455,21 @@ describe('M-18: Audit + Soft-delete Plugin Interaction', () => {
       // Clear creation log
       await db.deleteFrom('audit_logs').execute()
 
-      // hardDelete from the soft-delete plugin uses rawDb and bypasses audit
+      // hardDelete permanently removes the row; the audit plugin wraps it and
+      // records a DELETE entry with the pre-delete state
       await userRepo.hardDelete(user.id)
 
-      // hardDelete bypasses audit since it uses rawDb directly
       const auditLogs = await db.selectFrom('audit_logs').selectAll().execute()
-      expect(auditLogs).toHaveLength(0)
+      expect(auditLogs).toHaveLength(1)
+
+      const log = auditLogs[0]!
+      expect(log.operation).toBe('DELETE')
+      expect(log.entity_id).toBe(String(user.id))
+      expect(log.new_values).toBeNull()
+
+      const oldValues = JSON.parse(log.old_values!)
+      expect(oldValues.email).toBe('hardplugin@test.com')
+      expect(oldValues.name).toBe('Hard Plugin')
     })
   })
 
@@ -479,7 +506,7 @@ describe('M-18: Audit + Soft-delete Plugin Interaction', () => {
       // Clear audit logs
       await db.deleteFrom('audit_logs').execute()
 
-      // Soft delete Alice
+      // Soft delete Alice (audited as an UPDATE of the deleted_at marker)
       await userRepo.softDelete(alice.id)
 
       // findAll should only return Bob (Alice is soft-deleted)
@@ -487,13 +514,25 @@ describe('M-18: Audit + Soft-delete Plugin Interaction', () => {
       expect(activeUsers).toHaveLength(1)
       expect(activeUsers[0].name).toBe('Bob')
 
-      // Update Bob (should be audited)
+      // Update Bob (audited as a regular UPDATE)
       await userRepo.update(bob.id, { name: 'Bob Updated' })
 
-      const auditLogs = await db.selectFrom('audit_logs').selectAll().execute()
-      expect(auditLogs).toHaveLength(1)
+      const auditLogs = await db
+        .selectFrom('audit_logs')
+        .selectAll()
+        .orderBy('id', 'asc')
+        .execute()
+      expect(auditLogs).toHaveLength(2)
+
+      // Alice's soft delete
       expect(auditLogs[0]!.operation).toBe('UPDATE')
-      expect(auditLogs[0]!.entity_id).toBe(String(bob.id))
+      expect(auditLogs[0]!.entity_id).toBe(String(alice.id))
+      expect(JSON.parse(auditLogs[0]!.new_values!).deleted_at).not.toBeNull()
+
+      // Bob's regular update
+      expect(auditLogs[1]!.operation).toBe('UPDATE')
+      expect(auditLogs[1]!.entity_id).toBe(String(bob.id))
+      expect(JSON.parse(auditLogs[1]!.new_values!).name).toBe('Bob Updated')
     })
 
     it('should audit bulk operations correctly with soft-delete plugin present', async () => {
