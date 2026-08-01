@@ -17,10 +17,10 @@ describe('CircularBuffer', () => {
 
     it('should throw error for non-positive size', () => {
       expect(() => new CircularBuffer<number>(0)).toThrow(
-        'CircularBuffer maxSize must be positive'
+        'CircularBuffer maxSize must be a positive integer'
       )
       expect(() => new CircularBuffer<number>(-1)).toThrow(
-        'CircularBuffer maxSize must be positive'
+        'CircularBuffer maxSize must be a positive integer'
       )
     })
   })
