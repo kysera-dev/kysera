@@ -177,36 +177,57 @@ export function getMetrics<DB>(
     }
 
     // Generate recommendations based on real data
-    result.recommendations = []
-
-    if (slowCount > queryMetrics.length * 0.1) {
-      result.recommendations.push(
-        `High number of slow queries detected (${slowCount.toString()}/${queryMetrics.length.toString()}). ` +
-          `Consider query optimization or indexing.`
-      )
-    }
-
-    if (avgDuration > slowQueryThreshold * 0.5) {
-      result.recommendations.push(
-        `Average query duration (${avgDuration.toFixed(2)}ms) is approaching slow query threshold. ` +
-          `Monitor performance closely.`
-      )
-    }
+    result.recommendations = buildQueryRecommendations(
+      slowCount,
+      queryMetrics.length,
+      avgDuration,
+      slowQueryThreshold
+    )
   }
 
-  // Add connection pool recommendations if applicable
-  if (result.connections) {
-    // Guard total=0: 0/0 is NaN (check silently skipped), n/0 is Infinity
-    const utilizationRate =
-      result.connections.total > 0 ? result.connections.active / result.connections.total : 0
-    if (utilizationRate > 0.8) {
-      result.recommendations = result.recommendations ?? []
-      result.recommendations.push(
-        `Connection pool utilization is high (${(utilizationRate * 100).toFixed(1)}%). ` +
-          `Consider increasing pool size.`
-      )
-    }
-  }
+  appendPoolRecommendation(result)
 
   return result
+}
+
+/** @internal */
+function buildQueryRecommendations(
+  slowCount: number,
+  totalQueries: number,
+  avgDuration: number,
+  slowQueryThreshold: number
+): string[] {
+  const recommendations: string[] = []
+
+  if (slowCount > totalQueries * 0.1) {
+    recommendations.push(
+      `High number of slow queries detected (${slowCount.toString()}/${totalQueries.toString()}). ` +
+        `Consider query optimization or indexing.`
+    )
+  }
+
+  if (avgDuration > slowQueryThreshold * 0.5) {
+    recommendations.push(
+      `Average query duration (${avgDuration.toFixed(2)}ms) is approaching slow query threshold. ` +
+        `Monitor performance closely.`
+    )
+  }
+
+  return recommendations
+}
+
+/** @internal */
+function appendPoolRecommendation(result: MetricsResult): void {
+  if (!result.connections) return
+
+  // Guard total=0: 0/0 is NaN (check silently skipped), n/0 is Infinity
+  const utilizationRate =
+    result.connections.total > 0 ? result.connections.active / result.connections.total : 0
+  if (utilizationRate > 0.8) {
+    result.recommendations = result.recommendations ?? []
+    result.recommendations.push(
+      `Connection pool utilization is high (${(utilizationRate * 100).toFixed(1)}%). ` +
+        `Consider increasing pool size.`
+    )
+  }
 }
