@@ -214,7 +214,15 @@ export function createPluginMetadata(
  * ```
  */
 export const PLUGIN_PRIORITIES = {
-  /** Security plugins (RLS, auth) - run first */
+  /**
+   * Context plugins (schema routing, request scoping) - run before security
+   * so security plugins can read the resolved context (e.g. schemaPlugin
+   * writes metadata.__resolvedSchema that RLS-tier plugins may consume).
+   * Note: @kysera/executor's schemaPlugin hardcodes 1100 because executor
+   * cannot depend on core — keep the two values in sync.
+   */
+  CONTEXT: 1100,
+  /** Security plugins (RLS, auth) - run first among enforcement tiers */
   SECURITY: 1000,
   /** Filter plugins (soft delete, tenant isolation) */
   FILTER: 500,
@@ -224,7 +232,7 @@ export const PLUGIN_PRIORITIES = {
   AUDIT: 50,
   /** Default priority for plugins without explicit priority */
   DEFAULT: 0,
-  /** Debug plugins (logging, profiling) - run last */
+  /** Reserved for third-party debug/observability plugins - run last */
   DEBUG: -100,
 } as const
 
