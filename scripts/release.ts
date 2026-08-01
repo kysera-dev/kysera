@@ -5,17 +5,23 @@
  *
  * This script handles:
  * - Version synchronization across all packages
- * - Changelog generation
+ * - Changelog generation — aggregates ALL commits since the last release tag,
+ *   grouped by conventional-commit type/scope, with breaking-change detection
+ *   (`type!:` marker and `BREAKING CHANGE:` footers) and dedupe against
+ *   entries already present in CHANGELOG.md
  * - Building and testing
- * - Publishing to npm
- * - Git tagging and GitHub releases
+ * - Publishing to npm (idempotent: already-published versions are skipped;
+ *   prereleases go to the `next` dist-tag)
+ * - Git tagging and GitHub releases (commit + tag happen BEFORE publish so a
+ *   failed publish never leaves npm ahead of git)
  *
  * Options:
  * --list-packages, --list  List all packages with relative paths and exit
+ * --version <x.y.z>        Release as the given version (skips the prompt)
  * --skip-tests             Skip running tests
  * --skip-build             Skip building packages
  * --skip-publish           Skip publishing to npm
- * --dry-run                Simulate release without making changes
+ * --dry-run                Simulate release without modifying anything
  * --force                  Force release even with uncommitted changes
  */
 
@@ -29,8 +35,16 @@ import semver from 'semver'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = path.resolve(__dirname, '..')
-const PACKAGES_DIR = path.join(ROOT_DIR, 'packages')
-const APPS_DIR = path.join(ROOT_DIR, 'apps')
+const REPO_URL = 'https://github.com/kysera-dev/kysera'
+const CHANGELOG_PATH = path.join(ROOT_DIR, 'CHANGELOG.md')
+
+const CHANGELOG_HEADER = `# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+`
 
 interface Package {
   name: string
@@ -41,14 +55,19 @@ interface Package {
 
 interface ReleaseOptions {
   version?: string
-  versionType?: 'major' | 'minor' | 'patch' | 'prerelease' | 'custom'
-  prerelease?: string
   skipTests?: boolean
   skipBuild?: boolean
   skipPublish?: boolean
   dryRun?: boolean
   force?: boolean
   listPackages?: boolean
+}
+
+/**
+ * Extract a printable message from an unknown thrown value
+ */
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /**
@@ -64,10 +83,10 @@ function exec(cmd: string, options: { cwd?: string; silent?: boolean } = {}): st
       stdio: silent ? 'pipe' : 'inherit'
     })
     return result?.trim() || ''
-  } catch (error: any) {
+  } catch (error) {
     if (!silent) {
       console.error(prism.red(`❌ Command failed: ${cmd}`))
-      console.error(error.message)
+      console.error(errorMessage(error))
     }
     throw error
   }
@@ -92,7 +111,11 @@ async function getAllPackages(): Promise<Package[]> {
 
     try {
       const content = await fs.readFile(fullPath, 'utf-8')
-      const pkg = JSON.parse(content)
+      const pkg = JSON.parse(content) as {
+        name?: string
+        version?: string
+        private?: boolean
+      }
 
       // Skip packages without a name
       if (!pkg.name) {
@@ -111,9 +134,9 @@ async function getAllPackages(): Promise<Package[]> {
 
       packages.push({
         name: pkg.name,
-        version: pkg.version,
+        version: pkg.version ?? '0.0.0',
         path: packageDir,
-        private: pkg.private || false
+        private: pkg.private ?? false
       })
     } catch {
       // Skip invalid package.json files
@@ -157,7 +180,9 @@ async function listPackages(): Promise<void> {
  * Get current version from root package.json
  */
 async function getCurrentVersion(): Promise<string> {
-  const rootPkg = JSON.parse(await fs.readFile(path.join(ROOT_DIR, 'package.json'), 'utf-8'))
+  const rootPkg = JSON.parse(await fs.readFile(path.join(ROOT_DIR, 'package.json'), 'utf-8')) as {
+    version: string
+  }
   return rootPkg.version
 }
 
@@ -167,21 +192,24 @@ async function getCurrentVersion(): Promise<string> {
 async function updatePackageVersion(packagePath: string, version: string): Promise<void> {
   const pkgJsonPath = path.join(packagePath, 'package.json')
   const content = await fs.readFile(pkgJsonPath, 'utf-8')
-  const pkg = JSON.parse(content)
+  const pkg = JSON.parse(content) as Record<string, unknown> & {
+    version?: string
+  }
 
   pkg.version = version
 
   // Update workspace dependencies to use the new version
   const depFields = ['dependencies', 'devDependencies', 'peerDependencies']
   for (const field of depFields) {
-    if (pkg[field]) {
-      for (const [depName, depVersion] of Object.entries(pkg[field])) {
+    const deps = pkg[field] as Record<string, string> | undefined
+    if (deps) {
+      for (const [depName, depVersion] of Object.entries(deps)) {
         if (depName.startsWith('@kysera/') && depVersion === 'workspace:*') {
-          // Keep workspace protocol
+          // Keep workspace protocol (pnpm rewrites it at pack time)
           continue
         } else if (depName.startsWith('@kysera/')) {
           // Update to new version
-          pkg[field][depName] = `^${version}`
+          deps[depName] = `^${version}`
         }
       }
     }
@@ -208,109 +236,259 @@ function checkGitStatus(options: ReleaseOptions): void {
   }
 }
 
+// ============================================================================
+// Changelog generation
+// ============================================================================
+
+interface ParsedCommit {
+  hash: string
+  /** Full original subject line (used for dedupe against CHANGELOG.md) */
+  rawSubject: string
+  /** Conventional type, normalized ('other' when non-conventional/unknown) */
+  type: string
+  scope: string | null
+  subject: string
+  breaking: boolean
+  /** First line of a `BREAKING CHANGE:` body footer, if present */
+  breakingNote: string | null
+}
+
+const CONVENTIONAL_COMMIT_RE = /^(\w+)(?:\(([^)]*)\))?(!)?:\s*(.+)$/
+const KNOWN_TYPES = new Set([
+  'feat',
+  'fix',
+  'perf',
+  'refactor',
+  'docs',
+  'test',
+  'build',
+  'ci',
+  'chore',
+  'style',
+  'revert'
+])
+
+const COMMIT_SECTIONS: ReadonlyArray<{ types: readonly string[]; title: string }> = [
+  { types: ['feat'], title: '### ✨ Features' },
+  { types: ['fix'], title: '### 🐛 Bug Fixes' },
+  { types: ['perf'], title: '### ⚡ Performance' },
+  { types: ['refactor'], title: '### ♻️ Refactoring' },
+  { types: ['docs'], title: '### 📚 Documentation' },
+  { types: ['test'], title: '### 🧪 Tests' },
+  { types: ['build', 'ci', 'chore', 'style', 'revert'], title: '### 🔧 Maintenance' },
+  { types: ['other'], title: '### 📝 Other Changes' }
+]
+
 /**
- * Generate changelog
+ * Find the tag the changelog should aggregate from.
+ *
+ * Uses the HIGHEST semver `v*` tag rather than `git describe` — describe
+ * walks topology from HEAD and silently picks whatever tag is nearest,
+ * which breaks when a tag was ever placed on the wrong commit.
+ * When releasing a stable version, prerelease tags are ignored so the
+ * final notes cover the whole rc/beta period.
  */
-async function generateChangelog(version: string): Promise<string> {
-  const date = new Date().toISOString().split('T')[0]
-
-  // Get commit messages since last tag
-  let commits = ''
+function findBaseTag(newVersion: string): string | null {
+  let tagOutput = ''
   try {
-    const lastTag = exec('git describe --tags --abbrev=0', { silent: true })
-    commits = exec(`git log ${lastTag}..HEAD --oneline`, { silent: true })
+    tagOutput = exec(`git tag --list 'v*'`, { silent: true })
   } catch {
-    // No previous tags
-    commits = exec('git log --oneline', { silent: true })
+    return null
   }
 
-  // Parse commits by type
-  const features: string[] = []
-  const fixes: string[] = []
-  const breaking: string[] = []
-  const other: string[] = []
+  const releasingStable = semver.prerelease(newVersion) === null
+  const candidates = tagOutput
+    .split('\n')
+    .map(tag => ({ tag: tag.trim(), version: semver.clean(tag.trim()) }))
+    .filter((entry): entry is { tag: string; version: string } => entry.version !== null)
+    .filter(entry => !releasingStable || semver.prerelease(entry.version) === null)
+    .sort((a, b) => semver.rcompare(a.version, b.version))
 
-  for (const line of commits.split('\n')) {
-    if (!line) continue
-
-    const match = line.match(/^[a-f0-9]+ (.+)$/)
-    if (!match) continue
-
-    const message = match[1]
-
-    if (message.startsWith('feat:') || message.startsWith('feat(')) {
-      features.push(message)
-    } else if (message.startsWith('fix:') || message.startsWith('fix(')) {
-      fixes.push(message)
-    } else if (message.includes('BREAKING')) {
-      breaking.push(message)
-    } else {
-      other.push(message)
-    }
-  }
-
-  let changelog = `## [${version}] - ${date}\n\n`
-
-  if (breaking.length > 0) {
-    changelog += '### ⚠️ BREAKING CHANGES\n\n'
-    breaking.forEach(msg => (changelog += `- ${msg}\n`))
-    changelog += '\n'
-  }
-
-  if (features.length > 0) {
-    changelog += '### ✨ Features\n\n'
-    features.forEach(msg => (changelog += `- ${msg}\n`))
-    changelog += '\n'
-  }
-
-  if (fixes.length > 0) {
-    changelog += '### 🐛 Bug Fixes\n\n'
-    fixes.forEach(msg => (changelog += `- ${msg}\n`))
-    changelog += '\n'
-  }
-
-  if (other.length > 0) {
-    changelog += '### 📝 Other Changes\n\n'
-    other.forEach(msg => (changelog += `- ${msg}\n`))
-    changelog += '\n'
-  }
-
-  return changelog
+  return candidates[0]?.tag ?? null
 }
 
 /**
- * Update changelog file
+ * Read and parse all commits in `baseTag..HEAD` (full history when null).
+ * Merge commits and `chore(release)` commits are excluded.
  */
-async function updateChangelog(version: string): Promise<void> {
-  const changelogPath = path.join(ROOT_DIR, 'CHANGELOG.md')
-  const newEntry = await generateChangelog(version)
-
-  let existingContent = ''
+function readCommitsSince(baseTag: string | null): ParsedCommit[] {
+  const range = baseTag ? `${baseTag}..HEAD` : 'HEAD'
+  let raw = ''
   try {
-    existingContent = await fs.readFile(changelogPath, 'utf-8')
+    // \x1f (unit sep) between fields, \x1e (record sep) between commits —
+    // bodies are multi-line, so --oneline parsing would drop them
+    raw = exec(`git log ${range} --format="%H%x1f%s%x1f%b%x1e"`, { silent: true })
   } catch {
-    // Create new changelog
-    existingContent = `# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-`
+    return []
   }
 
-  // Insert new entry after header
+  const commits: ParsedCommit[] = []
+
+  for (const record of raw.split('\x1e')) {
+    const [hashField, subjectField, bodyField = ''] = record.split('\x1f')
+    const hash = hashField?.trim() ?? ''
+    const rawSubject = subjectField?.trim() ?? ''
+    if (!hash || !rawSubject) continue
+    if (rawSubject.startsWith('Merge ')) continue
+    if (rawSubject.startsWith('chore(release)')) continue
+
+    const match = CONVENTIONAL_COMMIT_RE.exec(rawSubject)
+    let type = 'other'
+    let scope: string | null = null
+    let subject = rawSubject
+    if (match) {
+      const parsedType = (match[1] ?? '').toLowerCase()
+      if (KNOWN_TYPES.has(parsedType)) {
+        type = parsedType
+      }
+      scope = match[2]?.trim() || null
+      subject = match[4]?.trim() || rawSubject
+    }
+
+    const bodyBreak = /^BREAKING[ -]CHANGES?:?[ \t]*(.*)$/m.exec(bodyField)
+    const breakingNote = bodyBreak?.[1]?.trim() || null
+
+    commits.push({
+      hash,
+      rawSubject,
+      type,
+      scope,
+      subject,
+      breaking: Boolean(match?.[3]) || bodyBreak !== null,
+      breakingNote
+    })
+  }
+
+  return commits
+}
+
+/**
+ * Publishable packages that changed since the base tag
+ */
+function collectAffectedPackages(baseTag: string | null, packages: Package[]): string[] {
+  if (!baseTag) return []
+
+  let changed = ''
+  try {
+    changed = exec(`git diff --name-only ${baseTag}..HEAD`, { silent: true })
+  } catch {
+    return []
+  }
+
+  const files = changed.split('\n').filter(Boolean)
+  const affected = new Set<string>()
+  for (const pkg of packages) {
+    if (pkg.private) continue
+    const rel = path.relative(ROOT_DIR, pkg.path) + '/'
+    if (files.some(file => file.startsWith(rel))) {
+      affected.add(pkg.name.replace('@kysera/', ''))
+    }
+  }
+
+  return [...affected].sort()
+}
+
+function formatCommitLine(commit: ParsedCommit): string {
+  const scopePrefix = commit.scope ? `**${commit.scope}:** ` : ''
+  return `- ${scopePrefix}${commit.subject} (${commit.hash.slice(0, 7)})`
+}
+
+/** Cluster same-scope entries together; unscoped entries go last */
+function sortByScope(commits: ParsedCommit[]): ParsedCommit[] {
+  return [...commits].sort((a, b) => {
+    if (a.scope === b.scope) return 0
+    if (a.scope === null) return 1
+    if (b.scope === null) return -1
+    return a.scope.localeCompare(b.scope)
+  })
+}
+
+async function readExistingChangelog(): Promise<string> {
+  try {
+    return await fs.readFile(CHANGELOG_PATH, 'utf-8')
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Generate the changelog entry for a release: every commit since the last
+ * release tag, deduplicated against subjects already present in
+ * CHANGELOG.md (protects against misplaced historical tags re-surfacing
+ * already-released commits).
+ */
+async function generateChangelog(version: string, packages: Package[]): Promise<string> {
+  const date = new Date().toISOString().split('T')[0]
+  const baseTag = findBaseTag(version)
+  const existing = await readExistingChangelog()
+
+  const commits = readCommitsSince(baseTag).filter(
+    commit => !existing.includes(commit.rawSubject)
+  )
+
+  let changelog = `## [${version}] - ${date}\n\n`
+
+  const headerParts: string[] = []
+  const affected = collectAffectedPackages(baseTag, packages)
+  if (affected.length > 0) {
+    headerParts.push(`Packages: ${affected.join(', ')}`)
+  }
+  if (baseTag) {
+    headerParts.push(`[${baseTag}...v${version}](${REPO_URL}/compare/${baseTag}...v${version})`)
+  }
+  if (headerParts.length > 0) {
+    changelog += `_${headerParts.join(' · ')}_\n\n`
+  }
+
+  const breaking = commits.filter(commit => commit.breaking)
+  if (breaking.length > 0) {
+    changelog += '### ⚠️ BREAKING CHANGES\n\n'
+    for (const commit of sortByScope(breaking)) {
+      changelog += `${formatCommitLine(commit)}\n`
+      if (commit.breakingNote) {
+        changelog += `  - ${commit.breakingNote}\n`
+      }
+    }
+    changelog += '\n'
+  }
+
+  for (const section of COMMIT_SECTIONS) {
+    const items = commits.filter(commit => section.types.includes(commit.type))
+    if (items.length === 0) continue
+
+    changelog += `${section.title}\n\n`
+    for (const commit of sortByScope(items)) {
+      changelog += `${formatCommitLine(commit)}\n`
+    }
+    changelog += '\n'
+  }
+
+  if (commits.length === 0) {
+    changelog += '- No user-facing changes recorded.\n'
+  }
+
+  return changelog.trimEnd() + '\n'
+}
+
+/**
+ * Insert a generated entry at the top of CHANGELOG.md
+ */
+async function updateChangelog(entry: string): Promise<void> {
+  let existingContent = await readExistingChangelog()
+  if (!existingContent) {
+    existingContent = CHANGELOG_HEADER
+  }
+
   const lines = existingContent.split('\n')
   const insertIndex = lines.findIndex(line => line.startsWith('## ['))
 
   if (insertIndex > 0) {
-    lines.splice(insertIndex, 0, newEntry)
+    lines.splice(insertIndex, 0, entry)
   } else {
-    lines.push(newEntry)
+    lines.push(entry)
   }
 
-  await fs.writeFile(changelogPath, lines.join('\n'))
+  await fs.writeFile(CHANGELOG_PATH, lines.join('\n'))
 }
 
 /**
@@ -377,51 +555,106 @@ async function runTests(): Promise<void> {
 }
 
 /**
+ * Check whether a version is already on the registry (makes re-runs after a
+ * partial publish idempotent)
+ */
+function isAlreadyPublished(name: string, version: string): boolean {
+  try {
+    const result = exec(`npm view ${name}@${version} version`, { silent: true })
+    return result === version
+  } catch {
+    return false
+  }
+}
+
+/**
  * Publish packages to npm
  */
-async function publishPackages(packages: Package[], options: ReleaseOptions): Promise<void> {
+async function publishPackages(
+  packages: Package[],
+  version: string,
+  options: ReleaseOptions
+): Promise<void> {
   const publishable = packages.filter(pkg => !pkg.private)
+  // Never let a prerelease hijack the `latest` dist-tag
+  const distTagArg = semver.prerelease(version) ? ' --tag next' : ''
 
   console.log(prism.cyan(`\n📦 Publishing ${publishable.length} packages...`))
 
   for (const pkg of publishable) {
-    console.log(prism.gray(`  Publishing ${pkg.name}...`))
+    if (options.dryRun) {
+      console.log(prism.yellow(`  [DRY RUN] Would publish ${pkg.name}@${version}`))
+      continue
+    }
 
-    if (!options.dryRun) {
-      try {
-        exec('pnpm publish --access public --no-git-checks', {
-          cwd: pkg.path
-        })
-        console.log(prism.green(`  ✅ ${pkg.name} published`))
-      } catch (error) {
-        console.error(prism.red(`  ❌ Failed to publish ${pkg.name}`))
-        throw error
-      }
-    } else {
-      console.log(prism.yellow(`  [DRY RUN] Would publish ${pkg.name}`))
+    if (isAlreadyPublished(pkg.name, version)) {
+      console.log(prism.gray(`  ⏭  ${pkg.name}@${version} already on npm — skipping`))
+      continue
+    }
+
+    console.log(prism.gray(`  Publishing ${pkg.name}@${version}...`))
+    try {
+      exec(`pnpm publish --access public --no-git-checks${distTagArg}`, {
+        cwd: pkg.path
+      })
+      console.log(prism.green(`  ✅ ${pkg.name}@${version} published`))
+    } catch (error) {
+      console.error(prism.red(`  ❌ Failed to publish ${pkg.name}: ${errorMessage(error)}`))
+      throw error
     }
   }
 }
 
 /**
- * Create git tag and push
+ * Commit release changes and create the tag.
+ *
+ * Runs BEFORE publish: if this step fails, nothing has reached npm yet.
+ * The tag must land on the release commit — v0.8.8's tag ended up on the
+ * wrong commit precisely because tagging wasn't tied to a verified commit.
  */
-async function createGitRelease(version: string, options: ReleaseOptions): Promise<void> {
+function commitAndTag(version: string, options: ReleaseOptions): void {
   if (options.dryRun) {
-    console.log(prism.yellow(`\n[DRY RUN] Would create tag v${version}`))
+    console.log(prism.yellow(`\n[DRY RUN] Would commit and tag v${version}`))
     return
   }
 
-  console.log(prism.cyan(`\n🏷️  Creating git tag v${version}...`))
+  console.log(prism.cyan(`\n🏷️  Committing and tagging v${version}...`))
 
-  // Commit changes
   exec('git add -A')
-  exec(`git commit -m "chore(release): v${version}"`)
+  const staged = exec('git status --porcelain', { silent: true })
+  if (staged) {
+    exec(`git commit -m "chore(release): v${version}"`)
+  } else {
+    console.log(prism.gray('  Nothing to commit (release changes already committed)'))
+  }
 
-  // Create tag
-  exec(`git tag -a v${version} -m "Release v${version}"`)
+  const tagExists = (() => {
+    try {
+      exec(`git rev-parse -q --verify refs/tags/v${version}`, { silent: true })
+      return true
+    } catch {
+      return false
+    }
+  })()
 
-  // Push
+  if (tagExists) {
+    console.log(prism.gray(`  Tag v${version} already exists — skipping`))
+  } else {
+    exec(`git tag -a v${version} -m "Release v${version}"`)
+  }
+
+  console.log(prism.green(`✅ Tagged v${version}`))
+}
+
+/**
+ * Push commits and tags to the remote
+ */
+async function pushRelease(options: ReleaseOptions): Promise<void> {
+  if (options.dryRun) {
+    console.log(prism.yellow('[DRY RUN] Would push to remote'))
+    return
+  }
+
   const shouldPush = await confirm({
     message: 'Push to remote?',
     initial: true
@@ -435,13 +668,9 @@ async function createGitRelease(version: string, options: ReleaseOptions): Promi
 }
 
 /**
- * Main release flow
+ * Parse CLI arguments
  */
-async function main() {
-  console.log(prism.bold(prism.cyan('\n🚀 Kysera Monorepo Release\n')))
-
-  // Parse CLI arguments
-  const args = process.argv.slice(2)
+function parseArgs(args: string[]): ReleaseOptions {
   const options: ReleaseOptions = {
     skipTests: args.includes('--skip-tests'),
     skipBuild: args.includes('--skip-build'),
@@ -450,6 +679,26 @@ async function main() {
     force: args.includes('--force'),
     listPackages: args.includes('--list-packages') || args.includes('--list')
   }
+
+  const versionFlagIndex = args.indexOf('--version')
+  if (versionFlagIndex !== -1 && args[versionFlagIndex + 1]) {
+    options.version = args[versionFlagIndex + 1]
+  }
+  const versionEq = args.find(arg => arg.startsWith('--version='))
+  if (versionEq) {
+    options.version = versionEq.split('=')[1]
+  }
+
+  return options
+}
+
+/**
+ * Main release flow
+ */
+async function main() {
+  console.log(prism.bold(prism.cyan('\n🚀 Kysera Monorepo Release\n')))
+
+  const options = parseArgs(process.argv.slice(2))
 
   // Handle --list-packages flag
   if (options.listPackages) {
@@ -470,29 +719,52 @@ async function main() {
     console.log(prism.gray(`Current version: ${currentVersion}`))
     console.log(prism.gray(`Found ${packages.length} packages`))
 
-    // 3. Prompt for new version
-    const newVersion = await promptVersion(currentVersion)
+    // 3. Resolve new version (flag or prompt)
+    const newVersion = options.version ?? (await promptVersion(currentVersion))
+
+    if (!semver.valid(newVersion)) {
+      throw new Error(`Invalid version: ${newVersion}`)
+    }
+    if (!options.force && !semver.gt(newVersion, currentVersion)) {
+      throw new Error(
+        `Version ${newVersion} must be greater than current ${currentVersion} (use --force to override)`
+      )
+    }
 
     console.log(prism.bold(prism.green(`\n📦 Releasing version ${newVersion}\n`)))
 
-    // 4. Update all package versions
-    console.log(prism.cyan('📝 Updating package versions...'))
+    // 4. Generate changelog and show it BEFORE mutating anything
+    const changelogEntry = await generateChangelog(newVersion, packages)
+    console.log(prism.bold(prism.cyan('📄 Changelog preview:\n')))
+    console.log(changelogEntry)
 
-    // Update root package.json
-    await updatePackageVersion(ROOT_DIR, newVersion)
-
-    // Update all packages
-    for (const pkg of packages) {
-      await updatePackageVersion(pkg.path, newVersion)
-      console.log(prism.gray(`  Updated ${pkg.name} to ${newVersion}`))
+    if (!options.dryRun && !options.version) {
+      const proceed = await confirm({
+        message: `Release v${newVersion} with the changelog above?`,
+        initial: true
+      })
+      if (!proceed) {
+        console.log(prism.yellow('Release cancelled'))
+        return
+      }
     }
 
-    console.log(prism.green('✅ Versions updated'))
+    // 5. Update versions + changelog (skipped entirely in dry-run)
+    if (options.dryRun) {
+      console.log(prism.yellow('[DRY RUN] Skipping version and changelog writes'))
+    } else {
+      console.log(prism.cyan('📝 Updating package versions...'))
 
-    // 5. Generate and update changelog
-    console.log(prism.cyan('\n📄 Updating changelog...'))
-    await updateChangelog(newVersion)
-    console.log(prism.green('✅ Changelog updated'))
+      await updatePackageVersion(ROOT_DIR, newVersion)
+      for (const pkg of packages) {
+        await updatePackageVersion(pkg.path, newVersion)
+        console.log(prism.gray(`  Updated ${pkg.name} to ${newVersion}`))
+      }
+      console.log(prism.green('✅ Versions updated'))
+
+      await updateChangelog(changelogEntry)
+      console.log(prism.green('✅ Changelog updated'))
+    }
 
     // 6. Build packages
     if (!options.skipBuild) {
@@ -504,30 +776,33 @@ async function main() {
       await runTests()
     }
 
-    // 8. Publish to npm
+    // 8. Commit + tag first — npm must never be ahead of git
+    commitAndTag(newVersion, options)
+
+    // 9. Publish to npm
     if (!options.skipPublish) {
-      await publishPackages(packages, options)
+      await publishPackages(packages, newVersion, options)
     }
 
-    // 9. Create git tag and push
-    await createGitRelease(newVersion, options)
+    // 10. Push commits and tags
+    await pushRelease(options)
 
-    // 10. Success!
+    // 11. Success!
     console.log(prism.bold(prism.green('\n✨ Release completed successfully!\n')))
     console.log(prism.cyan('Next steps:'))
-    console.log('  1. Create GitHub release: https://github.com/kysera-dev/kysera/releases/new')
+    console.log(`  1. Create GitHub release: ${REPO_URL}/releases/new`)
     console.log(`  2. Use tag: v${newVersion}`)
     console.log('  3. Copy changelog entry for release notes')
     console.log('  4. Announce in Discord/Twitter')
-  } catch (error: any) {
+  } catch (error) {
     console.error(prism.red('\n❌ Release failed:'))
-    console.error(error.message)
+    console.error(errorMessage(error))
     process.exit(1)
   }
 }
 
 // Run the script
-main().catch(error => {
-  console.error(prism.red('Fatal error:'), error)
+main().catch((error: unknown) => {
+  console.error(prism.red('Fatal error:'), errorMessage(error))
   process.exit(1)
 })
