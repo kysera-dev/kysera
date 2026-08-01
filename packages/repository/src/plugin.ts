@@ -103,7 +103,7 @@ export async function createORM<DB>(
       return {
         ...repo,
         withTransaction: (trx: Transaction<DB>): T =>
-          build(wrapTransaction(trx, resolvedPlugins) as unknown as Kysely<DB>)
+          build(wrapTransaction(trx, resolvedPlugins))
       }
     }
 
