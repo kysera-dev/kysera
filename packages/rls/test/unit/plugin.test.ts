@@ -211,7 +211,9 @@ describe('rlsPlugin', () => {
       expect(qb.getWhereCalls()).toHaveLength(0)
     })
 
-    it('should skip when metadata.skipRLS is true', () => {
+    it('SECURITY: metadata.skipRLS must NOT bypass RLS (publicly reachable channel)', () => {
+      // metadata is caller-controlled via withPluginMetadata() — honoring a
+      // bypass flag here would disable row security without context or audit
       const qb = new MockQueryBuilder()
       const context: QueryBuilderContext = {
         operation: 'select',
@@ -219,9 +221,10 @@ describe('rlsPlugin', () => {
         metadata: { skipRLS: true }
       }
 
-      const result = plugin.interceptQuery!(qb as unknown as AnyQueryBuilder, context)
-      expect(result).toBe(qb)
-      expect(qb.getWhereCalls()).toHaveLength(0)
+      // No context set → secure default still applies (throws)
+      expect(() =>
+        plugin.interceptQuery!(qb as unknown as AnyQueryBuilder, context)
+      ).toThrow(RLSContextError)
     })
 
     it('should return empty results when no context is set with new secure defaults', () => {

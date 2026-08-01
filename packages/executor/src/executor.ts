@@ -949,8 +949,13 @@ export function wrapTransaction<DB>(
  * This is the SAFE alternative to `getRawDb` when a caller needs to opt out
  * of ONE plugin's behavior while keeping every other plugin active. Plugins
  * read the metadata in `interceptQuery` (e.g. soft-delete skips its filter
- * when `metadata.includeDeleted === true`), so a scoped executor keeps RLS
- * and friends enforced where a raw-db escape would silently bypass them all.
+ * when `metadata.includeDeleted === true`).
+ *
+ * **Security contract for plugin authors:** this channel is reachable by any
+ * caller holding the executor, WITHOUT any authentication context. Plugins
+ * may honor *behavioral* opt-outs here (visibility of soft-deleted rows,
+ * verbosity, ...), but MUST NOT honor security bypasses — @kysera/rls
+ * deliberately ignores this channel entirely for that reason.
  *
  * Returns the executor unchanged when it is not a KyseraExecutor (no plugins
  * to parameterize).
@@ -958,7 +963,7 @@ export function wrapTransaction<DB>(
  * @example
  * ```typescript
  * const withDeleted = withPluginMetadata(executor, { includeDeleted: true })
- * // soft-delete filter off, RLS still enforced:
+ * // soft-delete's own filter off; security plugins unaffected by metadata:
  * const rows = await withDeleted.selectFrom('users').selectAll().execute()
  * ```
  */

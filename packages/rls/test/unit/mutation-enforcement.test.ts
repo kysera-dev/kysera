@@ -144,4 +144,25 @@ describe('RLS mutation enforcement (DAL/executor path)', () => {
     const plugin = rlsPlugin({ schema })
     expect(() => plugin.onDestroy?.()).not.toThrow()
   })
+
+  it('SECURITY: withPluginMetadata({skipRLS:true}) must NOT bypass RLS', async () => {
+    // The metadata channel is publicly reachable — a metadata switch would
+    // disable row security without context, roles, or an audit trail.
+    // Exact auditor repro: tenant-1 user, isSystem:false.
+    const { withPluginMetadata } = await import('@kysera/executor')
+    const executor = await createExecutor(db, [rlsPlugin({ schema })])
+    const escaped = withPluginMetadata(executor, { skipRLS: true })
+
+    await rlsContext.runAsync(tenantCtx('t1'), async () => {
+      const rows = await escaped.selectFrom('posts').selectAll().execute()
+      expect(rows.map(r => r.title)).toEqual(['T1-POST'])
+    })
+
+    // Mutations through the same channel stay scoped too
+    await rlsContext.runAsync(tenantCtx('t1'), async () => {
+      await escaped.updateTable('posts').set({ title: 'HACKED' }).where('id', '=', 2).execute()
+    })
+    const row = await db.selectFrom('posts').selectAll().where('id', '=', 2).executeTakeFirst()
+    expect(row?.title).toBe('T2-SECRET')
+  })
 })

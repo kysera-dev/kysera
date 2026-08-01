@@ -876,10 +876,9 @@ export class RLSQueryInterceptor {
   interceptQuery<QB extends AnyQueryBuilder>(qb: QB, context: QueryBuilderContext): QB {
     const { operation, table, metadata } = context
 
-    // Skip if explicitly disabled
-    if (metadata['skipRLS'] === true) {
-      return qb
-    }
+    // SECURITY: no metadata-based bypass — the metadata channel is publicly
+    // reachable (withPluginMetadata), so honoring a skip flag here would
+    // disable row security without context or audit
 
     // Check if context exists
     if (!rlsContext.hasContext()) {
@@ -1377,11 +1376,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
         return qb
       }
 
-      // Skip if explicitly disabled
-      if (metadata['skipRLS'] === true) {
-        logger.debug(`RLS skipped for ${table} (explicit)`)
-        return qb
-      }
+      // SECURITY: no metadata-based bypass (channel is publicly reachable)
 
       // Check for context
       const rlsCtx = rlsContext.getContextOrNull()

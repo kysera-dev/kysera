@@ -192,7 +192,7 @@ const posts = await orm.posts.findAll()
 
 - SELECT operations: Policies are applied immediately as WHERE clauses
 - INSERT/UPDATE/DELETE: Marked for validation (actual enforcement in `extendRepository`)
-- Skip conditions: `excludeTables`, `metadata['skipRLS']`, `requireContext`, system user, bypass roles
+- Skip conditions: `excludeTables`, `requireContext`, system user, bypass roles (metadata-based bypass deliberately NOT supported — the channel is publicly reachable)
 
 #### 2. `extendRepository` - Mutation Enforcement (CREATE/UPDATE/DELETE)
 

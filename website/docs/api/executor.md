@@ -365,8 +365,16 @@ const rows = await withDeleted.selectFrom('users').selectAll().execute()
 
 - Plugin-internal queries that must skip only that plugin's own predicate
   (soft-delete's `findAllWithDeleted`/`restore`/`hardDelete` use exactly this)
-- Passing per-call flags any plugin reads from `context.metadata`
-  (e.g. `{ skipRLS: true }` for an explicitly-audited admin path)
+- Passing per-call *behavioral* flags a plugin reads from `context.metadata`
+
+:::danger Security contract for plugin authors
+This channel is reachable by any caller holding the executor, **without any
+authentication context**. Plugins may honor behavioral opt-outs here
+(visibility of soft-deleted rows, verbosity), but must **never** honor
+security bypasses. `@kysera/rls` deliberately ignores this channel entirely —
+its only bypasses are context-bound and auditable (`ctx.auth.isSystem`,
+`bypassRoles`, `repo.withoutRLS()`).
+:::
 
 ### wrapTransaction
 

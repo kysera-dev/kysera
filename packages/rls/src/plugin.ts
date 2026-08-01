@@ -293,7 +293,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
      * that RLS validation is required (performed in extendRepository).
      */
     interceptQuery<QB>(qb: QB, context: QueryBuilderContext): QB {
-      const { operation, table, metadata } = context
+      const { operation, table } = context
 
       // Skip if table is excluded
       if (!shouldApplyToTable(table, { tables, excludeTables })) {
@@ -301,11 +301,12 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
         return qb
       }
 
-      // Skip if explicitly disabled via metadata
-      if (metadata['skipRLS'] === true) {
-        logger.debug?.(`[RLS] Skipping RLS (explicit skip): ${table}`)
-        return qb
-      }
+      // SECURITY: RLS deliberately honors NO metadata-based bypass. The
+      // metadata channel is publicly reachable via withPluginMetadata(), so a
+      // metadata switch (the old `skipRLS` flag) would let any caller disable
+      // row security without context, roles, or an audit trail. Legitimate
+      // bypasses are context-bound and auditable: ctx.auth.isSystem,
+      // bypassRoles, or repo.withoutRLS().
 
       // Fail loudly if onInit never ran (createExecutorSync misuse)
       const transformer = requireInit(selectTransformer)
