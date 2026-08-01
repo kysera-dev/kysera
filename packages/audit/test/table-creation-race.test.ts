@@ -197,4 +197,85 @@ describe('M-8: Audit table creation race condition', () => {
       await expect(plugin.onInit(mockDb as any)).resolves.not.toThrow()
     }
   })
+
+  it('should retry table creation after a transient failure instead of caching the rejection', async () => {
+    let createAttempts = 0
+    let failNext = true
+
+    // Chainable table builder whose execute() fails exactly once
+    const tableBuilder: any = {
+      addColumn: () => tableBuilder,
+      execute: async () => {
+        createAttempts++
+        if (failNext) {
+          failNext = false
+          throw new Error('transient DDL failure')
+        }
+      }
+    }
+
+    const mockDb = {
+      schema: { createTable: () => tableBuilder },
+      selectFrom: () => ({
+        select: () => ({
+          limit: () => ({
+            execute: async () => {
+              throw new Error('Table does not exist')
+            }
+          })
+        })
+      })
+    }
+
+    const plugin = auditPlugin({ auditTable: 'audit_logs', tables: ['users'] })
+
+    // First initialization fails with the transient error...
+    await expect(plugin.onInit!(mockDb as any)).rejects.toThrow('transient DDL failure')
+
+    // ...but the failure must not be cached: the same executor retries and succeeds
+    await expect(plugin.onInit!(mockDb as any)).resolves.toBeUndefined()
+    expect(createAttempts).toBe(2)
+  })
+
+  it('should share one creation attempt between concurrent calls even when it fails', async () => {
+    let createAttempts = 0
+
+    const tableBuilder: any = {
+      addColumn: () => tableBuilder,
+      execute: async () => {
+        createAttempts++
+        await new Promise(resolve => setTimeout(resolve, 10))
+        throw new Error('always failing DDL')
+      }
+    }
+
+    const mockDb = {
+      schema: { createTable: () => tableBuilder },
+      selectFrom: () => ({
+        select: () => ({
+          limit: () => ({
+            execute: async () => {
+              throw new Error('Table does not exist')
+            }
+          })
+        })
+      })
+    }
+
+    const plugin = auditPlugin({ auditTable: 'audit_logs', tables: ['users'] })
+
+    // Concurrent initializations share the single in-flight attempt (and its rejection)
+    const results = await Promise.allSettled([
+      plugin.onInit!(mockDb as any),
+      plugin.onInit!(mockDb as any),
+      plugin.onInit!(mockDb as any)
+    ])
+
+    expect(results.every(r => r.status === 'rejected')).toBe(true)
+    expect(createAttempts).toBe(1)
+
+    // After the shared failure settles, a fresh call starts a new attempt
+    await expect(plugin.onInit!(mockDb as any)).rejects.toThrow('always failing DDL')
+    expect(createAttempts).toBe(2)
+  })
 })

@@ -14,11 +14,10 @@ export default defineConfig({
         '**/*.d.ts'
       ],
       thresholds: {
-        // Audit plugin has complex event-driven architecture with many edge cases
-        branches: 70,
-        functions: 90,
-        lines: 85,
-        statements: 85
+        branches: 85,
+        functions: 95,
+        lines: 95,
+        statements: 95
       }
     }
   }

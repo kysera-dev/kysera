@@ -1,6 +1,6 @@
 import type { Kysely } from 'kysely'
 import type { Plugin, BaseRepositoryLike } from '@kysera/executor'
-import { isRepositoryLike } from '@kysera/executor'
+import { isRepositoryLike, isKyseraExecutor, getPlugins } from '@kysera/executor'
 import { NotFoundError, AuditError, AuditRestoreError, AuditMissingValuesError, shouldApplyToTable, type KyseraLogger, silentLogger, formatTimestampForDb, detectDialect } from '@kysera/core'
 import type { Dialect } from '@kysera/core'
 import { VERSION } from './version.js'
@@ -288,22 +288,36 @@ interface AuditBaseRepository<T = unknown> {
 }
 
 /**
- * Extended repository with audit methods
- * Internal type that combines repository methods with audit extensions
+ * Optional transaction rebinding exposed by @kysera/repository repositories.
+ * Used by the atomic execution path to rebuild the repository on a transaction.
  */
-interface ExtendedRepositoryInternal<T = unknown>
-  extends AuditBaseRepository<T>, AuditRepositoryExtensions<T> {}
+interface TransactionBindableRepository {
+  withTransaction?: (trx: Kysely<unknown>) => object
+}
+
+/**
+ * Audit query methods without restoreFromAudit (which is built separately
+ * because it needs the audited create/update methods).
+ */
+type AuditQueryMethods = Omit<AuditRepositoryExtensions, 'restoreFromAudit'>
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
 /**
+ * Marker set (non-enumerable) on repositories already extended by the audit
+ * plugin. It makes extendRepository idempotent: extending twice would wrap
+ * create/update/delete twice and double-write audit entries. Symbol.for() is
+ * used so independently loaded copies of this module share the marker.
+ */
+const AUDIT_EXTENDED = Symbol.for('kysera.audit.extended')
+
+/**
  * Per-executor lock for audit table creation to prevent race conditions.
  * Outer key: Kysely executor instance (WeakMap for automatic cleanup on GC).
  * Inner key: audit table name, Value: Promise that resolves when table creation is complete.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const auditTableCreationLocks = new WeakMap<object, Map<string, Promise<void>>>()
 
 /**
@@ -355,7 +369,9 @@ async function createAuditTable<DB>(executor: Kysely<DB>, auditTable: string): P
  * The lock map acts as both a mutex and a "verified" cache:
  * - If a promise exists for this executor+table, we just await it (table already created or in progress).
  * - Otherwise we create the promise, store it synchronously, then await it.
- * The promise is intentionally never removed so subsequent calls take the fast path.
+ * On success the promise stays cached so subsequent calls take the fast path;
+ * on failure the entry is removed so a transient error (e.g. a dropped
+ * connection during init) does not poison every future call.
  */
 async function ensureAuditTable<DB>(executor: Kysely<DB>, auditTable: string): Promise<void> {
   let tableLocks = auditTableCreationLocks.get(executor)
@@ -378,6 +394,11 @@ async function ensureAuditTable<DB>(executor: Kysely<DB>, auditTable: string): P
   })()
 
   tableLocks.set(auditTable, promise)
+  // Clear the cache entry on failure so the next caller retries; awaiting
+  // `promise` below still surfaces the original rejection to this caller.
+  promise.catch(() => {
+    tableLocks.delete(auditTable)
+  })
   await promise
 }
 
@@ -409,20 +430,65 @@ function formatDateForQuery(date: Date | string | number, dialect?: Dialect): st
 }
 
 /**
+ * Tag key for values JSON cannot represent natively. Tagged values are stored
+ * as `{"$kysera": "<kind>", "value": "<string>"}` and converted back by
+ * auditJsonReviver in the restore path, so BigInt and Date round-trip through
+ * the audit log instead of throwing (BigInt) or degrading to strings (Date).
+ */
+const SERIAL_TAG = '$kysera'
+
+/**
+ * JSON.stringify replacer implementing the tagged serialization.
+ * JSON.stringify calls toJSON() before the replacer, so Dates arrive here
+ * already converted to strings; the original value is still available on the
+ * holder object (`this[key]`).
+ */
+function auditJsonReplacer(this: Record<string, unknown>, key: string, value: unknown): unknown {
+  const original = this[key]
+  if (original instanceof Date) {
+    return { [SERIAL_TAG]: 'date', value: original.toISOString() }
+  }
+  if (typeof value === 'bigint') {
+    return { [SERIAL_TAG]: 'bigint', value: value.toString() }
+  }
+  return value
+}
+
+/**
+ * JSON.parse reviver converting tagged values (see auditJsonReplacer) back to
+ * their original types. Used when parsing audit values for restoreFromAudit.
+ */
+function auditJsonReviver(_key: string, value: unknown): unknown {
+  if (typeof value === 'object' && value !== null && SERIAL_TAG in value) {
+    const tagged = value as { [SERIAL_TAG]?: unknown; value?: unknown }
+    if (tagged[SERIAL_TAG] === 'bigint' && typeof tagged.value === 'string') {
+      return BigInt(tagged.value)
+    }
+    if (tagged[SERIAL_TAG] === 'date' && typeof tagged.value === 'string') {
+      return new Date(tagged.value)
+    }
+  }
+  return value
+}
+
+/**
  * Safely parse JSON with error handling
  * @param value - The JSON string to parse
  * @param defaultValue - Default value to return on parse failure
  * @param logger - Logger for error messages
+ * @param reviver - Optional JSON.parse reviver (used by the restore path to
+ *   convert tagged BigInt/Date values back to their original types)
  * @returns Parsed JSON value or default value
  */
 function safeParseJSON<T>(
   value: string | null | undefined,
   defaultValue: T | null = null,
-  logger: KyseraLogger = silentLogger
+  logger: KyseraLogger = silentLogger,
+  reviver?: (key: string, value: unknown) => unknown
 ): T | null {
   if (!value) return defaultValue
   try {
-    return JSON.parse(value) as T
+    return JSON.parse(value, reviver) as T
   } catch (error) {
     logger.warn(
       `[Kysera Audit] Failed to parse JSON in audit log (data may be corrupted): ${value.substring(0, 100)}`,
@@ -433,20 +499,40 @@ function safeParseJSON<T>(
 }
 
 /**
- * Serialize values for audit log
+ * Serialize values for audit log using tagged serialization for BigInt/Date.
+ * When the payload as a whole cannot be serialized (circular structure), each
+ * top-level column is serialized in isolation so only the offending columns
+ * are replaced with an `{"$kysera": "unserializable"}` placeholder — sibling
+ * columns are preserved instead of discarding the whole payload.
  */
 function serializeAuditValues(values: unknown, logger: KyseraLogger = silentLogger): string | null {
   if (values === null || values === undefined) return null
 
   try {
-    return JSON.stringify(values)
+    return JSON.stringify(values, auditJsonReplacer)
   } catch (error) {
     logger.warn(
       '[Kysera Audit] Failed to stringify audit values (possible circular reference). ' +
-      'Audit data will be stored as "[Circular]" placeholder.',
+        'Falling back to per-column serialization.',
       { error: error instanceof Error ? error.message : String(error) }
     )
-    return '[Circular]'
+
+    if (typeof values === 'object' && !Array.isArray(values)) {
+      const salvaged: Record<string, unknown> = {}
+      for (const [column, columnValue] of Object.entries(values as Record<string, unknown>)) {
+        try {
+          JSON.stringify(columnValue, auditJsonReplacer)
+          salvaged[column] = columnValue
+        } catch {
+          salvaged[column] = { [SERIAL_TAG]: 'unserializable' }
+        }
+      }
+      // Cannot throw: every retained column was verified serializable above
+      return JSON.stringify(salvaged, auditJsonReplacer)
+    }
+
+    // Non-object payloads (e.g. a circular array) cannot be salvaged per column
+    return JSON.stringify({ [SERIAL_TAG]: 'unserializable' })
   }
 }
 
@@ -634,11 +720,91 @@ async function createBulkAuditLogEntries<DB>(
 // ============================================================================
 
 /**
- * Wrap the create method with audit logging
+ * Determine whether audited mutations on this repository can be executed
+ * atomically (mutation + audit entry in one implicit transaction), and if so,
+ * return the executor's resolved plugin list needed to rebuild the repository
+ * on a transaction. Returns null when the sequential path must be used:
+ * - the executor is already a transaction (the caller controls atomicity),
+ * - the executor is a plain Kysely instance without plugin metadata,
+ * - the repository has no withTransaction() to rebind with, or
+ * - this audit plugin is not part of the executor's plugin chain (a rebuilt
+ *   repository would silently skip audit logging).
+ */
+function resolveAtomicPlugins(
+  executor: Kysely<unknown>,
+  baseRepo: object,
+  selfPlugin: Plugin
+): readonly Plugin[] | null {
+  if (executor.isTransaction) return null
+  if (!isKyseraExecutor(executor)) return null
+  if (typeof (baseRepo as TransactionBindableRepository).withTransaction !== 'function') return null
+
+  const plugins = getPlugins(executor)
+  return plugins.includes(selfPlugin) ? plugins : null
+}
+
+/**
+ * Execute a repository mutation atomically with its audit log entry.
+ *
+ * Repository methods are bound to the executor they were created with, so a
+ * mutation cannot simply be re-run inside `executor.transaction().execute()`:
+ * it would still execute on the root executor — outside the transaction on
+ * pooled drivers, and deadlocking on single-connection drivers like SQLite.
+ * Instead, the repository is rebuilt on the transaction via `withTransaction()`
+ * and — unless withTransaction already re-applied the plugin chain (repos from
+ * `createORM().createRepository()` do since the plugin-aware withTransaction) —
+ * the plugin chain is re-applied here in resolved order. The re-dispatched
+ * call then runs the same plugin stack; this audit plugin sees a transaction
+ * executor and takes the same-transaction path, so mutation and audit entry
+ * commit or roll back together.
+ *
+ * Returns null when atomic execution is not possible (see
+ * resolveAtomicPlugins); callers then use the sequential (best-effort) path.
+ */
+function executeAtomically<R>(
+  executor: Kysely<unknown>,
+  baseRepo: object,
+  atomicPlugins: readonly Plugin[] | null,
+  method: string,
+  args: readonly unknown[]
+): Promise<R> | null {
+  if (!atomicPlugins) return null
+
+  const withTransaction = (baseRepo as TransactionBindableRepository).withTransaction
+  if (typeof withTransaction !== 'function') return null
+
+  return executor.transaction().execute(async trx => {
+    let txRepo: object = withTransaction.call(baseRepo, trx as unknown as Kysely<unknown>)
+    // A plugin-aware withTransaction returns an already-extended repository
+    // (marker present); only re-apply the chain for plain rebinds
+    if ((txRepo as Record<symbol, unknown>)[AUDIT_EXTENDED] !== true) {
+      for (const plugin of atomicPlugins) {
+        if (plugin.extendRepository) {
+          txRepo = plugin.extendRepository(txRepo)
+        }
+      }
+    }
+
+    const fn = (txRepo as Record<string, unknown>)[method]
+    if (typeof fn !== 'function') {
+      // Unreachable in practice: withTransaction() mirrors the base repository
+      throw new AuditError(
+        `Cannot execute '${method}' atomically: method missing on transaction-bound repository`
+      )
+    }
+    return (await fn.apply(txRepo, args as unknown[])) as R
+  })
+}
+
+/**
+ * Wrap the create method with audit logging.
+ * Returns the wrapped method (or undefined when the repository has no create);
+ * the caller assembles the extended repository without mutating the original.
  */
 function wrapCreateMethod<T = unknown>(
   baseRepo: AuditBaseRepository<T>,
   executor: Kysely<unknown>,
+  atomicPlugins: readonly Plugin[] | null,
   auditTable: string,
   tableName: string,
   primaryKeyColumn: string,
@@ -646,12 +812,17 @@ function wrapCreateMethod<T = unknown>(
   skipSystemOperations: boolean,
   options: AuditOptions,
   dialect?: Dialect
-): void {
-  if (!baseRepo.create) return
+): ((input: Partial<T>) => Promise<T>) | undefined {
+  if (!baseRepo.create) return undefined
 
   const originalCreate = baseRepo.create.bind(baseRepo)
 
-  baseRepo.create = async function (input: Partial<T>): Promise<T> {
+  return async function (input: Partial<T>): Promise<T> {
+    if (!skipSystemOperations) {
+      const atomic = executeAtomically<T>(executor, baseRepo, atomicPlugins, 'create', [input])
+      if (atomic) return await atomic
+    }
+
     const result = await originalCreate(input)
 
     if (!skipSystemOperations) {
@@ -674,11 +845,13 @@ function wrapCreateMethod<T = unknown>(
 }
 
 /**
- * Wrap the update method with audit logging
+ * Wrap the update method with audit logging.
+ * Returns the wrapped method (or undefined when the repository has no update).
  */
 function wrapUpdateMethod<T = unknown>(
   baseRepo: AuditBaseRepository<T>,
   executor: Kysely<unknown>,
+  atomicPlugins: readonly Plugin[] | null,
   auditTable: string,
   tableName: string,
   primaryKeyColumn: string,
@@ -687,11 +860,16 @@ function wrapUpdateMethod<T = unknown>(
   skipSystemOperations: boolean,
   options: AuditOptions,
   dialect?: Dialect
-): void {
-  if (!baseRepo.update) return
+): ((id: number | string, input: Partial<T>) => Promise<T>) | undefined {
+  if (!baseRepo.update) return undefined
 
   const originalUpdate = baseRepo.update.bind(baseRepo)
-  baseRepo.update = async function (id: number | string, input: Partial<T>): Promise<T> {
+  return async function (id: number | string, input: Partial<T>): Promise<T> {
+    if (!skipSystemOperations) {
+      const atomic = executeAtomically<T>(executor, baseRepo, atomicPlugins, 'update', [id, input])
+      if (atomic) return await atomic
+    }
+
     // Fetch old values if needed
     let oldValues: unknown = null
     if (captureOldValues) {
@@ -719,11 +897,13 @@ function wrapUpdateMethod<T = unknown>(
 }
 
 /**
- * Wrap the delete method with audit logging
+ * Wrap the delete method with audit logging.
+ * Returns the wrapped method (or undefined when the repository has no delete).
  */
 function wrapDeleteMethod<T = unknown>(
   baseRepo: AuditBaseRepository<T>,
   executor: Kysely<unknown>,
+  atomicPlugins: readonly Plugin[] | null,
   auditTable: string,
   tableName: string,
   primaryKeyColumn: string,
@@ -731,11 +911,16 @@ function wrapDeleteMethod<T = unknown>(
   skipSystemOperations: boolean,
   options: AuditOptions,
   dialect?: Dialect
-): void {
-  if (!baseRepo.delete) return
+): ((id: number | string) => Promise<boolean>) | undefined {
+  if (!baseRepo.delete) return undefined
 
   const originalDelete = baseRepo.delete.bind(baseRepo)
-  baseRepo.delete = async function (id: number | string): Promise<boolean> {
+  return async function (id: number | string): Promise<boolean> {
+    if (!skipSystemOperations) {
+      const atomic = executeAtomically<boolean>(executor, baseRepo, atomicPlugins, 'delete', [id])
+      if (atomic) return await atomic
+    }
+
     // Fetch old values before deletion
     let oldValues: unknown = null
     if (captureOldValues) {
@@ -773,6 +958,7 @@ function wrapDeleteMethod<T = unknown>(
 function wrapBulkCreateMethod<T = unknown>(
   baseRepo: AuditBaseRepository<T>,
   executor: Kysely<unknown>,
+  atomicPlugins: readonly Plugin[] | null,
   auditTable: string,
   tableName: string,
   primaryKeyColumn: string,
@@ -780,11 +966,16 @@ function wrapBulkCreateMethod<T = unknown>(
   skipSystemOperations: boolean,
   options: AuditOptions,
   dialect?: Dialect
-): void {
-  if (!baseRepo.bulkCreate) return
+): ((inputs: Partial<T>[]) => Promise<T[]>) | undefined {
+  if (!baseRepo.bulkCreate) return undefined
 
   const originalBulkCreate = baseRepo.bulkCreate.bind(baseRepo)
-  baseRepo.bulkCreate = async function (inputs: Partial<T>[]): Promise<T[]> {
+  return async function (inputs: Partial<T>[]): Promise<T[]> {
+    if (!skipSystemOperations) {
+      const atomic = executeAtomically<T[]>(executor, baseRepo, atomicPlugins, 'bulkCreate', [inputs])
+      if (atomic) return await atomic
+    }
+
     const results = await originalBulkCreate(inputs)
 
     if (!skipSystemOperations && Array.isArray(results) && results.length > 0) {
@@ -821,6 +1012,7 @@ function wrapBulkCreateMethod<T = unknown>(
 function wrapBulkUpdateMethod<T = unknown>(
   baseRepo: AuditBaseRepository<T>,
   executor: Kysely<unknown>,
+  atomicPlugins: readonly Plugin[] | null,
   auditTable: string,
   tableName: string,
   primaryKeyColumn: string,
@@ -829,13 +1021,18 @@ function wrapBulkUpdateMethod<T = unknown>(
   skipSystemOperations: boolean,
   options: AuditOptions,
   dialect?: Dialect
-): void {
-  if (!baseRepo.bulkUpdate) return
+): ((updates: { id: number | string; data: Partial<T> }[]) => Promise<T[]>) | undefined {
+  if (!baseRepo.bulkUpdate) return undefined
 
   const originalBulkUpdate = baseRepo.bulkUpdate.bind(baseRepo)
-  baseRepo.bulkUpdate = async function (
+  return async function (
     updates: { id: number | string; data: Partial<T> }[]
   ): Promise<T[]> {
+    if (!skipSystemOperations) {
+      const atomic = executeAtomically<T[]>(executor, baseRepo, atomicPlugins, 'bulkUpdate', [updates])
+      if (atomic) return await atomic
+    }
+
     // Fetch old values before update if needed
     // Use bulk fetch to avoid N+1 queries (performance optimization)
     const oldValuesMap = new Map<number | string, unknown>()
@@ -884,6 +1081,7 @@ function wrapBulkUpdateMethod<T = unknown>(
 function wrapBulkDeleteMethod<T = unknown>(
   baseRepo: AuditBaseRepository<T>,
   executor: Kysely<unknown>,
+  atomicPlugins: readonly Plugin[] | null,
   auditTable: string,
   tableName: string,
   primaryKeyColumn: string,
@@ -891,11 +1089,16 @@ function wrapBulkDeleteMethod<T = unknown>(
   skipSystemOperations: boolean,
   options: AuditOptions,
   dialect?: Dialect
-): void {
-  if (!baseRepo.bulkDelete) return
+): ((ids: (number | string)[]) => Promise<number>) | undefined {
+  if (!baseRepo.bulkDelete) return undefined
 
   const originalBulkDelete = baseRepo.bulkDelete.bind(baseRepo)
-  baseRepo.bulkDelete = async function (ids: (number | string)[]): Promise<number> {
+  return async function (ids: (number | string)[]): Promise<number> {
+    if (!skipSystemOperations) {
+      const atomic = executeAtomically<number>(executor, baseRepo, atomicPlugins, 'bulkDelete', [ids])
+      if (atomic) return await atomic
+    }
+
     // Fetch old values before deletion if needed
     // Use bulk fetch to avoid N+1 queries (performance optimization)
     const oldValuesMap = new Map<number | string, unknown>()
@@ -943,17 +1146,25 @@ function parseAuditLogEntries(logs: unknown[], logger: KyseraLogger): ParsedAudi
 }
 
 /**
- * Add restore functionality to repository
+ * Build the restoreFromAudit method.
+ *
+ * `create`/`update` are the audit-wrapped methods of the extended repository,
+ * so restore operations are themselves audited (and atomic where supported),
+ * matching the behavior of regular repository mutations.
+ *
+ * Values are parsed with auditJsonReviver so tagged BigInt/Date values (see
+ * auditJsonReplacer) are written back with their original types instead of as
+ * tagged JSON objects or strings.
  */
-function addRestoreMethod<T = unknown>(
-  extendedRepo: ExtendedRepositoryInternal<T>,
-  baseRepo: AuditBaseRepository<T>,
+function createRestoreMethod<T = unknown>(
+  getAuditLog: (auditId: number) => Promise<AuditLogEntry | null>,
+  create: ((data: Partial<T>) => Promise<T>) | undefined,
+  update: ((id: number | string, data: Partial<T>) => Promise<T>) | undefined,
   primaryKeyColumn: string,
   logger: KyseraLogger
-): void {
-  // Restore entity from audit log
-  extendedRepo.restoreFromAudit = async function (auditId: number): Promise<T> {
-    const log = await extendedRepo.getAuditLog(auditId)
+): (auditId: number) => Promise<T> {
+  return async function (auditId: number): Promise<T> {
+    const log = await getAuditLog(auditId)
     if (!log) {
       throw new NotFoundError('AuditLog', { id: auditId })
     }
@@ -964,16 +1175,21 @@ function addRestoreMethod<T = unknown>(
         throw new AuditMissingValuesError(auditId)
       }
 
-      const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values, null, logger)
+      const parsedValues = safeParseJSON<Record<string, unknown>>(
+        log.old_values,
+        null,
+        logger,
+        auditJsonReviver
+      )
       if (!parsedValues) {
         throw new AuditMissingValuesError(auditId)
       }
 
-      if (!baseRepo.create) {
+      if (!create) {
         throw new AuditRestoreError(auditId, 'DELETE', 'Repository does not support create operation')
       }
 
-      return await baseRepo.create(parsedValues as Partial<T>)
+      return await create(parsedValues as Partial<T>)
     }
 
     // For UPDATE operations, restore using old_values (revert the update)
@@ -982,7 +1198,12 @@ function addRestoreMethod<T = unknown>(
         throw new AuditMissingValuesError(auditId)
       }
 
-      const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values, null, logger)
+      const parsedValues = safeParseJSON<Record<string, unknown>>(
+        log.old_values,
+        null,
+        logger,
+        auditJsonReviver
+      )
       if (!parsedValues) {
         throw new AuditMissingValuesError(auditId)
       }
@@ -996,11 +1217,11 @@ function addRestoreMethod<T = unknown>(
         )
       }
 
-      if (!baseRepo.update) {
+      if (!update) {
         throw new AuditRestoreError(auditId, 'UPDATE', 'Repository does not support update operation')
       }
 
-      return await baseRepo.update(entityId as number | string, parsedValues as Partial<T>)
+      return await update(entityId as number | string, parsedValues as Partial<T>)
     }
 
     // INSERT operations cannot be restored (the entity already exists)
@@ -1013,20 +1234,19 @@ function addRestoreMethod<T = unknown>(
 }
 
 /**
- * Add audit query methods to repository
+ * Build the audit query methods (getAuditHistory, getAuditLog, ...).
+ * Returns a plain object so the caller can compose the extended repository
+ * without mutating the original one.
  */
-function addAuditQueryMethods<T = unknown>(
-  extendedRepo: ExtendedRepositoryInternal<T>,
-  baseRepo: AuditBaseRepository<T>,
+function createAuditQueryMethods(
   executor: Kysely<unknown>,
   auditTable: string,
   tableName: string,
-  primaryKeyColumn: string,
   logger: KyseraLogger,
   dialect?: Dialect
-): void {
+): AuditQueryMethods {
   // Get audit history for a specific entity (returns parsed entries)
-  extendedRepo.getAuditHistory = async function (
+  const getAuditHistory = async function (
     entityId: number | string,
     options?: AuditPaginationOptions
   ): Promise<ParsedAuditLogEntry[]> {
@@ -1052,15 +1272,15 @@ function addAuditQueryMethods<T = unknown>(
   }
 
   // Alias for backwards compatibility
-  extendedRepo.getAuditLogs = async function (
+  const getAuditLogs = async function (
     entityId: number | string,
     options?: AuditPaginationOptions
   ): Promise<ParsedAuditLogEntry[]> {
-    return await extendedRepo.getAuditHistory(entityId, options)
+    return await getAuditHistory(entityId, options)
   }
 
   // Get a specific audit log entry
-  extendedRepo.getAuditLog = async function (auditId: number): Promise<AuditLogEntry | null> {
+  const getAuditLog = async function (auditId: number): Promise<AuditLogEntry | null> {
     // Cast to DynamicQueryBuilder for runtime table access
     const dynamicExecutor = executor as unknown as DynamicQueryBuilder
     const log = await dynamicExecutor
@@ -1073,7 +1293,7 @@ function addAuditQueryMethods<T = unknown>(
   }
 
   // Get audit logs for entire table with optional filters and pagination
-  extendedRepo.getTableAuditLogs = async function (
+  const getTableAuditLogs = async function (
     filters?: AuditFilters
   ): Promise<ParsedAuditLogEntry[]> {
     // Cast to DynamicQueryBuilder for runtime table access
@@ -1113,7 +1333,7 @@ function addAuditQueryMethods<T = unknown>(
   }
 
   // Get all changes made by a specific user for this table
-  extendedRepo.getUserChanges = async function (
+  const getUserChanges = async function (
     userId: string,
     options?: AuditPaginationOptions
   ): Promise<ParsedAuditLogEntry[]> {
@@ -1138,8 +1358,7 @@ function addAuditQueryMethods<T = unknown>(
     return parseAuditLogEntries(logs, logger)
   }
 
-  // Add restore functionality
-  addRestoreMethod(extendedRepo, baseRepo, primaryKeyColumn, logger)
+  return { getAuditHistory, getAuditLogs, getAuditLog, getTableAuditLogs, getUserChanges }
 }
 
 // ============================================================================
@@ -1164,14 +1383,22 @@ function addAuditQueryMethods<T = unknown>(
  *
  * ## Transaction Behavior
  *
- * **IMPORTANT**: Audit logs are transaction-aware and respect ACID properties:
+ * **IMPORTANT**: Audit logs are transaction-aware and respect ACID properties.
+ * There are two execution paths:
  *
- * - ✅ **Commits with transaction**: If repository operations are wrapped in a transaction,
- *   audit logs will be written as part of that same transaction
- * - ✅ **Rolls back with transaction**: If transaction is rolled back, all audit logs
- *   are also rolled back automatically
- * - ✅ **Atomic logging**: Audit log entries are always written using the same executor
- *   (database connection or transaction) as the operation being audited
+ * - ✅ **Inside a transaction** (repository bound to a transaction executor):
+ *   audit entries are written on the same transaction as the audited operation,
+ *   so both commit or roll back together
+ * - ✅ **Outside a transaction** (repository created via `createORM`/`createExecutor`
+ *   on the root executor): each audited mutation is re-dispatched through a
+ *   transaction-bound copy of the repository (built with `withTransaction()` plus
+ *   the full plugin chain), wrapping the mutation and its audit entry in one
+ *   implicit transaction. A failed audit write rolls the mutation back, so data
+ *   and audit trail can never diverge
+ * - ⚠️ **Fallback (best effort)**: when the repository cannot be rebound — plain
+ *   Kysely executor without plugin metadata, or a repository without
+ *   `withTransaction()` — the audit entry is written sequentially after the
+ *   mutation and a failed audit write does NOT roll the mutation back
  *
  * ### Correct Transaction Usage
  *
@@ -1192,7 +1419,7 @@ function addAuditQueryMethods<T = unknown>(
  * await db.transaction().execute(async (trx) => {
  *   const repos = createRepositories(db)  // Wrong! Using db, not trx
  *   await repos.users.create({ email: 'test@example.com' })
- *   throw new Error('Rollback')  // User rolled back, but audit log persists ❌
+ *   throw new Error('Rollback')  // User rolled back, audit written in its own transaction ❌
  * })
  * ```
  *
@@ -1284,7 +1511,9 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
   // Detected dialect, set in onInit for dialect-aware timestamp formatting
   let detectedDialect: Dialect | undefined
 
-  return {
+  // Named self-reference: extendRepository uses it to verify this plugin is
+  // part of the executor's chain before taking the atomic execution path
+  const plugin: Plugin = {
     name: '@kysera/audit',
     version: VERSION,
     priority: 50, // AUDIT plugin: runs after security (1000), filters (500), and transforms (100)
@@ -1310,6 +1539,12 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         return repo
       }
 
+      // Idempotence guard: extending an already-extended repository would
+      // wrap the mutation methods twice and double-write audit entries
+      if ((repo as Record<symbol, unknown>)[AUDIT_EXTENDED] === true) {
+        return repo
+      }
+
       const baseRepo = repo as BaseRepositoryLike
       const tableName = baseRepo.tableName ?? ''
       const executor = baseRepo.executor as Kysely<unknown> | undefined
@@ -1323,13 +1558,16 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         return repo
       }
 
-      // Cast to mutable repository for wrapping methods
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mutableRepo = baseRepo as any as AuditBaseRepository
+      // Typed read-only view of the repository; the original is never mutated
+      const auditRepo = baseRepo as unknown as AuditBaseRepository
 
-      wrapCreateMethod(
-        mutableRepo,
+      // Non-null when mutations can run atomically with their audit entries
+      const atomicPlugins = resolveAtomicPlugins(executor, auditRepo, plugin)
+
+      const create = wrapCreateMethod(
+        auditRepo,
         executor,
+        atomicPlugins,
         auditTable,
         tableName,
         primaryKeyColumn,
@@ -1338,9 +1576,10 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         options,
         detectedDialect
       )
-      wrapUpdateMethod(
-        mutableRepo,
+      const update = wrapUpdateMethod(
+        auditRepo,
         executor,
+        atomicPlugins,
         auditTable,
         tableName,
         primaryKeyColumn,
@@ -1350,9 +1589,10 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         options,
         detectedDialect
       )
-      wrapDeleteMethod(
-        mutableRepo,
+      const deleteMethod = wrapDeleteMethod(
+        auditRepo,
         executor,
+        atomicPlugins,
         auditTable,
         tableName,
         primaryKeyColumn,
@@ -1361,9 +1601,10 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         options,
         detectedDialect
       )
-      wrapBulkCreateMethod(
-        mutableRepo,
+      const bulkCreate = wrapBulkCreateMethod(
+        auditRepo,
         executor,
+        atomicPlugins,
         auditTable,
         tableName,
         primaryKeyColumn,
@@ -1372,9 +1613,10 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         options,
         detectedDialect
       )
-      wrapBulkUpdateMethod(
-        mutableRepo,
+      const bulkUpdate = wrapBulkUpdateMethod(
+        auditRepo,
         executor,
+        atomicPlugins,
         auditTable,
         tableName,
         primaryKeyColumn,
@@ -1384,9 +1626,10 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         options,
         detectedDialect
       )
-      wrapBulkDeleteMethod(
-        mutableRepo,
+      const bulkDelete = wrapBulkDeleteMethod(
+        auditRepo,
         executor,
+        atomicPlugins,
         auditTable,
         tableName,
         primaryKeyColumn,
@@ -1396,22 +1639,44 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         detectedDialect
       )
 
-      // Add audit query methods
-      const extendedRepo = mutableRepo as ExtendedRepositoryInternal
-      addAuditQueryMethods(
-        extendedRepo,
-        mutableRepo,
+      const queryMethods = createAuditQueryMethods(
         executor,
         auditTable,
         tableName,
-        primaryKeyColumn,
         logger,
         detectedDialect
       )
 
-      return repo
+      // Restore goes through the audited create/update so restores are logged
+      // (and atomic) just like regular mutations
+      const restoreFromAudit = createRestoreMethod(
+        queryMethods.getAuditLog,
+        create,
+        update,
+        primaryKeyColumn,
+        logger
+      )
+
+      const extendedRepo = {
+        ...repo,
+        ...(create ? { create } : {}),
+        ...(update ? { update } : {}),
+        ...(deleteMethod ? { delete: deleteMethod } : {}),
+        ...(bulkCreate ? { bulkCreate } : {}),
+        ...(bulkUpdate ? { bulkUpdate } : {}),
+        ...(bulkDelete ? { bulkDelete } : {}),
+        ...queryMethods,
+        restoreFromAudit
+      }
+
+      // Non-enumerable so the marker does not leak through spreads or JSON
+      Object.defineProperty(extendedRepo, AUDIT_EXTENDED, { value: true })
+
+      return extendedRepo as T
     }
   }
+
+  return plugin
 }
 
 // ============================================================================

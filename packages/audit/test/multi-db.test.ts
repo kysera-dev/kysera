@@ -61,11 +61,12 @@ describe.each(getDatabaseTypes())('Audit Plugin Multi-Database Tests (%s)', dbTy
 
     orm = await createORM(db, [audit])
 
-    // Create repositories
-    const factory = createRepositoryFactory(db)
-
-    userRepo = orm.createRepository((_executor: any) =>
-      factory.create({
+    // Create repositories with the plugin-aware executor so that
+    // withTransaction() rebinds queries to the transaction (using a factory
+    // bound to `db` would deadlock SQLite inside transactions)
+    userRepo = orm.createRepository((executor: Kysely<MultiDbTestDatabase>) => {
+      const factory = createRepositoryFactory(executor)
+      return factory.create({
         tableName: 'users' as const,
         mapRow: (row: any) => row as User,
         schemas: {
@@ -83,7 +84,7 @@ describe.each(getDatabaseTypes())('Audit Plugin Multi-Database Tests (%s)', dbTy
           )
         }
       })
-    )
+    })
 
     const booleanSchema =
       dbType === 'sqlite'
@@ -93,8 +94,9 @@ describe.each(getDatabaseTypes())('Audit Plugin Multi-Database Tests (%s)', dbTy
         : z.boolean()
 
     // Post repository - created but not used in these tests
-    orm.createRepository((_executor: any) =>
-      factory.create({
+    orm.createRepository((executor: Kysely<MultiDbTestDatabase>) => {
+      const factory = createRepositoryFactory(executor)
+      return factory.create({
         tableName: 'posts' as const,
         mapRow: (row: any) => row as Post,
         schemas: {
@@ -116,7 +118,7 @@ describe.each(getDatabaseTypes())('Audit Plugin Multi-Database Tests (%s)', dbTy
           )
         }
       })
-    )
+    })
   })
 
   afterAll(async () => {
