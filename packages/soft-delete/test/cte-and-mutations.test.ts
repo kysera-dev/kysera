@@ -77,7 +77,7 @@ describe('soft-delete: CTE handling and mutation narrowing', () => {
     it('parenthesized CTE names (columns list) are registered too', async () => {
       const executor = await createExecutor(db, [softDeletePlugin()])
       const rows = await executor
-        .with('t(pid)', q => q.selectFrom('posts').select('id'))
+        .with('t(pid)', q => q.selectFrom('posts').select('id as pid'))
         .selectFrom('t')
         .selectAll()
         .execute()
@@ -116,7 +116,7 @@ describe('soft-delete: CTE handling and mutation narrowing', () => {
     it('metadata.includeDeleted opts a query out of the narrowing', async () => {
       const executor = await createExecutor(db, [softDeletePlugin()])
       const { withPluginMetadata } = await import('@kysera/executor')
-      const optOut = withPluginMetadata(executor, { includeDeleted: true })
+      const optOut = withPluginMetadata<TestDB>(executor, { includeDeleted: true })
 
       await optOut.updateTable('posts').set({ title: 'RAISED' }).where('id', '=', 2).execute()
       const row = await db.selectFrom('posts').selectAll().where('id', '=', 2).executeTakeFirst()
