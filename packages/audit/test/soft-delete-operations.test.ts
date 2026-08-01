@@ -54,7 +54,9 @@ describe('Audit coverage of soft-delete plugin operations', () => {
     await db.destroy()
   })
 
-  async function createRepo(options: { skipSystemOperations?: boolean } = {}) {
+  async function createRepo(
+    options: { skipSystemOperations?: boolean; captureOldValues?: boolean } = {}
+  ) {
     const audit = auditPlugin({
       getUserId: () => 'sd-user',
       tables: ['users'],
@@ -125,6 +127,64 @@ describe('Audit coverage of soft-delete plugin operations', () => {
       const logs = await auditLogs()
       expect(logs).toHaveLength(2)
       expect(logs.every(l => l.operation === 'DELETE')).toBe(true)
+    })
+
+    it('should audit only the actually deleted rows of a mixed batch', async () => {
+      const repo = await createRepo()
+      const live1 = await repo.create({ email: 'mixed-1@test.com', name: 'Mixed 1' })
+      const soft = await repo.create({ email: 'mixed-soft@test.com', name: 'Mixed Soft' })
+      const live2 = await repo.create({ email: 'mixed-2@test.com', name: 'Mixed 2' })
+      await repo.softDelete(soft.id)
+      await clearAuditLogs()
+
+      const deleted = await repo.bulkDelete([live1.id, soft.id, live2.id])
+      expect(deleted).toBe(2)
+
+      // Entries only for the two rows the narrowed DELETE really removed
+      const logs = await auditLogs()
+      expect(logs).toHaveLength(2)
+      expect(logs.every(l => l.operation === 'DELETE')).toBe(true)
+
+      const auditedIds = logs.map(l => l.entity_id).sort()
+      expect(auditedIds).toEqual([String(live1.id), String(live2.id)].sort())
+
+      const auditedEmails = logs.map(l => JSON.parse(l.old_values!).email).sort()
+      expect(auditedEmails).toEqual(['mixed-1@test.com', 'mixed-2@test.com'])
+
+      // The soft-deleted row survived and got no phantom entry
+      const remaining = await db.selectFrom('users').selectAll().execute()
+      expect(remaining).toHaveLength(1)
+      expect(remaining[0]!.id).toBe(soft.id)
+    })
+
+    it('should skip nonexistent ids in a mixed batch', async () => {
+      const repo = await createRepo()
+      const live = await repo.create({ email: 'mixed-live@test.com', name: 'Mixed Live' })
+      await clearAuditLogs()
+
+      const deleted = await repo.bulkDelete([live.id, 99999])
+      expect(deleted).toBe(1)
+
+      const logs = await auditLogs()
+      expect(logs).toHaveLength(1)
+      expect(logs[0]!.entity_id).toBe(String(live.id))
+    })
+
+    it('should gate mixed batches per row even with captureOldValues disabled', async () => {
+      const repo = await createRepo({ captureOldValues: false })
+      const live = await repo.create({ email: 'nocap-live@test.com', name: 'NoCap Live' })
+      const soft = await repo.create({ email: 'nocap-soft@test.com', name: 'NoCap Soft' })
+      await repo.softDelete(soft.id)
+      await clearAuditLogs()
+
+      const deleted = await repo.bulkDelete([live.id, soft.id])
+      expect(deleted).toBe(1)
+
+      // The probe still gates entries per row; only old_values stay null
+      const logs = await auditLogs()
+      expect(logs).toHaveLength(1)
+      expect(logs[0]!.entity_id).toBe(String(live.id))
+      expect(logs[0]!.old_values).toBeNull()
     })
   })
 

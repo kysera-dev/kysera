@@ -631,33 +631,8 @@ async function fetchEntitiesByIds(
   ids: (number | string)[],
   primaryKeyColumn: string
 ): Promise<Map<number | string, unknown>> {
-  const entityMap = new Map<number | string, unknown>()
-
-  if (ids.length === 0) {
-    return entityMap
-  }
-
   try {
-    // Fetch all entities in a single query
-    // Cast to DynamicQueryBuilder for runtime table access
-    const dynamicExecutor = executor as unknown as DynamicQueryBuilder
-    const entities = await dynamicExecutor
-      .selectFrom(tableName)
-      .selectAll()
-      .where(primaryKeyColumn, 'in', ids)
-      .execute()
-
-    // Build map for O(1) lookups
-    if (Array.isArray(entities)) {
-      for (const entity of entities) {
-        const id = (entity as Record<string, unknown>)[primaryKeyColumn]
-        if (id !== undefined) {
-          entityMap.set(id as number | string, entity)
-        }
-      }
-    }
-
-    return entityMap
+    return await fetchEntitiesByIdsStrict(executor, tableName, ids, primaryKeyColumn)
   } catch (error) {
     // Bulk fetch failed - return empty map, audit will continue with null old values
     silentLogger.warn('Failed to bulk fetch entities for audit', {
@@ -665,8 +640,48 @@ async function fetchEntitiesByIds(
       count: ids.length,
       error: error instanceof Error ? error.message : String(error)
     })
+    return new Map<number | string, unknown>()
+  }
+}
+
+/**
+ * Strict variant of fetchEntitiesByIds: propagates query failures instead of
+ * returning an empty map. Used where the caller must distinguish "no rows
+ * matched" (audit entries can be gated per row) from "probe failed" (audit
+ * entries must not be silently dropped).
+ */
+async function fetchEntitiesByIdsStrict(
+  executor: Kysely<unknown>,
+  tableName: string,
+  ids: (number | string)[],
+  primaryKeyColumn: string
+): Promise<Map<number | string, unknown>> {
+  const entityMap = new Map<number | string, unknown>()
+
+  if (ids.length === 0) {
     return entityMap
   }
+
+  // Fetch all entities in a single query
+  // Cast to DynamicQueryBuilder for runtime table access
+  const dynamicExecutor = executor as unknown as DynamicQueryBuilder
+  const entities = await dynamicExecutor
+    .selectFrom(tableName)
+    .selectAll()
+    .where(primaryKeyColumn, 'in', ids)
+    .execute()
+
+  // Build map for O(1) lookups
+  if (Array.isArray(entities)) {
+    for (const entity of entities) {
+      const id = (entity as Record<string, unknown>)[primaryKeyColumn]
+      if (id !== undefined) {
+        entityMap.set(id as number | string, entity)
+      }
+    }
+  }
+
+  return entityMap
 }
 
 /**
@@ -1142,12 +1157,15 @@ function wrapBulkUpdateMethod<T = unknown>(
 }
 
 /**
- * Wrap the bulkDelete method with audit logging
+ * Wrap the bulkDelete method with audit logging.
  *
- * **Performance Optimization:** Uses batch queries for both fetching old values and inserting audit entries.
- * - Old values: 1 batch SELECT with WHERE IN clause (not N individual queries)
- * - Audit entries: 1 batch INSERT (not N individual queries)
- * - Performance gain: ~100x faster for large batches
+ * Audit entries are gated per row: the pre-delete probe (1 batch SELECT, also
+ * used for old-values capture) runs through the filtered executor, so ids the
+ * narrowed DELETE cannot touch produce no entries. Entries are only written
+ * when the delete actually removed rows.
+ *
+ * **Performance Optimization:** Uses batch queries for both the probe and the
+ * audit inserts (1 SELECT + 1 INSERT instead of N each).
  */
 function wrapBulkDeleteMethod<T = unknown>(
   baseRepo: AuditBaseRepository<T>,
@@ -1170,16 +1188,19 @@ function wrapBulkDeleteMethod<T = unknown>(
       if (atomic) return await atomic
     }
 
-    // Fetch old values before deletion if needed
-    // Use bulk fetch to avoid N+1 queries (performance optimization)
-    const oldValuesMap = new Map<number | string, unknown>()
-    if (captureOldValues) {
-      const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids, primaryKeyColumn)
-      // Copy to our map
-      for (const [id, entity] of fetchedOldValues) {
-        oldValuesMap.set(id, entity)
-      }
-    }
+    // Existence probe + old-values capture in one query through the
+    // (soft-delete-)filtered executor: rows the narrowed DELETE cannot touch
+    // (already soft-deleted or missing) are absent from the probe, so a mixed
+    // batch produces audit entries only for the rows that were really
+    // deletable. A null probe means the SELECT itself failed — then every id
+    // is audited (losing phantom precision is better than silently losing
+    // the audit trail of a real deletion).
+    const existingRows: Map<number | string, unknown> | null =
+      ids.length === 0
+        ? new Map<number | string, unknown>()
+        : await fetchEntitiesByIdsStrict(executor, tableName, ids, primaryKeyColumn).catch(
+            () => null
+          )
 
     const result = await originalBulkDelete(ids)
 
@@ -1188,9 +1209,20 @@ function wrapBulkDeleteMethod<T = unknown>(
     // already soft-deleted, so the narrowed DELETE matched no rows) must not
     // fabricate DELETE audit entries for rows that were never deleted
     if (!skipSystemOperations && result > 0) {
+      const auditableIds =
+        existingRows === null ? ids : ids.filter(id => existingRows.has(id))
+
       // Prepare all audit entries in memory
-      const auditEntries = ids.map(id =>
-        prepareAuditEntry(tableName, id, 'DELETE', oldValuesMap.get(id) ?? null, null, options, dialect)
+      const auditEntries = auditableIds.map(id =>
+        prepareAuditEntry(
+          tableName,
+          id,
+          'DELETE',
+          captureOldValues ? (existingRows?.get(id) ?? null) : null,
+          null,
+          options,
+          dialect
+        )
       )
 
       // Batch insert all audit entries in one query
