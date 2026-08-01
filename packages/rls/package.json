@@ -13,6 +13,10 @@
     "./native": {
       "types": "./dist/native/index.d.ts",
       "import": "./dist/native/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js"
     }
   },
   "files": [
@@ -43,9 +47,6 @@
     "zod": "^4.3.6"
   },
   "peerDependenciesMeta": {
-    "@kysera/executor": {
-      "optional": true
-    },
     "@kysera/repository": {
       "optional": true
     },

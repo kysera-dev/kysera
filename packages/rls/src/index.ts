@@ -34,7 +34,7 @@ export { PolicyRegistry } from './policy/registry.js'
 // Plugin
 // ============================================================================
 
-export { rlsPlugin, RLSPluginOptionsSchema } from './plugin.js'
+export { rlsPlugin } from './plugin.js'
 export type { RLSPluginOptions } from './plugin.js'
 
 // ============================================================================

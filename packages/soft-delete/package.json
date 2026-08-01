@@ -50,9 +50,6 @@
     "zod": "^4.3.6"
   },
   "peerDependenciesMeta": {
-    "@kysera/executor": {
-      "optional": true
-    },
     "zod": {
       "optional": true
     }

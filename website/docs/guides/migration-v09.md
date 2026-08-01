@@ -190,3 +190,12 @@ await repo.transaction(async trx => {
   return txRepo.bulkUpdate(updates)
 })
 ```
+
+## Packaging Changes
+
+- `@kysera/executor` is now a **required** peer of soft-delete / timestamps /
+  audit / rls (all four import runtime values from it; installs without it
+  failed at import time).
+- `RLSPluginOptionsSchema` moved from the `@kysera/rls` main entry to
+  `@kysera/rls/schema` — the main entry no longer hard-imports `zod`
+  (which is an optional peer), matching the other plugins.

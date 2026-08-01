@@ -13,7 +13,6 @@
 import type { Plugin, QueryBuilderContext, BaseRepositoryLike } from '@kysera/executor'
 import { getRawDb, isRepositoryLike } from '@kysera/executor'
 import type { Kysely } from 'kysely'
-import { z } from 'zod'
 import type { RLSSchema, Operation } from './policy/types.js'
 import { PolicyRegistry } from './policy/registry.js'
 import { SelectTransformer } from './transformer/select.js'
@@ -102,21 +101,6 @@ export interface RLSPluginOptions<DB = unknown> {
    */
   primaryKeyColumn?: string
 }
-
-/**
- * Zod schema for RLSPluginOptions
- * Used for validation and configuration in the kysera-cli.
- * Note: 'schema' and 'onViolation' are not included as they are complex runtime objects.
- */
-export const RLSPluginOptionsSchema = z.object({
-  tables: z.array(z.string()).optional(),
-  excludeTables: z.array(z.string()).optional(),
-  bypassRoles: z.array(z.string()).optional(),
-  requireContext: z.boolean().optional(),
-  allowUnfilteredQueries: z.boolean().optional(),
-  auditDecisions: z.boolean().optional(),
-  primaryKeyColumn: z.string().optional()
-})
 
 /**
  * Base repository interface for type safety.
