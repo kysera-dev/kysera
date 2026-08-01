@@ -457,11 +457,13 @@ export async function withTransaction<DB, T>(
   }
 
   // Create transaction builder
-  const transactionBuilder = actualDb.transaction()
+  let transactionBuilder = actualDb.transaction()
 
-  // Apply isolation level if specified (only valid for top-level transaction)
+  // Apply isolation level if specified (only valid for top-level transaction).
+  // Kysely builders are immutable — setIsolationLevel returns a NEW builder;
+  // discarding the result silently dropped the isolation level entirely.
   if (options.isolationLevel) {
-    transactionBuilder.setIsolationLevel(options.isolationLevel)
+    transactionBuilder = transactionBuilder.setIsolationLevel(options.isolationLevel)
   }
 
   return await transactionBuilder.execute(async (trx: Transaction<DB>) => {
