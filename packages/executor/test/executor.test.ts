@@ -971,9 +971,11 @@ describe('@kysera/executor - Additional Features', () => {
         .selectAll()
         .execute()
 
-      // Should have intercepted both the CTE definition and the main query
+      // The CTE BODY is intercepted (real table), but the CTE NAME is not —
+      // it isn't a real table, and plugins filtering it produced invalid SQL
+      // (e.g. soft-delete emitting `active_users.deleted_at`)
       expect(intercepted).toContain('select:users')
-      expect(intercepted).toContain('select:active_users')
+      expect(intercepted).not.toContain('select:active_users')
     })
 
     it('works with withRecursive for recursive CTEs', async () => {

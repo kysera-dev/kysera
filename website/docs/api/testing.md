@@ -18,7 +18,7 @@ npm install --save-dev @kysera/testing
 
 ## Overview
 
-**Dependencies:** None (peer: kysely >=0.28.14)
+**Dependencies:** None (peer: kysely >=0.29.0)
 
 :::info Package Type
 This is a **utility package** for testing. It's not part of the Repository/DAL pattern - it provides testing helpers that work with Kysely instances directly.
@@ -106,6 +106,11 @@ it('handles serializable isolation', async () => {
 ```
 
 **Isolation Levels:** `'read uncommitted'`, `'read committed'`, `'repeatable read'`, `'serializable'`
+
+Uses kysely's dialect-aware `setIsolationLevel()` under the hood — the correct
+statements are emitted per database (MySQL sets the level *before* starting
+the transaction; a raw `SET TRANSACTION` inside an active MySQL transaction
+would fail). SQLite's driver ignores isolation settings (single-writer).
 
 ## Database Cleanup
 

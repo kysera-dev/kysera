@@ -96,7 +96,7 @@ interceptQuery(qb, context) {
 - `updateTable` → `'update'`
 - `deleteFrom` → `'delete'`
 - `replaceInto` → `'replace'` (MySQL REPLACE)
-- `mergeInto` → `'merge'` (SQL MERGE, Kysely 0.28.x)
+- `mergeInto` → `'merge'` (SQL MERGE, Kysely 0.28+)
 
 ### 2. Repository Extension (Repository only)
 

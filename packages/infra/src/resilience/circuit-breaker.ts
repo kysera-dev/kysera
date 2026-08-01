@@ -220,12 +220,7 @@ export class CircuitBreaker {
       // Re-acquire mutex for state update on success
       const successRelease = await this.acquireMutex()
       try {
-        // Reset on success
-        if (wasHalfOpen && this.state === 'half-open') {
-          this.isTestingHalfOpen = false
-          this.setState('closed')
-          this.failures = 0
-        }
+        this.recordSuccess(wasHalfOpen)
       } finally {
         successRelease()
       }
@@ -258,6 +253,24 @@ export class CircuitBreaker {
       }
 
       throw error
+    }
+  }
+
+  /**
+   * Apply success-path state updates (called under the mutex).
+   *
+   * Half-open probe success closes the circuit; a success while CLOSED ends
+   * the consecutive-failure run so sporadic failures never accumulate to the
+   * threshold.
+   * @internal
+   */
+  private recordSuccess(wasHalfOpen: boolean): void {
+    if (wasHalfOpen && this.state === 'half-open') {
+      this.isTestingHalfOpen = false
+      this.setState('closed')
+      this.failures = 0
+    } else if (this.state === 'closed' && this.failures > 0) {
+      this.failures = 0
     }
   }
 

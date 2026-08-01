@@ -60,15 +60,22 @@ export {
   getRawDb,
   wrapTransaction,
   applyPlugins,
+  withPluginMetadata,
   validatePlugins,
   resolvePluginOrder,
+  parseTableReference,
   PluginValidationError,
   destroyExecutor,
   INTERCEPTED_METHODS
 } from './executor.js'
 
-// Export InterceptedMethod type for advanced users
-export type { InterceptedMethod } from './executor.js'
+// Export advanced types
+export type {
+  InterceptedMethod,
+  ParsedTableReference,
+  WrappedTransactionBuilder,
+  WrappedControlledTransactionBuilder
+} from './executor.js'
 
 // Built-in plugins
 export {

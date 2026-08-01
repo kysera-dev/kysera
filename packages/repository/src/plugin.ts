@@ -1,6 +1,6 @@
-import type { Kysely } from 'kysely'
+import type { Kysely, Transaction } from 'kysely'
 import type { AnyQueryBuilder } from './types.js'
-import { createExecutor, getPlugins, type Plugin } from '@kysera/executor'
+import { createExecutor, getPlugins, wrapTransaction, type Plugin } from '@kysera/executor'
 import { createContext as createDalContext, withTransaction, type DbContext } from '@kysera/dal'
 
 /**
@@ -80,12 +80,30 @@ export async function createORM<DB>(
   function createRepository<T extends object>(
     factory: (executor: Kysely<DB>, applyPlugins: ApplyPluginsFunction) => T
   ): T {
-    let repo = factory(executor, applyPlugins)
+    const build = (exec: Kysely<DB>): T => {
+      let repo = factory(exec, applyPlugins)
 
-    // Apply repository extensions in resolved order
-    for (const plugin of resolvedPlugins) {
-      if (plugin.extendRepository) {
-        repo = plugin.extendRepository(repo)
+      // Apply repository extensions in resolved order
+      for (const plugin of resolvedPlugins) {
+        if (plugin.extendRepository) {
+          repo = plugin.extendRepository(repo)
+        }
+      }
+
+      return repo
+    }
+
+    const repo = build(executor)
+
+    // Repository.withTransaction rebuilds the repo against a raw transaction,
+    // which silently dropped EVERY plugin (no interception, no extensions —
+    // no soft-delete/audit/timestamps/RLS inside transactions). Re-run the
+    // full build against a plugin-wrapped transaction instead.
+    if (typeof (repo as { withTransaction?: unknown }).withTransaction === 'function') {
+      return {
+        ...repo,
+        withTransaction: (trx: Transaction<DB>): T =>
+          build(wrapTransaction(trx, resolvedPlugins) as unknown as Kysely<DB>)
       }
     }
 

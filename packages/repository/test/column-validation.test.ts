@@ -121,12 +121,24 @@ describe('validateConditions', () => {
       process.env['NODE_ENV'] = originalEnv
     })
 
-    it('should validate in development mode by default', () => {
-      const conditions = { invalid: 'value' }
+    it('accepts legitimate columns without a whitelist (identifier-shape check)', () => {
+      // Old behavior rejected every non-PK column in development — legitimate
+      // queries failed in dev but worked in prod. Now: shape check only.
+      const conditions = { name: 'Alice', created_at: 'x' }
       const pkConfig = { columns: 'id', type: 'number' as const }
 
-      // Should throw because 'invalid' is not in allowedColumns (only 'id' from pkConfig)
-      expect(() => validateConditions(conditions, pkConfig)).toThrow(/Invalid column name/)
+      expect(validateConditions(conditions, pkConfig)).toEqual(conditions)
+    })
+
+    it('rejects non-identifier column names without a whitelist', () => {
+      const pkConfig = { columns: 'id', type: 'number' as const }
+
+      expect(() =>
+        validateConditions({ 'name; DROP TABLE users': 1 }, pkConfig)
+      ).toThrow(/Invalid column name/)
+      expect(() => validateConditions({ 'name desc': 1 }, pkConfig)).toThrow(
+        /Invalid column name/
+      )
     })
 
     it('should use custom allowedColumns when provided', () => {
@@ -220,12 +232,12 @@ describe('validateConditions', () => {
       expect(result).toEqual(conditions)
     })
 
-    it('should reject non-primary-key columns without custom whitelist', () => {
-      const conditions = { name: 'Alice' } // Not a primary key
+    it('accepts non-primary-key identifier columns without custom whitelist', () => {
+      const conditions = { name: 'Alice' } // Not a primary key — still a valid identifier
       const pkConfig = { columns: 'id', type: 'number' as const }
       const options = { enabled: true }
 
-      expect(() => validateConditions(conditions, pkConfig, options)).toThrow(/name/)
+      expect(validateConditions(conditions, pkConfig, options)).toEqual(conditions)
     })
   })
 

@@ -1,12 +1,12 @@
 /**
- * Kysely 0.28.9 Compatibility Tests
+ * Kysely plugin-layer compatibility (0.29+) Tests
  *
- * Tests to verify Kysera works correctly with Kysely 0.28.9 changes:
+ * Tests to verify Kysera works correctly with the kysely plugin layer:
  * - Plugin system (transformQuery, transformResult)
  * - Query builder API (selectFrom, insertInto, updateTable, deleteFrom)
  * - Transaction handling
  *
- * Key fixes in Kysely 0.28.9:
+ * Historical context (fixed in kysely 0.28.9, kept as regression guards):
  * - withSchema() now correctly applies to DELETE USING clause (PR #1648)
  * - withSchema() no longer adds schema prefix to row-level locking clauses (PR #1659)
  */
@@ -46,7 +46,7 @@ interface TestDatabase {
   }
 }
 
-describe('Kysely 0.28.9 Compatibility', () => {
+describe('Kysely plugin-layer compatibility (0.29+)', () => {
   let db: Kysely<TestDatabase>
   let sqlite: InstanceType<typeof BetterSqlite3>
 

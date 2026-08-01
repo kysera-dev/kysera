@@ -8,16 +8,14 @@ import { z } from 'zod'
  * Schema for KyseraLogger interface.
  * Validates that an object has the required logger methods.
  */
-const LoggerSchema = z
-  .object({
-    trace: z.function(),
-    debug: z.function(),
-    info: z.function(),
-    warn: z.function(),
-    error: z.function(),
-    fatal: z.function()
-  })
-  .passthrough() // Allow additional properties
+const LoggerSchema = z.looseObject({
+  trace: z.function(),
+  debug: z.function(),
+  info: z.function(),
+  warn: z.function(),
+  error: z.function(),
+  fatal: z.function()
+}) // loose: allow additional properties
 
 /**
  * Schema for MigrationRunnerOptions
@@ -33,7 +31,11 @@ export const MigrationRunnerOptionsSchema = z.object({
   /** Stop on first error */
   stopOnError: z.boolean().default(true),
   /** Show detailed metadata in logs */
-  verbose: z.boolean().default(true)
+  verbose: z.boolean().default(true),
+  /** Serialize concurrent runners via a database advisory lock (postgres/mysql) */
+  advisoryLock: z.boolean().default(true),
+  /** Max time to wait for the advisory lock before failing */
+  lockTimeoutMs: z.number().int().positive().default(60000)
 })
 
 // ============================================================================
@@ -206,7 +208,9 @@ export function parseMigrationRunnerOptions(options: unknown): MigrationRunnerOp
  * Safely validate MigrationRunnerOptions without throwing
  * Returns result with success boolean and either data or error
  */
-export function safeParseMigrationRunnerOptions(options: unknown) {
+export function safeParseMigrationRunnerOptions(
+  options: unknown
+): ReturnType<typeof MigrationRunnerOptionsSchema.safeParse> {
   return MigrationRunnerOptionsSchema.safeParse(options)
 }
 
@@ -221,6 +225,8 @@ export function parseMigrationDefinition(definition: unknown): MigrationDefiniti
  * Safely validate MigrationDefinition without throwing
  * Returns result with success boolean and either data or error
  */
-export function safeParseMigrationDefinition(definition: unknown) {
+export function safeParseMigrationDefinition(
+  definition: unknown
+): ReturnType<typeof MigrationDefinitionSchema.safeParse> {
   return MigrationDefinitionSchema.safeParse(definition)
 }

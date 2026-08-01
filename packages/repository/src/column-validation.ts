@@ -9,7 +9,35 @@
 
 import type { PrimaryKeyConfig } from './types.js'
 import { getPrimaryKeyColumns } from './types.js'
-import { getEnv } from '@kysera/core'
+
+/**
+ * Plain SQL identifier: letters/underscore start, then letters/digits/underscore.
+ * Rejects injection vectors and silent mistakes like `orderBy: 'name desc'`
+ * (which SQLite would otherwise treat as a quoted string literal).
+ */
+const SQL_IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+/**
+ * Assert that a dynamic name is a plain SQL identifier.
+ *
+ * @param name - The identifier to validate (column name, orderBy target, ...)
+ * @param context - Human-readable description for the error message
+ * @throws Error when the name is not a plain identifier
+ *
+ * @example
+ * ```typescript
+ * assertValidIdentifier('created_at', 'orderBy column') // OK
+ * assertValidIdentifier('name desc', 'orderBy column')  // throws
+ * ```
+ */
+export function assertValidIdentifier(name: string, context: string): void {
+  if (!SQL_IDENTIFIER_PATTERN.test(name)) {
+    throw new Error(
+      `Invalid ${context}: "${name}". Expected a plain SQL identifier ` +
+        `(letters, digits, underscore; must not contain spaces or punctuation).`
+    )
+  }
+}
 
 /**
  * Validate that all column names in conditions exist in a whitelist.
@@ -75,20 +103,29 @@ export function getAllowedColumnsFromPkConfig(pkConfig: PrimaryKeyConfig): Reado
  */
 export interface ColumnValidationOptions {
   /**
-   * Enable column validation (default: true in development, false in production)
+   * Enable column validation (default: true).
+   * The default identifier-shape check is O(number of keys) and safe to keep
+   * on in production.
    */
   enabled?: boolean
   /**
-   * Custom allowed columns set (default: derived from primary key config)
+   * Explicit column whitelist. When provided, every condition key must be in
+   * this set (strict schema validation). When omitted, keys are checked to be
+   * plain SQL identifiers instead — this avoids the old failure mode where
+   * development rejected legitimate columns because only primary-key columns
+   * were known, while production skipped validation entirely.
    */
   allowedColumns?: ReadonlySet<string>
 }
 
 /**
- * Create a validated conditions object with schema whitelist check.
+ * Validate condition column names.
+ *
+ * - With `allowedColumns`: strict whitelist membership check.
+ * - Without: identifier-shape check (consistent across environments).
  *
  * @param conditions - Conditions to validate
- * @param pkConfig - Primary key configuration (provides default whitelist)
+ * @param _pkConfig - Primary key configuration (kept for API compatibility)
  * @param options - Validation options
  * @returns Validated conditions (same object if valid)
  * @throws Error if validation enabled and columns are invalid
@@ -104,20 +141,23 @@ export interface ColumnValidationOptions {
  */
 export function validateConditions(
   conditions: Record<string, unknown>,
-  pkConfig: PrimaryKeyConfig,
+  _pkConfig: PrimaryKeyConfig,
   options: ColumnValidationOptions = {}
 ): Record<string, unknown> {
-  const { enabled = getEnv('NODE_ENV') === 'development', allowedColumns } = options
+  const { enabled = true, allowedColumns } = options
 
   if (!enabled) {
     return conditions
   }
 
-  const whitelist = allowedColumns ?? getAllowedColumnsFromPkConfig(pkConfig)
+  if (allowedColumns) {
+    validateColumnNames(conditions, allowedColumns)
+    return conditions
+  }
 
-  // In development mode, validate column names against whitelist
-  // This helps catch bugs early and prevents SQL injection
-  validateColumnNames(conditions, whitelist)
+  for (const column of Object.keys(conditions)) {
+    assertValidIdentifier(column, 'column name')
+  }
 
   return conditions
 }

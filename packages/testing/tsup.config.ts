@@ -9,7 +9,7 @@ export default defineConfig({
   clean: true,
   minify: true,
   treeshake: true,
-  external: ['kysely', '@kysera/executor', 'better-sqlite3'],
+  external: ['kysely', '@kysera/core', '@kysera/executor', 'better-sqlite3'],
   target: 'esnext',
   platform: 'neutral',
   tsconfig: './tsconfig.build.json'

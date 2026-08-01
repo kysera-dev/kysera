@@ -82,6 +82,22 @@ const visiblePosts = await postRepo.find({
 })
 ```
 
+:::info MongoDB NULL semantics
+`$ne` and `$nin` follow MongoDB semantics: rows where the column is `NULL`
+**match** (`$ne: 30` returns rows with `age = 40` *and* rows with `age IS NULL`).
+Plain SQL `<>` / `NOT IN` would silently drop NULL rows — Kysera compiles
+`(col <> ? OR col IS NULL)` for you. To also exclude NULLs, add `null` to the
+list (`$nin: [30, null]`) or combine with `$isNotNull: true`. Symmetrically,
+`$in: [40, null]` matches NULL rows too.
+:::
+
+:::warning Malformed operator values throw
+A valid operator with a malformed value (`$between: [30]`, `$isNull: 'yes'`,
+`$contains: null`, `$in: 'oops'`) throws `InvalidOperatorValueError` instead of
+silently dropping the filter. A silently dropped filter would return the whole
+table — a data-exposure hazard.
+:::
+
 ### Text Search
 
 ```typescript
@@ -99,13 +115,20 @@ const searchResults = await postRepo.find({
   }
 })
 
-// Case-insensitive search (PostgreSQL)
+// Case-insensitive search (all dialects)
 const nameSearch = await userRepo.find({
   where: {
     name: { $ilike: '%john%' }
   }
 })
 ```
+
+:::info Portable $ilike
+`$ilike` compiles to `LOWER(column) LIKE LOWER(pattern)`, which works on every
+supported dialect (PostgreSQL's native `ILIKE` keyword does not exist in
+MySQL/SQLite/MSSQL). If you need PostgreSQL's native `ILIKE` (e.g. for trigram
+indexes), drop to the DAL or a raw Kysely query.
+:::
 
 :::info LIKE Pattern Escaping
 The `$contains`, `$startsWith`, and `$endsWith` operators automatically escape special LIKE characters (`%`, `_`, `\`) in user input and add an `ESCAPE '\'` clause to the generated SQL. This prevents unintended wildcard matching when user input contains these characters.

@@ -1,7 +1,14 @@
-import type { Kysely } from 'kysely'
+import type { Generated, Kysely } from 'kysely'
 import { sql } from 'kysely'
 import type { KyseraLogger } from '@kysera/core'
-import { DatabaseError, NotFoundError, BadRequestError, ErrorCodes, silentLogger } from '@kysera/core'
+import {
+  DatabaseError,
+  NotFoundError,
+  BadRequestError,
+  ErrorCodes,
+  silentLogger,
+  detectDialect
+} from '@kysera/core'
 import { VERSION } from './version.js'
 
 // ============================================================================
@@ -104,6 +111,17 @@ export interface MigrationRunnerOptions {
   stopOnError?: boolean
   /** Show detailed metadata in logs (default: true) */
   verbose?: boolean
+  /**
+   * Serialize concurrent runners via a database advisory lock (default: true).
+   *
+   * Two application instances migrating at once would otherwise both see the
+   * same pending list and run every migration twice. PostgreSQL uses
+   * `pg_try_advisory_lock`, MySQL uses `GET_LOCK`; SQLite is single-writer by
+   * nature (no-op), MSSQL is currently a no-op.
+   */
+  advisoryLock?: boolean
+  /** Max time to wait for the advisory lock before failing (default: 60000) */
+  lockTimeoutMs?: number
 }
 
 /**
@@ -207,9 +225,22 @@ export async function setupMigrations(db: Kysely<unknown>): Promise<void> {
   // Using IF NOT EXISTS equivalent: ignore errors if index already exists
   try {
     await db.schema.createIndex('idx_migrations_name').on('migrations').column('name').execute()
-  } catch (error) {
+  } catch {
     // Index already exists or table doesn't support concurrent index creation
     // Safe to ignore as primary key provides index functionality
+  }
+}
+
+/**
+ * Internal bookkeeping schema for the runner's migrations table.
+ * Not part of the user's DB schema — accessed through a dedicated cast.
+ * @internal
+ */
+interface MigrationsTableDB {
+  migrations: {
+    name: string
+    /** Defaulted by the database (CURRENT_TIMESTAMP) */
+    executed_at: Generated<Date | string>
   }
 }
 
@@ -233,6 +264,34 @@ function formatError(error: unknown): string {
     return error.message
   }
   return String(error)
+}
+
+/**
+ * Advisory lock identity shared by every Kysera migration runner.
+ * PostgreSQL wants a bigint key; MySQL wants a string name.
+ * @internal
+ */
+const MIGRATION_LOCK_KEY = 8982422971203  // stable app-wide key ("kysera" digits)
+const MIGRATION_LOCK_NAME = 'kysera_migrations'
+const MIGRATION_LOCK_POLL_MS = 250
+
+/** @internal */
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
+
+/**
+ * Thrown when the migration advisory lock cannot be acquired in time —
+ * usually means another instance is still migrating.
+ */
+export class MigrationLockError extends DatabaseError {
+  constructor(timeoutMs: number) {
+    super(
+      `Could not acquire migration advisory lock within ${String(timeoutMs)}ms — ` +
+        `another migration runner is probably active. ` +
+        `Increase lockTimeoutMs or set advisoryLock: false to bypass (unsafe).`,
+      ErrorCodes.MIGRATION_UP_FAILED
+    )
+    this.name = 'MigrationLockError'
+  }
 }
 
 /**
@@ -266,6 +325,8 @@ export class MigrationRunner<DB = unknown> {
   protected db: Kysely<DB>
   protected migrations: Migration<DB>[]
   private setupDone = false
+  /** Re-entrancy flag: reset() calls down() while already holding the lock */
+  private lockHeld = false
 
   constructor(db: Kysely<DB>, migrations: Migration<DB>[], options: MigrationRunnerOptions = {}) {
     // Validate and apply defaults using Zod schema
@@ -282,7 +343,9 @@ export class MigrationRunner<DB = unknown> {
       logger: this.logger,
       useTransactions: parsed.data.useTransactions,
       stopOnError: parsed.data.stopOnError,
-      verbose: parsed.data.verbose
+      verbose: parsed.data.verbose,
+      advisoryLock: parsed.data.advisoryLock,
+      lockTimeoutMs: parsed.data.lockTimeoutMs
     }
 
     // Validate migrations on construction
@@ -290,12 +353,107 @@ export class MigrationRunner<DB = unknown> {
   }
 
   /**
+   * Serialize a migration run against concurrent runners using a database
+   * advisory lock. Re-entrant within this runner instance (reset() calls
+   * down() internally). Dry runs skip locking — they perform no writes.
+   *
+   * @internal
+   */
+  protected async withAdvisoryLock<T>(fn: () => Promise<T>): Promise<T> {
+    if (!this.runnerOptions.advisoryLock || this.runnerOptions.dryRun || this.lockHeld) {
+      return await fn()
+    }
+
+    const dialect = detectDialect(this.db)
+
+    if (dialect === 'postgres') {
+      return await this.withConnectionLock(
+        fn,
+        async conn => {
+          const deadline = Date.now() + this.runnerOptions.lockTimeoutMs
+          for (;;) {
+            const result = await sql<{ locked: boolean }>`
+              select pg_try_advisory_lock(${sql.lit(MIGRATION_LOCK_KEY)}) as locked
+            `.execute(conn)
+            if (result.rows[0]?.locked) return
+            if (Date.now() >= deadline) {
+              throw new MigrationLockError(this.runnerOptions.lockTimeoutMs)
+            }
+            await sleep(MIGRATION_LOCK_POLL_MS)
+          }
+        },
+        async conn => {
+          await sql`select pg_advisory_unlock(${sql.lit(MIGRATION_LOCK_KEY)})`.execute(conn)
+        }
+      )
+    }
+
+    if (dialect === 'mysql') {
+      const timeoutSeconds = Math.max(1, Math.ceil(this.runnerOptions.lockTimeoutMs / 1000))
+      return await this.withConnectionLock(
+        fn,
+        async conn => {
+          const result = await sql<{ locked: number | null }>`
+            select get_lock(${MIGRATION_LOCK_NAME}, ${sql.lit(timeoutSeconds)}) as locked
+          `.execute(conn)
+          if (result.rows[0]?.locked !== 1) {
+            throw new MigrationLockError(this.runnerOptions.lockTimeoutMs)
+          }
+        },
+        async conn => {
+          await sql`select release_lock(${MIGRATION_LOCK_NAME})`.execute(conn)
+        }
+      )
+    }
+
+    // sqlite: single-writer by design; mssql: not supported yet
+    return await fn()
+  }
+
+  /**
+   * Run acquire/fn/release with the lock pinned to ONE pooled connection —
+   * advisory locks are session-scoped, so acquire and release must happen
+   * on the same connection.
+   *
+   * @internal
+   */
+  private async withConnectionLock<T>(
+    fn: () => Promise<T>,
+    acquire: (conn: Kysely<DB>) => Promise<void>,
+    release: (conn: Kysely<DB>) => Promise<void>
+  ): Promise<T> {
+    return await this.db.connection().execute(async conn => {
+      await acquire(conn)
+      this.lockHeld = true
+      try {
+        return await fn()
+      } finally {
+        this.lockHeld = false
+        try {
+          await release(conn)
+        } catch (error) {
+          this.logger.warn(`Failed to release migration advisory lock: ${formatError(error)}`)
+        }
+      }
+    })
+  }
+
+  /**
+   * Typed view of the connection scoped to the internal migrations table.
+   * The bookkeeping table is not part of the user's DB schema, so a single
+   * well-documented cast here replaces scattered `as any` at call sites.
+   * @internal
+   */
+  protected get metaDb(): Kysely<MigrationsTableDB> {
+    return this.db as unknown as Kysely<MigrationsTableDB>
+  }
+
+  /**
    * Ensure migrations table exists (idempotent, cached after first call)
    */
   protected async ensureSetup(): Promise<void> {
     if (this.setupDone) return
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setupMigrations(this.db as any)
+    await setupMigrations(this.db as unknown as Kysely<unknown>)
     this.setupDone = true
   }
 
@@ -306,33 +464,27 @@ export class MigrationRunner<DB = unknown> {
   async getExecutedMigrations(): Promise<string[]> {
     await this.ensureSetup()
 
-    // The migrations table is internal and not part of the generic DB schema
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows = (await (this.db as any)
+    const rows = await this.metaDb
       .selectFrom('migrations')
       .select('name')
       .orderBy('executed_at', 'asc')
-      .execute()) as { name: string }[]
+      .execute()
 
     return rows.map(r => r.name)
   }
 
   /**
    * Mark a migration as executed
-   * Note: Uses type assertions for migrations table as it's not part of the user schema
    */
   async markAsExecuted(name: string): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (this.db as any).insertInto('migrations').values({ name }).execute()
+    await this.metaDb.insertInto('migrations').values({ name }).execute()
   }
 
   /**
    * Mark a migration as rolled back (remove from executed list)
-   * Note: Uses type assertions for migrations table as it's not part of the user schema
    */
   async markAsRolledBack(name: string): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (this.db as any).deleteFrom('migrations').where('name', '=', name).execute()
+    await this.metaDb.deleteFrom('migrations').where('name', '=', name).execute()
   }
 
   /**
@@ -384,7 +536,7 @@ export class MigrationRunner<DB = unknown> {
    * Run all pending migrations
    */
   async up(): Promise<MigrationResult> {
-    return this.runUp(this.migrations)
+    return await this.withAdvisoryLock(() => this.runUp(this.migrations))
   }
 
   /**
@@ -431,39 +583,7 @@ export class MigrationRunner<DB = unknown> {
         continue
       }
 
-      const migrationStart = Date.now()
-
-      try {
-        await hooks?.before?.(migration)
-
-        this.logger.info(`Running ${migration.name}...`)
-        this.logMigrationMeta(migration)
-
-        if (!this.runnerOptions.dryRun) {
-          await this.executeMigration(migration, 'up')
-          await this.markAsExecuted(migration.name)
-        }
-
-        await hooks?.after?.(migration, Date.now() - migrationStart)
-
-        this.logger.info(`${migration.name} completed`)
-        result.executed.push(migration.name)
-      } catch (error) {
-        await hooks?.onError?.(migration, error)
-
-        const errorMsg = formatError(error)
-        this.logger.error(`${migration.name} failed: ${errorMsg}`)
-        result.failed.push(migration.name)
-
-        if (this.runnerOptions.stopOnError) {
-          throw new MigrationError(
-            `Migration ${migration.name} failed: ${errorMsg}`,
-            migration.name,
-            'up',
-            error instanceof Error ? error : undefined
-          )
-        }
-      }
+      await this.applyMigration(migration, 'up', result, hooks)
     }
 
     if (!this.runnerOptions.dryRun) {
@@ -481,10 +601,82 @@ export class MigrationRunner<DB = unknown> {
   }
 
   /**
+   * Run one migration in the given direction, updating the shared result and
+   * firing lifecycle hooks. Throws MigrationError when stopOnError is set.
+   * @internal
+   */
+  private async applyMigration(
+    migration: Migration<DB>,
+    operation: 'up' | 'down',
+    result: MigrationResult,
+    hooks?: {
+      before?: (migration: Migration<DB>) => Promise<void>
+      after?: (migration: Migration<DB>, duration: number) => Promise<void>
+      onError?: (migration: Migration<DB>, error: unknown) => Promise<void>
+    }
+  ): Promise<void> {
+    const migrationStart = Date.now()
+    const verb = operation === 'up' ? 'Running' : 'Rolling back'
+    const doneVerb = operation === 'up' ? 'completed' : 'rolled back'
+
+    try {
+      await hooks?.before?.(migration)
+
+      this.logger.info(`${verb} ${migration.name}...`)
+      this.logMigrationMeta(migration)
+
+      if (!this.runnerOptions.dryRun) {
+        await this.executeMigration(migration, operation)
+        if (operation === 'up') {
+          await this.markAsExecuted(migration.name)
+        } else {
+          await this.markAsRolledBack(migration.name)
+        }
+      }
+
+      await hooks?.after?.(migration, Date.now() - migrationStart)
+
+      this.logger.info(`${migration.name} ${doneVerb}`)
+      result.executed.push(migration.name)
+    } catch (error) {
+      await hooks?.onError?.(migration, error)
+      this.recordMigrationFailure(migration, operation, error, result)
+    }
+  }
+
+  /**
+   * Record a failed migration and rethrow as MigrationError when
+   * stopOnError is enabled.
+   * @internal
+   */
+  private recordMigrationFailure(
+    migration: Migration<DB>,
+    operation: 'up' | 'down',
+    error: unknown,
+    result: MigrationResult
+  ): void {
+    const errorMsg = formatError(error)
+    const failVerb = operation === 'up' ? 'failed' : 'rollback failed'
+    this.logger.error(`${migration.name} ${failVerb}: ${errorMsg}`)
+    result.failed.push(migration.name)
+
+    if (this.runnerOptions.stopOnError) {
+      throw new MigrationError(
+        operation === 'up'
+          ? `Migration ${migration.name} failed: ${errorMsg}`
+          : `Rollback of ${migration.name} failed: ${errorMsg}`,
+        migration.name,
+        operation,
+        error instanceof Error ? error : undefined
+      )
+    }
+  }
+
+  /**
    * Rollback last N migrations
    */
   async down(steps = 1): Promise<MigrationResult> {
-    return this.runDown(steps)
+    return await this.withAdvisoryLock(() => this.runDown(steps))
   }
 
   /**
@@ -537,39 +729,7 @@ export class MigrationRunner<DB = unknown> {
         continue
       }
 
-      const migrationStart = Date.now()
-
-      try {
-        await hooks?.before?.(migration)
-
-        this.logger.info(`Rolling back ${name}...`)
-        this.logMigrationMeta(migration)
-
-        if (!this.runnerOptions.dryRun) {
-          await this.executeMigration(migration, 'down')
-          await this.markAsRolledBack(name)
-        }
-
-        await hooks?.after?.(migration, Date.now() - migrationStart)
-
-        this.logger.info(`${name} rolled back`)
-        result.executed.push(name)
-      } catch (error) {
-        await hooks?.onError?.(migration, error)
-
-        const errorMsg = formatError(error)
-        this.logger.error(`${name} rollback failed: ${errorMsg}`)
-        result.failed.push(name)
-
-        if (this.runnerOptions.stopOnError) {
-          throw new MigrationError(
-            `Rollback of ${name} failed: ${errorMsg}`,
-            name,
-            'down',
-            error instanceof Error ? error : undefined
-          )
-        }
-      }
+      await this.applyMigration(migration, 'down', result, hooks)
     }
 
     if (!this.runnerOptions.dryRun) {
@@ -590,22 +750,24 @@ export class MigrationRunner<DB = unknown> {
    * Show migration status
    */
   async status(): Promise<MigrationStatus> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     await this.ensureSetup()
     const executed = await this.getExecutedMigrations()
     const pending = this.migrations.filter(m => !executed.includes(m.name)).map(m => m.name)
 
     this.logger.info('Migration Status:')
-    this.logger.info(`  Executed: ${executed.length}`)
-    this.logger.info(`  Pending: ${pending.length}`)
-    this.logger.info(`  Total: ${this.migrations.length}`)
+    this.logger.info(`  Executed: ${String(executed.length)}`)
+    this.logger.info(`  Pending: ${String(pending.length)}`)
+    this.logger.info(`  Total: ${String(this.migrations.length)}`)
 
     if (executed.length > 0) {
       this.logger.info('Executed migrations:')
       for (const name of executed) {
         const migration = this.migrations.find(m => m.name === name)
-        if (migration && hasMeta(migration) && (migration as MigrationWithMeta).description) {
-          this.logger.info(`  ${name} - ${(migration as MigrationWithMeta).description}`)
+        const description =
+          migration && hasMeta(migration) ? (migration as MigrationWithMeta).description : undefined
+        if (description) {
+          this.logger.info(`  ${name} - ${description}`)
         } else {
           this.logger.info(`  ${name}`)
         }
@@ -637,7 +799,7 @@ export class MigrationRunner<DB = unknown> {
   async reset(): Promise<MigrationResult> {
     const startTime = Date.now()
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     await this.ensureSetup()
     const executed = await this.getExecutedMigrations()
 
@@ -652,7 +814,7 @@ export class MigrationRunner<DB = unknown> {
       }
     }
 
-    this.logger.warn(`Resetting ${executed.length} migrations...`)
+    this.logger.warn(`Resetting ${String(executed.length)} migrations...`)
 
     if (this.runnerOptions.dryRun) {
       this.logger.info('DRY RUN - Would rollback the following migrations:')
@@ -689,7 +851,7 @@ export class MigrationRunner<DB = unknown> {
     }
 
     const migrationsToRun = this.migrations.slice(0, targetIndex + 1)
-    const result = await this.runUp(migrationsToRun)
+    const result = await this.withAdvisoryLock(() => this.runUp(migrationsToRun))
 
     if (!this.runnerOptions.dryRun && result.failed.length === 0) {
       this.logger.info(`Migrated up to ${targetName}`)
@@ -1001,11 +1163,13 @@ export class MigrationRunnerWithPlugins<DB = unknown> extends MigrationRunner<DB
    * Delegates to parent's runUp with plugin lifecycle hooks.
    */
   override async up(): Promise<MigrationResult> {
-    return this.runUp(this.migrations, {
-      before: async (migration) => { await this.runBeforeHooks(migration, 'up') },
-      after: async (migration, duration) => { await this.runAfterHooks(migration, 'up', duration) },
-      onError: async (migration, error) => { await this.runErrorHooks(migration, 'up', error) }
-    })
+    return await this.withAdvisoryLock(() =>
+      this.runUp(this.migrations, {
+        before: async (migration) => { await this.runBeforeHooks(migration, 'up') },
+        after: async (migration, duration) => { await this.runAfterHooks(migration, 'up', duration) },
+        onError: async (migration, error) => { await this.runErrorHooks(migration, 'up', error) }
+      })
+    )
   }
 
   /**
@@ -1013,11 +1177,13 @@ export class MigrationRunnerWithPlugins<DB = unknown> extends MigrationRunner<DB
    * Delegates to parent's runDown with plugin lifecycle hooks.
    */
   override async down(steps = 1): Promise<MigrationResult> {
-    return this.runDown(steps, {
-      before: async (migration) => { await this.runBeforeHooks(migration, 'down') },
-      after: async (migration, duration) => { await this.runAfterHooks(migration, 'down', duration) },
-      onError: async (migration, error) => { await this.runErrorHooks(migration, 'down', error) }
-    })
+    return await this.withAdvisoryLock(() =>
+      this.runDown(steps, {
+        before: async (migration) => { await this.runBeforeHooks(migration, 'down') },
+        after: async (migration, duration) => { await this.runAfterHooks(migration, 'down', duration) },
+        onError: async (migration, error) => { await this.runErrorHooks(migration, 'down', error) }
+      })
+    )
   }
 }
 
@@ -1039,7 +1205,7 @@ export function createLoggingPlugin<DB = unknown>(
       logger.info(`Starting ${operation} for ${migration.name}`)
     },
     afterMigration(migration, operation, duration) {
-      logger.info(`Completed ${operation} for ${migration.name} in ${duration}ms`)
+      logger.info(`Completed ${operation} for ${migration.name} in ${String(duration)}ms`)
     },
     onMigrationError(migration, operation, error) {
       const message = error instanceof Error ? error.message : String(error)

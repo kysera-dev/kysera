@@ -136,7 +136,9 @@ export class PostgresAdapter implements DialectAdapter {
         : await sql<{ size: number }>`SELECT pg_database_size(current_database()) as size`.execute(
             db
           )
-      return (result.rows?.[0] as { size?: number })?.size || 0
+      // pg_database_size returns BIGINT — node-postgres delivers it as a string
+      const raw = (result.rows?.[0] as { size?: number | string | null })?.size
+      return raw == null ? 0 : Number(raw)
     } catch {
       return 0
     }

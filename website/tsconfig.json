@@ -2,7 +2,13 @@
   // This file is not used in compilation. It is here just for a nice editor experience.
   "extends": "@docusaurus/tsconfig",
   "compilerOptions": {
-    "ignoreDeprecations": "6.0"
+    "ignoreDeprecations": "6.0",
+    // baseUrl in the extended config resolves relative to node_modules —
+    // redeclare locally so @site/* aliases point at this site's root
+    "baseUrl": ".",
+    "paths": {
+      "@site/*": ["./*"]
+    }
   },
   "exclude": [".docusaurus", "build"]
 }

@@ -89,13 +89,13 @@ export function createDialectAdapter(
 ): DialectAdapter {
   switch (dialect) {
     case 'postgres':
-      return new PostgresAdapter(options as PostgresAdapterOptions)
+      return new PostgresAdapter(options)
     case 'mysql':
-      return new MySQLAdapter(options as MySQLAdapterOptions)
+      return new MySQLAdapter(options)
     case 'sqlite':
-      return new SQLiteAdapter(options as SQLiteAdapterOptions)
+      return new SQLiteAdapter(options)
     case 'mssql':
-      return new MSSQLAdapter(options as MSSQLAdapterOptions)
+      return new MSSQLAdapter(options)
     default:
       throw new Error(`Unknown dialect: ${dialect}. Supported: postgres, mysql, sqlite, mssql`)
   }

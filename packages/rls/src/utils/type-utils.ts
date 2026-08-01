@@ -68,6 +68,23 @@ export function createRawCondition(expression: string): RawBuilder<boolean> {
 }
 
 /**
+ * Append an always-false predicate so the statement matches no rows.
+ *
+ * Uses literal `1 = 0` — portable across every dialect. The previous
+ * `WHERE 'FALSE' = true` shape bound a boolean parameter, which SQLite
+ * rejects at bind time ("can only bind numbers, strings, bigints, ...").
+ *
+ * Works on any builder exposing `.where(expression)` (select/update/delete).
+ */
+export function applyImpossibleCondition<QB>(qb: QB): QB {
+  return (
+    qb as unknown as {
+      where: (expr: RawBuilder<boolean>) => unknown
+    }
+  ).where(sql`1 = 0`) as QB
+}
+
+/**
  * Type-safe wrapper for dynamic table queries (used in raw db queries)
  *
  * This is used by plugins to bypass RLS filtering when fetching existing rows

@@ -23,7 +23,7 @@ npm install zod           # Popular schema validation
 ## Overview
 
 **Dependencies:** @kysera/executor, @kysera/dal, @kysera/core
-**Peer Dependencies:** kysely >=0.28.14, zod ^4.x (optional)
+**Peer Dependencies:** kysely >=0.29.0, zod ^4.x (optional)
 
 :::tip Unified Execution Layer
 `@kysera/repository` uses `@kysera/executor` under the hood for plugin management. Plugins work through query interception (`interceptQuery`) and repository extensions (`extendRepository`). Query interceptors apply to both Repository and DAL patterns. Repository extensions work only with Repository pattern.
@@ -74,6 +74,7 @@ export {
   applyCondition,
   applyWhereClause,
   InvalidOperatorError,
+  InvalidOperatorValueError,
   ALL_OPERATORS,
   COMPARISON_OPERATORS,
   ARRAY_OPERATORS,
@@ -327,7 +328,7 @@ async bulkDelete(ids: PK[]): Promise<number>
 
 - Updates are processed **sequentially** (one at a time, not in parallel).
 - If any record is not found, a `NotFoundError` is thrown immediately and remaining updates are skipped.
-- For atomicity, wrap in a transaction: `await repo.transaction(async () => repo.bulkUpdate(updates))`
+- For atomicity, wrap in a transaction: `await repo.transaction(async trx => repo.withTransaction(trx).bulkUpdate(updates))` — the callback must use a transaction-bound repository (outer-repo calls escape the transaction and, since kysely 0.29, deadlock on single-connection SQLite)
 
 ### Query Operations
 

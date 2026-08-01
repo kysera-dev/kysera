@@ -63,7 +63,7 @@ export interface ArrayOperators<T> {
 export interface StringOperators {
   /** SQL LIKE pattern (use % for wildcards) */
   $like?: string
-  /** Case-insensitive LIKE (PostgreSQL only) */
+  /** Case-insensitive LIKE — portable, compiles to LOWER(col) LIKE LOWER(pattern) */
   $ilike?: string
   /** Contains substring (wraps with %) */
   $contains?: string
@@ -254,6 +254,28 @@ export class InvalidOperatorError extends Error {
 }
 
 /**
+ * Error thrown when a valid operator receives a malformed value.
+ *
+ * Malformed operator values MUST fail loudly: silently dropping the filter
+ * (the old behavior) turns a typo like `$between: [30]` into an unfiltered
+ * query — a data-exposure hazard.
+ */
+export class InvalidOperatorValueError extends Error {
+  constructor(
+    public readonly operator: string,
+    public readonly field: string,
+    expected: string,
+    received: unknown
+  ) {
+    super(
+      `Invalid value for operator "${operator}" on field "${field}": expected ${expected}, ` +
+        `received ${received === null ? 'null' : Array.isArray(received) ? `array of length ${received.length}` : typeof received}`
+    )
+    this.name = 'InvalidOperatorValueError'
+  }
+}
+
+/**
  * Apply comparison operators ($eq, $ne, $gt, $gte, $lt, $lte)
  * @internal
  */
@@ -276,7 +298,14 @@ function applyComparisonOperator<DB, TB extends keyof DB>(
       if (value === null) {
         conditions.push(eb(column as never, 'is not', null as never))
       } else {
-        conditions.push(eb(column as never, '<>', value as never))
+        // MongoDB semantics: $ne matches rows where the value differs,
+        // INCLUDING rows where the column is NULL (SQL <> alone drops them)
+        conditions.push(
+          eb.or([
+            eb(column as never, '<>', value as never),
+            eb(column as never, 'is', null as never)
+          ])
+        )
       }
       break
     case '$gt':
@@ -305,17 +334,52 @@ function applyArrayOperator<DB, TB extends keyof DB>(
   value: unknown,
   conditions: ReturnType<typeof eb>[]
 ): void {
+  if (!Array.isArray(value)) {
+    throw new InvalidOperatorValueError(operator, column, 'an array', value)
+  }
+
+  // SQL IN/NOT IN never match NULL operands — split them out to keep
+  // MongoDB semantics ($in: [null] matches NULL; $nin excludes listed
+  // values but keeps NULL rows)
+  const hasNull = value.includes(null)
+  const nonNull = hasNull ? value.filter(v => v !== null) : value
+
   if (operator === '$in') {
-    if (!Array.isArray(value) || value.length === 0) {
+    if (value.length === 0) {
       conditions.push(sql`1 = 0` as unknown as ReturnType<typeof eb>)
-    } else {
-      conditions.push(eb(column as never, 'in', value as never))
+      return
     }
-  } else if (operator === '$nin') {
-    if (Array.isArray(value) && value.length > 0) {
-      conditions.push(eb(column as never, 'not in', value as never))
+    const parts: ReturnType<typeof eb>[] = []
+    if (nonNull.length > 0) {
+      parts.push(eb(column as never, 'in', nonNull as never))
     }
-    // Empty NOT IN matches everything - skip adding constraint
+    if (hasNull) {
+      parts.push(eb(column as never, 'is', null as never))
+    }
+    conditions.push(
+      parts.length === 1
+        ? parts[0]!
+        : (eb.or(parts))
+    )
+  } else {
+    // $nin: exclude listed values; NULL rows still match (Mongo semantics)
+    if (nonNull.length === 0) {
+      if (hasNull) {
+        // $nin: [null] — everything except NULL
+        conditions.push(eb(column as never, 'is not', null as never))
+      }
+      // Empty NOT IN matches everything - skip adding constraint
+      return
+    }
+    const notIn = eb(column as never, 'not in', nonNull as never)
+    conditions.push(
+      hasNull
+        ? notIn // null explicitly excluded too
+        : (eb.or([
+            notIn,
+            eb(column as never, 'is', null as never)
+          ]))
+    )
   }
 }
 
@@ -341,27 +405,34 @@ function applyStringOperator<DB, TB extends keyof DB>(
   value: unknown,
   conditions: ReturnType<typeof eb>[]
 ): void {
-  const strValue = String(value)
+  if (typeof value !== 'string') {
+    // String(null) would silently match the literal text "null"
+    throw new InvalidOperatorValueError(operator, column, 'a string', value)
+  }
   switch (operator) {
     case '$like':
-      conditions.push(eb(column as never, 'like', strValue as never))
+      conditions.push(eb(column as never, 'like', value as never))
       break
     case '$ilike':
-      conditions.push(eb(column as never, 'ilike', strValue as never))
+      // Portable case-insensitive match: PostgreSQL's native ILIKE keyword
+      // does not exist in MySQL/SQLite/MSSQL — LOWER() works everywhere
+      conditions.push(
+        sql`LOWER(${sql.ref(column)}) LIKE LOWER(${value})` as unknown as ReturnType<typeof eb>
+      )
       break
     case '$contains':
       conditions.push(
-        sql`${sql.ref(column)} LIKE ${`%${escapeLikeValue(strValue)}%`} ESCAPE ${'\\'}` as unknown as ReturnType<typeof eb>
+        sql`${sql.ref(column)} LIKE ${`%${escapeLikeValue(value)}%`} ESCAPE ${'\\'}` as unknown as ReturnType<typeof eb>
       )
       break
     case '$startsWith':
       conditions.push(
-        sql`${sql.ref(column)} LIKE ${`${escapeLikeValue(strValue)}%`} ESCAPE ${'\\'}` as unknown as ReturnType<typeof eb>
+        sql`${sql.ref(column)} LIKE ${`${escapeLikeValue(value)}%`} ESCAPE ${'\\'}` as unknown as ReturnType<typeof eb>
       )
       break
     case '$endsWith':
       conditions.push(
-        sql`${sql.ref(column)} LIKE ${`%${escapeLikeValue(strValue)}`} ESCAPE ${'\\'}` as unknown as ReturnType<typeof eb>
+        sql`${sql.ref(column)} LIKE ${`%${escapeLikeValue(value)}`} ESCAPE ${'\\'}` as unknown as ReturnType<typeof eb>
       )
       break
   }
@@ -378,18 +449,22 @@ function applyNullOperator<DB, TB extends keyof DB>(
   value: unknown,
   conditions: ReturnType<typeof eb>[]
 ): void {
+  if (typeof value !== 'boolean') {
+    // `$isNull: 'yes'` used to be silently ignored — an unfiltered query
+    throw new InvalidOperatorValueError(operator, column, 'a boolean', value)
+  }
   if (operator === '$isNull') {
-    if (value === true) {
-      conditions.push(eb(column as never, 'is', null as never))
-    } else if (value === false) {
-      conditions.push(eb(column as never, 'is not', null as never))
-    }
-  } else if (operator === '$isNotNull') {
-    if (value === true) {
-      conditions.push(eb(column as never, 'is not', null as never))
-    } else if (value === false) {
-      conditions.push(eb(column as never, 'is', null as never))
-    }
+    conditions.push(
+      value
+        ? eb(column as never, 'is', null as never)
+        : eb(column as never, 'is not', null as never)
+    )
+  } else {
+    conditions.push(
+      value
+        ? eb(column as never, 'is not', null as never)
+        : eb(column as never, 'is', null as never)
+    )
   }
 }
 
@@ -403,11 +478,18 @@ function applyRangeOperator<DB, TB extends keyof DB>(
   value: unknown,
   conditions: ReturnType<typeof eb>[]
 ): void {
-  if (Array.isArray(value) && value.length === 2) {
-    const [min, max] = value
-    conditions.push(eb(column as never, '>=', min as never))
-    conditions.push(eb(column as never, '<=', max as never))
+  if (!Array.isArray(value) || value.length !== 2) {
+    // `$between: [30]` used to be silently ignored — an unfiltered query
+    throw new InvalidOperatorValueError(
+      '$between',
+      column,
+      'a [min, max] tuple of length 2',
+      value
+    )
   }
+  const [min, max] = value
+  conditions.push(eb(column as never, '>=', min as never))
+  conditions.push(eb(column as never, '<=', max as never))
 }
 
 /**
@@ -552,7 +634,7 @@ export function validateOperators(where: Record<string, unknown>): void {
 
     // Validate field operator objects
     if (isOperatorObject(value)) {
-      for (const operator of Object.keys(value as object)) {
+      for (const operator of Object.keys(value)) {
         if (!isValidOperator(operator)) {
           throw new InvalidOperatorError(operator, key)
         }

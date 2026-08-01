@@ -370,7 +370,7 @@ export async function withTransaction<DB, T>(
 
   // Handle DbContext input - extract the db instance
   const actualDb: Kysely<DB> | KyseraExecutor<DB> = isDbContext<DB>(db)
-    ? (db.db as Kysely<DB> | KyseraExecutor<DB>)
+    ? (db.db)
     : db
 
   // Check if we are already inside a transaction (nested call)
@@ -389,9 +389,9 @@ export async function withTransaction<DB, T>(
       // PostgreSQL/MySQL/SQLite: SAVEPOINT name
       // MSSQL: SAVE TRANSACTION name
       if (dialect === 'mssql') {
-        await sql`SAVE TRANSACTION ${sql.id(savepointName)}`.execute(actualDb as Transaction<DB>)
+        await sql`SAVE TRANSACTION ${sql.id(savepointName)}`.execute(actualDb)
       } else {
-        await sql`SAVEPOINT ${sql.id(savepointName)}`.execute(actualDb as Transaction<DB>)
+        await sql`SAVEPOINT ${sql.id(savepointName)}`.execute(actualDb)
       }
 
       // Create context with same db (already in transaction)
@@ -413,7 +413,7 @@ export async function withTransaction<DB, T>(
       // PostgreSQL/MySQL/SQLite: RELEASE SAVEPOINT name
       // MSSQL: Does not support RELEASE, savepoint is automatically released on commit
       if (dialect !== 'mssql') {
-        await sql`RELEASE SAVEPOINT ${sql.id(savepointName)}`.execute(actualDb as Transaction<DB>)
+        await sql`RELEASE SAVEPOINT ${sql.id(savepointName)}`.execute(actualDb)
       }
 
       return result
@@ -424,11 +424,11 @@ export async function withTransaction<DB, T>(
         // MSSQL: ROLLBACK TRANSACTION name
         if (dialect === 'mssql') {
           await sql`ROLLBACK TRANSACTION ${sql.id(savepointName)}`.execute(
-            actualDb as Transaction<DB>
+            actualDb
           )
         } else {
           await sql`ROLLBACK TO SAVEPOINT ${sql.id(savepointName)}`.execute(
-            actualDb as Transaction<DB>
+            actualDb
           )
         }
       } catch (rollbackError) {

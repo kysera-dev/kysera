@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
+    globals: true,
     environment: 'node',
     include: ['test/**/*.test.ts'],
     exclude: [
@@ -15,16 +16,16 @@ export default defineConfig({
         'node_modules/',
         'dist/',
         'test/',
-        // MSSQL adapter requires Azure SQL Edge for full coverage
-        // and is tested separately in multi-db integration tests
+        // MSSQL adapter needs a real SQL Server (Azure SQL Edge in docker);
+        // this package ships no in-process MSSQL driver, so its coverage is
+        // excluded from the default run
         'src/adapters/mssql.ts'
       ],
       thresholds: {
         // Lower thresholds for dialects package since adapter error parsing
-        // requires real database connections for full coverage.
-        // MSSQL adapter is excluded; postgres/mysql adapters have many
-        // error-path branches that only trigger with actual DB errors.
-        // Full coverage is achieved via multi-db integration tests (pnpm test:multi-db).
+        // and information_schema queries require real database connections.
+        // The real-database surface is covered by test/multi-db.integration.ts
+        // (pnpm test:multi-db with docker compose containers running).
         lines: 60,
         functions: 75,
         branches: 55,

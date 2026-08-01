@@ -11,56 +11,61 @@
  *
  * **Type Assertion Categories:**
  *
- * 1. **Plugin interceptQuery** (Line 261)
+ * 1. **Plugin interceptQuery**
  *    - Issue: QB is constrained to `Compilable<unknown>` but query builders have
  *      incompatible method signatures (where, and, etc.)
  *    - Safety: Plugin authors must cast based on `context.operation` type
  *    - Alternative: None - Kysely lacks a shared interface for query modification
  *
- * 2. **Transaction wrapping** (Lines 326, 332)
+ * 2. **Transaction wrapping**
  *    - Issue: Transaction<DB> extends Kysely<DB> but proxy requires Kysely type
  *    - Safety: Structural compatibility verified - Transaction IS-A Kysely
  *    - Alternative: None - TypeScript requires explicit cast despite structural typing
  *
- * 3. **Dynamic method access** (Line 245)
+ * 3. **Dynamic method access**
  *    - Issue: Kysely<DB> lacks index signature for dynamic property access
  *    - Safety: Method names validated against INTERCEPTED_METHODS constant
  *    - Alternative: None - Cannot use mapped types with runtime method names
  *
- * 4. **Object.assign marker properties** (Lines 394, 427, 473, 488, 527)
- *    - Issue: Object.assign returns intersection type (Kysely & Marker)
- *    - Safety: Type assertion to union type (KyseraExecutor/KyseraTransaction)
- *    - Alternative: Manual object spread (less performant, same type assertion needed)
+ * ### Proxy Getter Semantics
  *
- * 5. **wrapTransaction cast chain** (Lines 539, 542)
- *    - Issue: Transaction -> Kysely -> Proxy -> KyseraTransaction requires casts
- *    - Safety: All types structurally compatible; verified in tests
- *    - Alternative: None - TypeScript nominal types would solve this
+ * All property reads go through `Reflect.get(target, prop)` WITHOUT forwarding
+ * the proxy as receiver. Kysely uses native `#private` fields internally; if a
+ * getter (e.g. `db.schema`) ran with `this` bound to the proxy, JavaScript would
+ * throw "Cannot read private member". Binding getters to the target is required
+ * for correctness and matches how the wrapped methods are bound.
  *
- * 6. **getRawDb executor check** (Line 588)
- *    - Issue: Need to check if plain Kysely has __rawDb property
- *    - Safety: Optional chaining handles both KyseraExecutor and plain Kysely
- *    - Alternative: Type guard (more verbose, same runtime behavior)
+ * ### Derived Instance Coverage
  *
- * ### Transaction API Limitation
+ * Kysely methods that return derived instances are wrapped so plugin
+ * interception is never silently lost:
  *
- * The wrapped transaction only exposes `.execute()` method, not `.setIsolationLevel()`.
- * This is intentional: isolation level should be set before plugin interception.
+ * - `withSchema()` — re-proxied with schema context (LRU-cached)
+ * - `with()` / `withRecursive()` — CTE callback receives a plugin-aware creator
+ *   (kysely 0.29 direct-expression form is passed through untouched)
+ * - `$extendTables()` / `$omitTables()` / `$pickTables()` / `withTables()` /
+ *   `withPlugin()` / `withoutPlugins()` — result re-proxied
+ * - `transaction()` — full TransactionBuilder surface (setIsolationLevel /
+ *   setAccessMode / execute); callback receives a plugin-aware transaction
+ * - `startTransaction()` — ControlledTransaction is re-proxied, including
+ *   `savepoint()` / `rollbackToSavepoint()` / `releaseSavepoint()` results
+ * - `connection()` — callback receives a plugin-aware single-connection instance
  *
- * **Rationale:**
- * - Isolation level is a transaction-level concern, not a query-level concern
- * - Setting isolation level after plugin initialization could cause inconsistencies
- * - Keeps the wrapper API simple and focused on query interception
- *
- * **Escape Hatch:**
- * ```typescript
- * executor.__rawDb.transaction().setIsolationLevel('serializable').execute(...)
- * ```
- *
- * This design keeps the plugin system simple while allowing escape hatches.
+ * Note: wrapped builders are structurally compatible with Kysely's builders but
+ * are not `instanceof TransactionBuilder`/`ConnectionBuilder`. Use `__rawDb`
+ * as an escape hatch when identity matters.
  */
 
-import type { Kysely, Transaction } from 'kysely'
+import type {
+  AccessMode,
+  ConnectionBuilder,
+  ControlledTransaction,
+  ControlledTransactionBuilder,
+  IsolationLevel,
+  Kysely,
+  Transaction,
+  TransactionBuilder
+} from 'kysely'
 import type {
   Plugin,
   KyseraExecutor,
@@ -70,6 +75,7 @@ import type {
   PluginValidationErrorType,
   PluginValidationDetails
 } from './types.js'
+import { LRUCache } from './lru-cache.js'
 
 /** Methods that accept table name and should be intercepted */
 export const INTERCEPTED_METHODS = [
@@ -78,7 +84,7 @@ export const INTERCEPTED_METHODS = [
   'updateTable',
   'deleteFrom',
   'replaceInto', // MySQL REPLACE
-  'mergeInto' // SQL MERGE (Kysely 0.28.x)
+  'mergeInto' // SQL MERGE (Kysely 0.28+)
 ] as const
 
 export type InterceptedMethod = (typeof INTERCEPTED_METHODS)[number]
@@ -293,7 +299,114 @@ export function resolvePluginOrder(plugins: readonly Plugin[]): Plugin[] {
 }
 
 /**
+ * A parsed SQL table reference.
+ *
+ * Mirrors kysely's own grammar exactly (`parseAliasedTable`/`parseTable`):
+ * `[schema.]table[ as alias]`, where the alias separator is the literal
+ * lowercase string ` as ` and the schema separator is `.`.
+ */
+export interface ParsedTableReference {
+  /** Base table name without schema qualifier or alias */
+  readonly table: string
+  /** Schema qualifier when present (`'public.users'` -> `'public'`) */
+  readonly schema?: string
+  /** Alias when present (`'users as u'` -> `'u'`) */
+  readonly alias?: string
+}
+
+/**
+ * Parse a table expression string the same way kysely does.
+ *
+ * @example
+ * ```typescript
+ * parseTableReference('users')              // { table: 'users' }
+ * parseTableReference('users as u')         // { table: 'users', alias: 'u' }
+ * parseTableReference('auth.users')         // { table: 'users', schema: 'auth' }
+ * parseTableReference('auth.users as u')    // { table: 'users', schema: 'auth', alias: 'u' }
+ * ```
+ */
+export function parseTableReference(expression: string): ParsedTableReference {
+  // Kysely splits on the literal lowercase ' as ' (see kysely parseAliasedTable)
+  const ALIAS_SEPARATOR = ' as '
+  const SCHEMA_SEPARATOR = '.'
+
+  let tablePart = expression
+  let alias: string | undefined
+
+  if (expression.includes(ALIAS_SEPARATOR)) {
+    const [table = '', aliasPart = ''] = expression.split(ALIAS_SEPARATOR)
+    tablePart = table.trim()
+    alias = aliasPart.trim()
+  }
+
+  if (tablePart.includes(SCHEMA_SEPARATOR)) {
+    const [schema = '', table = ''] = tablePart.split(SCHEMA_SEPARATOR)
+    return alias !== undefined
+      ? { table: table.trim(), schema: schema.trim(), alias }
+      : { table: table.trim(), schema: schema.trim() }
+  }
+
+  return alias !== undefined ? { table: tablePart, alias } : { table: tablePart }
+}
+
+/**
+ * Build the plugin context for a single parsed table reference.
+ * An explicit schema qualifier in the expression wins over withSchema context.
+ */
+function buildContext(
+  operation: QueryBuilderContext['operation'],
+  expression: string,
+  currentSchema: string | undefined,
+  baseMetadata?: Readonly<Record<string, unknown>>
+): QueryBuilderContext {
+  const parsed = parseTableReference(expression)
+  const schema = parsed.schema ?? currentSchema
+
+  return {
+    operation,
+    table: parsed.table,
+    ...(parsed.alias !== undefined && { alias: parsed.alias }),
+    tableExpression: expression,
+    ...(schema !== undefined && { schema }),
+    metadata: baseMetadata ? { ...baseMetadata } : {}
+  }
+}
+
+/** Apply all interceptors to a query builder for one table context */
+function runInterceptors(
+  qb: unknown,
+  interceptors: readonly Plugin[],
+  context: QueryBuilderContext
+): unknown {
+  let result = qb
+  for (const plugin of interceptors) {
+    if (plugin.interceptQuery) {
+      try {
+        result = plugin.interceptQuery(result, context)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        throw new Error(
+          `Plugin "${plugin.name}" threw during interceptQuery for ${context.operation} on "${context.table}": ${message}`,
+          { cause: error }
+        )
+      }
+    }
+  }
+  return result
+}
+
+/**
  * Create intercepted method that applies plugins
+ *
+ * Handles every argument shape kysely accepts:
+ * - `'users'` / `'users as u'` / `'auth.users as u'` — parsed; plugins receive
+ *   the base table name plus alias/schema so filters stay correct and
+ *   allowlists keep matching.
+ * - `['users', 'posts as p']` (cross join) — plugins run once per string entry.
+ * - Subqueries / dynamic table builders — passed through untouched: their
+ *   inner builders never originate from this proxy, so plugins cannot target
+ *   them here. Security-critical plugins (RLS) must not rely on interception
+ *   for such shapes (documented in @kysera/rls).
  *
  * @param db - Kysely database instance
  * @param method - Method name being intercepted
@@ -304,15 +417,17 @@ function createInterceptedMethod<DB>(
   db: Kysely<DB>,
   method: InterceptedMethod,
   interceptors: readonly Plugin[],
-  currentSchema?: string
-): (table: string) => unknown {
+  currentSchema?: string,
+  baseMetadata?: Readonly<Record<string, unknown>>,
+  cteNames?: ReadonlySet<string>
+): (table: unknown) => unknown {
   const operation = METHOD_TO_OPERATION[method]
 
-  return (table: string) => {
+  return (table: unknown) => {
     /**
      * TYPE ASSERTION #3: Dynamic method access
      *
-     * Cast: Kysely<DB> -> Record<string, (t: string) => unknown>
+     * Cast: Kysely<DB> -> Record<string, (t: unknown) => unknown>
      *
      * Why needed:
      * - Kysely<DB> interface doesn't have an index signature
@@ -321,199 +436,269 @@ function createInterceptedMethod<DB>(
      * Why safe:
      * - Method name validated against INTERCEPTED_METHODS constant
      * - Runtime check throws if method doesn't exist
-     * - All intercepted methods have signature: (table: string) => QueryBuilder
+     * - The argument is forwarded verbatim to the original method
      */
-    const originalMethod = (db as unknown as Record<string, (t: string) => unknown>)[method]
+    const originalMethod = (db as unknown as Record<string, (t: unknown) => unknown>)[method]
     if (!originalMethod) {
       throw new Error(`Method ${method} not found on Kysely instance`)
     }
     // Call with correct 'this' context
-    let qb = originalMethod.call(db, table)
+    const qb = originalMethod.call(db, table)
 
-    // Apply interceptors with schema context
-    // Use spread to conditionally include schema only when defined
-    const context: QueryBuilderContext = currentSchema !== undefined
-      ? { operation, table, schema: currentSchema, metadata: {} }
-      : { operation, table, metadata: {} }
-
-    for (const plugin of interceptors) {
-      if (plugin.interceptQuery) {
-        try {
-          qb = plugin.interceptQuery(qb, context)
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          throw new Error(
-            `Plugin "${plugin.name}" threw during interceptQuery for ${context.operation} on "${context.table}": ${message}`,
-            { cause: error }
-          )
-        }
+    if (typeof table === 'string') {
+      const context = buildContext(operation, table, currentSchema, baseMetadata)
+      // CTE names are not real tables — plugins must not filter them
+      if (cteNames?.has(context.table)) {
+        return qb
       }
+      return runInterceptors(qb, interceptors, context)
     }
 
+    if (Array.isArray(table)) {
+      // Cross-join form: apply plugins once per string table reference
+      let result = qb
+      for (const entry of table) {
+        if (typeof entry === 'string') {
+          const context = buildContext(operation, entry, currentSchema, baseMetadata)
+          if (cteNames?.has(context.table)) {
+            continue
+          }
+          result = runInterceptors(result, interceptors, context)
+        }
+      }
+      return result
+    }
+
+    // Subquery / dynamic builder — cannot be attributed to a table name here
     return qb
   }
 }
 
 /** Marker properties Set for fast O(1) lookup */
-const MARKER_PROPS = new Set<string | symbol>(['__kysera', '__plugins', '__rawDb'])
+const MARKER_PROPS = new Set<string | symbol>(['__kysera', '__plugins', '__rawDb', '__schema'])
 
 /**
- * Wrap a Kysely instance with KyseraExecutor marker properties WITHOUT mutating the original.
- * Uses a lightweight Proxy that only intercepts marker property access.
+ * Kysely methods that return a derived Kysely instance sharing the same
+ * connection/executor. Their results must be re-wrapped, otherwise plugin
+ * interception (soft-delete, RLS, ...) would be silently lost.
  *
- * @internal
+ * `$extendTables`/`$omitTables`/`$pickTables` are the kysely 0.29 type-level
+ * helpers; `withTables` is their deprecated predecessor.
  */
-function wrapWithMarker<DB>(
-  db: Kysely<DB>,
-  plugins: readonly Plugin[]
-): KyseraExecutor<DB> {
-  const methodCache = new Map<string | symbol, unknown>()
-
-  return new Proxy(db, {
-    has(target, prop) {
-      if (MARKER_PROPS.has(prop)) return true
-      if (prop === '__schema') return true
-      return Reflect.has(target, prop)
-    },
-    get(target, prop, receiver) {
-      if (prop === '__kysera') return true
-      if (prop === '__plugins') return plugins
-      if (prop === '__rawDb') return db
-      if (prop === '__schema') return undefined
-
-      // Check method cache
-      if (methodCache.has(prop)) {
-        return methodCache.get(prop)
-      }
-
-      const value = Reflect.get(target, prop, receiver)
-
-      // Bind methods to target to preserve private field access (#props)
-      if (typeof value === 'function') {
-        const bound = value.bind(target)
-        methodCache.set(prop, bound)
-        return bound
-      }
-
-      return value
-    }
-  }) as KyseraExecutor<DB>
-}
+const REWRAP_KYSELY_METHODS = new Set<string>([
+  '$extendTables',
+  '$omitTables',
+  '$pickTables',
+  'withTables',
+  'withPlugin',
+  'withoutPlugins'
+])
 
 /**
- * Wrap a Transaction with KyseraTransaction marker properties WITHOUT mutating the original.
- * @internal
+ * ControlledTransaction methods that return Command<ControlledTransaction>.
+ * The command result must be re-wrapped so plugin interception survives
+ * savepoint chains (kysely 0.28+ controlled transactions).
  */
-function wrapTransactionWithMarker<DB>(
-  trx: Transaction<DB>,
-  plugins: readonly Plugin[]
-): KyseraTransaction<DB> {
-  const methodCache = new Map<string | symbol, unknown>()
+const SAVEPOINT_METHODS = new Set<string>([
+  'savepoint',
+  'rollbackToSavepoint',
+  'releaseSavepoint'
+])
 
-  return new Proxy(trx, {
-    has(target, prop) {
-      if (MARKER_PROPS.has(prop)) return true
-      if (prop === '__schema') return true
-      return Reflect.has(target, prop)
-    },
-    get(target, prop, receiver) {
-      if (prop === '__kysera') return true
-      if (prop === '__plugins') return plugins
-      if (prop === '__rawDb') return trx
-      if (prop === '__schema') return undefined
-
-      if (methodCache.has(prop)) {
-        return methodCache.get(prop)
-      }
-
-      const value = Reflect.get(target, prop, receiver)
-
-      if (typeof value === 'function') {
-        const bound = value.bind(target)
-        methodCache.set(prop, bound)
-        return bound
-      }
-
-      return value
-    }
-  }) as KyseraTransaction<DB>
-}
+/** Shared empty interceptor list for marker-only wrapping */
+const NO_INTERCEPTORS: readonly Plugin[] = []
 
 /** Maximum size for LRU caches to prevent unbounded growth */
 const MAX_CACHE_SIZE = 100
 
 /**
- * Sentinel value to distinguish "cached undefined" from "not in cache"
- * @internal
+ * Transaction builder wrapper that preserves the full TransactionBuilder
+ * surface (isolation level, access mode) while ensuring the execute callback
+ * receives a plugin-aware transaction.
  */
-const UNDEFINED_SENTINEL = Symbol('UNDEFINED_SENTINEL')
+export interface WrappedTransactionBuilder<DB> {
+  setAccessMode(accessMode: AccessMode): WrappedTransactionBuilder<DB>
+  setIsolationLevel(isolationLevel: IsolationLevel): WrappedTransactionBuilder<DB>
+  execute<T>(callback: (trx: Transaction<DB>) => Promise<T>): Promise<T>
+}
 
 /**
- * Wrapper type for cache values to handle undefined correctly
- * @internal
+ * Controlled transaction builder wrapper (kysely `startTransaction()`).
+ * The resulting ControlledTransaction is plugin-aware, including derived
+ * transactions returned by savepoint commands.
  */
-type CacheValue<V> = V | typeof UNDEFINED_SENTINEL
+export interface WrappedControlledTransactionBuilder<DB> {
+  setAccessMode(accessMode: AccessMode): WrappedControlledTransactionBuilder<DB>
+  setIsolationLevel(isolationLevel: IsolationLevel): WrappedControlledTransactionBuilder<DB>
+  execute(): Promise<ControlledTransaction<DB>>
+}
 
 /**
- * Simple LRU cache implementation to prevent unbounded cache growth.
+ * Build a wrapper for Kysely APIs that yield derived instances, or return
+ * undefined when the property needs no special handling.
  *
- * Correctly handles undefined values using a sentinel pattern:
- * - get() returns undefined for both "cached undefined" and "not in cache"
- * - has() returns true only if key is actually in cache (even if value is undefined)
+ * Extracted from the proxy `get` trap to keep it small; results are cached
+ * per proxy in `methodCache` by the caller.
  *
  * @internal
  */
-class LRUCache<K, V> {
-  private cache: Map<K, CacheValue<V>>
-  private readonly maxSize: number
+/** Rewrap helpers passed from createProxy to the special-wrapper factory @internal */
+interface RewrapHelpers<DB> {
+  rewrap: (derived: Kysely<DB>, schema?: string) => KyseraExecutor<DB>
+  /** Rewrap and register an additional CTE name for downstream interception skips */
+  rewrapWithCte: (derived: Kysely<DB>, cteName: string) => KyseraExecutor<DB>
+  schemaProxyCache: LRUCache<string, KyseraExecutor<DB>>
+}
 
-  constructor(maxSize: number) {
-    this.cache = new Map()
-    this.maxSize = maxSize
+function createSpecialWrapper<DB>(
+  target: Kysely<DB>,
+  prop: string | symbol,
+  helpers: RewrapHelpers<DB>
+): unknown {
+  const { rewrap, rewrapWithCte, schemaProxyCache } = helpers
+
+  // Intercept withSchema to maintain plugin proxy and track schema
+  if (prop === 'withSchema') {
+    return (schema: string): KyseraExecutor<DB> => {
+      const cachedSchemaProxy = schemaProxyCache.get(schema)
+      if (cachedSchemaProxy) {
+        return cachedSchemaProxy
+      }
+      // Pass schema to new proxy so it's available in QueryBuilderContext
+      const newProxy = rewrap(target.withSchema(schema), schema)
+      schemaProxyCache.set(schema, newProxy)
+      return newProxy
+    }
   }
 
-  get(key: K): V | undefined {
-    const value = this.cache.get(key)
-    if (value !== undefined) {
-      // Move to end (most recently used)
-      this.cache.delete(key)
-      this.cache.set(key, value)
-      // Unwrap sentinel value
-      return value === UNDEFINED_SENTINEL ? undefined : value
+  // Intercept with()/withRecursive() for CTEs.
+  // Kysely 0.29 accepts either a callback or a ready-made expression as the
+  // second argument — only callbacks are wrapped; expressions pass through.
+  // The returned query creator is re-wrapped so subsequent selectFrom() etc.
+  // keep plugin interception. The CTE name is registered so that
+  // selectFrom('<cte>') downstream is NOT treated as a real table by plugins
+  // (soft-delete would otherwise emit `<cte>.deleted_at` — invalid SQL).
+  if (prop === 'with' || prop === 'withRecursive') {
+    return (nameOrBuilder: unknown, expression: unknown): unknown => {
+      const originalMethod = Reflect.get(target, prop) as (
+        n: unknown,
+        e: unknown
+      ) => Kysely<DB>
+      const wrappedExpression =
+        typeof expression === 'function'
+          ? (creator: Kysely<DB>) =>
+              (expression as (db: Kysely<DB>) => unknown)(rewrap(creator))
+          : expression
+      const result = originalMethod.call(target, nameOrBuilder, wrappedExpression)
+      // String form: 'name' or 'name(col1, col2)' — register the bare name.
+      // Callback CTE-builder form has no statically known name; skipped.
+      if (typeof nameOrBuilder === 'string') {
+        const cteName = (nameOrBuilder.split('(')[0] ?? '').trim()
+        if (cteName.length > 0) {
+          return rewrapWithCte(result, cteName)
+        }
+      }
+      return rewrap(result)
+    }
+  }
+
+  // Methods returning a derived Kysely instance — re-wrap to keep interception
+  // ($pickTables/$omitTables/$extendTables/withTables/withPlugin/withoutPlugins)
+  if (typeof prop === 'string' && REWRAP_KYSELY_METHODS.has(prop)) {
+    const originalMethod = Reflect.get(target, prop)
+    if (typeof originalMethod === 'function') {
+      return (...args: unknown[]): KyseraExecutor<DB> =>
+        rewrap((originalMethod as (...a: unknown[]) => Kysely<DB>).apply(target, args))
     }
     return undefined
   }
 
-  set(key: K, value: V): void {
-    // Wrap undefined values with sentinel
-    const wrappedValue: CacheValue<V> = value === undefined ? UNDEFINED_SENTINEL : value
-
-    // Delete if exists to move to end
-    if (this.cache.has(key)) {
-      this.cache.delete(key)
+  // ControlledTransaction savepoint commands — re-wrap the transaction
+  // returned by Command.execute() so plugins survive savepoint chains
+  if (typeof prop === 'string' && SAVEPOINT_METHODS.has(prop)) {
+    const originalMethod = Reflect.get(target, prop)
+    if (typeof originalMethod === 'function') {
+      return (...args: unknown[]): { execute: () => Promise<KyseraExecutor<DB>> } => {
+        const command = (
+          originalMethod as (...a: unknown[]) => { execute: () => Promise<unknown> }
+        ).apply(target, args)
+        return {
+          execute: async () => rewrap((await command.execute()) as Kysely<DB>)
+        }
+      }
     }
-    this.cache.set(key, wrappedValue)
+    return undefined
+  }
 
-    // Evict oldest (first) entry if size exceeded
-    if (this.cache.size > this.maxSize) {
-      const firstKey = this.cache.keys().next().value
-      if (firstKey !== undefined) {
-        this.cache.delete(firstKey)
+  // Full TransactionBuilder surface; the callback receives a plugin-aware
+  // transaction (setIsolationLevel/setAccessMode are preserved)
+  if (prop === 'transaction') {
+    const wrapBuilder = (builder: TransactionBuilder<DB>): WrappedTransactionBuilder<DB> => ({
+      setAccessMode: accessMode => wrapBuilder(builder.setAccessMode(accessMode)),
+      setIsolationLevel: isolationLevel =>
+        wrapBuilder(builder.setIsolationLevel(isolationLevel)),
+      execute: async <T>(callback: (trx: Transaction<DB>) => Promise<T>): Promise<T> =>
+        builder.execute(trx =>
+          /**
+           * TYPE ASSERTION #2: Transaction <-> Kysely for proxy round-trip
+           *
+           * Transaction<DB> extends Kysely<DB>; the proxy preserves all
+           * Transaction methods and only adds marker properties, so the
+           * round-trip Transaction -> proxy -> Transaction is safe.
+           */
+          callback(rewrap(trx as unknown as Kysely<DB>) as unknown as Transaction<DB>)
+        )
+    })
+    return (): WrappedTransactionBuilder<DB> => wrapBuilder(target.transaction())
+  }
+
+  // Controlled transactions (kysely 0.28+): the resulting transaction is
+  // re-proxied; savepoint commands are handled by SAVEPOINT_METHODS above
+  if (prop === 'startTransaction') {
+    const wrapControlled = (
+      builder: ControlledTransactionBuilder<DB>
+    ): WrappedControlledTransactionBuilder<DB> => ({
+      setAccessMode: accessMode => wrapControlled(builder.setAccessMode(accessMode)),
+      setIsolationLevel: isolationLevel =>
+        wrapControlled(builder.setIsolationLevel(isolationLevel)),
+      execute: async (): Promise<ControlledTransaction<DB>> => {
+        const trx = await builder.execute()
+        // ControlledTransaction extends Kysely; the proxy only adds markers
+        return rewrap(trx) as unknown as ControlledTransaction<DB>
+      }
+    })
+    return (): WrappedControlledTransactionBuilder<DB> =>
+      wrapControlled(target.startTransaction())
+  }
+
+  // Dedicated connection: callback receives a plugin-aware instance
+  if (prop === 'connection') {
+    return (): {
+      execute: <T>(
+        callback: (conn: Kysely<DB>) => Promise<T>,
+        options?: Parameters<ConnectionBuilder<DB>['execute']>[1]
+      ) => Promise<T>
+    } => {
+      const builder = target.connection()
+      return {
+        execute: (callback, options) =>
+          builder.execute(conn => callback(rewrap(conn)), options)
       }
     }
   }
 
-  has(key: K): boolean {
-    return this.cache.has(key)
-  }
+  return undefined
 }
 
 /**
- * Create plugin-aware executor using Proxy
- * Optimized with LRU caching and Set-based lookups
+ * Create plugin-aware executor using Proxy.
  *
- * @param db - Kysely database instance
- * @param interceptors - Plugins with interceptQuery methods
+ * Handles marker properties, query-method interception, and re-wrapping of
+ * every Kysely API that yields a derived instance (see module header).
+ * Optimized with per-proxy method caches and Set-based lookups.
+ *
+ * @param db - Kysely database instance (or Transaction/ControlledTransaction)
+ * @param interceptors - Plugins with interceptQuery methods (may be empty)
  * @param allPlugins - All registered plugins
  * @param currentSchema - Optional schema context (from withSchema)
  */
@@ -521,159 +706,95 @@ function createProxy<DB>(
   db: Kysely<DB>,
   interceptors: readonly Plugin[],
   allPlugins: readonly Plugin[],
-  currentSchema?: string
+  currentSchema?: string,
+  baseMetadata?: Readonly<Record<string, unknown>>,
+  cteNames?: ReadonlySet<string>
 ): KyseraExecutor<DB> {
-  // Cache for bound methods to avoid repeated .bind() allocations
+  // Cache for bound/wrapped methods to avoid repeated allocations
   const methodCache = new Map<string | symbol, unknown>()
 
   // Cache intercepted methods to avoid repeated creation
-  const interceptedCache = new Map<string, (table: string) => unknown>()
-
-  // Cached transaction wrapper (created once, reused)
-  let cachedTransactionWrapper:
-    | (() => { execute: <T>(fn: (trx: Transaction<DB>) => Promise<T>) => Promise<T> })
-    | null = null
+  const interceptedCache = new Map<string, (table: unknown) => unknown>()
 
   // LRU cache for withSchema to prevent unbounded growth (max 100 schemas)
   const schemaProxyCache = new LRUCache<string, KyseraExecutor<DB>>(MAX_CACHE_SIZE)
+
+  /** Re-wrap a derived instance, preserving plugins, schema and metadata context */
+  const rewrap = (derived: Kysely<DB>, schema?: string): KyseraExecutor<DB> =>
+    createProxy(derived, interceptors, allPlugins, schema ?? currentSchema, baseMetadata, cteNames)
+
+  /** Re-wrap registering one more CTE name (with()/withRecursive() results) */
+  const rewrapWithCte = (derived: Kysely<DB>, cteName: string): KyseraExecutor<DB> =>
+    createProxy(
+      derived,
+      interceptors,
+      allPlugins,
+      currentSchema,
+      baseMetadata,
+      new Set([...(cteNames ?? []), cteName])
+    )
 
   const handler: ProxyHandler<Kysely<DB>> = {
     // Handle 'in' operator for type guards
     has(target, prop) {
       if (MARKER_PROPS.has(prop)) return true
-      if (prop === '__schema') return true
       return Reflect.has(target, prop)
     },
 
-    get(target, prop, receiver) {
-      // Fast path: marker properties (O(1) Set lookup)
+    get(target, prop) {
+      // Fast path: marker properties (O(1) checks)
       if (prop === '__kysera') return true
       if (prop === '__plugins') return allPlugins
       if (prop === '__rawDb') return target
       if (prop === '__schema') return currentSchema
 
-      // Fast path: check intercepted methods first (most common hot path)
-      if (typeof prop === 'string' && INTERCEPTED_METHODS_SET.has(prop)) {
+      // Fast path: check intercepted methods first (most common hot path).
+      // Skipped entirely when no plugin intercepts queries.
+      if (
+        interceptors.length > 0 &&
+        typeof prop === 'string' &&
+        INTERCEPTED_METHODS_SET.has(prop)
+      ) {
         let intercepted = interceptedCache.get(prop)
         if (!intercepted) {
-          intercepted = createInterceptedMethod(target, prop as InterceptedMethod, interceptors, currentSchema)
+          intercepted = createInterceptedMethod(
+            target,
+            prop as InterceptedMethod,
+            interceptors,
+            currentSchema,
+            baseMetadata,
+            cteNames
+          )
           interceptedCache.set(prop, intercepted)
         }
         return intercepted
       }
 
-      // Intercept withSchema to maintain plugin proxy and track schema
-      if (prop === 'withSchema') {
-        return (schema: string) => {
-          const cachedSchemaProxy = schemaProxyCache.get(schema)
-          if (cachedSchemaProxy) {
-            return cachedSchemaProxy
-          }
-          const schemaDb = target.withSchema(schema)
-          // Pass schema to new proxy so it's available in QueryBuilderContext
-          const newProxy = createProxy(schemaDb, interceptors, allPlugins, schema)
-          schemaProxyCache.set(schema, newProxy)
-          return newProxy
-        }
-      }
-
-      // Intercept with() for CTEs - cache the wrapper and also wrap the result
-      if (prop === 'with') {
-        if (!methodCache.has('with')) {
-          const withWrapper = (name: string, fn: (db: Kysely<DB>) => unknown): unknown => {
-            const wrappedFn = (innerDb: Kysely<DB>): unknown =>
-              fn(createProxy(innerDb, interceptors, allPlugins))
-            const originalMethod = Reflect.get(target, 'with') as (
-              n: string,
-              f: (db: Kysely<DB>) => unknown
-            ) => Kysely<DB>
-            const result = originalMethod.call(target, name, wrappedFn)
-            return createProxy(result, interceptors, allPlugins)
-          }
-          methodCache.set('with', withWrapper)
-        }
-        return methodCache.get('with')
-      }
-
-      // Intercept withRecursive() for recursive CTEs - cache the wrapper and wrap result
-      if (prop === 'withRecursive') {
-        if (!methodCache.has('withRecursive')) {
-          const withRecursiveWrapper = (name: string, fn: (db: Kysely<DB>) => unknown): unknown => {
-            const wrappedFn = (innerDb: Kysely<DB>): unknown =>
-              fn(createProxy(innerDb, interceptors, allPlugins))
-            const originalMethod = Reflect.get(target, 'withRecursive') as (
-              n: string,
-              f: (db: Kysely<DB>) => unknown
-            ) => Kysely<DB>
-            const result = originalMethod.call(target, name, wrappedFn)
-            return createProxy(result, interceptors, allPlugins)
-          }
-          methodCache.set('withRecursive', withRecursiveWrapper)
-        }
-        return methodCache.get('withRecursive')
-      }
-
-      // Cached transaction wrapper
-      // NOTE: Transaction API limitation - only execute() method is wrapped
-      // Methods like setIsolationLevel() are not available on the wrapper
-      // This is intentional: isolation level should be set before plugin interception
-      // For advanced use cases, use: executor.__rawDb.transaction().setIsolationLevel(...).execute(...)
-      if (prop === 'transaction') {
-        if (!cachedTransactionWrapper) {
-          cachedTransactionWrapper = () => ({
-            execute: async <T>(fn: (trx: Transaction<DB>) => Promise<T>): Promise<T> => {
-              return await target.transaction().execute(async trx => {
-                /**
-                 * TYPE ASSERTION #2a: Transaction to Kysely for proxy creation
-                 *
-                 * Cast: Transaction<DB> -> Kysely<DB>
-                 *
-                 * Why needed:
-                 * - createProxy expects Kysely<DB>, not Transaction<DB>
-                 * - TypeScript doesn't recognize structural compatibility automatically
-                 *
-                 * Why safe:
-                 * - Transaction<DB> extends Kysely<DB> (verified in Kysely types)
-                 * - All Kysely methods are available on Transaction
-                 * - createProxy only accesses Kysely methods
-                 */
-                const wrappedTrx = createProxy(
-                  trx as unknown as Kysely<DB>,
-                  interceptors,
-                  allPlugins
-                )
-                /**
-                 * TYPE ASSERTION #2b: Wrapped proxy back to Transaction
-                 *
-                 * Cast: KyseraExecutor<DB> -> Transaction<DB>
-                 *
-                 * Why needed:
-                 * - User callback expects Transaction<DB>, not KyseraExecutor<DB>
-                 * - Proxy wraps a Transaction but returns KyseraExecutor type
-                 *
-                 * Why safe:
-                 * - Original trx is Transaction<DB>
-                 * - Proxy preserves all Transaction methods
-                 * - Only adds marker properties (__kysera, __plugins, __rawDb)
-                 */
-                return await fn(wrappedTrx as unknown as Transaction<DB>)
-              })
-            }
-          })
-        }
-        return cachedTransactionWrapper
-      }
-
-      // Check method cache for bound functions
+      // Cached wrappers and bound methods
       if (methodCache.has(prop)) {
         return methodCache.get(prop)
       }
 
-      const value = Reflect.get(target, prop, receiver)
+      // Derived-instance APIs (withSchema/with/transaction/connection/...)
+      const special = createSpecialWrapper(target, prop, { rewrap, rewrapWithCte, schemaProxyCache })
+      if (special !== undefined) {
+        methodCache.set(prop, special)
+        return special
+      }
 
-      // Cache bound methods to avoid repeated .bind() allocations
+      /**
+       * Generic path.
+       *
+       * IMPORTANT: receiver is intentionally NOT forwarded to Reflect.get.
+       * Kysely getters (e.g. `db.schema`) access native `#private` fields; with
+       * the proxy as receiver they would throw "Cannot read private member".
+       * Non-function values (including stateful getters like `isCommitted`) are
+       * returned uncached; functions are bound to the target and cached.
+       */
+      const value = Reflect.get(target, prop)
+
       if (typeof value === 'function') {
-        const bound = value.bind(target)
+        const bound = value.bind(target) as unknown
         methodCache.set(prop, bound)
         return bound
       }
@@ -688,7 +809,7 @@ function createProxy<DB>(
 /**
  * Create a plugin-aware executor
  *
- * Zero overhead if no plugins have interceptQuery
+ * Near-zero overhead if no plugins have interceptQuery (marker-only proxy)
  *
  * @param db - Kysely database instance
  * @param plugins - Array of plugins to apply
@@ -713,9 +834,9 @@ export async function createExecutor<DB>(
 ): Promise<KyseraExecutor<DB>> {
   const { enabled = true } = config
 
-  // Fast path: no plugins or disabled
+  // Fast path: no plugins or disabled — marker-only proxy (no interception)
   if (plugins.length === 0 || !enabled) {
-    return wrapWithMarker(db, plugins)
+    return createProxy(db, NO_INTERCEPTORS, plugins)
   }
 
   // Validate and sort plugins
@@ -738,12 +859,6 @@ export async function createExecutor<DB>(
   // Filter plugins with interceptQuery for performance
   const interceptors = sorted.filter(p => p.interceptQuery)
 
-  // Fast path: no interceptors
-  if (interceptors.length === 0) {
-    return wrapWithMarker(db, sorted)
-  }
-
-  // Create proxy with interception
   return createProxy(db, interceptors, sorted)
 }
 
@@ -780,16 +895,12 @@ export function createExecutorSync<DB>(
   const { enabled = true } = config
 
   if (plugins.length === 0 || !enabled) {
-    return wrapWithMarker(db, plugins)
+    return createProxy(db, NO_INTERCEPTORS, plugins)
   }
 
   validatePlugins(plugins)
   const sorted = resolvePluginOrder(plugins)
   const interceptors = sorted.filter(p => p.interceptQuery)
-
-  if (interceptors.length === 0) {
-    return wrapWithMarker(db, sorted)
-  }
 
   return createProxy(db, interceptors, sorted)
 }
@@ -819,16 +930,53 @@ export function wrapTransaction<DB>(
 ): KyseraTransaction<DB> {
   const interceptors = plugins.filter(p => p.interceptQuery)
 
-  if (interceptors.length === 0) {
-    return wrapTransactionWithMarker(trx, plugins)
-  }
-
-  // Transaction with interceptors — create full proxy
+  /**
+   * TYPE ASSERTION: Transaction -> Kysely -> KyseraTransaction
+   *
+   * Transaction<DB> extends Kysely<DB>; the proxy preserves all Transaction
+   * methods and only adds marker properties, so the cast chain is safe.
+   */
   return createProxy(
     trx as unknown as Kysely<DB>,
     interceptors,
     plugins
   ) as unknown as KyseraTransaction<DB>
+}
+
+/**
+ * Derive an executor whose plugin contexts start with the given metadata.
+ *
+ * This is the SAFE alternative to `getRawDb` when a caller needs to opt out
+ * of ONE plugin's behavior while keeping every other plugin active. Plugins
+ * read the metadata in `interceptQuery` (e.g. soft-delete skips its filter
+ * when `metadata.includeDeleted === true`), so a scoped executor keeps RLS
+ * and friends enforced where a raw-db escape would silently bypass them all.
+ *
+ * Returns the executor unchanged when it is not a KyseraExecutor (no plugins
+ * to parameterize).
+ *
+ * @example
+ * ```typescript
+ * const withDeleted = withPluginMetadata(executor, { includeDeleted: true })
+ * // soft-delete filter off, RLS still enforced:
+ * const rows = await withDeleted.selectFrom('users').selectAll().execute()
+ * ```
+ */
+export function withPluginMetadata<DB>(
+  executor: Kysely<DB>,
+  metadata: Readonly<Record<string, unknown>>
+): Kysely<DB> {
+  if (!isKyseraExecutor(executor)) {
+    return executor
+  }
+  const plugins = executor.__plugins
+  return createProxy(
+    executor.__rawDb,
+    plugins.filter(p => p.interceptQuery),
+    plugins,
+    executor.__schema,
+    metadata
+  )
 }
 
 /**

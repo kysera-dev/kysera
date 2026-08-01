@@ -131,16 +131,12 @@ function createTimestampQuery(
   tableName: string,
   column: string
 ): {
-  select(): SelectQueryBuilder<Record<string, TimestampedTable>, typeof tableName, {}>
   where<V>(
     operator: string,
     value: V
   ): SelectQueryBuilder<Record<string, TimestampedTable>, typeof tableName, {}>
 } {
   return {
-    select() {
-      return executor.selectFrom(tableName as never)
-    },
     where<V>(operator: string, value: V) {
       return executor
         .selectFrom(tableName as never)
@@ -185,6 +181,7 @@ function supportsReturning(dialect: Dialect): boolean {
  * - Configurable timestamp format (ISO, Unix, Date)
  * - Query helpers: findCreatedAfter, findUpdatedAfter, etc.
  * - Bulk operations: createMany, updateMany, touchMany
+ * - Base repository bulk methods (bulkCreate, bulkUpdate) get timestamps too
  * - **Cross-database support**: Works with PostgreSQL, MySQL, SQLite, and MSSQL
  *
  * ## Transaction Behavior
@@ -278,6 +275,8 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
         executor: Kysely<Record<string, TimestampedTable>>
         create: (input: unknown) => Promise<unknown>
         update: (id: unknown, input: unknown) => Promise<unknown>
+        bulkCreate?: (inputs: unknown[]) => Promise<unknown[]>
+        bulkUpdate?: (updates: { id: unknown; data: unknown }[]) => Promise<unknown[]>
       }
 
       // Skip if table doesn't support timestamps
@@ -291,6 +290,8 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
       // Save original methods
       const originalCreate = baseRepo.create.bind(baseRepo)
       const originalUpdate = baseRepo.update.bind(baseRepo)
+      const originalBulkCreate = baseRepo.bulkCreate?.bind(baseRepo)
+      const originalBulkUpdate = baseRepo.bulkUpdate?.bind(baseRepo)
       const executor = baseRepo.executor
 
       // Cache dialect detection (detectDialect compiles a test SQL query)
@@ -300,38 +301,98 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
         return cachedDialect
       }
 
+      // Shared timestamp injection used by every insert path (create,
+      // createMany, bulkCreate) and every update path (update, updateMany,
+      // bulkUpdate) so single and bulk operations can never drift apart.
+      const withCreateTimestamps = (
+        input: unknown,
+        timestamp: Date | string | number
+      ): Record<string, unknown> => {
+        const data = input as Record<string, unknown>
+        const result: Record<string, unknown> = {
+          ...data,
+          [createdAtColumn]: data[createdAtColumn] ?? timestamp
+        }
+
+        if (setUpdatedAtOnInsert) {
+          result[updatedAtColumn] = data[updatedAtColumn] ?? timestamp
+        }
+
+        return result
+      }
+
+      const withUpdateTimestamp = (
+        input: unknown,
+        timestamp: Date | string | number
+      ): Record<string, unknown> => {
+        const data = input as Record<string, unknown>
+        return {
+          ...data,
+          [updatedAtColumn]: data[updatedAtColumn] ?? timestamp
+        }
+      }
+
       const extendedRepo = {
         ...baseRepo,
 
         // Override create to add timestamps
         async create(input: unknown): Promise<unknown> {
-          const data = input as Record<string, unknown>
           const timestamp = getTimestamp(options, getDialect())
-          const dataWithTimestamps: Record<string, unknown> = {
-            ...data,
-            [createdAtColumn]: data[createdAtColumn] ?? timestamp
-          }
-
-          if (setUpdatedAtOnInsert) {
-            dataWithTimestamps[updatedAtColumn] = data[updatedAtColumn] ?? timestamp
-          }
 
           logger.debug(`Creating record in ${baseRepo.tableName} with timestamp ${timestamp}`)
-          return await originalCreate(dataWithTimestamps)
+          return await originalCreate(withCreateTimestamps(input, timestamp))
         },
 
         // Override update to set updated_at
         async update(id: number, input: unknown): Promise<unknown> {
-          const data = input as Record<string, unknown>
           const timestamp = getTimestamp(options, getDialect())
-          const dataWithTimestamp: Record<string, unknown> = {
-            ...data,
-            [updatedAtColumn]: data[updatedAtColumn] ?? timestamp
-          }
 
           logger.debug(`Updating record ${id} in ${baseRepo.tableName} with timestamp ${timestamp}`)
-          return await originalUpdate(id, dataWithTimestamp)
+          return await originalUpdate(id, withUpdateTimestamp(input, timestamp))
         },
+
+        // Override base repository bulk methods so bulk writes get the same
+        // timestamps as single-row operations
+        ...(originalBulkCreate
+          ? {
+              async bulkCreate(inputs: unknown[]): Promise<unknown[]> {
+                if (!inputs || inputs.length === 0) {
+                  return []
+                }
+
+                const timestamp = getTimestamp(options, getDialect())
+
+                logger.debug(
+                  `Bulk creating ${inputs.length} records in ${baseRepo.tableName} with timestamp ${timestamp}`
+                )
+                return await originalBulkCreate(
+                  inputs.map(input => withCreateTimestamps(input, timestamp))
+                )
+              }
+            }
+          : {}),
+
+        ...(originalBulkUpdate
+          ? {
+              async bulkUpdate(updates: { id: unknown; data: unknown }[]): Promise<unknown[]> {
+                if (!updates || updates.length === 0) {
+                  return []
+                }
+
+                const timestamp = getTimestamp(options, getDialect())
+
+                logger.debug(
+                  `Bulk updating ${updates.length} records in ${baseRepo.tableName} with timestamp ${timestamp}`
+                )
+                return await originalBulkUpdate(
+                  updates.map(({ id, data }) => ({
+                    id,
+                    data: withUpdateTimestamp(data, timestamp)
+                  }))
+                )
+              }
+            }
+          : {}),
 
         /**
          * Find records created after a specific date
@@ -458,19 +519,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
           }
 
           const timestamp = getTimestamp(options, getDialect())
-          const dataWithTimestamps = inputs.map(input => {
-            const data = input as Record<string, unknown>
-            const result: Record<string, unknown> = {
-              ...data,
-              [createdAtColumn]: data[createdAtColumn] ?? timestamp
-            }
-
-            if (setUpdatedAtOnInsert) {
-              result[updatedAtColumn] = data[updatedAtColumn] ?? timestamp
-            }
-
-            return result
-          })
+          const dataWithTimestamps = inputs.map(input => withCreateTimestamps(input, timestamp))
 
           logger.info(
             `Creating ${inputs.length} records in ${baseRepo.tableName} with timestamp ${timestamp}`
@@ -538,12 +587,8 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             return []
           }
 
-          const data = input as Record<string, unknown>
           const timestamp = getTimestamp(options, getDialect())
-          const dataWithTimestamp: Record<string, unknown> = {
-            ...data,
-            [updatedAtColumn]: data[updatedAtColumn] ?? timestamp
-          }
+          const dataWithTimestamp = withUpdateTimestamp(input, timestamp)
 
           logger.info(
             `Updating ${ids.length} records in ${baseRepo.tableName} with timestamp ${timestamp}`

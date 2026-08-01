@@ -20,7 +20,7 @@ npm install @kysera/audit
 | --------------------- | ----------------------------------- |
 | **Bundle Size**       | ~8 KB (minified)                    |
 | **Dependencies**      | @kysera/core (workspace)            |
-| **Peer Dependencies** | kysely >=0.28.14, @kysera/repository |
+| **Peer Dependencies** | kysely >=0.29.0, @kysera/repository |
 
 ## Exports
 

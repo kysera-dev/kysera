@@ -55,7 +55,7 @@ const sidebars: SidebarsConfig = {
           type: 'category',
           label: 'Migration Guides',
           collapsed: true,
-          items: ['guides/migration-v07', 'guides/migration-v08']
+          items: ['guides/migration-v07', 'guides/migration-v08', 'guides/migration-v09']
         }
       ]
     },

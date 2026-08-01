@@ -12,7 +12,8 @@
     { "path": "./packages/rls" },
     { "path": "./packages/debug" },
     { "path": "./packages/infra" },
-    { "path": "./packages/testing" }
+    { "path": "./packages/testing" },
+    { "path": "./packages/dialects" }
   ],
   "files": []
 }

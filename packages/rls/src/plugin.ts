@@ -27,8 +27,7 @@ import {
   selectFromDynamicTable,
   whereIdEquals,
   hasRawDb as hasRawDbUtil,
-  applyWhereCondition,
-  createRawCondition
+  applyImpossibleCondition
 } from './utils/type-utils.js'
 
 /**
@@ -188,10 +187,26 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     primaryKeyColumn = 'id'
   } = options
 
-  // Registry and transformers (initialized in onInit)
-  let registry: PolicyRegistry<DB>
-  let selectTransformer: SelectTransformer<DB>
-  let mutationGuard: MutationGuard<DB>
+  // Registry and transformers (initialized in onInit; undefined until then —
+  // createExecutorSync legitimately skips onInit)
+  let registry: PolicyRegistry<DB> | undefined
+  let selectTransformer: SelectTransformer<DB> | undefined
+  let mutationGuard: MutationGuard<DB> | undefined
+
+  /**
+   * Fail loudly when the plugin is used before onInit ran. Without this,
+   * createExecutorSync + a query produced an opaque TypeError deep inside.
+   */
+  function requireInit<T>(value: T | undefined): T {
+    if (value === undefined) {
+      throw new RLSError(
+        '[RLS] Plugin used before initialization. ' +
+          'Use createExecutor()/createORM() (async, runs onInit), or await plugin.onInit(db) manually before querying.',
+        RLSErrorCodes.RLS_POLICY_INVALID
+      )
+    }
+    return value
+  }
 
   return {
     name: '@kysera/rls',
@@ -230,7 +245,8 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
      * Cleanup resources when executor is destroyed
      */
     onDestroy() {
-      registry.clear()
+      // registry is undefined when onInit never ran (createExecutorSync)
+      registry?.clear()
       logger.info?.('[RLS] RLS plugin destroyed, cleared policy registry')
     },
 
@@ -256,6 +272,9 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
         return qb
       }
 
+      // Fail loudly if onInit never ran (createExecutorSync misuse)
+      const transformer = requireInit(selectTransformer)
+
       // Check for context
       const ctx = rlsContext.getContextOrNull()
 
@@ -278,18 +297,18 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
           )
           // For SELECT, apply impossible condition to return no rows
           if (operation === 'select') {
-            return transformQueryBuilder(qb, operation, selectQb => {
-              // Apply WHERE FALSE to ensure no rows are returned
-              return applyWhereCondition(
-                selectQb,
-                createRawCondition('FALSE') as unknown as string,
-                '=',
-                true
-              ) as typeof selectQb
-            })
+            return transformQueryBuilder(qb, operation, selectQb =>
+              applyImpossibleCondition(selectQb)
+            )
           }
-          // For mutations, we'll let them through but log warning
-          // The extendRepository will handle mutation checks
+          // For UPDATE/DELETE, the same impossible predicate makes the
+          // statement touch no rows — without it, a missing context would
+          // let DAL-path writes mutate ANY tenant's rows
+          if (operation === 'update' || operation === 'delete') {
+            return transformer.transformMutation(qb, table)
+          }
+          // INSERT has no WHERE to narrow; value-level validation happens in
+          // the repository wrappers (see extendRepository)
           return qb
         }
 
@@ -314,14 +333,15 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
         return qb
       }
 
-      // Apply SELECT filtering
+      // Apply SELECT filtering (qualify by alias when the table was aliased)
       if (operation === 'select') {
+        const referenceName = context.alias ?? table
         try {
           const transformed = transformQueryBuilder(
             qb,
             operation,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            selectQb => selectTransformer.transform(selectQb as any, table) as any
+            selectQb => transformer.transform(selectQb as any, table, referenceName) as any
           )
 
           if (auditDecisions) {
@@ -339,12 +359,34 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
         }
       }
 
-      // For mutations, mark that RLS check is needed (done in extendRepository)
-      if (operation === 'insert' || operation === 'update' || operation === 'delete') {
-        metadata['__rlsRequired'] = true
-        metadata['__rlsTable'] = table
+      // Enforce filter policies on UPDATE/DELETE at the SQL level so rows
+      // outside the caller's row scope are untouchable through ANY path —
+      // the DAL/executor path never goes through repository wrappers.
+      // The repository-level allow/validate guards remain as defense in
+      // depth (they add row-value checks filters cannot express).
+      if (operation === 'update' || operation === 'delete') {
+        const referenceName = context.alias ?? table
+        try {
+          const transformed = transformer.transformMutation(qb, table, referenceName)
+
+          if (auditDecisions) {
+            logger.info?.('[RLS] Mutation filter applied', {
+              table,
+              operation,
+              userId: ctx.auth.userId
+            })
+          }
+
+          return transformed
+        } catch (error) {
+          logger.error?.('[RLS] Error applying mutation filter', { table, error })
+          throw error
+        }
       }
 
+      // INSERT has no WHERE clause to narrow; value-level policy checks
+      // (allow/validate) run in the repository wrappers. DAL-path inserts
+      // must go through the repository or database-native RLS.
       return qb
     },
 
@@ -360,6 +402,10 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
         return repo
       }
 
+      // Fail loudly if onInit never ran (createExecutorSync misuse)
+      const rlsRegistry = requireInit(registry)
+      const guard = requireInit(mutationGuard)
+
       const baseRepo = repo as unknown as BaseRepository
 
       const table = baseRepo.tableName
@@ -371,7 +417,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
       }
 
       // Skip if table not in schema
-      if (!registry.hasTable(table)) {
+      if (!rlsRegistry.hasTable(table)) {
         logger.debug?.(`[RLS] Table "${table}" not in RLS schema, skipping`)
         return repo
       }
@@ -412,7 +458,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
             !bypassRoles.some(role => ctx.auth.roles.includes(role))
           ) {
             try {
-              await mutationGuard.checkCreate(table, data as Record<string, unknown>)
+              await guard.checkCreate(table, data as Record<string, unknown>)
 
               if (auditDecisions) {
                 logger.info?.('[RLS] Create allowed', { table, userId: ctx.auth.userId })
@@ -482,7 +528,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
             }
 
             try {
-              await mutationGuard.checkUpdate(
+              await guard.checkUpdate(
                 table,
                 existingRow as Record<string, unknown>,
                 data as Record<string, unknown>
@@ -557,7 +603,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
             }
 
             try {
-              await mutationGuard.checkDelete(table, existingRow as Record<string, unknown>)
+              await guard.checkDelete(table, existingRow as Record<string, unknown>)
 
               if (auditDecisions) {
                 logger.info?.('[RLS] Delete allowed', { table, id, userId: ctx.auth.userId })
@@ -618,15 +664,15 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
           try {
             switch (operation) {
               case 'read':
-                return await mutationGuard.checkRead(table, row)
+                return await guard.checkRead(table, row)
               case 'create':
-                await mutationGuard.checkCreate(table, row)
+                await guard.checkCreate(table, row)
                 return true
               case 'update':
-                await mutationGuard.checkUpdate(table, row, {})
+                await guard.checkUpdate(table, row, {})
                 return true
               case 'delete':
-                await mutationGuard.checkDelete(table, row)
+                await guard.checkDelete(table, row)
                 return true
               default:
                 return false

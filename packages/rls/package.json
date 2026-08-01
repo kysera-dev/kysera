@@ -37,7 +37,7 @@
     "lint": "eslint ."
   },
   "peerDependencies": {
-    "kysely": ">=0.28.14",
+    "kysely": ">=0.29.0",
     "@kysera/executor": "workspace:*",
     "@kysera/repository": "workspace:*",
     "zod": "^4.3.6"
@@ -59,18 +59,19 @@
   "devDependencies": {
     "@kysera/executor": "workspace:*",
     "@kysera/repository": "workspace:*",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^25.5.2",
-    "@types/pg": "^8.20.0",
-    "@vitest/coverage-v8": "^4.1.3",
-    "better-sqlite3": "^12.8.0",
-    "kysely": "^0.28.15",
-    "mysql2": "^3.20.0",
-    "pg": "^8.20.0",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.1.2",
+    "@types/pg": "^8.20.3",
+    "@vitest/coverage-v8": "^4.1.10",
+    "better-sqlite3": "^13.0.2",
+    "kysely": "^0.29.4",
+    "mysql2": "^3.23.2",
+    "pg": "^8.22.0",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.2",
-    "vitest": "^4.1.3",
-    "zod": "^4.3.6"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10",
+    "zod": "^4.4.3",
+    "@kysera/soft-delete": "workspace:*"
   },
   "keywords": [
     "kysely",
@@ -102,7 +103,7 @@
   },
   "sideEffects": false,
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=22.0.0",
     "bun": ">=1.0.0"
   }
 }

@@ -1,5 +1,5 @@
 import type { Plugin, QueryBuilderContext, BaseRepositoryLike } from '@kysera/executor'
-import { getRawDb, isRepositoryLike } from '@kysera/executor'
+import { getRawDb, isRepositoryLike, withPluginMetadata } from '@kysera/executor'
 import type { SelectQueryBuilder } from 'kysely'
 import { NotFoundError, SoftDeleteError, RecordNotDeletedError, silentLogger, formatTimestampForDb, detectDialect, shouldApplyToTable } from '@kysera/core'
 import type { KyseraLogger, Dialect } from '@kysera/core'
@@ -253,30 +253,41 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
       // Check if table supports soft delete
       const supportsSoftDelete = shouldApplyToTable(context.table, { tables, excludeTables })
 
-      // Only filter SELECT queries when not explicitly including deleted
       if (
-        supportsSoftDelete &&
-        context.operation === 'select' &&
-        !context.metadata['includeDeleted'] &&
-        !includeDeleted
+        !supportsSoftDelete ||
+        context.metadata['includeDeleted'] === true ||
+        includeDeleted
+      ) {
+        return qb
+      }
+
+      // Filter SELECT queries, and ALSO narrow UPDATE/DELETE statements:
+      // soft-deleted rows are invisible to reads, so leaving them freely
+      // mutable/hard-deletable through the generic paths is a data-integrity
+      // trap. Internal methods (softDelete/restore/hardDelete) opt out via
+      // metadata.includeDeleted.
+      if (
+        context.operation === 'select' ||
+        context.operation === 'update' ||
+        context.operation === 'delete'
       ) {
         logger.debug(`Filtering soft-deleted records from ${context.table}`)
-        // Add WHERE deleted_at IS NULL to the query builder
+        // Once a table is aliased, SQL exposes only the alias as correlation
+        // name — qualify with the alias when present ('users as u' -> 'u').
+        // Kysely's update/delete builders share the same runtime .where()
+        // surface as SelectQueryBuilder.
+        const reference = context.alias ?? context.table
         type GenericSelectQueryBuilder = SelectQueryBuilder<
           Record<string, unknown>,
           string,
           Record<string, unknown>
         >
         return (qb as unknown as GenericSelectQueryBuilder).where(
-          `${context.table}.${deletedAtColumn}` as never,
+          `${reference}.${deletedAtColumn}` as never,
           'is',
           null
         ) as QB
       }
-
-      // Note: DELETE operations are NOT intercepted here
-      // Use softDelete() method instead of delete() to perform soft deletes
-      // This is by design - method override is simpler and more explicit
 
       return qb
     },
@@ -318,15 +329,16 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
       logger.debug(`Extending repository for table ${baseRepo.tableName} with soft delete methods`)
 
-      // rawDb bypasses plugin interceptors — used ONLY for reads that need to see
-      // soft-deleted records (findWithDeleted, findAllWithDeleted, findDeleted).
-      // All write operations use baseRepo.executor to respect RLS and other security plugins.
-      const rawDb = getRawDb(baseRepo.executor)
+      // Scoped opt-out: skips ONLY this plugin's deleted_at filter while every
+      // other plugin (RLS, audit, ...) stays active. The previous getRawDb
+      // escape bypassed ALL plugins — findAllWithDeleted leaked other tenants'
+      // rows when combined with RLS.
+      const withDeletedDb = withPluginMetadata(baseRepo.executor, { includeDeleted: true })
 
       // Cache dialect detection per-repository (detectDialect compiles a test query)
       let cachedDialect: Dialect | undefined
       const getDialect = (): Dialect => {
-        cachedDialect ??= detectDialect(rawDb)
+        cachedDialect ??= detectDialect(getRawDb(baseRepo.executor))
         return cachedDialect
       }
 
@@ -350,8 +362,9 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         async softDelete(id: number | string): Promise<unknown> {
           logger.info(`Soft deleting record ${id} from ${baseRepo.tableName}`)
 
-          // Use executor for write (respects RLS/audit plugins — interceptQuery only filters SELECTs)
-          const result = await baseRepo.executor
+          // Opt out of the deleted_at narrowing: softDelete is documented as
+          // idempotent (re-deleting refreshes the timestamp). RLS still applies.
+          const result = await withDeletedDb
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: formatTimestampForDb(undefined, getDialect()) } as never)
             .where(primaryKeyColumn as never, '=', id as never)
@@ -361,8 +374,8 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
             throw new NotFoundError('Record', { id })
           }
 
-          // Fetch via rawDb to see the just-deleted record (interceptor would filter it out)
-          return await rawDb
+          // Read back through the scoped opt-out (soft-delete filter off, RLS on)
+          return await withDeletedDb
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(primaryKeyColumn as never, '=', id as never)
@@ -372,8 +385,8 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         async restore(id: number | string): Promise<unknown> {
           logger.info(`Restoring soft-deleted record ${id} from ${baseRepo.tableName}`)
 
-          // Check via rawDb (need to see deleted records)
-          const existing = await rawDb
+          // Existence probe must see deleted records — scoped opt-out, RLS on
+          const existing = await withDeletedDb
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(primaryKeyColumn as never, '=', id as never)
@@ -388,8 +401,10 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
             throw new RecordNotDeletedError(id, baseRepo.tableName)
           }
 
-          // Use executor for write (respects RLS/audit plugins)
-          await baseRepo.executor
+          // The UPDATE must also opt out: the plugin now narrows executor
+          // updates with `deleted_at IS NULL`, which would exclude the very
+          // row being restored. RLS and other plugins still apply.
+          await withDeletedDb
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: null } as never)
             .where(primaryKeyColumn as never, '=', id as never)
@@ -414,16 +429,17 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
         async hardDelete(id: number | string): Promise<void> {
           logger.info(`Hard deleting record ${id} from ${baseRepo.tableName}`)
-          // Use executor for write (respects RLS/audit)
-          await baseRepo.executor
+          // Opt out of the deleted_at narrowing so already-soft-deleted rows
+          // can be purged; RLS and other plugins still apply
+          await withDeletedDb
             .deleteFrom(baseRepo.tableName)
             .where(primaryKeyColumn as never, '=', id as never)
             .execute()
         },
 
         async findWithDeleted(id: number | string): Promise<unknown> {
-          // rawDb: bypass soft-delete SELECT filter to see deleted records
-          const result = await rawDb
+          // Scoped opt-out: soft-delete filter off, every other plugin on
+          const result = await withDeletedDb
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(primaryKeyColumn as never, '=', id as never)
@@ -432,13 +448,13 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         },
 
         async findAllWithDeleted(): Promise<unknown[]> {
-          // rawDb: bypass soft-delete SELECT filter
-          return await rawDb.selectFrom(baseRepo.tableName).selectAll().execute() as unknown[]
+          // Scoped opt-out: soft-delete filter off, every other plugin on
+          return await withDeletedDb.selectFrom(baseRepo.tableName).selectAll().execute() as unknown[]
         },
 
         async findDeleted(): Promise<unknown[]> {
-          // rawDb: bypass filter, then select only deleted
-          return await rawDb
+          // Scoped opt-out, then select only deleted
+          return await withDeletedDb
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(deletedAtColumn as never, 'is not', null)
@@ -450,15 +466,15 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
           logger.info(`Soft deleting ${ids.length} records from ${baseRepo.tableName}`)
 
-          // Use executor for write (respects RLS/audit)
-          await baseRepo.executor
+          // Opt out of the deleted_at narrowing (idempotent re-delete, RLS on)
+          await withDeletedDb
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: formatTimestampForDb(undefined, getDialect()) } as never)
             .where(primaryKeyColumn as never, 'in', ids as never)
             .execute()
 
-          // Fetch via rawDb (interceptor would filter just-deleted records)
-          const records = await rawDb
+          // Read back through the scoped opt-out (just-deleted rows visible, RLS on)
+          const records = await withDeletedDb
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(primaryKeyColumn as never, 'in', ids as never)
@@ -478,8 +494,9 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
           logger.info(`Restoring ${ids.length} soft-deleted records from ${baseRepo.tableName}`)
 
-          // Use executor for write
-          await baseRepo.executor
+          // Opt out of the deleted_at narrowing (targets ARE deleted rows);
+          // RLS and other plugins still apply
+          await withDeletedDb
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: null } as never)
             .where(primaryKeyColumn as never, 'in', ids as never)
@@ -500,8 +517,9 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
           logger.info(`Hard deleting ${ids.length} records from ${baseRepo.tableName}`)
 
-          // Use executor for write (respects RLS/audit)
-          await baseRepo.executor
+          // Opt out of the deleted_at narrowing so soft-deleted rows can be
+          // purged too; RLS and other plugins still apply
+          await withDeletedDb
             .deleteFrom(baseRepo.tableName)
             .where(primaryKeyColumn as never, 'in', ids as never)
             .execute()

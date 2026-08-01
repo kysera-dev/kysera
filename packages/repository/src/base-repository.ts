@@ -276,7 +276,7 @@ function extractPrimaryKeyFromEntity<Entity, PK>(entity: Entity, pkConfig: Prima
  * Create a base repository implementation
  * This function creates a repository with full CRUD operations
  */
-// eslint-disable-next-line max-lines-per-function
+ 
 export function createBaseRepository<DB, Table, Entity, PK = number>(
   operations: TableOperations<Table>,
   config: RepositoryConfig<Table, Entity>,
@@ -416,8 +416,12 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
       const results: Entity[] = []
 
       // Execute updates sequentially to ensure consistent ordering and
-      // predictable error behavior. For atomicity, wrap in a transaction:
-      //   await repo.transaction(async () => repo.bulkUpdate(updates))
+      // predictable error behavior. For atomicity, wrap in a transaction and
+      // rebind the repository to it (outer-repo calls inside the callback stay
+      // bound to the base executor and would escape the transaction):
+      //   await repo.transaction(async trx =>
+      //     repo.withTransaction(trx).bulkUpdate(updates)
+      //   )
       for (const { id, data } of updates) {
         const validatedInput = validateInput(data, updateSchema)
         const row = await operations.updateById(toPrimaryKeyInput(id), validatedInput)
@@ -455,14 +459,14 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
         const rows = await operations.selectWithOptions(
           options as unknown as FindOptions<Selectable<Table>, string & keyof Selectable<Table>>
         )
-        return processRows(rows) as [Cols] extends [keyof Entity] ? Pick<Entity, Cols>[] : Entity[]
+        return processRows(rows)
       }
 
       // Backwards compatible path for simple equality conditions
       const rows = options?.where
-        ? await operations.selectWhere(options.where as Record<string, unknown>)
+        ? await operations.selectWhere(options.where)
         : await operations.selectAll()
-      return processRows(rows) as [Cols] extends [keyof Entity] ? Pick<Entity, Cols>[] : Entity[]
+      return processRows(rows)
     },
 
     async findOne<Cols extends keyof Entity = keyof Entity>(
@@ -473,24 +477,24 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
         const row = await operations.selectOneWithOptions(
           options as unknown as FindOptions<Selectable<Table>, string & keyof Selectable<Table>>
         )
-        return row ? processRow(row) as ([Cols] extends [keyof Entity] ? Pick<Entity, Cols> : Entity) : null
+        return row ? processRow(row) : null
       }
 
       // Backwards compatible path
       if (!options?.where) {
         const rows = await operations.selectAll()
-        return rows[0] ? processRow(rows[0]) as ([Cols] extends [keyof Entity] ? Pick<Entity, Cols> : Entity) : null
+        return rows[0] ? processRow(rows[0]) : null
       }
 
-      const row = await operations.selectOneWhere(options.where as Record<string, unknown>)
-      return row ? processRow(row) as ([Cols] extends [keyof Entity] ? Pick<Entity, Cols> : Entity) : null
+      const row = await operations.selectOneWhere(options.where)
+      return row ? processRow(row) : null
     },
 
     async count(options?: { where?: WhereClause<Entity> | Record<string, unknown> }): Promise<number> {
       if (needsAdvancedQuery({ where: options?.where } as FindOptions<Entity>)) {
         return operations.countWithOptions({ where: options?.where as Record<string, unknown> })
       }
-      return operations.count(options?.where as Record<string, unknown>)
+      return operations.count(options?.where)
     },
 
     async exists(options?: { where?: WhereClause<Entity> | Record<string, unknown> }): Promise<boolean> {
@@ -512,7 +516,7 @@ export function createBaseRepository<DB, Table, Entity, PK = number>(
       ])
 
       return {
-        items: items as [Cols] extends [keyof Entity] ? Pick<Entity, Cols>[] : Entity[],
+        items: items,
         total
       }
     },

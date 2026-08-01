@@ -209,6 +209,13 @@ The plugin uses query interception from `@kysera/executor`:
 
 **This works automatically in both Repository and DAL patterns.**
 
+Aliased references are handled correctly: for `selectFrom('users as u')` the
+plugin receives the base name `users` (so `tables`/`excludeTables` allowlists
+keep matching) and qualifies the filter with the alias
+(`WHERE u.deleted_at IS NULL`). Array cross-join form
+(`selectFrom(['users as u', 'posts'])`) applies the filter once per matching
+table entry.
+
 ### Filtering Behavior
 
 | Query Type | Filtered? | Notes                                |

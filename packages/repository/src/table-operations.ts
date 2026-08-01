@@ -1,4 +1,5 @@
 import type {
+  Kysely,
   Selectable,
   InsertQueryBuilder,
   SelectQueryBuilder,
@@ -17,7 +18,7 @@ import { getPrimaryKeyColumns, normalizePrimaryKeyInput, isCompositeKey } from '
 import { DatabaseError, getEnv, detectDialect, silentLogger, type KyseraLogger } from '@kysera/core'
 import { extractPrimaryKey } from './primary-key-utils.js'
 import type { ColumnValidationOptions } from './column-validation.js'
-import { validateConditions } from './column-validation.js'
+import { validateConditions, assertValidIdentifier } from './column-validation.js'
 import type { FindOptions } from './operators.js'
 import { applyWhereClause, hasOperators, validateOperators, extractColumns } from './operators.js'
 
@@ -307,8 +308,10 @@ function buildOrderByAndPaginate<DB, TableName extends keyof DB>(
   limit: number,
   offset: number
 ): DynamicSelectQuery<DB, TableName> {
+  // Runtime safety: reject non-identifier orderBy values ('name desc' would
+  // silently become a quoted identifier / string literal on some dialects)
+  assertValidIdentifier(orderBy, 'orderBy column')
   // Type assertion needed: orderBy column is dynamic
-  // Runtime safety: Validated at repository layer
   return query
     .orderBy(orderBy as never, orderDirection)
     .limit(limit)
@@ -495,14 +498,14 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     async insertMany(data: unknown[]): Promise<SelectTable[]> {
       if (usesMySQL) {
         // MySQL doesn't support RETURNING for bulk inserts
-        // Wrap in transaction to prevent partial commits on failure
         const schema = opts.schema
-        return db.transaction().execute(async (trx) => {
+
+        const runBulkInsert = async (executor: Kysely<DB>): Promise<SelectTable[]> => {
           const results: SelectTable[] = []
-          const trxWithSchema = schema ? trx.withSchema(schema) : trx
+          const executorWithSchema = schema ? executor.withSchema(schema) : executor
 
           for (const item of data) {
-            const result = await trxWithSchema
+            const result = await executorWithSchema
               .insertInto(tableName)
               .values(item as Parameters<InsertQueryBuilder<DB, TableName, unknown>['values']>[0])
               .executeTakeFirst()
@@ -523,10 +526,9 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
             }
 
             // Fetch the inserted record
-            const selectQuery = trxWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<
-              DB,
-              TableName
-            >
+            const selectQuery = executorWithSchema
+              .selectFrom(tableName)
+              .selectAll() as DynamicSelectQuery<DB, TableName>
             const queryWithWhere = buildWherePrimaryKey(selectQuery, pkConfig, lookupKey)
             const record = await queryWithWhere.executeTakeFirst()
 
@@ -538,7 +540,15 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
           }
 
           return results
-        })
+        }
+
+        // Wrap in a transaction to prevent partial commits on failure.
+        // When the executor already IS a transaction, reuse it — kysely 0.29
+        // deprecates Transaction#transaction() (nested begin is unsupported).
+        if (db.isTransaction) {
+          return runBulkInsert(db)
+        }
+        return db.transaction().execute(async trx => runBulkInsert(trx))
       } else {
         // PostgreSQL and SQLite support RETURNING
         const result = await dbWithSchema
@@ -722,6 +732,9 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
     }): Promise<SelectTable[]> {
       const { limit, cursor, orderBy, orderDirection } = options
 
+      // Runtime safety: reject non-identifier orderBy before it reaches SQL
+      assertValidIdentifier(orderBy, 'orderBy column')
+
       let query = dbWithSchema.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>
 
       // Apply keyset pagination using WHERE clause
@@ -800,10 +813,10 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       // Apply where conditions
       if (where && Object.keys(where).length > 0) {
         // Validate operators if present
-        if (hasOperators(where as Record<string, unknown>)) {
-          validateOperators(where as Record<string, unknown>)
+        if (hasOperators(where)) {
+          validateOperators(where)
           // Validate column names
-          const columns = extractColumns(where as Record<string, unknown>)
+          const columns = extractColumns(where)
           validateConditions(Object.fromEntries(columns.map(c => [c, true])), pkConfig)
 
           // Apply operator-aware where clause
@@ -869,9 +882,9 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
 
       // Apply where conditions with operator support
       if (where && Object.keys(where).length > 0) {
-        if (hasOperators(where as Record<string, unknown>)) {
-          validateOperators(where as Record<string, unknown>)
-          const columns = extractColumns(where as Record<string, unknown>)
+        if (hasOperators(where)) {
+          validateOperators(where)
+          const columns = extractColumns(where)
           validateConditions(Object.fromEntries(columns.map(c => [c, true])), pkConfig)
 
           query = query.where((eb: ExpressionBuilder<DB, TableName>) =>

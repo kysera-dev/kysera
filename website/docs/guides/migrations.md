@@ -160,6 +160,27 @@ const runner = createMigrationRunner(db, migrations, {
 })
 ```
 
+### Concurrent Deployments (Advisory Lock)
+
+Two application instances migrating at once would both see the same pending
+list and run every migration twice. Since v0.9 the runner serializes
+concurrent runs with a database advisory lock (enabled by default):
+
+- **PostgreSQL** — `pg_try_advisory_lock` polled until `lockTimeoutMs`
+- **MySQL** — `GET_LOCK('kysera_migrations', timeout)`
+- **SQLite** — no-op (single-writer by design)
+- **MSSQL** — not supported yet (no-op)
+
+```typescript
+const runner = createMigrationRunner(db, migrations, {
+  advisoryLock: true, // default
+  lockTimeoutMs: 60000 // fail with MigrationLockError after 60s
+})
+```
+
+If the lock cannot be acquired in time, `up()`/`down()` throw
+`MigrationLockError` — another runner is probably still migrating.
+
 ### Using CLI
 
 ```bash

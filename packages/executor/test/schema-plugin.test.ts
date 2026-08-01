@@ -525,17 +525,17 @@ describe('Executor Schema Context', () => {
     expect(schema1a).not.toBe(schema2)
   })
 
-  it('should work without interceptors but schema tracking is limited', async () => {
-    // When no interceptors, Object.assign is used instead of Proxy
-    // This means withSchema returns Kysely's native result, not our wrapped version
+  it('should track schema even without interceptors (marker-only proxy)', async () => {
+    // Marker-only executors use the same proxy as plugin executors,
+    // so schema tracking and markers survive withSchema()
     const executor = await createExecutor(db, [])
 
-    // __schema is undefined on non-proxy executor
+    // __schema is undefined until withSchema is called
     expect(executor.__schema).toBeUndefined()
 
-    // withSchema still works (via Kysely) but returns unwrapped Kysely instance
     const schemaDb = executor.withSchema('test')
-    // The returned object won't have __schema since it's not a KyseraExecutor proxy
-    expect('__schema' in schemaDb).toBe(false)
+    expect((schemaDb as unknown as { __schema?: string }).__schema).toBe('test')
+    // Markers survive derived instances
+    expect((schemaDb as unknown as { __kysera?: boolean }).__kysera).toBe(true)
   })
 })

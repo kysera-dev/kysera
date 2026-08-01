@@ -18,7 +18,7 @@ npm install @kysera/core
 
 ## Overview
 
-**Dependencies:** None (peer: kysely >=0.28.14)
+**Dependencies:** None (peer: kysely >=0.29.0)
 **Database Support:** PostgreSQL, MySQL, SQLite, MSSQL
 
 ## Exports

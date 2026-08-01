@@ -104,7 +104,7 @@ export class MSSQLAdapter implements DialectAdapter {
         .where('TABLE_NAME', '=', tableName)
         .where('TABLE_SCHEMA', '=', schema)
         .execute()
-      return results.map(r => (r as { COLUMN_NAME: string }).COLUMN_NAME)
+      return results.map(r => (r).COLUMN_NAME)
     } catch {
       return []
     }
@@ -120,7 +120,7 @@ export class MSSQLAdapter implements DialectAdapter {
         .where('TABLE_TYPE', '=', 'BASE TABLE')
         .where('TABLE_SCHEMA', '=', schema)
         .execute()
-      return results.map(r => (r as { TABLE_NAME: string }).TABLE_NAME)
+      return results.map(r => (r).TABLE_NAME)
     } catch {
       return []
     }
@@ -270,7 +270,7 @@ export class MSSQLAdapter implements DialectAdapter {
           'db_denydatawriter'
         ])
         .execute()
-      return results.map(r => (r as { SCHEMA_NAME: string }).SCHEMA_NAME)
+      return results.map(r => (r).SCHEMA_NAME)
     } catch {
       return []
     }

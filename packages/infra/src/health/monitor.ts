@@ -76,6 +76,7 @@ export type HealthCheckCallback = (result: HealthCheckResult) => void
 export class HealthMonitor<DB = unknown> implements Disposable {
   private intervalId: ReturnType<typeof setInterval> | undefined
   private lastCheck?: HealthCheckResult
+  private checkInFlight = false
   private readonly pool: MetricsPool | undefined
   private readonly intervalMs: number
   private readonly logger: KyseraLogger
@@ -110,6 +111,13 @@ export class HealthMonitor<DB = unknown> implements Disposable {
     this.logger.debug(`Starting health monitor with ${this.intervalMs.toString()}ms interval`)
 
     const check = async (): Promise<void> => {
+      // In-flight guard: when a check outlives the interval (slow/hung DB),
+      // skip the tick instead of stacking overlapping checks
+      if (this.checkInFlight) {
+        this.logger.debug('Skipping health check: previous check still in flight')
+        return
+      }
+      this.checkInFlight = true
       try {
         this.lastCheck = await checkDatabaseHealth(this.db, this.pool)
 
@@ -135,6 +143,8 @@ export class HealthMonitor<DB = unknown> implements Disposable {
         }
         this.lastCheck = errorResult
         onCheck?.(errorResult)
+      } finally {
+        this.checkInFlight = false
       }
     }
 

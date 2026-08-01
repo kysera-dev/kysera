@@ -391,7 +391,7 @@ await userRepo.bulkUpdate([
 ```
 
 :::note
-`bulkUpdate` executes updates sequentially (one at a time) to ensure consistent ordering and predictable error behavior. For atomicity, wrap in a transaction: `await repo.transaction(async () => repo.bulkUpdate(updates))`. For true batch performance with many rows, consider using Kysely's raw query builder with a single UPDATE statement.
+`bulkUpdate` executes updates sequentially (one at a time) to ensure consistent ordering and predictable error behavior. For atomicity, wrap in a transaction: `await repo.transaction(async trx => repo.withTransaction(trx).bulkUpdate(updates))` — the callback must use a transaction-bound repository (outer-repo calls escape the transaction and, since kysely 0.29, deadlock on single-connection SQLite). For true batch performance with many rows, consider using Kysely's raw query builder with a single UPDATE statement.
 :::
 
 ### Limit Debug Plugin Memory

@@ -241,7 +241,7 @@ export function valibotAdapter<T>(
       const partialSchema = partialFn(schema)
       // Cast is safe: Valibot's partial() produces schema with same shape but optional fields
       return valibotAdapter(
-        partialSchema as unknown as ValibotSchema<Partial<T>>,
+        partialSchema,
         valibot as unknown as {
           parse: (schema: ValibotSchema<Partial<T>>, data: unknown) => Partial<T>
           safeParse: (schema: ValibotSchema<Partial<T>>, data: unknown) => ValibotResult<Partial<T>>

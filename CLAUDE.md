@@ -25,15 +25,16 @@ turbo build --filter=@kysera/core     # With Turborepo
 
 ```
 kysera/
-├── packages/           # 12 published packages
-│   ├── core/          # Errors, pagination, types, logger
+├── packages/           # 13 published packages
+│   ├── core/          # Errors, pagination, types, logger, dialect detection
 │   ├── executor/      # Unified Execution Layer (plugin interception)
 │   ├── repository/    # Repository pattern + Zod validation
 │   ├── dal/           # Functional Data Access Layer
+│   ├── dialects/      # Dialect adapters (postgres/mysql/sqlite/mssql helpers)
 │   ├── soft-delete/   # Soft delete plugin
 │   ├── audit/         # Audit logging with restore
 │   ├── timestamps/    # Auto created_at/updated_at
-│   ├── migrations/    # Migration system
+│   ├── migrations/    # Migration system (advisory-locked runner)
 │   ├── rls/           # Row-Level Security
 │   ├── debug/         # Query logging & profiling
 │   ├── infra/         # Health checks, retry, circuit breaker
@@ -48,17 +49,14 @@ kysera/
 
 | Tool               | Version  |
 | ------------------ | -------- |
-| Kysera packages    | 0.8.0    |
-| @kysera/executor   | 0.8.0    |
-| @kysera/dal        | 0.8.0    |
-| @kysera/repository | 0.8.0    |
-| Kysely (peer)      | >=0.28.14 (dev: ^0.28.15) |
-| TypeScript         | ^6.0.2   |
-| Turbo              | ^2.9.5   |
-| Vitest             | ^4.1.3   |
-| Zod (optional)     | ^4.3.6   |
+| Kysera packages    | 0.8.8    |
+| Kysely (peer)      | >=0.29.0 (dev: ^0.29.4) |
+| TypeScript         | ^6.0.3   |
+| Turbo              | ^2.10.8  |
+| Vitest             | ^4.1.10  |
+| Zod (optional)     | ^4.4.3   |
 | pnpm               | >=10.0.0 |
-| Node.js            | >=20.0.0 |
+| Node.js            | >=22.0.0 |
 | Bun                | >=1.0.0  |
 
 ## Critical Rules
@@ -166,20 +164,21 @@ try {
 ## Package Dependencies
 
 ```
-@kysera/executor (0 deps) ← NEW: Unified Execution Layer
+@kysera/executor (0 runtime deps) ← Unified Execution Layer
     │
-    ├── @kysera/dal → @kysera/executor
+    ├── @kysera/dal → @kysera/executor, @kysera/core
     │
-    └── @kysera/repository → @kysera/executor, @kysera/dal
-            ├── @kysera/soft-delete → @kysera/executor, @kysera/core
-            ├── @kysera/audit → @kysera/core
-            ├── @kysera/timestamps → @kysera/core
-            └── @kysera/rls → @kysera/executor, @kysera/core
+    └── @kysera/repository → @kysera/executor, @kysera/dal, @kysera/core
+            ├── @kysera/soft-delete → @kysera/core (peer: executor)
+            ├── @kysera/audit → @kysera/core (peer: executor, repository)
+            ├── @kysera/timestamps → @kysera/core (peer: executor, repository)
+            └── @kysera/rls → @kysera/core (peer: executor, repository)
 
-@kysera/core (0 deps)
+@kysera/core → @kysera/executor (type-only)
+@kysera/dialects → @kysera/core
 @kysera/debug → @kysera/core
 @kysera/infra → @kysera/core
-@kysera/testing (0 deps)
+@kysera/testing → @kysera/core (peer: executor, better-sqlite3)
 @kysera/migrations → @kysera/core
 ```
 
@@ -192,16 +191,22 @@ try {
 ```bash
 pnpm test                          # All tests
 pnpm test:coverage                 # With coverage
-pnpm test:multi-db                 # PostgreSQL/MySQL/SQLite
+pnpm test:multi-db                 # PostgreSQL/MySQL/SQLite (serialized: shared test DB)
 pnpm test:docker                   # Docker containers
 ```
 
-**Coverage thresholds (vitest.config.ts):**
+**Multi-DB runs** need the docker containers and env toggles:
 
-- Lines: 95%
-- Functions: 95%
-- Branches: 85%
-- Statements: 95%
+```bash
+pnpm docker:up
+TEST_POSTGRES=true TEST_MYSQL=true pnpm test:multi-db
+```
+
+**Coverage thresholds (vitest.config.ts, per package):**
+
+- Standard: Lines 95% / Functions 95% / Branches 85% / Statements 95%
+- Exceptions (ratchet floors, raised as coverage grows): `migrations` 84/84/72/84,
+  `dialects` 60/75/55/60 (real-DB surface covered by `test:multi-db`)
 
 **Test file locations:** `packages/*/test/`
 

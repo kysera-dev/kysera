@@ -5,9 +5,11 @@
  */
 
 import type {
+  CompiledQuery,
   Kysely,
   PluginTransformQueryArgs,
   PluginTransformResultArgs,
+  QueryId,
   QueryResult,
   UnknownRow,
   KyselyPlugin,
@@ -16,6 +18,12 @@ import type {
 import { DefaultQueryCompiler } from 'kysely'
 import { consoleLogger, type KyseraLogger, type QueryMetrics } from '@kysera/core'
 import { CircularBuffer } from './circular-buffer.js'
+
+/**
+ * Compiles an operation node to SQL for logging purposes.
+ * @internal
+ */
+type CompileFn = (node: RootOperationNode, queryId: QueryId) => CompiledQuery
 
 // Re-export QueryMetrics for backwards compatibility
 export type { QueryMetrics }
@@ -83,8 +91,9 @@ class DebugPlugin implements KyselyPlugin {
     Pick<DebugOptions, 'logQuery' | 'logParams' | 'slowQueryThreshold'>
   >
   private readonly onSlowQuery: ((sql: string, duration: number) => void) | undefined
+  private readonly compile: CompileFn
 
-  constructor(options: DebugOptions = {}) {
+  constructor(options: DebugOptions = {}, compile?: CompileFn) {
     this.logger = options.logger ?? consoleLogger
     this.metricsBuffer = new CircularBuffer<QueryMetrics>(options.maxMetrics ?? 1000)
     this.onSlowQuery = options.onSlowQuery
@@ -93,14 +102,20 @@ class DebugPlugin implements KyselyPlugin {
       logParams: options.logParams ?? false,
       slowQueryThreshold: options.slowQueryThreshold ?? 100
     }
+    // Fall back to the generic ANSI compiler when no dialect compiler is
+    // available (e.g. hand-built mocks). Placeholders may then differ from
+    // what the driver actually receives.
+    this.compile =
+      compile ??
+      ((node, queryId) => new DefaultQueryCompiler().compileQuery(node, queryId))
   }
 
   transformQuery(args: PluginTransformQueryArgs): RootOperationNode {
     const startTime = performance.now()
 
-    // Compile the query to get SQL and parameters
-    const compiler = new DefaultQueryCompiler()
-    const compiled = compiler.compileQuery(args.node, args.queryId)
+    // Compile the query with the wrapped database's own dialect compiler so
+    // logged SQL matches what the driver receives ($1 for pg, ? for sqlite...)
+    const compiled = this.compile(args.node, args.queryId)
 
     // Store query data for later use in transformResult
     this.queryData.set(args.queryId, {
@@ -209,10 +224,25 @@ export interface DebugDatabase<DB> extends Kysely<DB> {
  * ```
  */
 export function withDebug<DB>(db: Kysely<DB>, options: DebugOptions = {}): DebugDatabase<DB> {
-  const plugin = new DebugPlugin(options)
+  // Borrow the real dialect compiler from the wrapped instance so logged SQL
+  // matches driver SQL. getExecutor() is stable public API on Kysely.
+  let compile: CompileFn | undefined
+  try {
+    const executor = (
+      db as unknown as { getExecutor?: () => { compileQuery?: CompileFn } }
+    ).getExecutor?.()
+    const executorCompile = executor?.compileQuery
+    if (typeof executorCompile === 'function') {
+      compile = (node, queryId) => executorCompile.call(executor, node, queryId)
+    }
+  } catch {
+    // Mocks or exotic wrappers — DebugPlugin falls back to DefaultQueryCompiler
+  }
+
+  const plugin = new DebugPlugin(options, compile)
   const debugDb = db.withPlugin(plugin) as DebugDatabase<DB>
 
-  // Attach metrics methods
+  // Attach metrics methods (withPlugin returned a fresh instance — safe)
   debugDb.getMetrics = (): QueryMetrics[] => plugin.getMetrics()
   debugDb.clearMetrics = (): void => {
     plugin.clearMetrics()

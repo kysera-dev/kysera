@@ -68,7 +68,7 @@ export async function upsert<DB, Table extends keyof DB & string>(
 
   if (updateColumns && updateColumns.length > 0) {
     // Use specified update columns
-    updateSet = {} as Partial<Insertable<DB[Table]>>
+    updateSet = {}
     for (const col of updateColumns) {
       if (col in data) {
         updateSet[col] = data[col]
@@ -186,11 +186,11 @@ export async function upsertMany<DB, Table extends keyof DB & string>(
 
   const query = db
     .insertInto(table)
-    .values(data as never)
+    .values(data)
     .onConflict(oc => oc.columns(conflictColumns as never).doUpdateSet(updateSet as never))
 
   if (returning) {
-    return query.returningAll().execute() as Promise<Selectable<DB[Table]>[]>
+    return query.returningAll().execute()
   }
 
   await query.execute()
@@ -367,7 +367,7 @@ export async function atomicStatusTransition<DB, Table extends keyof DB & string
   }
 
   // Add the atomic status check
-  query = query.where(statusColumn, '=', fromStatus as unknown)
+  query = query.where(statusColumn, '=', fromStatus)
 
   if (returning) {
     const result = await query.returningAll().executeTakeFirst()
@@ -386,7 +386,7 @@ export async function atomicStatusTransition<DB, Table extends keyof DB & string
   for (const [column, value] of Object.entries(where)) {
     refetch = refetch.where(column, '=', value)
   }
-  refetch = refetch.where(statusColumn, '=', toStatus as unknown)
+  refetch = refetch.where(statusColumn, '=', toStatus)
   const row = await refetch.executeTakeFirst()
   return (row as Selectable<DB[Table]>) ?? null
 }

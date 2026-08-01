@@ -12,6 +12,7 @@ import { RLSError, RLSErrorCodes } from '../errors.js'
 import {
   createQualifiedColumn,
   applyWhereCondition,
+  applyImpossibleCondition,
   createRawCondition
 } from '../utils/type-utils.js'
 
@@ -39,21 +40,17 @@ export class SelectTransformer<DB = unknown> {
    */
   transform<TB extends keyof DB & string, O>(
     qb: SelectQueryBuilder<DB, TB, O>,
-    table: string
+    table: string,
+    referenceName: string = table
   ): SelectQueryBuilder<DB, TB, O> {
     // Check for context
     const ctx = rlsContext.getContextOrNull()
     if (!ctx) {
       // SECURITY FIX (H-11): This should never happen as plugin.interceptQuery
-      // now handles missing context. If we reach here, apply defensive WHERE FALSE
-      // to prevent unfiltered queries from leaking through.
-      // This is a defense-in-depth measure.
-      return applyWhereCondition(
-        qb,
-        createRawCondition('FALSE') as unknown as string,
-        '=',
-        true
-      ) as SelectQueryBuilder<DB, TB, O>
+      // now handles missing context. If we reach here, apply a defensive
+      // impossible predicate to prevent unfiltered queries from leaking
+      // through. This is a defense-in-depth measure.
+      return applyImpossibleCondition(qb)
     }
 
     // Check if system user (bypass RLS)
@@ -73,14 +70,64 @@ export class SelectTransformer<DB = unknown> {
       return qb
     }
 
-    // Apply each filter as WHERE condition
+    // Apply each filter as WHERE condition, qualified by the reference name
+    // (the alias when the table was aliased, since SQL exposes only the alias)
     let result = qb
     for (const filter of filters) {
       const conditions = this.evaluateFilter(filter, ctx, table)
-      result = this.applyConditions(result, conditions, table)
+      result = this.applyConditions(result, conditions, referenceName)
     }
 
     return result
+  }
+
+  /**
+   * Apply the table's filter policies to a mutation builder
+   * (UpdateQueryBuilder / DeleteQueryBuilder).
+   *
+   * Narrows the statement's WHERE at the SQL level so rows outside the
+   * caller's row scope are untouchable through ANY path — including the
+   * DAL/executor path that never goes through repository wrappers.
+   * Kysely's update/delete builders expose the same `.where()` runtime
+   * surface as SelectQueryBuilder, which applyConditions relies on.
+   *
+   * @param qb - Update or delete query builder
+   * @param table - Base table name (policy lookup key)
+   * @param referenceName - Correlation name for column qualification
+   *                        (the alias when the table was aliased)
+   * @returns Builder with RLS filter predicates appended
+   */
+  transformMutation<QB>(qb: QB, table: string, referenceName: string = table): QB {
+    type AnySelect = SelectQueryBuilder<DB, keyof DB & string, Record<string, unknown>>
+
+    const ctx = rlsContext.getContextOrNull()
+    if (!ctx) {
+      // Defense in depth: no context means no row scope — make the
+      // mutation match nothing instead of everything
+      return applyImpossibleCondition(qb)
+    }
+
+    if (ctx.auth.isSystem) {
+      return qb
+    }
+
+    const skipFor = this.registry.getSkipFor(table)
+    if (skipFor.some(role => ctx.auth.roles.includes(role))) {
+      return qb
+    }
+
+    const filters = this.registry.getFilters(table)
+    if (filters.length === 0) {
+      return qb
+    }
+
+    let result = qb as unknown as AnySelect
+    for (const filter of filters) {
+      const conditions = this.evaluateFilter(filter, ctx, table)
+      result = this.applyConditions(result, conditions, referenceName)
+    }
+
+    return result as unknown as QB
   }
 
   /**
@@ -141,13 +188,14 @@ export class SelectTransformer<DB = unknown> {
   private applyConditions<TB extends keyof DB & string, O>(
     qb: SelectQueryBuilder<DB, TB, O>,
     conditions: Record<string, unknown>,
-    table: string
+    referenceName: string
   ): SelectQueryBuilder<DB, TB, O> {
     let result = qb
 
     for (const [column, value] of Object.entries(conditions)) {
-      // Use table-qualified column name to avoid ambiguity in joins
-      const qualifiedColumn = createQualifiedColumn(table, column)
+      // Use reference-qualified column name to avoid ambiguity in joins
+      // (referenceName is the alias when the table was aliased)
+      const qualifiedColumn = createQualifiedColumn(referenceName, column)
 
       if (value === null) {
         // NULL check
@@ -157,15 +205,10 @@ export class SelectTransformer<DB = unknown> {
         continue
       } else if (Array.isArray(value)) {
         if (value.length === 0) {
-          // Empty array means no matches - add impossible condition using SQL FALSE
+          // Empty array means no matches - add an impossible condition.
           // This ensures the query returns no rows without using magic strings
           // that could potentially match actual data
-          result = applyWhereCondition(
-            result,
-            createRawCondition('FALSE') as unknown as string,
-            '=',
-            true
-          )
+          result = applyImpossibleCondition(result)
         } else {
           // IN clause for array values
           result = applyWhereCondition(result, qualifiedColumn, 'in', value)

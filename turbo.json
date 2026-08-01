@@ -24,14 +24,14 @@
     },
     "test:multi-db": {
       "dependsOn": ["build"],
-      "env": ["NODE_ENV", "DB_PORT", "POSTGRES_PORT", "POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DB", "MYSQL_PORT"]
+      "env": ["NODE_ENV", "TEST_POSTGRES", "TEST_MYSQL", "TEST_MSSQL", "DB_PORT", "POSTGRES_PORT", "POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DB", "MYSQL_PORT"]
     },
     "lint": {
       "dependsOn": [],
       "outputs": []
     },
     "typecheck": {
-      "dependsOn": ["^typecheck"],
+      "dependsOn": ["build"],
       "outputs": []
     }
   }

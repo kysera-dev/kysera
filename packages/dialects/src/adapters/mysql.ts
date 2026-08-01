@@ -115,9 +115,11 @@ export class MySQLAdapter implements DialectAdapter {
     const schema = this.resolveSchemaOrDatabase(options)
 
     try {
+      // MySQL 8 returns information_schema columns in UPPERCASE (COLUMN_NAME)
+      // through mysql2 — alias explicitly so the result key is stable
       const query = db
         .selectFrom('information_schema.columns')
-        .select('column_name')
+        .select('column_name as column_name')
         .where('table_name', '=', tableName)
 
       const results = await this.applySchemaFilter(query, schema).execute()
@@ -131,9 +133,10 @@ export class MySQLAdapter implements DialectAdapter {
     const schema = this.resolveSchemaOrDatabase(options)
 
     try {
+      // Alias for stable lowercase result keys (see getTableColumns note)
       const query = db
         .selectFrom('information_schema.tables')
-        .select('table_name')
+        .select('table_name as table_name')
         .where('table_type', '=', 'BASE TABLE')
 
       const results = await this.applySchemaFilter(query, schema).execute()
@@ -162,7 +165,9 @@ export class MySQLAdapter implements DialectAdapter {
         WHERE table_schema = ${dbName}
       `.execute(db)
 
-      return (result.rows?.[0] as { size?: number })?.size || 0
+      // MySQL returns SUM() as a DECIMAL — mysql2 delivers it as a string
+      const raw = (result.rows?.[0] as { size?: number | string | null })?.size
+      return raw == null ? 0 : Number(raw)
     } catch {
       return 0
     }

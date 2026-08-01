@@ -1,10 +1,6 @@
 /* eslint-disable @typescript-eslint/no-deprecated -- DialectConfig kept for backwards compatibility */
 import type { Selectable, Transaction } from 'kysely'
-import {
-  createBaseRepository,
-  type BaseRepository,
-  type RepositoryConfig
-} from './base-repository.js'
+import { createBaseRepository, type BaseRepository } from './base-repository.js'
 import { createTableOperations } from './table-operations.js'
 import type { Executor } from './helpers.js'
 import type { PrimaryKeyColumn, PrimaryKeyTypeHint, DialectConfig, Dialect } from './types.js'
@@ -119,7 +115,7 @@ export function createRepositoryFactory<DB>(executor: Executor<DB>): {
       // Create base repository
       const baseRepo = createBaseRepository<DB, DB[TableName], Entity, PK>(
         operations,
-        config as RepositoryConfig<DB[TableName], Entity>,
+        config,
         executor
       )
 

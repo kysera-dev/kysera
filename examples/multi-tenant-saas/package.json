@@ -20,15 +20,15 @@
     "@kysera/timestamps": "workspace:*",
     "@kysera/infra": "workspace:*",
     "@kysera/debug": "workspace:*",
-    "kysely": "^0.28.15",
-    "pg": "^8.20.0",
-    "zod": "^4.3.6",
-    "dotenv": "^17.4.1"
+    "kysely": "^0.29.4",
+    "pg": "^8.22.0",
+    "zod": "^4.4.3",
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
-    "@types/node": "^25.5.2",
-    "@types/pg": "^8.20.0",
-    "tsx": "^4.21.0",
-    "typescript": "^6.0.2"
+    "@types/node": "^26.1.2",
+    "@types/pg": "^8.20.3",
+    "tsx": "^4.23.1",
+    "typescript": "^6.0.3"
   }
 }

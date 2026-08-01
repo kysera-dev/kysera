@@ -42,7 +42,7 @@ Core packages have minimal runtime dependencies:
     "@kysera/executor": "workspace:*"
   },
   "peerDependencies": {
-    "kysely": ">=0.28.14"
+    "kysely": ">=0.29.0"
   }
 }
 ```

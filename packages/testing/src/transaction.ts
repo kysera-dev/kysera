@@ -129,6 +129,7 @@ export async function testWithSavepoints<DB, T>(
 
 /**
  * Isolation level for transactions.
+ * Subset of kysely's IsolationLevel supported across dialects.
  */
 export type IsolationLevel =
   | 'read uncommitted'
@@ -136,20 +137,22 @@ export type IsolationLevel =
   | 'repeatable read'
   | 'serializable'
 
-/**
- * Mapping of isolation levels to their SQL representation.
- * Using a whitelist prevents SQL injection through isolation level parameter.
- * @internal
- */
-const ISOLATION_LEVEL_SQL: Record<IsolationLevel, string> = {
-  'read uncommitted': 'READ UNCOMMITTED',
-  'read committed': 'READ COMMITTED',
-  'repeatable read': 'REPEATABLE READ',
-  serializable: 'SERIALIZABLE'
-}
+/** Valid isolation levels (runtime validation for JS callers) */
+const VALID_ISOLATION_LEVELS: ReadonlySet<string> = new Set<IsolationLevel>([
+  'read uncommitted',
+  'read committed',
+  'repeatable read',
+  'serializable'
+])
 
 /**
  * Test with specific transaction isolation level.
+ *
+ * Uses kysely's dialect-aware `setIsolationLevel`, which emits the correct
+ * statements per database (PostgreSQL/MSSQL: inside the transaction; MySQL:
+ * before starting it — a raw `SET TRANSACTION` inside an active MySQL
+ * transaction would fail with ER_CANT_CHANGE_TX_CHARACTERISTICS).
+ * SQLite does not support isolation levels; kysely throws a clear error.
  *
  * Useful for testing behavior under different isolation levels,
  * such as testing for race conditions or phantom reads.
@@ -174,23 +177,22 @@ export async function testWithIsolation<DB, T>(
   isolationLevel: IsolationLevel,
   fn: (trx: Transaction<DB>) => Promise<T>
 ): Promise<void> {
-  // Use whitelist lookup to prevent SQL injection
-  const sqlLevel = ISOLATION_LEVEL_SQL[isolationLevel]
-  if (!sqlLevel) {
+  // Runtime validation for JS callers (TS already narrows the type)
+  if (!VALID_ISOLATION_LEVELS.has(isolationLevel)) {
     throw new Error(
-      `Invalid isolation level: ${isolationLevel}. Valid levels are: ${Object.keys(ISOLATION_LEVEL_SQL).join(', ')}`
+      `Invalid isolation level: ${isolationLevel}. Valid levels are: ${[...VALID_ISOLATION_LEVELS].join(', ')}`
     )
   }
 
   try {
-    await db.transaction().execute(async trx => {
-      // Use sql.raw with whitelisted value (safe - not user input)
-      await sql.raw(`SET TRANSACTION ISOLATION LEVEL ${sqlLevel}`).execute(trx)
+    await db
+      .transaction()
+      .setIsolationLevel(isolationLevel)
+      .execute(async trx => {
+        await fn(trx)
 
-      await fn(trx)
-
-      throw new RollbackError()
-    })
+        throw new RollbackError()
+      })
   } catch (error) {
     if (!(error instanceof RollbackError)) {
       throw error

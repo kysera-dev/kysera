@@ -16,7 +16,7 @@ npm install @kysera/executor kysely
 
 ## Overview
 
-**Dependencies:** None (peer: kysely >=0.28.14)
+**Dependencies:** None (peer: kysely >=0.29.0)
 
 `@kysera/executor` provides a unified plugin system that works seamlessly with both Repository and DAL patterns. It wraps Kysely instances with plugin interception capabilities while maintaining full type safety and zero overhead when plugins aren't active.
 
@@ -50,9 +50,44 @@ The executor intercepts these Kysely methods to apply plugins:
 - `updateTable(table)` - UPDATE queries
 - `deleteFrom(table)` - DELETE queries
 - `replaceInto(table)` - MySQL REPLACE queries
-- `mergeInto(table)` - SQL MERGE queries (Kysely 0.28.x)
+- `mergeInto(table)` - SQL MERGE queries (Kysely 0.28+)
 
-All other Kysely methods pass through unchanged.
+**Table reference forms:**
+
+Every string form kysely accepts is understood — plugins always receive the
+*base* table name so allowlists keep matching, plus the alias for correct
+column qualification:
+
+- `'users'` → `context.table = 'users'`
+- `'users as u'` → `context.table = 'users'`, `context.alias = 'u'`
+- `'auth.users as u'` → adds `context.schema = 'auth'`
+- `['users as u', 'posts']` (cross join) → plugins run once per entry
+- Subquery / dynamic-builder arguments pass through without interception
+
+Plugins that add column conditions must qualify with `context.alias ?? context.table`
+(once a table is aliased, SQL exposes only the alias as correlation name).
+The raw expression is available as `context.tableExpression`, and
+`parseTableReference(expression)` is exported for custom tooling.
+
+**Derived instances (kysely 0.29 coverage):**
+
+Kysely APIs that return derived instances are re-wrapped, so plugin
+interception is never silently lost:
+
+- `withSchema()` — re-proxied with schema context (LRU-cached)
+- `with()` / `withRecursive()` — CTE callbacks receive a plugin-aware creator;
+  the kysely 0.29 direct-expression form (`with(name, query)`) passes through
+- `$pickTables()` / `$omitTables()` / `$extendTables()` / `withTables()` — re-proxied
+- `withPlugin()` / `withoutPlugins()` — re-proxied (kysera plugins survive)
+- `transaction()` — full builder surface including `setIsolationLevel()` and
+  `setAccessMode()`; the callback receives a plugin-aware transaction
+- `startTransaction()` — controlled transactions are plugin-aware, including
+  transactions returned by `savepoint()` / `rollbackToSavepoint()` /
+  `releaseSavepoint()` commands
+- `connection()` — the callback receives a plugin-aware single-connection instance
+
+All other Kysely methods pass through unchanged (native `#private` getters
+like `db.schema`, `db.fn`, `db.dynamic` work correctly through the proxy).
 
 ## Core Functions
 
@@ -828,7 +863,7 @@ const INTERCEPTED_METHODS = [
   'updateTable',
   'deleteFrom',
   'replaceInto', // MySQL REPLACE
-  'mergeInto'    // SQL MERGE (Kysely 0.28.x)
+  'mergeInto'    // SQL MERGE (Kysely 0.28+)
 ] as const
 
 type InterceptedMethod = (typeof INTERCEPTED_METHODS)[number]

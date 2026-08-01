@@ -11,11 +11,26 @@ import type { Kysely, Transaction } from 'kysely'
 export interface QueryBuilderContext {
   /** Type of operation */
   readonly operation: 'select' | 'insert' | 'update' | 'delete' | 'replace' | 'merge'
-  /** Table name */
+  /**
+   * Base table name without schema qualifier or alias.
+   * For `selectFrom('public.users as u')` this is `'users'`.
+   */
   readonly table: string
   /**
-   * Current schema context (if withSchema was called).
-   * undefined means default schema is being used.
+   * Table alias when the reference was aliased (`'users as u'` -> `'u'`).
+   * Plugins adding column conditions must qualify with `alias ?? table` —
+   * once a table is aliased, SQL only exposes the alias as correlation name.
+   */
+  readonly alias?: string
+  /**
+   * The original table expression as passed to the query method
+   * (e.g. `'public.users as u'`). Equals `table` for plain references.
+   */
+  readonly tableExpression?: string
+  /**
+   * Current schema context. Set from `withSchema(...)`, or from an explicit
+   * qualifier in the table expression (`'auth.users'` -> `'auth'`), which
+   * takes precedence. undefined means default schema is being used.
    */
   readonly schema?: string
   /** Additional metadata */

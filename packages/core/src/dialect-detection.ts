@@ -10,18 +10,23 @@ import type { Dialect } from './types.js'
  * This ensures compatibility across different Kysely versions.
  *
  * **Detection strategy:**
- * 1. Primary: Generates a test query and analyzes identifier quoting in compiled SQL
- *    - Double quotes `"table"` → postgres
- *    - Backticks `` `table` `` → mysql
- *    - Square brackets `[table]` → mssql
- *    - No quotes (or double quotes in some cases) → sqlite
- * 2. Fallback: Examines constructor names (legacy support)
- * 3. Default: Returns 'postgres' if detection fails (safest default)
+ * 1. Primary: Compiles a probe query with one parameter and analyzes the
+ *    parameter placeholder style — unambiguous across kysely's compilers:
+ *    - `$1` → postgres
+ *    - `@1` / `@p1` → mssql
+ *    - `?` + backtick-quoted identifiers → mysql
+ *    - `?` + double-quoted (or unquoted) identifiers → sqlite
+ *    (Identifier quoting alone CANNOT distinguish sqlite from postgres —
+ *    kysely's SqliteQueryCompiler double-quotes identifiers exactly like
+ *    PostgreSQL, and MssqlQueryCompiler double-quotes too.)
+ * 2. Fallback: Adapter constructor name via the public `getExecutor()` API
+ *    (PostgresAdapter / MysqlAdapter / SqliteAdapter / MssqlAdapter)
+ * 3. Legacy fallback: dialect constructor name shapes
+ * 4. Default: Returns 'postgres' if detection fails (safest default)
  *
  * **Why this approach?**
- * - SQL generation patterns are stable across Kysely versions
- * - Doesn't rely on private/internal Kysely properties
- * - Each dialect has unique, unchanging identifier quoting rules
+ * - Compiled SQL patterns are stable across Kysely versions
+ * - Placeholder style is immune to bundler minification (unlike class names)
  * - Works with both raw Kysely instances and transactions
  *
  * **Supported dialects:**
@@ -98,12 +103,24 @@ import type { Dialect } from './types.js'
  * }
  * ```
  */
+/** Map a constructor-like name to a dialect, or undefined if unrecognized */
+function dialectFromName(name: string | undefined): Dialect | undefined {
+  if (!name) return undefined
+  const normalized = name.toLowerCase()
+  if (normalized.includes('postgres') || normalized.includes('pglite')) return 'postgres'
+  if (normalized.includes('mysql')) return 'mysql'
+  if (normalized.includes('sqlite')) return 'sqlite'
+  if (normalized.includes('mssql') || normalized.includes('sqlserver')) return 'mssql'
+  return undefined
+}
+
 export function detectDialect<DB>(executor: Kysely<DB>): Dialect {
   try {
-    // Primary detection: Generate test SQL and analyze identifier quoting
-    // We use a type assertion here because we're intentionally using a fake table name
-    // just to generate SQL for dialect detection
-    const query = (executor as Kysely<any>)
+    // Primary detection: compile a probe query with exactly one parameter
+    // (the limit value) and analyze placeholder style + identifier quoting.
+    // We use a type assertion here because we're intentionally using a fake
+    // table name just to generate SQL for dialect detection.
+    const query = (executor as unknown as Kysely<Record<string, Record<string, unknown>>>)
       .selectFrom('_kysera_test')
       .select(sql<number>`1`.as('test'))
       .limit(0)
@@ -111,18 +128,28 @@ export function detectDialect<DB>(executor: Kysely<DB>): Dialect {
     const compiled = query.compile()
     const compiledSql = compiled.sql
 
-    // Check for identifier quoting patterns in the compiled SQL
-    if (compiledSql.includes('"_kysera_test"')) {
-      // PostgreSQL uses double quotes for identifiers
+    // 1) Parameter placeholder style — unambiguous across kysely compilers:
+    //    postgres → $1, mssql → @1/@p1, mysql & sqlite → ?
+    if (/\$\d/.test(compiledSql)) {
       return 'postgres'
     }
+    if (/@p?\d/.test(compiledSql)) {
+      return 'mssql'
+    }
+
+    // 2) Identifier quoting narrows down the `?`-placeholder dialects:
     if (compiledSql.includes('`_kysera_test`')) {
       // MySQL uses backticks for identifiers
       return 'mysql'
     }
     if (compiledSql.includes('[_kysera_test]')) {
-      // SQL Server uses square brackets for identifiers
+      // Square brackets — community/legacy MSSQL compilers
       return 'mssql'
+    }
+    if (compiledSql.includes('"_kysera_test"') && compiledSql.includes('?')) {
+      // Double quotes + positional `?` placeholders → SQLite.
+      // (PostgreSQL always uses $n, so this combination is unambiguous.)
+      return 'sqlite'
     }
     if (
       compiledSql.includes('_kysera_test') &&
@@ -130,15 +157,31 @@ export function detectDialect<DB>(executor: Kysely<DB>): Dialect {
       !compiledSql.includes('`') &&
       !compiledSql.includes('[')
     ) {
-      // SQLite typically doesn't quote simple identifiers
+      // Unquoted simple identifiers → SQLite-style compilers
       return 'sqlite'
     }
+    // Double quotes without any parameters: cannot disambiguate from SQL
+    // alone — fall through to adapter inspection.
   } catch {
     // If SQL generation fails, fall through to fallback methods
   }
 
-  // Fallback: Try constructor name inspection (legacy support)
-  // This is less stable but works for older Kysely versions or edge cases
+  // Fallback: adapter constructor name via the public getExecutor() API
+  // (PostgresAdapter / MysqlAdapter / SqliteAdapter / MssqlAdapter).
+  // May be defeated by minification, hence only a fallback.
+  try {
+    const execAny = executor as unknown as {
+      getExecutor?: () => { adapter?: { constructor?: { name?: string } } }
+    }
+    const adapterDialect = dialectFromName(
+      execAny.getExecutor?.().adapter?.constructor?.name
+    )
+    if (adapterDialect) return adapterDialect
+  } catch {
+    // Ignore errors in fallback method
+  }
+
+  // Legacy fallback: dialect constructor name shape (older wrappers/mocks)
   try {
     const execAny = executor as unknown as {
       executor?: {
@@ -149,17 +192,10 @@ export function detectDialect<DB>(executor: Kysely<DB>): Dialect {
         }
       }
     }
-
-    const dialectName = execAny.executor?.adapter?.dialect?.constructor?.name
-
-    if (dialectName) {
-      const normalized = dialectName.toLowerCase()
-
-      if (normalized.includes('postgres')) return 'postgres'
-      if (normalized.includes('mysql')) return 'mysql'
-      if (normalized.includes('sqlite')) return 'sqlite'
-      if (normalized.includes('mssql') || normalized.includes('sqlserver')) return 'mssql'
-    }
+    const legacyDialect = dialectFromName(
+      execAny.executor?.adapter?.dialect?.constructor?.name
+    )
+    if (legacyDialect) return legacyDialect
   } catch {
     // Ignore errors in fallback method
   }
