@@ -39,7 +39,7 @@ npm install @kysera/soft-delete @kysera/rls @kysera/audit
 - **Plugin Support** - Automatic plugin interception via `@kysera/executor` integration
 - **Transaction Support** - First-class transaction handling with automatic plugin propagation
 - **Composition Utilities** - Combine queries with `compose`, `chain`, `parallel`, `conditional`, `mapResult`
-- **Zero Dependencies** - Only peer dependency on Kysely (optional `@kysera/executor` for plugins)
+- **Lean Dependencies** - Runtime dependencies on `@kysera/core` and `@kysera/executor` only (peer: Kysely)
 - **Fully Typed** - Complete TypeScript support with strict mode enabled
 
 ## Quick Start
@@ -438,6 +438,36 @@ const myQuery = createQuery((ctx: DbContext<Database>, id: number) => {
 })
 ```
 
+#### toContext
+
+Normalize any accepted input to a `DbContext`.
+
+```typescript
+function toContext<DB>(
+  ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>
+): DbContext<DB>
+```
+
+Returns the input as-is if it is already a `DbContext` (detected via `isDbContext()`); otherwise wraps it with `createContext()`. This is the same normalizer the built-in composition utilities (`compose`, `chain`, `parallel`, ...) use internally — reach for it when writing your own combinators so they accept a context or a raw database instance interchangeably:
+
+```typescript
+import { toContext, type DbContext, type QueryFunction } from '@kysera/dal'
+
+function withTiming<DB, TArgs extends readonly unknown[], TResult>(
+  query: QueryFunction<DB, TArgs, TResult>
+): QueryFunction<DB, TArgs, TResult> {
+  return async (ctxOrDb, ...args) => {
+    const ctx = toContext(ctxOrDb)
+    const start = performance.now()
+    try {
+      return await query(ctx, ...args)
+    } finally {
+      console.log(`Query took ${performance.now() - start}ms`)
+    }
+  }
+}
+```
+
 ### Query Creation
 
 #### createQuery
@@ -514,17 +544,17 @@ Execute a function within a transaction.
 
 ```typescript
 function withTransaction<DB, T>(
-  db: Kysely<DB> | KyseraExecutor<DB>,
+  db: Kysely<DB> | KyseraExecutor<DB> | DbContext<DB>,
   fn: (ctx: DbContext<DB>) => Promise<T>,
-  options?: TransactionOptions
+  options?: TransactionOptionsWithLogger
 ): Promise<T>
 ```
 
 **Parameters:**
 
-- `db` - Database instance (Kysely or KyseraExecutor)
+- `db` - Database instance (Kysely or KyseraExecutor) or an existing `DbContext` (pass the context to preserve its schema and enable savepoint nesting)
 - `fn` - Function to execute within the transaction context
-- `options` - Optional transaction options (isolation level - see below)
+- `options` - Optional transaction options (isolation level, logger, rollback error handling - see below)
 
 **Returns:** `Promise<T>` - Result of the function
 
@@ -534,24 +564,30 @@ function withTransaction<DB, T>(
 - For plain Kysely instances, creates a standard Kysely transaction without plugins
 - The function receives a `DbContext<DB>` with `isTransaction: true`
 - Follows Kysely's transaction semantics (auto-commit on success, auto-rollback on error)
+- Passing an existing `DbContext` (e.g. from `createSchemaContext`) preserves its schema in the transaction context
 
-**Savepoint Validation:**
+**Nested Transactions (Savepoints):**
 
-`withTransaction()` validates that you're not creating nested transactions incorrectly. If you need nested transactions, use savepoints explicitly via Kysely's API:
+`withTransaction()` supports nesting. When called inside an existing transaction, it does not open a new top-level transaction — it automatically creates a savepoint instead (`SAVEPOINT kysera_sp_N`; `SAVE TRANSACTION` on MSSQL). On success the savepoint is released; if the nested function throws, only the savepoint is rolled back and the outer transaction stays intact:
 
 ```typescript
 await withTransaction(executor, async ctx => {
-  // ❌ This will throw - nested transaction not allowed
-  await withTransaction(ctx.db, async innerCtx => {
-    // ...
-  })
+  const user = await createUser(ctx, userData)
 
-  // ✅ Use savepoints for nested logic instead
-  await ctx.db.transaction().execute(async trx => {
-    // This is a savepoint, which is supported
-  })
+  try {
+    // ✅ Nested call automatically issues SAVEPOINT kysera_sp_N
+    await withTransaction(ctx, async innerCtx => {
+      await createProfile(innerCtx, profileData)
+      throw new Error('Profile validation failed')
+    })
+  } catch (error) {
+    // Rolled back to the savepoint only - the user created above
+    // is still part of the outer transaction and will be committed
+  }
 })
 ```
+
+Do **not** call `ctx.db.transaction().execute()` inside a transaction to get a savepoint — that attempts a nested top-level transaction, which Kysely 0.29 rejects. Use nested `withTransaction()` calls instead.
 
 **Transaction Options:**
 
@@ -639,14 +675,20 @@ function chain<DB, TArgs extends readonly unknown[], T1, T2>(
   t1: (ctx: DbContext<DB>, result: T1) => Promise<T2>
 ): QueryFunction<DB, TArgs, T2>
 
-// Supports up to 3 transform functions
-function chain<DB, TArgs extends readonly unknown[], T1, T2, T3, T4>(
+// Overloads accept up to 7 transform functions
+function chain<DB, TArgs extends readonly unknown[], T1, T2, T3, T4, T5, T6, T7, T8>(
   query: QueryFunction<DB, TArgs, T1>,
   t1: (ctx: DbContext<DB>, result: T1) => Promise<T2>,
   t2: (ctx: DbContext<DB>, result: T2) => Promise<T3>,
-  t3: (ctx: DbContext<DB>, result: T3) => Promise<T4>
-): QueryFunction<DB, TArgs, T4>
+  t3: (ctx: DbContext<DB>, result: T3) => Promise<T4>,
+  t4: (ctx: DbContext<DB>, result: T4) => Promise<T5>,
+  t5: (ctx: DbContext<DB>, result: T5) => Promise<T6>,
+  t6: (ctx: DbContext<DB>, result: T6) => Promise<T7>,
+  t7: (ctx: DbContext<DB>, result: T7) => Promise<T8>
+): QueryFunction<DB, TArgs, T8>
 ```
+
+Need more than 7 transforms? Chain the chained query: `chain(chain(getUser, t1, ..., t7), t8, t9)`.
 
 **Example:**
 
@@ -768,6 +810,8 @@ Database context for query functions. Supports both raw Kysely instances and plu
 
 ```typescript
 interface DbContext<DB = Record<string, unknown>> {
+  /** Marker symbol for reliable type detection */
+  readonly [DB_CONTEXT_SYMBOL]: true
   /** Database or transaction instance (raw or plugin-aware) */
   readonly db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>
   /** Whether the context is within a transaction */
@@ -776,6 +820,10 @@ interface DbContext<DB = Record<string, unknown>> {
   readonly schema?: string
 }
 ```
+
+:::caution Always create contexts via the API
+`DbContext` includes the `[DB_CONTEXT_SYMBOL]: true` marker property. Hand-built object literals like `{ db, isTransaction: false }` lack the marker and fail `isDbContext()` — DAL functions will treat them as raw database instances (losing schema preservation, among other things). Always create contexts with `createContext()`, `createSchemaContext()`, or `toContext()`.
+:::
 
 **Schema Property:**
 
@@ -814,7 +862,7 @@ interface TransactionOptions {
 }
 ```
 
-**Note:** The `isolationLevel` option is defined for future compatibility but not currently implemented. Kysely's `Transaction` API doesn't expose runtime configuration methods for isolation levels. Isolation levels should typically be configured at the connection pool level or via database-specific configuration.
+**Note:** The `isolationLevel` option applies to top-level transactions only — it is set via Kysely's `transactionBuilder.setIsolationLevel()` before the transaction starts. It is ignored for nested (savepoint) calls, and driver support varies; check your database and driver documentation for isolation level support.
 
 ### TransactionOptionsWithLogger
 
@@ -900,11 +948,14 @@ await withTransaction(
 Error thrown when a transactional query is executed outside a transaction context.
 
 ```typescript
-class TransactionRequiredError extends Error {
+class TransactionRequiredError extends DatabaseError {
   name: 'TransactionRequiredError'
+  code: 'DB_TRANSACTION_FAILED'
   constructor(message?: string)
 }
 ```
+
+Extends `DatabaseError` from `@kysera/core` for a consistent error hierarchy — it carries `code: 'DB_TRANSACTION_FAILED'` and supports `.toJSON()`.
 
 **Default message:** `'Query requires a transaction. Use withTransaction() to execute this query.'`
 
@@ -979,7 +1030,7 @@ import {
 
 - **`DB_CONTEXT_SYMBOL`** - Symbol used to identify `DbContext` objects. Check if an object is a context: `obj[DB_CONTEXT_SYMBOL] === true`
 - **`IN_TRANSACTION_SYMBOL`** - Symbol marker set on database instances during `withTransaction()`. Used for nested transaction detection.
-- **`SAVEPOINT_COUNTER_SYMBOL`** - Symbol storing the savepoint counter for nested transactions. Incremented for each nested `withTransaction()` call.
+- **`SAVEPOINT_COUNTER_SYMBOL`** - Symbol mirroring the last savepoint id issued for a database instance. The counter itself is process-global and monotonic — savepoint names (`kysera_sp_N`) are unique across the whole process, not numbered `1..n` per transaction. This guarantees collision-free names even when derived instances (`withSchema()`, executor re-wraps) are involved.
 
 **Type Guard:**
 
@@ -1059,12 +1110,12 @@ See [@kysera/executor documentation](/docs/api/executor) for full details on exe
 
 ### Schema Preservation in Transactions
 
-When using `withTransaction()` with a schema-enabled context, the schema is automatically preserved:
+When using `withTransaction()` with a schema-enabled context, pass the **context itself** (not `ctx.db`) and the schema is automatically preserved:
 
 ```typescript
 const ctx = createSchemaContext(executor, 'tenant_123')
 
-await withTransaction(ctx.db, async txCtx => {
+await withTransaction(ctx, async txCtx => {
   // txCtx.schema === 'tenant_123' (preserved from parent)
   const users = await getUsers(txCtx) // Uses tenant_123 schema
   const posts = await getPosts(txCtx) // Uses tenant_123 schema
@@ -1073,10 +1124,14 @@ await withTransaction(ctx.db, async txCtx => {
 
 **How it works:**
 
-1. `withTransaction()` detects the parent context's schema via `isDbContext()`
+1. `withTransaction()` checks its first argument with `isDbContext()` — only a real `DbContext` (carrying the `DB_CONTEXT_SYMBOL` marker) exposes the parent's `schema`
 2. The transaction is wrapped with `.withSchema()` using the parent's schema
 3. The resulting context has both `isTransaction: true` and `schema` set
 4. Nested savepoints also preserve the schema
+
+:::caution Pass the context, not `ctx.db`
+If you pass `ctx.db` (or a raw executor) instead of the context, `isDbContext()` returns `false` and `txCtx.schema` will be `undefined` — the `txCtx.schema === 'tenant_123'` guarantee only holds when the `DbContext` itself is passed to `withTransaction()`.
+:::
 
 ## Plugin Integration
 
@@ -1115,7 +1170,7 @@ const users = await getUsers(executor)
 
 **What you get with DAL + KyseraExecutor:**
 
-- ✅ **Query Interceptors** (`interceptQuery`) - Automatic filtering, RLS policies, audit logging
+- ✅ **Query Interceptors** (`interceptQuery`) - Automatic filtering and RLS policies (audit logging is `extendRepository`-based and not applied on the DAL path — see the matrix below)
 - ✅ **Transaction Plugin Propagation** - Plugins automatically work in `withTransaction()`
 - ✅ **Type Safety** - Full TypeScript support with database schema preserved
 - ⚠️ **No Repository Extensions** (`extendRepository`) - Convenience methods like `repo.softDelete()` not available
@@ -1143,9 +1198,10 @@ import { createQuery, withTransaction, type DbContext } from '@kysera/dal'
 
 // Create executor with multiple plugins
 const executor = await createExecutor(db, [
-  softDeletePlugin(), // Priority: 100
-  rlsPlugin({ schema: rlsSchema }) // Priority: 90
+  softDeletePlugin(), // Priority: 500 (FILTER)
+  rlsPlugin({ schema: rlsSchema }) // Priority: 1000 (SECURITY) - runs first
 ])
+// Execution order is by priority, not array order: rls (1000) then soft-delete (500)
 
 // Define query functions - same as without plugins!
 const getUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
@@ -1211,18 +1267,23 @@ const softDeleteUser = createQuery((ctx: DbContext<Database>, id: number) =>
 
 #### Timestamps in DAL
 
+Use `formatTimestampForDb` from `@kysera/core` for dialect-correct timestamp strings (MySQL/MSSQL reject ISO 8601's `T` separator and `Z` suffix):
+
 ```typescript
-const createUser = createQuery((ctx: DbContext<Database>, data: CreateUserInput) =>
-  ctx.db
+import { formatTimestampForDb } from '@kysera/core'
+
+const createUser = createQuery((ctx: DbContext<Database>, data: CreateUserInput) => {
+  const now = formatTimestampForDb() // ISO 8601 by default; pass dialect for MySQL/MSSQL
+  return ctx.db
     .insertInto('users')
     .values({
       ...data,
-      created_at: new Date().toISOString(), // Manual timestamp
-      updated_at: new Date().toISOString()
+      created_at: now, // Manual timestamp
+      updated_at: now
     })
     .returningAll()
     .executeTakeFirstOrThrow()
-)
+})
 ```
 
 #### RLS Context in DAL

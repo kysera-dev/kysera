@@ -109,7 +109,7 @@ Pagination functions are now optimized for each database:
 
 | Database   | Offset Pagination     | Cursor Pagination          |
 | ---------- | --------------------- | -------------------------- |
-| PostgreSQL | `LIMIT/OFFSET`        | Row value comparison       |
+| PostgreSQL | `LIMIT/OFFSET`        | Standard WHERE clauses     |
 | MySQL      | `LIMIT/OFFSET`        | Standard WHERE clauses     |
 | SQLite     | `LIMIT/OFFSET`        | Standard WHERE clauses     |
 | MSSQL      | `OFFSET/FETCH NEXT`   | `TOP` clause               |
@@ -122,12 +122,12 @@ While v0.7 is mostly backward compatible, there are a few breaking changes to be
 
 ### 1. Package Dependencies
 
-`@kysera/executor` is now a **required peer dependency** for:
-- `@kysera/repository`
-- `@kysera/dal`
-- All plugin packages (`@kysera/soft-delete`, `@kysera/rls`, etc.)
+`@kysera/executor` is now the foundation of the plugin system:
 
-**Action Required:** Install `@kysera/executor` when upgrading:
+- `@kysera/repository` and `@kysera/dal` include it as a **regular dependency** — it is installed automatically with them
+- Plugin packages (`@kysera/soft-delete`, `@kysera/rls`, etc.) declare it as a **peer dependency**
+
+**Action Required:** Add `@kysera/executor` explicitly only if you import from it directly (e.g. `createExecutor`), or if your package manager does not auto-install peer dependencies:
 
 ```bash
 pnpm add @kysera/executor
@@ -243,8 +243,8 @@ const result = await paginate(
 )
 ```
 
-:::tip Auto-Detection
-The `dialect` parameter is optional. Kysera auto-detects your database type from the Kysely instance. You only need to specify `dialect` explicitly for testing or multi-database scenarios.
+:::tip Specifying the Dialect
+The `dialect` parameter is **not** auto-detected — `paginate` and `paginateCursor` emit standard `LIMIT/OFFSET` SQL unless you pass it. PostgreSQL, MySQL, and SQLite work without it; on MSSQL you must pass `dialect: 'mssql'`. To derive it at runtime, use `detectDialect(db)` from `@kysera/core`.
 :::
 
 ## Migration Steps
@@ -417,8 +417,8 @@ const result = await paginate(
   db.selectFrom('users')
     .selectAll()
     .orderBy('id', 'asc'), // Required for MSSQL!
-  { page: 1, limit: 20 }
-  // dialect auto-detected, or explicitly set: { dialect: 'mssql' }
+  { page: 1, limit: 20, dialect: 'mssql' }
+  // dialect must be set explicitly - it is not auto-detected
 )
 ```
 
@@ -433,8 +433,8 @@ const page1 = await paginateCursor(
       { column: 'created_at', direction: 'desc' },
       { column: 'id', direction: 'desc' }
     ],
-    limit: 20
-    // MSSQL uses TOP clause automatically when detected
+    limit: 20,
+    dialect: 'mssql' // Makes cursor pagination use the TOP clause
   }
 )
 ```
@@ -462,7 +462,7 @@ describe('User Repository', () => {
 
 **After (v0.7):**
 ```typescript
-import { createExecutor } from '@kysera/executor'
+import { createExecutor, destroyExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
@@ -477,14 +477,14 @@ describe('User Repository', () => {
     const user = await userRepo.findById(1)
     expect(user).toBeNull()
 
-    // Clean up executor resources
-    await executor.destroy()
+    // Clean up plugin resources (runs each plugin's onDestroy)
+    await destroyExecutor(executor)
   })
 })
 ```
 
 :::tip Resource Cleanup
-Always call `executor.destroy()` in tests or during application shutdown to clean up plugin resources (connections, timers, etc.).
+Always call `destroyExecutor(executor)` in tests or during application shutdown to clean up plugin resources (connections, timers, etc.). `executor.destroy()` only destroys the underlying Kysely instance — it does **not** run plugin `onDestroy` hooks.
 :::
 
 ## New Features in v0.7
@@ -498,7 +498,7 @@ import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
 import { createQuery } from '@kysera/dal'
 import { softDeletePlugin } from '@kysera/soft-delete'
-import { sql } from 'kysely'
+import { sql, type Transaction } from 'kysely'
 
 // Create executor with plugins
 const executor = await createExecutor(db, [softDeletePlugin()])
@@ -523,8 +523,15 @@ const getAnalytics = createQuery((ctx, userId: number) =>
 
 // Use both in same transaction with shared plugins
 await orm.transaction(async ctx => {
+  // Rebind the repository to the transaction (inside orm.transaction,
+  // ctx.db is always the transaction). userRepo itself stays bound to
+  // the base executor - calling it directly would write OUTSIDE the
+  // transaction.
+  const trx = ctx.db as Transaction<Database>
+  const txUserRepo = userRepo.withTransaction(trx)
+
   // Repository for writes (plugins + extension methods)
-  const user = await userRepo.create({ email: 'test@example.com' })
+  const user = await txUserRepo.create({ email: 'test@example.com' })
 
   // DAL for complex reads (plugins applied via context)
   const stats = await getAnalytics(ctx, user.id)
@@ -588,7 +595,8 @@ const myPlugin = (): Plugin => ({
 
 const executor = await createExecutor(db, [myPlugin()])
 // ... use executor ...
-await executor.destroy() // Calls onDestroy for cleanup
+await destroyExecutor(executor) // Calls onDestroy for all plugins
+await db.destroy() // Then destroy the underlying Kysely instance
 ```
 
 ### 4. Plugin Validation
@@ -653,17 +661,11 @@ pnpm test:docker
 
 **Environment Variables:**
 ```bash
-# PostgreSQL
-DATABASE_URL=postgresql://user:pass@localhost:5432/kysera_test
+# SQLite runs by default (no setup required)
 
-# MySQL
-MYSQL_DATABASE_URL=mysql://user:pass@localhost:3306/kysera_test
-
-# SQLite (default)
-SQLITE_DATABASE_URL=:memory:
-
-# MSSQL (new in v0.7)
-MSSQL_DATABASE_URL=mssql://user:pass@localhost:1433/kysera_test
+# Opt in to real-database runs with the TEST_* toggles
+# (start the containers first with: pnpm docker:up)
+TEST_POSTGRES=true TEST_MYSQL=true pnpm test:multi-db
 ```
 
 ## Deprecation Notices
@@ -768,7 +770,7 @@ await getUsers(executor) // Plugins work!
 
 **Cause:** Not destroying executor after tests.
 
-**Solution:** Call `executor.destroy()` in cleanup:
+**Solution:** Call `destroyExecutor(executor)` in cleanup:
 
 ```typescript
 describe('Tests', () => {
@@ -779,7 +781,7 @@ describe('Tests', () => {
   })
 
   afterEach(async () => {
-    await executor.destroy() // Clean up resources
+    await destroyExecutor(executor) // Runs plugin onDestroy hooks
   })
 
   it('works', async () => {

@@ -37,7 +37,12 @@ kysera health check
 
 ## Global Options
 
-All commands support these flags:
+Global flags belong before the command group, not after subcommands:
+
+```bash
+kysera --json migrate up
+kysera --verbose db tables
+```
 
 ```
 -v, --version          Show CLI version
@@ -119,7 +124,8 @@ Health monitoring.
 
 ```bash
 kysera health check
-kysera health check --watch
+kysera health watch
+kysera health watch --log health.log
 kysera health metrics
 ```
 
@@ -174,7 +180,7 @@ Repository introspection and management.
 
 ```bash
 kysera repository list         # List all repositories
-kysera repository inspect <n>  # Inspect repository
+kysera repository inspect -c <name>  # Inspect repository
 kysera repository validate     # Validate schemas
 kysera repository methods      # Show available methods
 ```
@@ -190,37 +196,60 @@ kysera plugin disable <name>   # Disable a plugin
 kysera plugin config <name>    # Configure plugin
 ```
 
+### Utility Commands
+
+```bash
+kysera hello                   # Verify CLI setup (-n, --name <name> to customize)
+kysera stats                   # Show CLI performance statistics
+```
+
 ## Configuration
 
-Create `kysera.config.ts` in your project root:
+Create `kysera.config.ts` in your project root (plain default export — the package has no importable helpers):
 
 ```typescript
-import { defineConfig } from '@kysera/cli'
-
-export default defineConfig({
+export default {
   database: {
     dialect: 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    database: process.env.DB_NAME || 'myapp',
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD
+    // Connection string or object; ${VAR} is interpolated from the environment
+    connection: '${DATABASE_URL}'
+    // Alternatively for postgres/mysql: host, port, database, user, password, ssl
   },
   migrations: {
-    directory: './migrations',
-    tableName: 'kysera_migrations'
+    directory: './migrations'
   },
-  generation: {
-    outputDir: './src/generated',
-    typescript: true
+  generate: {
+    repositories: './src/repositories',
+    models: './src/models',
+    schemas: './src/schemas'
   }
-})
+}
 ```
 
 See [Configuration](/docs/cli/configuration) for full options.
 
+## Shell Completions
+
+Tab-completion scripts for bash, zsh, and fish ship with the package under `scripts/completions/`:
+
+```bash
+# Bash — add to ~/.bashrc or ~/.bash_profile
+source /path/to/@kysera/cli/scripts/completions/kysera.bash
+
+# Zsh
+mkdir -p ~/.zsh/completions
+cp /path/to/@kysera/cli/scripts/completions/kysera.zsh ~/.zsh/completions/_kysera
+echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc
+echo 'autoload -U compinit && compinit' >> ~/.zshrc
+
+# Fish
+cp /path/to/@kysera/cli/scripts/completions/kysera.fish ~/.config/fish/completions/
+```
+
+With a global npm install, the scripts live at `$(npm root -g)/@kysera/cli/scripts/completions/`.
+
 ## Environment Support
 
-- **Node.js** 20+
+- **Node.js** 22+
 - **Bun** 1.0+
-- **Database**: PostgreSQL, MySQL, SQLite, MSSQL
+- **Database**: PostgreSQL, MySQL, SQLite

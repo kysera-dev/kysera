@@ -33,17 +33,17 @@ npm install kysely@^0.29.4 pg
 ```bash
 # Install in order - executor first (foundation layer)
 npm install @kysera/core           # Errors, pagination, types, logger (~8KB)
-npm install @kysera/executor       # Unified Execution Layer - plugin foundation (~6KB)
+npm install @kysera/executor       # Unified Execution Layer - plugin foundation (~9KB)
 ```
 
 ### Step 3: Choose Your Pattern (or use both)
 
 ```bash
 # Repository pattern (structured CRUD with validation)
-npm install @kysera/repository     # Repository pattern (~12KB)
+npm install @kysera/repository     # Repository pattern (~22KB)
 
 # Functional DAL (type-inferred queries with context)
-npm install @kysera/dal            # Functional DAL (~7KB)
+npm install @kysera/dal            # Functional DAL (~4KB)
 
 # Or install both for CQRS-lite pattern
 ```
@@ -63,7 +63,7 @@ npm install zod@^4.3.6                     # Popular schema validation (recommen
 npm install @kysera/soft-delete    # Soft delete plugin (~4KB)
 npm install @kysera/audit          # Audit logging plugin (~11KB)
 npm install @kysera/timestamps     # Auto timestamps plugin (~4KB)
-npm install @kysera/rls            # Row-level security plugin (~44KB)
+npm install @kysera/rls            # Row-level security plugin (~53KB)
 ```
 
 ### Step 6: Add Infrastructure (Optional)
@@ -72,7 +72,7 @@ npm install @kysera/rls            # Row-level security plugin (~44KB)
 npm install @kysera/infra          # Health checks, retry, circuit breaker (~12KB)
 npm install @kysera/debug          # Query logging and profiling (~5KB)
 npm install @kysera/testing        # Test utilities (~6KB) - dev dependency
-npm install @kysera/migrations     # Migration system (~11KB)
+npm install @kysera/migrations     # Migration system (~14KB)
 ```
 
 ## Quick Start
@@ -205,11 +205,16 @@ const updated = await userRepo.update(user.id, {
   name: 'John Smith'
 })
 
-// List users with pagination (soft-deleted automatically excluded)
-const { data, hasNext } = await userRepo.findAll({
-  limit: 10,
-  offset: 0
+// List all users (soft-deleted automatically excluded)
+const users = await userRepo.findAll()
+
+// Paginated listing — compose paginate() from @kysera/core with any query
+import { paginate } from '@kysera/core'
+const page = await paginate(db.selectFrom('users').selectAll(), {
+  page: 1,
+  limit: 10
 })
+// page: { data, pagination: { page, limit, total, totalPages, hasNext, hasPrev } }
 
 // Soft delete user (sets deleted_at instead of removing)
 await userRepo.softDelete(user.id)
@@ -341,7 +346,7 @@ await userRepo.findDeleted()             // Only soft-deleted records
 
 // Audit methods (Repository pattern only)
 const history = await userRepo.getAuditHistory(userId)
-const entry = await userRepo.getAuditEntry(auditId)
+const entry = await userRepo.getAuditLog(auditId)
 await userRepo.restoreFromAudit(auditId) // Restore old values
 
 // Query filtering (works in both Repository and DAL)
@@ -362,9 +367,13 @@ const health = await checkDatabaseHealth(db, metricsPool)
 console.log(health)
 // {
 //   status: 'healthy',
-//   checks: {
-//     database: { connected: true, latency: 12 },
-//     pool: { size: 10, active: 2, idle: 8, waiting: 0 }
+//   checks: [{ name: 'database', status: 'pass', message: '...' }],
+//   metrics: {
+//     checkLatency: 12,
+//     poolMetrics: {
+//       totalConnections: 10, activeConnections: 2,
+//       idleConnections: 8, waitingRequests: 0
+//     }
 //   },
 //   timestamp: Date
 // }

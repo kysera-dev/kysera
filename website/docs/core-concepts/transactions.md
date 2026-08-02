@@ -64,7 +64,8 @@ await withTransaction(executor, async (ctx) => {
   const user = await createUser(ctx, userData)
 
   try {
-    // Nested call creates SAVEPOINT kysera_sp_1 automatically
+    // Nested call creates a savepoint automatically
+    // (kysera_sp_<N> — ids come from a process-global counter)
     await withTransaction(ctx.db, async (nestedCtx) => {
       await riskyOperation(nestedCtx)
     })
@@ -113,38 +114,51 @@ await withTransaction(executor, async (ctx) => {
 ### Example
 
 ```typescript
+import type { Transaction } from 'kysely'
 import { createORM } from '@kysera/repository'
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
 const executor = await createExecutor(db, [softDeletePlugin()])
-const orm = await createORM(executor, [softDeletePlugin()])
+// Pass [] — the executor already carries the plugins. Repeating them
+// throws PluginValidationError: Duplicate plugin: "soft-delete"
+const orm = await createORM(executor, [])
+
+const userRepo = orm.createRepository(createUserRepository)
+const orderRepo = orm.createRepository(createOrderRepository)
 
 const result = await orm.transaction(async (ctx) => {
-  // Create repositories with transaction context
-  const userRepo = orm.createRepository(createUserRepository)
-  const orderRepo = orm.createRepository(createOrderRepository)
+  // Rebind each repository to the transaction (inside orm.transaction,
+  // ctx.db is always the transaction)
+  const trx = ctx.db as Transaction<Database>
+  const txUserRepo = userRepo.withTransaction(trx)
+  const txOrderRepo = orderRepo.withTransaction(trx)
 
-  // Repositories automatically use transaction
-  const user = await userRepo.create({ email: 'alice@example.com' })
-  const order = await orderRepo.create({ userId: user.id, total: 100 })
+  const user = await txUserRepo.create({ email: 'alice@example.com' })
+  const order = await txOrderRepo.create({ userId: user.id, total: 100 })
 
-  // Can also use DAL queries in same transaction
+  // DAL queries take ctx directly (same transaction, same plugins)
   const stats = await getDashboardStats(ctx, user.id)
 
   return { user, order, stats }
 })
 ```
 
+:::warning Repositories do not auto-join transactions
+Repositories created with `orm.createRepository()` stay bound to the base executor. Calling `userRepo.create()` directly inside `orm.transaction()` would run **outside** the transaction — the write would not roll back with it. Always rebind with `repo.withTransaction(trx)` inside the callback; the rebound repository keeps all plugins.
+:::
+
 ### CQRS-lite Pattern
 
 Combine Repository (writes) with DAL (complex reads) in the same transaction:
 
 ```typescript
+const userRepo = orm.createRepository(createUserRepository)
+
 await orm.transaction(async (ctx) => {
-  // Repository for writes (type-safe, validated)
-  const userRepo = orm.createRepository(createUserRepository)
-  const user = await userRepo.create(userData)
+  // Repository for writes — rebind to the transaction first
+  const txUserRepo = userRepo.withTransaction(ctx.db as Transaction<Database>)
+  const user = await txUserRepo.create(userData)
 
   // DAL for complex reads (flexible, composable)
   const analytics = await getComplexAnalytics(ctx, user.id)
@@ -176,7 +190,7 @@ As of v0.7.3, `BaseRepository.transaction()` delegates to `@kysera/dal`'s `withT
 ### Example
 
 ```typescript
-const userRepo = createRepository(createUserRepository)
+const userRepo = orm.createRepository(createUserRepository)
 
 // Simple, clean transaction with full plugin support
 await userRepo.transaction(async (trx) => {
@@ -312,7 +326,7 @@ await db.transaction().execute(async trx => {
 await withTransaction(db, async (ctx) => {
   const user = await createUser(ctx, userData)
 
-  // This creates SAVEPOINT kysera_sp_1
+  // This creates a savepoint (kysera_sp_<N>, N from a process-global counter)
   await withTransaction(ctx.db, async (nestedCtx) => {
     await updateProfile(nestedCtx, user.id)
     throw new Error('Profile update failed')
@@ -341,39 +355,25 @@ await repo.transaction(async (trx1) => {
 
 ### Savepoint Validation
 
-- Savepoint names must be positive integers (validated by executor)
-- Invalid savepoint names throw descriptive errors
+- Savepoint names are generated as `kysera_sp_<N>`, where `N` comes from a process-global monotonic counter in `@kysera/dal` — unique across nesting levels by construction
+- `@kysera/dal` validates that the counter is a positive integer before building the savepoint name, and throws a descriptive error otherwise
 - Rollback errors are logged with full context for debugging
 
 ### Dialect-Specific Savepoint Syntax
 
-Different databases use slightly different syntax for savepoints:
+Only MSSQL uses a different syntax — PostgreSQL, MySQL, and SQLite all get identical statements:
 
-**PostgreSQL:**
+**PostgreSQL / MySQL / SQLite:**
 ```sql
 SAVEPOINT kysera_sp_1;
 RELEASE SAVEPOINT kysera_sp_1;
 ROLLBACK TO SAVEPOINT kysera_sp_1;
-```
-
-**MySQL:**
-```sql
-SAVEPOINT kysera_sp_1;
-RELEASE SAVEPOINT kysera_sp_1;
-ROLLBACK TO SAVEPOINT kysera_sp_1;
-```
-
-**SQLite:**
-```sql
-SAVEPOINT kysera_sp_1;
-RELEASE kysera_sp_1;
-ROLLBACK TO kysera_sp_1;
 ```
 
 **MSSQL (SQL Server):**
 ```sql
 SAVE TRANSACTION kysera_sp_1;
--- No explicit RELEASE in MSSQL
+-- No explicit RELEASE in MSSQL (released automatically on commit)
 ROLLBACK TRANSACTION kysera_sp_1;
 ```
 
@@ -414,7 +414,7 @@ await repo.transaction(async (trx) => {
 Sometimes you need to bypass plugin interception in a transaction:
 
 ```typescript
-import { createExecutor } from '@kysera/executor'
+import { createExecutor, getRawDb } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
 const executor = await createExecutor(db, [softDeletePlugin()])
@@ -424,13 +424,13 @@ await executor.transaction().execute(async (trx) => {
   const activeUsers = await trx.selectFrom('users').selectAll().execute()
 
   // Escape hatch - bypass plugins to get ALL users (including soft-deleted)
-  const allUsers = await trx.__rawDb.selectFrom('users').selectAll().execute()
+  const allUsers = await getRawDb(trx).selectFrom('users').selectAll().execute()
 
   console.log(`Active: ${activeUsers.length}, Total: ${allUsers.length}`)
 })
 ```
 
-**When to use `__rawDb`:**
+**When to use `getRawDb()`:**
 - Admin operations that need to see all data (including soft-deleted)
 - Debugging and data migration scripts
 - Audit queries that need complete data visibility
@@ -545,9 +545,11 @@ Pick one pattern per transaction scope:
 
 ```typescript
 // ✅ GOOD: Consistent pattern
+const userRepo = orm.createRepository(createUserRepository)
+
 await withTransaction(executor, async (ctx) => {
-  const userRepo = orm.createRepository(createUserRepository)
-  const user = await userRepo.create(userData)
+  const txUserRepo = userRepo.withTransaction(ctx.db as Transaction<Database>)
+  const user = await txUserRepo.create(userData)
   const stats = await getStats(ctx, user.id)
 })
 
@@ -560,19 +562,22 @@ await baseRepo.transaction(async (trx) => {
 
 ## Transaction Context Management
 
-When using DAL or ORM patterns, the transaction context (`DbContext`) carries both the database executor and any additional metadata:
+When using DAL or ORM patterns, the transaction context (`DbContext`) carries the database executor and transaction state:
 
 ```typescript
-type DbContext<DB> = {
-  db: KyseraExecutor<DB> | Transaction<DB>
-  // Additional context can be added
+interface DbContext<DB> {
+  readonly [DB_CONTEXT_SYMBOL]: true  // marker for reliable detection
+  readonly db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>
+  readonly isTransaction: boolean
+  readonly schema?: string            // PostgreSQL schema context
 }
 ```
 
 This allows you to:
 - Pass transaction state through functional DAL queries
 - Maintain plugin interception across nested calls
-- Add custom metadata (user context, tenant ID, etc.)
+
+The shape is fixed and readonly — `DbContext` does not carry custom metadata. For per-query plugin options use `withPluginMetadata()` from `@kysera/executor`; for user/tenant context use the RLS context (`rlsContext` from `@kysera/rls`).
 
 ## Error Handling and Rollbacks
 

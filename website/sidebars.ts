@@ -44,12 +44,15 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         'guides/best-practices',
+        'guides/production',
         'guides/querying',
         'guides/testing',
         'guides/migrations',
         'guides/pagination',
         'guides/multi-database',
+        'guides/multi-tenancy',
         'guides/dal-vs-repository',
+        'guides/runtimes',
         'guides/troubleshooting',
         {
           type: 'category',

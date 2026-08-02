@@ -16,11 +16,11 @@ npm install @kysera/timestamps
 
 ## Overview
 
-| Metric                | Value                               |
-| --------------------- | ----------------------------------- |
-| **Bundle Size**       | ~4 KB (minified)                    |
-| **Dependencies**      | @kysera/core (workspace)            |
-| **Peer Dependencies** | kysely >=0.29.0, @kysera/repository |
+| Metric                | Value                                                                             |
+| --------------------- | --------------------------------------------------------------------------------- |
+| **Bundle Size**       | ~4 KB (minified)                                                                   |
+| **Dependencies**      | @kysera/core                                                                       |
+| **Peer Dependencies** | @kysera/executor, kysely >=0.29.0, @kysera/repository (optional), zod (optional) |
 
 ## Exports
 
@@ -77,15 +77,19 @@ interface TimestampsOptions {
   excludeTables?: string[]
 
   /**
-   * Custom timestamp generator function
-   * @default () => new Date()
+   * Custom timestamp generator function.
+   * When not provided, the plugin derives the value from dateFormat:
+   * a dialect-formatted string by default ('iso'), a number for 'unix',
+   * or a Date object for 'date'.
    */
   getTimestamp?: () => Date | string | number
 
   /**
    * Date format for timestamps
-   * - 'iso': ISO 8601 string (default)
-   * - 'unix': Unix timestamp in milliseconds
+   * - 'iso': dialect-appropriate string (default) — ISO 8601 for
+   *   PostgreSQL/SQLite, 'YYYY-MM-DD HH:MM:SS.mmm' for MySQL/MSSQL
+   *   (their DATETIME columns reject the 'T' separator and 'Z' suffix)
+   * - 'unix': Unix timestamp in seconds
    * - 'date': JavaScript Date object
    * @default 'iso'
    */
@@ -119,10 +123,9 @@ const plugin = timestampsPlugin({
   updatedAtColumn: 'modified'
 })
 
-// Unix timestamps
+// Unix timestamps (seconds since epoch)
 const plugin = timestampsPlugin({
-  dateFormat: 'unix',
-  getTimestamp: () => Date.now()
+  dateFormat: 'unix'
 })
 
 // Only specific tables
@@ -155,10 +158,10 @@ const plugin = timestampsPlugin({
 
 When a repository is extended by the timestamps plugin, the following methods are added:
 
-### TimestampsMethods Interface
+### TimestampMethods Interface
 
 ```typescript
-interface TimestampsMethods<T> {
+interface TimestampMethods<T> {
   // Date range queries
   findCreatedAfter(date: Date | string): Promise<T[]>
   findCreatedBefore(date: Date | string): Promise<T[]>
@@ -288,6 +291,10 @@ const recentlyUpdated = await postRepo.findRecentlyUpdated(25)
 
 ### Batch Operations
 
+:::info bulkCreate / bulkUpdate are wrapped too
+When the base repository provides `bulkCreate()` and `bulkUpdate()`, the plugin overrides them as well — bulk writes receive the same timestamps as single-row operations, with no extra call needed.
+:::
+
 #### createMany
 
 Create multiple records with automatic timestamps.
@@ -393,7 +400,7 @@ const importedPost = await postRepo.createWithoutTimestamps({
 Update a record without changing `updated_at`.
 
 ```typescript
-async updateWithoutTimestamp(id: number | string, input: unknown): Promise<T>
+async updateWithoutTimestamp(id: number, input: unknown): Promise<T>
 ```
 
 **Example:**
@@ -443,26 +450,36 @@ await postRepo.update(postId, { title: 'Updated Title' })
 // updated_at is set automatically
 ```
 
-## Query Interception
+## How It Works
 
-The plugin intercepts `insert` and `update` operations:
+The plugin has **no query interceptor** — it works entirely through the `extendRepository()` hook. When a repository is created, the plugin overrides its write methods so timestamps are injected into the input data before the original method runs:
+
+- `create()`, `createMany()`, and `bulkCreate()` set `created_at` (and `updated_at` when `setUpdatedAtOnInsert` is true)
+- `update()`, `updateMany()`, and `bulkUpdate()` set `updated_at`
 
 ```typescript
 // Plugin implementation (simplified)
-interceptQuery(qb, context) {
-  const timestamp = getTimestamp()
+extendRepository(repo) {
+  const originalCreate = repo.create.bind(repo)
+  const originalUpdate = repo.update.bind(repo)
 
-  if (context.operation === 'insert') {
-    return qb.set({ [createdAtColumn]: timestamp })
+  return {
+    ...repo,
+    async create(input) {
+      const timestamp = getTimestamp(options, dialect)
+      // Explicitly provided values win over the generated timestamp
+      return await originalCreate({ ...input, [createdAtColumn]: input[createdAtColumn] ?? timestamp })
+    },
+    async update(id, input) {
+      const timestamp = getTimestamp(options, dialect)
+      return await originalUpdate(id, { ...input, [updatedAtColumn]: input[updatedAtColumn] ?? timestamp })
+    }
+    // bulkCreate/bulkUpdate are wrapped the same way
   }
-
-  if (context.operation === 'update') {
-    return qb.set({ [updatedAtColumn]: timestamp })
-  }
-
-  return qb
 }
 ```
+
+Because the plugin wraps repository methods rather than intercepting queries, writes made directly through the executor or DAL (`executor.insertInto(...)`, raw Kysely queries) are **not** timestamped — only repository methods are.
 
 ## Usage with Plugin Container
 
@@ -529,7 +546,7 @@ ALTER TABLE posts ADD COLUMN updated_at TEXT;
 ### TimestampsRepository
 
 ```typescript
-type TimestampsRepository<Entity, DB> = Repository<Entity, DB> & TimestampsMethods<Entity>
+type TimestampsRepository<Entity, DB> = Repository<Entity, DB> & TimestampMethods<Entity>
 ```
 
 ### Database Schema Type
@@ -548,12 +565,14 @@ interface PostsTable {
 
 The timestamps plugin adds minimal overhead:
 
-| Operation           | Overhead                    |
-| ------------------- | --------------------------- |
-| create              | +0.1ms                      |
-| update              | +0.1ms                      |
-| findRecentlyCreated | +0.2ms                      |
-| createMany          | &lt;1ms regardless of count |
+| Operation           | Overhead                                        |
+| ------------------- | ----------------------------------------------- |
+| create              | +0.1ms                                          |
+| update              | +0.1ms                                          |
+| findRecentlyCreated | +0.2ms                                          |
+| createMany          | Single bulk INSERT on PostgreSQL/SQLite; per-row fallback on MySQL/MSSQL |
+
+`createMany()` issues one bulk `INSERT ... RETURNING` on PostgreSQL and SQLite. MySQL and MSSQL do not support `RETURNING`, so it falls back to inserting row by row and fetching each record back by primary key — two queries per record, so cost grows linearly with count.
 
 ## Primary Key Column Support
 

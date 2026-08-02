@@ -8,7 +8,7 @@ description: Core utilities package API reference
 
 Minimal core utilities for database operations with Kysely.
 
-**Version:** 0.8.0
+**Version:** 0.9.0
 
 ## Installation
 
@@ -18,7 +18,7 @@ npm install @kysera/core
 
 ## Overview
 
-**Dependencies:** None (peer: kysely >=0.29.0)
+**Dependencies:** `@kysera/executor` (declared as a runtime dependency, but used for type imports only — it adds no runtime code paths) (peer: kysely >=0.29.0)
 **Database Support:** PostgreSQL, MySQL, SQLite, MSSQL
 
 ## Exports
@@ -75,6 +75,21 @@ if (error instanceof UniqueConstraintError) {
 }
 ```
 
+The unified error-code system is also importable:
+
+```typescript
+import { ErrorCodes, isValidErrorCode, getErrorCategory, type ErrorCode } from '@kysera/core'
+
+ErrorCodes.VALIDATION_UNIQUE_VIOLATION // 'VALIDATION_UNIQUE_VIOLATION'
+isValidErrorCode('DB_TIMEOUT') // true (type guard narrowing to ErrorCode)
+getErrorCategory('DB_TIMEOUT') // 'DB'
+```
+
+- `ErrorCodes` - Const object with every unified error code (`DB_*`, `VALIDATION_*`, `RESOURCE_*`, `MIGRATION_*`, `PLUGIN_*`, ...)
+- `ErrorCode` - Union type of all code strings
+- `isValidErrorCode(code)` - Type guard for unknown strings
+- `getErrorCategory(code)` - Returns the code's category prefix (e.g. `'DB'`, `'VALIDATION'`; `'UNKNOWN'` if unprefixed)
+
 ### [Pagination](/docs/api/core/pagination)
 
 Offset and cursor-based pagination with configurable bounds.
@@ -92,10 +107,11 @@ const result = await paginateCursor(query, {
 })
 ```
 
-**Pagination Bounds:**
-- `MAX_PAGE`: 1,000,000 (maximum page number)
-- `MAX_LIMIT`: 10,000 (maximum items per page)
+**Pagination Bounds** (internal constants — enforced automatically, not exported):
+- Maximum page number: 1,000,000
+- Maximum items per page: 10,000
 - Default limit: 20 items
+- `limit: 0` is honored as a special case: no rows are fetched (`data: []`); `paginate()` still runs the COUNT query and reports `totalPages: 0`
 - These bounds prevent excessive database load and memory usage
 
 ### Query Helpers
@@ -141,20 +157,27 @@ const myLogger = createPrefixedLogger('[myapp]', consoleLogger)
 
 Cryptographic functions for securing pagination cursors with HMAC signing and AES-256-GCM encryption.
 
+:::caution Secret length requirement
+All cursor-crypto functions **throw** if the secret is shorter than 32 characters. Generate a strong secret (e.g. `openssl rand -hex 32`) and provide it via configuration.
+:::
+
 ```typescript
 import { signCursor, verifyCursor, encryptCursor, decryptCursor } from '@kysera/core/cursor-crypto'
 
+// Secret must be at least 32 characters (throws otherwise)
+const secret = process.env.CURSOR_SECRET! // e.g. 64 hex chars from `openssl rand -hex 32`
+
 // Sign a cursor with HMAC
-const signed = signCursor(cursor, 'my-secret-key')
+const signed = signCursor(cursor, secret)
 
 // Verify and extract cursor
-const original = verifyCursor(signed, 'my-secret-key')
+const original = verifyCursor(signed, secret)
 
 // Encrypt cursor with AES-256-GCM
-const encrypted = encryptCursor(cursor, 'my-secret-key')
+const encrypted = encryptCursor(cursor, secret)
 
 // Decrypt cursor
-const decrypted = decryptCursor(encrypted, 'my-secret-key')
+const decrypted = decryptCursor(encrypted, secret)
 ```
 
 **Exports:**
@@ -163,6 +186,19 @@ const decrypted = decryptCursor(encrypted, 'my-secret-key')
 - `encryptCursor(cursor, secret)` - Encrypt cursor with AES-256-GCM
 - `decryptCursor(encryptedCursor, secret)` - Decrypt cursor
 - `CursorSecurityOptions` - Security options type
+
+**CursorSecurityOptions** (accepted by `paginateCursor` via the `security` option):
+
+```typescript
+interface CursorSecurityOptions {
+  /** Secret key for signing/encryption - MUST be at least 32 characters (functions throw otherwise) */
+  secret: string
+  /** Enable AES-256-GCM encryption in addition to HMAC signing (default: false) */
+  encrypt?: boolean
+  /** HMAC algorithm for signing (default: 'sha256') */
+  algorithm?: 'sha256' | 'sha384' | 'sha512'
+}
+```
 
 ### Dialect Detection
 
@@ -191,7 +227,7 @@ Package version information.
 ```typescript
 import { VERSION } from '@kysera/core'
 
-console.log(VERSION) // '0.8.0'
+console.log(VERSION) // '0.9.0'
 ```
 
 **Exports:**
@@ -203,6 +239,22 @@ console.log(VERSION) // '0.8.0'
 
 ```typescript
 type Executor<DB> = Kysely<DB> | Transaction<DB>
+```
+
+### AnyExecutor
+
+```typescript
+type AnyExecutor<DB> = Kysely<DB> | Transaction<DB> | (Kysely<DB> & KyseraExecutorMarker<DB>)
+```
+
+The correct parameter type for functions that should accept plugin-aware executors as well as plain Kysely instances and transactions. Use it instead of `Executor<DB>` whenever a `KyseraExecutor` (from `@kysera/executor`) may be passed in:
+
+```typescript
+import type { AnyExecutor } from '@kysera/core'
+
+async function findUser(db: AnyExecutor<Database>, userId: number) {
+  return db.selectFrom('users').where('id', '=', userId).selectAll().executeTakeFirst()
+}
 ```
 
 ### Common Interfaces
@@ -227,10 +279,12 @@ interface AuditFields {
 
 ```typescript
 interface KyseraLogger {
+  trace(message: string, ...args: unknown[]): void
   debug(message: string, ...args: unknown[]): void
   info(message: string, ...args: unknown[]): void
   warn(message: string, ...args: unknown[]): void
   error(message: string, ...args: unknown[]): void
+  fatal(message: string, ...args: unknown[]): void
 }
 ```
 
@@ -238,10 +292,12 @@ interface KyseraLogger {
 
 ```typescript
 interface OffsetOptions {
-  /** Maximum rows to return (default: 20, max: 100) */
+  /** Maximum rows to return (max: 100). No default - omitting it applies no LIMIT */
   limit?: number
   /** Rows to skip (default: 0) */
   offset?: number
+  /** Database dialect - lets the SQLite OFFSET workaround be skipped for other databases */
+  dialect?: Dialect
 }
 
 interface DateRangeOptions {
@@ -268,11 +324,36 @@ function applyOffset<DB, TB, O>(
 **Features:**
 
 - No COUNT(\*) query (~50% faster than paginate on large tables)
-- Limit bounds: 1-100 (prevents accidental large queries)
+- No default limit — omitting `limit` leaves the query unlimited; when provided, it is clamped to 1-100 (prevents accidental large queries)
 - Offset must be non-negative
-- SQLite compatible (auto-adds LIMIT when OFFSET is used)
+- SQLite compatible: when `offset` is used without `limit`, a large LIMIT is auto-added because SQLite requires LIMIT with OFFSET. This workaround also applies when the dialect is unknown (safe default) — pass `dialect` to skip it for known non-SQLite databases
 
 **Use cases:** Infinite scroll, "Load More" buttons, simple lists without total count.
+
+### formatTimestampForDb
+
+Format a `Date` as a database-compatible timestamp string.
+
+```typescript
+function formatTimestampForDb(date?: Date, dialect?: Dialect): string
+```
+
+**Dialect-specific output:**
+
+- `mysql` / `mssql`: `YYYY-MM-DD HH:MM:SS.mmm` — these databases reject ISO 8601's `T` separator and `Z` suffix in DATETIME/TIMESTAMP columns
+- `postgres` / `sqlite` (and the default): ISO 8601 (`YYYY-MM-DDTHH:MM:SS.mmmZ`)
+
+**Example:**
+
+```typescript
+import { formatTimestampForDb } from '@kysera/core'
+
+formatTimestampForDb() // '2024-01-15T10:30:00.000Z' (defaults: now, ISO 8601)
+formatTimestampForDb(new Date(), 'mysql') // '2024-01-15 10:30:00.000'
+formatTimestampForDb(new Date(), 'postgres') // '2024-01-15T10:30:00.000Z'
+```
+
+Use this instead of `new Date().toISOString()` when writing timestamps manually, so the format stays correct across dialects.
 
 ### applyDateRange
 
@@ -417,8 +498,8 @@ export function softDeletePlugin(options: SoftDeleteOptions = {}): Plugin {
   console.log(config.primaryKeyColumn) // 'id' (default)
   console.log(config.excludeTables)    // [] (default)
 
-  // Use config.tables and config.excludeTables to filter tables
-  // (implement your own shouldApplyToTable logic as needed)
+  // Use the exported shouldApplyToTable() helper to honor tables/excludeTables:
+  // if (!shouldApplyToTable(tableName, config)) return qb
 }
 ```
 
@@ -434,6 +515,42 @@ interface ResolvedPluginConfig {
 }
 ```
 
+### shouldApplyToTable()
+
+Check whether a plugin should process a given table, honoring whitelist/blacklist configuration. Use this instead of hand-rolling table filtering in custom plugins.
+
+```typescript
+function shouldApplyToTable(tableName: string, config: TableFilterConfig): boolean
+
+interface TableFilterConfig {
+  /** Tables to apply to (whitelist). When non-empty, takes precedence over excludeTables */
+  tables?: string[]
+  /** Tables to exclude (blacklist). Only consulted when no whitelist is set */
+  excludeTables?: string[]
+}
+```
+
+**Rules:** a non-empty `tables` whitelist wins (only listed tables match, `excludeTables` is ignored); otherwise a non-empty `excludeTables` blacklist rejects its entries; with neither set (or empty arrays), every table matches.
+
+**Example:**
+
+```typescript
+import { shouldApplyToTable, type TableFilterConfig } from '@kysera/core'
+
+const config: TableFilterConfig = { excludeTables: ['migrations', 'audit_logs'] }
+
+shouldApplyToTable('users', config)      // true
+shouldApplyToTable('migrations', config) // false
+
+// In a plugin's interceptQuery:
+interceptQuery(qb, context) {
+  if (!shouldApplyToTable(context.table, config)) return qb
+  // ... apply plugin logic
+}
+```
+
+Because `BasePluginOptions` extends `TableFilterConfig`, the config object produced by `createPluginConfig()` can be passed straight in.
+
 ### createPluginMetadata()
 
 Creates plugin metadata with optional defaults.
@@ -441,7 +558,7 @@ Creates plugin metadata with optional defaults.
 ```typescript
 import { createPluginMetadata, PLUGIN_PRIORITIES } from '@kysera/core'
 
-const metadata = createPluginMetadata('soft-delete', '0.8.0', {
+const metadata = createPluginMetadata('soft-delete', '0.9.0', {
   priority: PLUGIN_PRIORITIES.FILTER,
   conflictsWith: ['hard-delete-only'],
   dependencies: ['timestamps']
@@ -468,7 +585,8 @@ Recommended priority values for different plugin types. Higher priority = runs f
 import { PLUGIN_PRIORITIES, type PluginPriority } from '@kysera/core'
 
 const priorities = {
-  SECURITY: 1000,  // RLS, auth filters - run first
+  CONTEXT: 1100,   // Schema routing, request scoping - run before security
+  SECURITY: 1000,  // RLS, auth filters - run first among enforcement tiers
   FILTER: 500,     // Soft delete, tenant isolation
   TRANSFORM: 100,  // Timestamps, data transformation
   AUDIT: 50,       // Audit logging, change tracking
@@ -477,17 +595,18 @@ const priorities = {
 }
 
 // Type for priority values
-type PluginPriority = 1000 | 500 | 100 | 50 | 0 | -100
+type PluginPriority = 1100 | 1000 | 500 | 100 | 50 | 0 | -100
 ```
 
 **Execution Order:**
 
-1. **SECURITY (1000)** - RLS, authentication filters
-2. **FILTER (500)** - Soft delete, tenant isolation
-3. **TRANSFORM (100)** - Timestamps, data transformation
-4. **AUDIT (50)** - Audit logging, change tracking
-5. **DEFAULT (0)** - Plugins without explicit priority
-6. **DEBUG (-100)** - Query logging, profiling
+1. **CONTEXT (1100)** - Schema routing, request scoping (e.g. `@kysera/executor`'s `schemaPlugin`) — runs before security so security plugins can read the resolved context (such as `metadata.__resolvedSchema`)
+2. **SECURITY (1000)** - RLS, authentication filters
+3. **FILTER (500)** - Soft delete, tenant isolation
+4. **TRANSFORM (100)** - Timestamps, data transformation
+5. **AUDIT (50)** - Audit logging, change tracking
+6. **DEFAULT (0)** - Plugins without explicit priority
+7. **DEBUG (-100)** - Query logging, profiling
 
 **Example:**
 

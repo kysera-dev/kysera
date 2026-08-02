@@ -8,13 +8,15 @@ description: Database migration commands
 
 Database migration management commands.
 
-:::caution CLI runner vs library runner
-The CLI ships its **own** migration runner, which differs from the
-`@kysera/migrations` library runner in two ways: it does **not** take the
-database advisory lock, and it tracks state in the `kysera_migrations` table
-(the library runner uses `migrations`). Running `kysera migrate up` from
-several instances at once is therefore not serialized — coordinate deploys
-externally, or use the library runner when concurrent execution is possible.
+:::info CLI runner vs library runner
+The CLI ships its **own** migration runner. Both track state in the
+`migrations` table by default (configurable via `migrations.tableName`), but
+they serialize concurrent runs differently: the library runner takes a
+database advisory lock, while the CLI uses a `kysera_migration_lock` table —
+a second `kysera migrate up` fails with "Migrations are already running in
+another process" until the first releases the lock. The table lock is
+best-effort: if it cannot be set up, the run continues without it, so
+coordinate deploys externally when that guarantee matters.
 :::
 
 ## Commands
@@ -34,9 +36,15 @@ kysera migrate create <name>
 --directory <path>         Alias for --dir
 -t, --template <type>      Template type
 --ts                       Generate TypeScript (default: true)
+--no-ts                    Generate JavaScript instead
 --table <name>             Table name for templates
 --columns <list>           Columns (name:type:nullable:default)
 ```
+
+:::note
+`migrate create` only honors `--dir` for the output location — the
+`migrations.directory` config setting is not read by this subcommand.
+:::
 
 **Templates:**
 
@@ -46,7 +54,9 @@ kysera migrate create <name>
 - `add-columns` - Add columns
 - `drop-columns` - Drop columns
 - `create-index` - Create index
+- `drop-index` - Drop index
 - `add-foreign-key` - Add foreign key
+- `seed-data` - Insert seed data
 
 **Examples:**
 
@@ -59,6 +69,9 @@ kysera migrate create create_posts --template create-table --table posts
 
 # Add columns
 kysera migrate create add_email --template add-columns --table users
+
+# JavaScript migration
+kysera migrate create add_flags --no-ts
 ```
 
 ### up
@@ -92,7 +105,7 @@ kysera migrate up
 kysera migrate up --steps 2
 
 # Run up to specific version
-kysera migrate up --to 20251003_add_posts
+kysera migrate up --to 20251003120000_add_posts
 
 # Preview changes
 kysera migrate up --dry-run
@@ -131,7 +144,9 @@ kysera migrate down
 # Rollback 3 migrations
 kysera migrate down --steps 3
 
-# Rollback all (requires --force)
+# Rollback all (prompts for confirmation in a terminal;
+# auto-confirms when stdin is not a TTY — pass --force to skip the prompt)
+kysera migrate down --all
 kysera migrate down --all --force
 
 # Preview rollback
@@ -165,12 +180,12 @@ Migration Status
 ================
 
 Executed:
-  ✓ 001_create_users           2024-01-15 10:30:00
-  ✓ 002_create_posts           2024-01-15 10:31:00
+  ✓ 20240115103000_create_users    2024-01-15 10:30:00
+  ✓ 20240115103100_create_posts    2024-01-15 10:31:00
 
 Pending:
-  ○ 003_add_comments
-  ○ 004_add_indexes
+  ○ 20240116090000_add_comments
+  ○ 20240116091500_add_indexes
 
 Total: 4 | Executed: 2 | Pending: 2
 ```
@@ -181,6 +196,29 @@ List all migration files.
 
 ```bash
 kysera migrate list
+```
+
+**Options:**
+
+```
+--pending                 Show only pending migrations
+--executed                Show only executed migrations
+--json                    Output as JSON
+-c, --config <path>       Path to configuration file
+-s, --schema <name>       PostgreSQL schema name (default: public)
+```
+
+**Examples:**
+
+```bash
+# All migrations with status summary
+kysera migrate list
+
+# Only pending
+kysera migrate list --pending
+
+# Executed migrations as JSON
+kysera migrate list --executed --json
 ```
 
 ### reset
@@ -235,8 +273,12 @@ kysera migrate fresh --force
 
 ## Migration File Structure
 
+Migration files are named `YYYYMMDDHHMMSS_name.ts` — the runner reads the
+first 14 characters as the timestamp that determines execution order.
+`kysera migrate create` generates the timestamp automatically.
+
 ```typescript
-// migrations/001_create_users.ts
+// migrations/20240115103000_create_users.ts
 import { Kysely, sql } from 'kysely'
 
 export async function up(db: Kysely<any>): Promise<void> {
@@ -259,9 +301,9 @@ export async function down(db: Kysely<any>): Promise<void> {
 ### 1. Name Migrations Descriptively
 
 ```
-001_create_users_table
-002_add_email_index_to_users
-003_create_posts_with_user_fk
+20240115103000_create_users_table
+20240116090000_add_email_index_to_users
+20240117141500_create_posts_with_user_fk
 ```
 
 ### 2. Always Test Down Migrations

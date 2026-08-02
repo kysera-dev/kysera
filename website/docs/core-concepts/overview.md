@@ -93,7 +93,7 @@ import { rlsPlugin } from '@kysera/rls'
 // Create plugin-aware executor
 const executor = await createExecutor(db, [
   rlsPlugin({ schema: rlsSchema }), // SECURITY priority (1000)
-  softDeletePlugin() // Standard priority (0)
+  softDeletePlugin() // FILTER priority (500)
 ])
 
 // Use like normal Kysely - plugins apply automatically
@@ -128,13 +128,14 @@ Add production utilities from separate packages:
 
 ```typescript
 import { withDebug } from '@kysera/debug'
-import { checkDatabaseHealth, withRetry } from '@kysera/infra'
+import { checkDatabaseHealth, createMetricsPool, withRetry } from '@kysera/infra'
 
 // Debug wrapper for query logging
 const debugDb = withDebug(db, { logQuery: true, slowQueryThreshold: 100 })
 
-// Health checks for monitoring
-const health = await checkDatabaseHealth(db, pool)
+// Health checks for monitoring (wrap the pg Pool in a MetricsPool)
+const metricsPool = createMetricsPool(pool)
+const health = await checkDatabaseHealth(db, metricsPool)
 
 // Retry with exponential backoff
 const users = await withRetry(() => db.selectFrom('users').execute())
@@ -165,13 +166,13 @@ await userRepo.restore(1)
 
 ```typescript
 import { createExecutor } from '@kysera/executor'
-import { createQuery, withTransaction } from '@kysera/dal'
+import { createQuery, withTransaction, type DbContext } from '@kysera/dal'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
 // Create executor with plugins
 const executor = await createExecutor(db, [softDeletePlugin()])
 
-const getUserById = createQuery((ctx, id: number) =>
+const getUserById = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
 )
 
@@ -285,13 +286,16 @@ Kysera uses a smart validation strategy for optimal performance:
 - **Output validation**: Configurable (development vs production)
 
 ```typescript
+import { zodAdapter } from '@kysera/repository'
+
 const userRepo = factory.create({
   tableName: 'users',
+  mapRow: row => row,
   schemas: {
-    create: CreateUserSchema, // Always validated
-    entity: UserSchema // Optional - validates DB results
+    create: zodAdapter(CreateUserSchema), // Always validated
+    entity: zodAdapter(UserSchema) // Optional - validates DB results
   }
-  // Output validation controlled via KYSERA_VALIDATION_MODE or NODE_ENV
+  // Output validation controlled via validateDbResults (default: NODE_ENV === 'development')
 })
 ```
 

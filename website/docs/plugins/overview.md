@@ -194,11 +194,21 @@ interface QueryBuilderContext {
   /** Type of operation */
   readonly operation: 'select' | 'insert' | 'update' | 'delete' | 'replace' | 'merge'
 
-  /** Table name being queried */
+  /**
+   * Base table name without schema qualifier or alias.
+   * For selectFrom('public.users as u') this is 'users'.
+   */
   readonly table: string
 
+  /** Table alias when the reference was aliased ('users as u' → 'u') */
+  readonly alias?: string
+
+  /** Original table expression as written (e.g. 'public.users as u') */
+  readonly tableExpression?: string
+
   /**
-   * Current schema context (if withSchema was called).
+   * Current schema context (from withSchema(), or an explicit qualifier
+   * in the table expression, which takes precedence).
    * undefined means default schema is being used.
    */
   readonly schema?: string
@@ -207,6 +217,10 @@ interface QueryBuilderContext {
   readonly metadata: Record<string, unknown>
 }
 ```
+
+:::note Aliased tables
+When adding column conditions in `interceptQuery`, qualify them with `context.alias ?? context.table` — once a table is aliased, SQL exposes only the alias as the correlation name.
+:::
 
 ## Plugin Order
 
@@ -234,13 +248,16 @@ const orm = await createORM(db, [
 
 :::tip Priority Guidelines
 
+- **1100**: Context plugins (schema routing, request scoping) - run before security so security plugins can read the resolved context; the built-in `schemaPlugin` from `@kysera/executor` runs here
 - **1000**: Security plugins (RLS) - must enforce access policies before anything else
 - **500**: Filter plugins (soft-delete) - filter records after security
 - **100**: Transform plugins (timestamps) - modify data
 - **50**: Audit plugins - capture final state after all transformations
 - **0**: Default priority
 - **-100**: Debug plugins - logging, profiling (runs last)
-  :::
+
+These tiers are exported as `PLUGIN_PRIORITIES` (`CONTEXT`, `SECURITY`, `FILTER`, `TRANSFORM`, `AUDIT`, `DEFAULT`, `DEBUG`) from `@kysera/core`.
+:::
 
 ## Plugin Validation
 
@@ -260,7 +277,7 @@ try {
   validatePlugins([pluginA, pluginB])
 } catch (error) {
   if (error instanceof PluginValidationError) {
-    console.log(error.type) // 'DUPLICATE_NAME' | 'MISSING_DEPENDENCY' | 'CIRCULAR_DEPENDENCY' | 'CONFLICT'
+    console.log(error.type) // 'DUPLICATE_NAME' | 'MISSING_DEPENDENCY' | 'CIRCULAR_DEPENDENCY' | 'CONFLICT' | 'INITIALIZATION_FAILED'
     console.log(error.details) // { pluginName, missingDependency?, conflictingPlugin?, cycle? }
   }
 }
@@ -270,6 +287,8 @@ try {
 
 - When calling `createORM(db, plugins)` (via `createExecutor`)
 - When calling `createExecutor(db, plugins)` directly
+
+If a plugin's `onInit()` throws during executor creation, the failure surfaces as a `PluginValidationError` with type `'INITIALIZATION_FAILED'`.
 
 ## Creating Custom Plugins
 

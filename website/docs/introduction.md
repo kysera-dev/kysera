@@ -62,9 +62,9 @@ Kysera is a lightweight, modular data access toolkit that builds upon [Kysely](h
 | Package                                    | Description                                 | Size  |
 | ------------------------------------------ | ------------------------------------------- | ----- |
 | [@kysera/core](/docs/api/core)             | Error handling, pagination, types, logger   | ~8KB  |
-| [@kysera/executor](/docs/api/executor)     | Unified Execution Layer (plugin foundation) | ~6KB  |
-| [@kysera/repository](/docs/api/repository) | Repository pattern with validation adapters | ~12KB |
-| [@kysera/dal](/docs/api/dal)               | Functional Data Access Layer                | ~7KB  |
+| [@kysera/executor](/docs/api/executor)     | Unified Execution Layer (plugin foundation) | ~9KB  |
+| [@kysera/repository](/docs/api/repository) | Repository pattern with validation adapters | ~22KB |
+| [@kysera/dal](/docs/api/dal)               | Functional Data Access Layer                | ~4KB  |
 
 ### Infrastructure Packages (Opt-in)
 
@@ -73,7 +73,7 @@ Kysera is a lightweight, modular data access toolkit that builds upon [Kysely](h
 | [@kysera/infra](/docs/api/infra)           | Health checks, retry, circuit breaker, shutdown  | ~12KB |
 | [@kysera/debug](/docs/api/debug)           | Query logging, profiling, SQL formatting         | ~5KB  |
 | [@kysera/testing](/docs/api/testing)       | Test utilities (transaction rollback, factories) | ~6KB  |
-| [@kysera/migrations](/docs/api/migrations) | Migration system with dry-run support            | ~11KB |
+| [@kysera/migrations](/docs/api/migrations) | Migration system with dry-run support            | ~14KB |
 
 ### Plugins
 
@@ -82,7 +82,7 @@ Kysera is a lightweight, modular data access toolkit that builds upon [Kysely](h
 | [@kysera/soft-delete](/docs/plugins/soft-delete) | Soft delete plugin          | ~4KB  |
 | [@kysera/audit](/docs/plugins/audit)             | Audit logging plugin        | ~11KB |
 | [@kysera/timestamps](/docs/plugins/timestamps)   | Automatic timestamps plugin | ~4KB  |
-| [@kysera/rls](/docs/plugins/rls)                 | Row-level security plugin   | ~44KB |
+| [@kysera/rls](/docs/plugins/rls)                 | Row-level security plugin   | ~53KB |
 
 ## Architecture
 
@@ -108,7 +108,7 @@ Layer 0: Kysely Foundation (Direct usage, no wrapper)
 import { Kysely, PostgresDialect, Generated } from 'kysely'
 import { Pool } from 'pg'
 import { createExecutor } from '@kysera/executor'
-import { createORM, zodAdapter } from '@kysera/repository'
+import { createORM, createRepositoryFactory, zodAdapter } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { timestampsPlugin } from '@kysera/timestamps'
 import { z } from 'zod'

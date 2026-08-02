@@ -124,24 +124,41 @@ kysera query soft-deleted -t users --purge --force
 Analyze query performance and identify optimization opportunities.
 
 ```bash
-kysera query analyze <query> [options]
+kysera query analyze [options]
 ```
+
+The query is passed via `-q/--query` or read from a file with `-f/--file` — there is no positional argument.
 
 ### Options
 
-| Option            | Description                |
-| ----------------- | -------------------------- |
-| `--json`          | Output as JSON             |
-| `--config <path>` | Path to configuration file |
+| Option                   | Description                                       |
+| ------------------------ | ------------------------------------------------- |
+| `-q, --query <sql>`      | SQL query to analyze                              |
+| `-f, --file <path>`      | Read query from file                              |
+| `--format <type>`        | Output format: simple, detailed, json (default: simple) |
+| `-i, --show-indexes`     | Show index usage information                      |
+| `-s, --show-statistics`  | Show table statistics                             |
+| `--suggestions`          | Show optimization suggestions (default: true)     |
+| `-b, --benchmark <n>`    | Benchmark query N times (default: 1)              |
+| `-c, --config <path>`    | Path to configuration file                        |
 
 ### Examples
 
 ```bash
 # Analyze a SELECT query
-kysera query analyze "SELECT * FROM users WHERE status = 'active'"
+kysera query analyze -q "SELECT * FROM users WHERE status = 'active'"
 
-# Analyze a complex query
-kysera query analyze "SELECT u.*, COUNT(o.id) FROM users u LEFT JOIN orders o ON u.id = o.user_id GROUP BY u.id"
+# Analyze a query stored in a file
+kysera query analyze -f ./queries/dashboard.sql
+
+# Detailed report with index usage and statistics
+kysera query analyze -q "SELECT * FROM orders" --format detailed -i -s
+
+# Benchmark the query 10 times
+kysera query analyze -q "SELECT * FROM users" -b 10
+
+# Machine-readable output
+kysera query analyze -q "SELECT * FROM users" --format json
 ```
 
 ### Output
@@ -159,30 +176,38 @@ Analysis includes:
 Show query execution plan from the database.
 
 ```bash
-kysera query explain <query> [options]
+kysera query explain [options]
 ```
+
+Like `analyze`, the query comes from `-q/--query` or `-f/--file` — there is no positional argument.
 
 ### Options
 
-| Option                | Description                                  |
-| --------------------- | -------------------------------------------- |
-| `--analyze`           | Run EXPLAIN ANALYZE (PostgreSQL)             |
-| `--format <type>`     | Output format: text, json, yaml (PostgreSQL) |
-| `--json`              | Output as JSON                               |
-| `--config <path>`     | Path to configuration file                   |
-| `-s, --schema <name>` | PostgreSQL schema name (default: public)     |
+| Option                | Description                                            |
+| --------------------- | ------------------------------------------------------ |
+| `-q, --query <sql>`   | SQL query to explain                                   |
+| `-f, --file <path>`   | Read query from file                                   |
+| `-a, --analyze`       | Execute query and show actual times (EXPLAIN ANALYZE)  |
+| `-v, --verbose`       | Show verbose output                                    |
+| `--format <type>`     | Output format: text, json, tree, yaml (default: text)  |
+| `--buffers`           | Show buffer usage (PostgreSQL)                         |
+| `--costs`             | Show cost estimates (default: true)                    |
+| `--timing`            | Show timing information (default: true)                |
+| `--summary`           | Show summary at the end (default: true)                |
+| `-c, --config <path>` | Path to configuration file                             |
+| `-s, --schema <name>` | PostgreSQL schema name (default: public)               |
 
 ### Examples
 
 ```bash
 # Basic execution plan
-kysera query explain "SELECT * FROM users WHERE id = 1"
+kysera query explain -q "SELECT * FROM users WHERE id = 1"
 
 # With analyze (runs the query)
-kysera query explain "SELECT * FROM orders WHERE user_id = 5" --analyze
+kysera query explain -q "SELECT * FROM orders WHERE user_id = 5" --analyze
 
-# JSON format output
-kysera query explain "SELECT * FROM products" --format json
+# Tree format with buffer usage
+kysera query explain -q "SELECT * FROM products" --format tree --buffers
 ```
 
 ### Database-Specific Plans
@@ -234,10 +259,10 @@ kysera query soft-deleted -t orders --purge --force
 
 ```bash
 # Check if a slow query uses indexes
-kysera query explain "SELECT * FROM orders WHERE status = 'pending'" --analyze
+kysera query explain -q "SELECT * FROM orders WHERE status = 'pending'" --analyze
 
 # Analyze query patterns
-kysera query analyze "SELECT * FROM users WHERE email LIKE '%@gmail.com'"
+kysera query analyze -q "SELECT * FROM users WHERE email LIKE '%@gmail.com'"
 ```
 
 ## Configuration
@@ -245,15 +270,12 @@ kysera query analyze "SELECT * FROM users WHERE email LIKE '%@gmail.com'"
 Query commands use the database configuration from `kysera.config.ts`:
 
 ```typescript
-import { defineConfig } from '@kysera/cli'
-
-export default defineConfig({
+export default {
   database: {
     dialect: 'postgres',
-    host: 'localhost',
-    database: 'myapp'
+    connection: '${DATABASE_URL}'
   }
-})
+}
 ```
 
 ## See Also

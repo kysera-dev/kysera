@@ -13,15 +13,17 @@ Factory functions for creating repositories.
 Create a typed repository factory for a database instance.
 
 ```typescript
-function createRepositoryFactory<DB>(executor: Executor<DB>): RepositoryFactory<DB>
-
-interface RepositoryFactory<DB> {
+function createRepositoryFactory<DB>(executor: Executor<DB>): {
   executor: Executor<DB>
-  create<TableName extends keyof DB, Entity, PK = number>(
-    config: RepositoryConfig<DB[TableName], Entity, PK>
+  create<TableName extends keyof DB & string, Entity, PK = number>(
+    config: RepositoryConfig<DB[TableName], Entity> & { tableName: TableName }
   ): Repository<Entity, DB, PK>
 }
 ```
+
+The return type is anonymous — there is no exported `RepositoryFactory`
+interface. Use `ReturnType<typeof createRepositoryFactory<DB>>` if you need to
+name it.
 
 ### Usage
 
@@ -118,11 +120,18 @@ interface RepositoryConfig<Table, Entity> {
   schema?: string                              // PostgreSQL schema (e.g., 'auth', 'tenant_123')
   primaryKey?: PrimaryKeyColumn                // Default: 'id'
   primaryKeyType?: PrimaryKeyTypeHint          // Default: 'number'
-  dialect?: DialectConfig                      // Database dialect config
+  dialect?: DialectConfig                      // Deprecated wrapper — see note below
   validationStrategy?: 'none' | 'strict'       // Default: 'strict'
   validateDbResults?: boolean                   // Default: NODE_ENV === 'development'
+  logger?: KyseraLogger                         // Warnings/diagnostics. Default: silentLogger
 }
 ```
+
+:::note DialectConfig is deprecated
+`DialectConfig` (`{ dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql' }`) is a
+legacy wrapper kept for backwards compatibility. For new code, import the
+`Dialect` union from `@kysera/core` when you need the dialect type itself.
+:::
 
 :::info ValidationSchema
 The `schemas` property uses the `ValidationSchema` interface, not raw Zod types. Wrap Zod schemas with `zodAdapter()`, Valibot schemas with `valibotAdapter()`, TypeBox schemas with `typeboxAdapter()`, or use `nativeAdapter()` for no validation. See the [Validation API](/docs/api/repository/validation) for details.
@@ -154,7 +163,7 @@ const userRepo = factory.create({
     fullName: `${row.first_name} ${row.last_name}`,
     createdAt: row.created_at
   }),
-  schemas: { create: CreateUserSchema }
+  schemas: { create: zodAdapter(CreateUserSchema) }
 })
 ```
 
@@ -184,23 +193,29 @@ const userRepo = factory.create({
 
 ### Validation Configuration
 
-Validation is controlled via environment variables:
+Validation is configured per repository, not via environment variables:
 
-```bash
-# Always validate both inputs and outputs (development)
-KYSERA_VALIDATION_MODE=always
-
-# Validate inputs only (production)
-KYSERA_VALIDATION_MODE=production
-
-# Never validate outputs (testing/performance)
-KYSERA_VALIDATION_MODE=never
-
-# Default: based on NODE_ENV
-KYSERA_VALIDATION_MODE=development
+```typescript
+const userRepo = factory.create({
+  tableName: 'users',
+  mapRow: row => row,
+  schemas: {
+    entity: zodAdapter(UserSchema), // used only when validateDbResults is on
+    create: zodAdapter(CreateUserSchema)
+  },
+  validationStrategy: 'strict', // input validation: 'strict' (default) | 'none'
+  validateDbResults: false // output validation; default: NODE_ENV === 'development'
+})
 ```
 
-See the [Validation API](/docs/api/repository/validation) for more details.
+- `validationStrategy: 'none'` skips input validation in `create`/`update` (and bulk variants).
+- `validateDbResults: true` re-validates mapped rows against `schemas.entity`.
+
+The `KYSERA_VALIDATION_MODE` environment variable does **not** affect factory
+repositories. It only drives the standalone `shouldValidate()` /
+`createValidator().validateConditional()` helpers, which resolve it to a single
+boolean (there is no input/output split). See the
+[Validation API](/docs/api/repository/validation) for details.
 
 ## Best Practices
 
@@ -215,8 +230,8 @@ export function createUserRepository(executor: Executor<Database>) {
     tableName: 'users' as const,
     mapRow: mapUserRow,
     schemas: {
-      create: CreateUserSchema,
-      update: UpdateUserSchema
+      create: zodAdapter(CreateUserSchema),
+      update: zodAdapter(UpdateUserSchema)
     }
   })
 }
@@ -229,7 +244,8 @@ export function createUserRepository(executor: Executor<Database>) {
 export const createRepositories = createRepositoriesFactory({
   users: createUserRepository,
   posts: createPostRepository,
-  comments: createCommentRepository
+  comments: createCommentRepository,
+  profiles: createProfileRepository
 })
 
 export type Repositories = ReturnType<typeof createRepositories>

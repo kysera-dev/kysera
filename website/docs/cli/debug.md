@@ -157,13 +157,16 @@ kysera debug errors [options]
 
 ### Options
 
-| Option                | Description                |
-| --------------------- | -------------------------- |
-| `--since <datetime>`  | Show errors since datetime |
-| `--type <error-type>` | Filter by error type       |
-| `-l, --limit <n>`     | Limit number of results    |
-| `--json`              | Output as JSON             |
-| `-c, --config <path>` | Path to configuration file |
+| Option                 | Description                                                    |
+| ---------------------- | -------------------------------------------------------------- |
+| `-s, --since <datetime>` | Show errors since datetime (ISO 8601)                        |
+| `--until <datetime>`   | Show errors until datetime (ISO 8601)                          |
+| `-l, --limit <n>`      | Limit number of results (default: 100)                         |
+| `-p, --pattern <regex>`| Filter errors by pattern                                       |
+| `-g, --group-by <field>` | Group by: error, table, operation, user (default: error)     |
+| `--show-queries`       | Show failing queries                                           |
+| `--json`               | Output as JSON                                                 |
+| `-c, --config <path>`  | Path to configuration file                                     |
 
 ### Examples
 
@@ -171,11 +174,14 @@ kysera debug errors [options]
 # Show recent errors
 kysera debug errors
 
-# Show errors from last 24 hours
-kysera debug errors --since "2025-01-01T00:00:00"
+# Show errors in a time window
+kysera debug errors --since "2025-01-01T00:00:00" --until "2025-01-31T23:59:59"
 
-# Filter by error type
-kysera debug errors --type "UNIQUE_CONSTRAINT"
+# Filter by pattern and show the failing queries
+kysera debug errors --pattern "unique" --show-queries
+
+# Group errors by table
+kysera debug errors --group-by table
 ```
 
 ## circuit-breaker
@@ -305,15 +311,12 @@ kysera debug analyzer --table users --json
 Debug commands use the database configuration from `kysera.config.ts`:
 
 ```typescript
-import { defineConfig } from '@kysera/cli'
-
-export default defineConfig({
+export default {
   database: {
     dialect: 'postgres',
-    host: 'localhost',
-    database: 'myapp'
+    connection: '${DATABASE_URL}'
   }
-})
+}
 ```
 
 ## Requirements
@@ -336,17 +339,23 @@ CREATE TABLE query_logs (
 
 ### Kysera Debug Plugin
 
-For automatic query logging, use `@kysera/debug`:
+For automatic query logging, wrap your database with `withDebug` from `@kysera/debug`:
 
 ```typescript
-import { createDebugPlugin } from '@kysera/debug'
+import { withDebug } from '@kysera/debug'
 
-const debugPlugin = createDebugPlugin({
-  logQueries: true,
-  logSlowQueries: true,
-  slowQueryThreshold: 1000
+const db = withDebug(baseDb, {
+  logQuery: true,             // Log every query (default: true)
+  logParams: false,           // Include bound parameters
+  slowQueryThreshold: 1000,   // ms; slower queries are flagged
+  onSlowQuery: (sql, duration) => {
+    console.warn(`Slow query (${duration}ms): ${sql}`)
+  },
+  maxMetrics: 1000            // Metrics buffer size
 })
 ```
+
+A custom `logger` can also be supplied to route output through your own logging.
 
 ## See Also
 

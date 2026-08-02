@@ -39,19 +39,21 @@ function QuickStart() {
   const installCode = `npm install kysely @kysera/repository @kysera/soft-delete`
 
   const exampleCode = `import { Kysely, PostgresDialect } from 'kysely'
-import { createORM } from '@kysera/repository'
+import { createORM, createRepositoryFactory } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
-const db = new Kysely({ dialect: new PostgresDialect({ pool }) })
+const db = new Kysely<Database>({ dialect: new PostgresDialect({ pool }) })
 
 // Create plugin container with soft delete - not a traditional ORM
 const orm = await createORM(db, [softDeletePlugin()])
 
-const userRepo = orm.createRepository({
-  tableName: 'users',
-  primaryKey: 'id',
-  mapRow: (row) => row,
-})
+const userRepo = orm.createRepository(executor =>
+  createRepositoryFactory(executor).create({
+    tableName: 'users',
+    mapRow: row => row,
+    schemas: { entity: UserSchema },
+  })
+)
 
 // CRUD with automatic soft delete filtering
 const user = await userRepo.create({ email: 'john@example.com', name: 'John' })
@@ -86,7 +88,7 @@ function Stats() {
             <div className={styles.statLabel}>Packages</div>
           </div>
           <div className={styles.stat}>
-            <div className={styles.statValue}>5</div>
+            <div className={styles.statValue}>4</div>
             <div className={styles.statLabel}>Plugins</div>
           </div>
           <div className={styles.stat}>

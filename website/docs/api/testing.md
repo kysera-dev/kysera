@@ -157,8 +157,8 @@ recommended. The `tables` list is required for the `'delete'` and
 - `'truncate'` - TRUNCATE TABLE (fastest bulk clean, handles FKs automatically)
 
 **Security Features:**
-- **SQL injection prevention** - Table names are validated with a strict identifier regex (must start with a letter or underscore; letters, digits, and underscores only)
-- **Safe identifier escaping** - Uses dialect-specific escaping for table names
+- **SQL injection prevention** - Table names are validated with a strict identifier regex (must start with a letter or underscore; letters, digits, and underscores only) before being interpolated into the raw `TRUNCATE` statements
+- **Identifier quoting** - The MySQL and MSSQL truncate paths additionally quote the validated name (backticks / square brackets); the PostgreSQL path interpolates it unquoted, so safety rests on the regex validation rather than on escaping
 
 ## Test Data Factories
 
@@ -333,6 +333,14 @@ type CleanupStrategy = 'truncate' | 'transaction' | 'delete'
 type FactoryFunction<T> = (overrides?: Partial<T>) => T
 type SeedFunction<DB> = (trx: Transaction<DB>) => Promise<void>
 
+// Per-field defaults for createFactory: plain values or zero-arg functions
+type FactoryDefaults<T extends Record<string, unknown>> = {
+  [K in keyof T]: T[K] | (() => T[K])
+}
+
+// Re-exported from @kysera/core for convenience
+type Dialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql'
+
 interface WaitForOptions {
   timeout?: number // Default: 5000
   interval?: number // Default: 100
@@ -419,7 +427,8 @@ mockPlugin.reset()
 **Returns:**
 
 ```typescript
-interface MockPlugin extends Plugin {
+// Anonymous intersection type — there is no named MockPlugin interface to import
+Plugin & {
   operations: RecordedOperation[]
   reset: () => void
 }
@@ -457,7 +466,8 @@ spiedPlugin.reset()
 **Returns:**
 
 ```typescript
-interface SpiedPlugin extends Plugin {
+// Anonymous intersection type — there is no named SpiedPlugin interface to import
+Plugin & {
   calls: RecordedOperation[]
   reset: () => void
 }
@@ -614,5 +624,21 @@ interface PluginAssertionOptions {
   expectedOperation?: QueryBuilderContext['operation']
   expectedTable?: string
   shouldModifyQuery?: boolean
+}
+
+// Mock executor context for unit-testing plugin hooks without a database
+interface MockOperationContext {
+  operation: QueryBuilderContext['operation']
+  table: string
+  executor: Kysely<unknown> | Transaction<unknown>
+}
+
+// Options shape for building a plugin-aware test executor. Note: the package
+// exports only this type — there is no createTestExecutor() function; pass
+// the plugins to createExecutor() from @kysera/executor instead.
+interface CreateTestExecutorOptions<DB> {
+  db: Kysely<DB>
+  plugins: Plugin[]
+  debug?: boolean
 }
 ```

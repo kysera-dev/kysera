@@ -273,10 +273,10 @@ CREATE TABLE users (
 MSSQL requires `ORDER BY` for `OFFSET`/`FETCH` pagination:
 
 ```typescript
-import { createPagination } from '@kysera/core'
+import { paginate } from '@kysera/core'
 
-// Works on all databases
-const { data, metadata } = await createPagination(
+// Works on all databases (on MSSQL, also pass dialect: 'mssql')
+const { data, pagination } = await paginate(
   db.selectFrom('users').selectAll().orderBy('id', 'asc'), // ORDER BY required for MSSQL
   { page: 1, limit: 10 }
 )
@@ -373,6 +373,109 @@ const user = await db
 
 console.log(user.created_at instanceof Date) // true
 ```
+
+## Dialect Utilities (@kysera/dialects)
+
+The `@kysera/dialects` package bundles dialect-specific operations behind a unified adapter interface, so multi-database code doesn't need per-database branches:
+
+```bash
+pnpm add @kysera/dialects
+```
+
+### Adapters
+
+`getAdapter(dialect)` returns a `DialectAdapter` with introspection helpers and dialect-aware formatting:
+
+```typescript
+import { getAdapter, createDialectAdapter } from '@kysera/dialects'
+
+const adapter = getAdapter('postgres')
+
+const exists = await adapter.tableExists(db, 'users')
+const tables = await adapter.getTables(db, { schema: 'admin' })
+adapter.escapeIdentifier('user-data') // Dialect-correct quoting
+adapter.isUniqueConstraintError(error) // Dialect pre-bound
+
+// Adapter with a custom default schema
+const authAdapter = createDialectAdapter('postgres', { defaultSchema: 'auth' })
+```
+
+The PostgreSQL and MSSQL adapters additionally support schema management:
+
+```typescript
+import { createPostgresAdapter } from '@kysera/dialects'
+
+const pg = createPostgresAdapter({ defaultSchema: 'public' })
+
+await pg.createSchema(db, 'tenant_123')
+const schemas = await pg.getSchemas(db)
+await pg.dropSchema(db, 'tenant_123', { cascade: true })
+```
+
+### Connection URLs
+
+Parse and build connection URLs without per-dialect string handling:
+
+```typescript
+import { parseConnectionUrl, buildConnectionUrl, getDefaultPort } from '@kysera/dialects'
+
+const config = parseConnectionUrl('postgresql://user:pass@localhost:5432/mydb')
+// { host: 'localhost', port: 5432, database: 'mydb', user: 'user', password: 'pass', ... }
+
+const url = buildConnectionUrl('postgres', { host: 'localhost', database: 'mydb' })
+getDefaultPort('mysql') // 3306
+```
+
+### Error Matchers
+
+Detect constraint violations without memorizing per-database error codes:
+
+```typescript
+import { isUniqueConstraintError, errorMatchers, createErrorMatcher } from '@kysera/dialects'
+
+try {
+  await db.insertInto('users').values({ email: 'taken@example.com' }).execute()
+} catch (error) {
+  // Standalone helpers take the dialect explicitly
+  if (isUniqueConstraintError(error, 'mysql')) {
+    // Handle duplicate email
+  }
+
+  // Or use the pre-built matcher table
+  if (errorMatchers.postgres.uniqueConstraint(error)) {
+    // Handle duplicate email
+  }
+}
+
+// Custom matcher: codes for PostgreSQL/MySQL, numbers for MSSQL, message patterns everywhere
+const isDeadlock = createErrorMatcher({ codes: ['40P01'], messages: ['deadlock'] })
+```
+
+`isForeignKeyError` and `isNotNullError` follow the same `(error, dialect)` signature.
+
+### Tenant Schema Helpers
+
+For schema-per-tenant architectures (PostgreSQL/MSSQL):
+
+```typescript
+import {
+  getTenantSchemaName,
+  parseTenantSchemaName,
+  isTenantSchema,
+  filterTenantSchemas,
+  extractTenantIds
+} from '@kysera/dialects'
+
+getTenantSchemaName('acme') // 'tenant_acme'
+parseTenantSchemaName('tenant_acme') // 'acme'
+isTenantSchema('tenant_acme') // true
+
+const allSchemas = await pg.getSchemas(db)
+const tenantSchemas = filterTenantSchemas(allSchemas) // Only tenant_* schemas
+const tenantIds = extractTenantIds(allSchemas) // Tenant IDs without prefix
+```
+
+All tenant helpers accept an optional `TenantSchemaConfig` to customize the `tenant_` prefix, e.g. `getTenantSchemaName('corp', { prefix: 'org_' })`.
 
 ## Environment-Based Configuration
 
@@ -489,10 +592,17 @@ DB_POOL_MAX=10
 Create repositories that work across all databases:
 
 ```typescript
-import { createORM } from '@kysera/repository'
+import { createORM, createRepositoryFactory, zodAdapter } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { timestampsPlugin } from '@kysera/timestamps'
+import { z } from 'zod'
 import { db } from './db'
+
+const CreateUserSchema = z.object({
+  name: z.string(),
+  email: z.string(),
+  is_active: z.boolean().default(true)
+})
 
 // Works identically on PostgreSQL, MySQL, SQLite, MSSQL
 const orm = await createORM(db, [
@@ -500,17 +610,21 @@ const orm = await createORM(db, [
   timestampsPlugin()
 ])
 
-const userRepo = orm.createRepository((builder, db) => {
-  const base = builder
-    .table('users')
-    .identifier('id')
-    .returning(['id', 'name', 'email', 'is_active', 'created_at'])
+const userRepo = orm.createRepository(executor => {
+  const factory = createRepositoryFactory(executor)
+  const base = factory.create({
+    tableName: 'users',
+    mapRow: row => row,
+    schemas: {
+      create: zodAdapter(CreateUserSchema)
+    }
+  })
 
   return {
     ...base,
 
     async findActive() {
-      return db
+      return executor
         .selectFrom('users')
         .selectAll()
         .where('is_active', '=', true) // Kysely handles boolean conversion
@@ -519,7 +633,7 @@ const userRepo = orm.createRepository((builder, db) => {
     },
 
     async searchByEmail(email: string) {
-      return db
+      return executor
         .selectFrom('users')
         .selectAll()
         .where('email', 'like', `%${email}%`)
@@ -608,7 +722,7 @@ describeMultiDb('User Repository', db => {
     await userRepo.softDelete(user.id)
 
     const found = await userRepo.findById(user.id)
-    expect(found).toBeUndefined()
+    expect(found).toBeNull()
   })
 })
 ```
@@ -755,20 +869,21 @@ Use Kysera's migration system with database-specific SQL when needed:
 
 ```typescript
 import { Kysely, sql } from 'kysely'
+import { detectDialect } from '@kysera/core'
 
 export async function up(db: Kysely<any>): Promise<void> {
-  const dialect = db.getExecutor().adapter.constructor.name
+  const dialect = detectDialect(db) // 'postgres' | 'mysql' | 'sqlite' | 'mssql'
 
   // Common structure
   await db.schema
     .createTable('users')
     .addColumn('id', 'integer', col => {
       // Dialect-specific auto-increment
-      if (dialect.includes('Postgres')) {
+      if (dialect === 'postgres') {
         return col.generatedAlwaysAsIdentity().primaryKey()
-      } else if (dialect.includes('Mysql')) {
+      } else if (dialect === 'mysql') {
         return col.autoIncrement().primaryKey()
-      } else if (dialect.includes('Mssql')) {
+      } else if (dialect === 'mssql') {
         return col.primaryKey()
       } else {
         // SQLite

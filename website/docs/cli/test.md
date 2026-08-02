@@ -25,7 +25,6 @@ kysera test setup
 -d, --database <name>     Test database name
 --clean                   Drop existing test database
 --migrate                 Run migrations (default: true)
---no-migrate              Skip running migrations
 --seed                    Run seeders
 --fixtures <files...>     Load specific fixtures
 --parallel                Enable parallel test execution
@@ -68,11 +67,17 @@ kysera test seed
 **Options:**
 
 ```
---strategy <type>         Data generation (realistic/random/sequential)
---count <number>          Records per table
---table <name>            Specific table
---fixtures <files...>     Load fixtures
---async                   Parallel seeding
+-t, --tables <names...>   Specific tables to seed
+-c, --count <n>           Records per table (default: 100)
+--clean                   Clean tables before seeding
+-s, --strategy <type>     Seeding strategy (default: realistic)
+--relationships           Create related records (default: true)
+--locale <locale>         Faker locale (default: en)
+--seed <number>           Random seed for reproducibility
+--custom <file>           Custom seeder file
+-v, --verbose             Verbose output
+--json                    Output as JSON
+--config <path>           Path to configuration file
 ```
 
 **Examples:**
@@ -81,11 +86,14 @@ kysera test seed
 # Seed with realistic data
 kysera test seed --strategy realistic --count 100
 
-# Seed specific table
-kysera test seed --table users --count 50
+# Seed specific tables
+kysera test seed --tables users posts --count 50
 
-# Load fixtures
-kysera test seed --fixtures users admin-users
+# Reproducible data from a fixed random seed
+kysera test seed --seed 42
+
+# Use a custom seeder file
+kysera test seed --custom ./tests/seeders/custom.ts
 ```
 
 ### fixtures
@@ -99,10 +107,34 @@ kysera test fixtures
 **Options:**
 
 ```
---load <files...>         Load specific fixtures
---generate                Generate fixture templates
---validate                Validate fixture files
---format <type>           Format: json, yaml, ts
+-l, --load <files...>     Load specific fixture files
+-d, --directory <path>    Fixtures directory (default: tests/fixtures)
+-f, --format <type>       Format: json, yaml, sql, js, auto (default: auto)
+-s, --save <name>         Save current data as fixture
+--list                    List available fixtures
+--validate                Validate fixtures without loading
+--dependencies            Load fixture dependencies (default: true)
+--checksum                Verify fixture checksums
+--tags <tags...>          Filter by tags
+-v, --verbose             Verbose output
+--json                    Output as JSON
+--config <path>           Path to configuration file
+```
+
+**Examples:**
+
+```bash
+# List available fixtures
+kysera test fixtures --list
+
+# Load specific fixtures
+kysera test fixtures --load users posts
+
+# Snapshot current data as a fixture
+kysera test fixtures --save baseline
+
+# Validate without loading
+kysera test fixtures --validate
 ```
 
 ### teardown
@@ -116,10 +148,16 @@ kysera test teardown
 **Options:**
 
 ```
--e, --environment <env>   Environment (default: test)
---keep-data               Keep data, only clear migrations
---force                   Skip confirmation
+-e, --environment <env>   Environment to clean (default: test)
+-d, --database <name>     Specific database to clean
+-f, --force               Skip confirmation
+--keep-data               Keep test data (truncate instead of drop)
+--preserve-logs           Preserve test execution logs
+--clean-artifacts         Clean test artifacts (default: true)
+--pattern <pattern>       Database name pattern to match
 -v, --verbose             Verbose output
+--json                    Output as JSON
+--config <path>           Path to configuration file
 ```
 
 ## Fixture Format
@@ -136,19 +174,19 @@ kysera test teardown
 }
 ```
 
-### TypeScript Fixtures
+### JavaScript/TypeScript Fixtures
+
+A fixture module default-exports an object with the target `table` and its `data` rows (`@kysera/cli` is binary-only, so there is no importable `Fixture` type):
 
 ```typescript
 // fixtures/users.ts
-import { Fixture } from '@kysera/cli'
-
 export default {
   table: 'users',
   data: [
     { email: 'admin@test.com', name: 'Admin', role: 'admin' },
     { email: 'user@test.com', name: 'User', role: 'user' }
   ]
-} satisfies Fixture
+}
 ```
 
 ## Workflow Examples

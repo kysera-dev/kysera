@@ -178,7 +178,7 @@ The modern architecture features **@kysera/executor** as the foundation layer:
     └── @kysera/repository (depends on: executor, dal, core)
             ↓
             └── Plugins (soft-delete, audit, rls, timestamps)
-                (depend on: core; executor as optional peer)
+                (depend on: core; executor as required peer)
 ```
 
 ## Repository Factory Pattern
@@ -190,7 +190,12 @@ The factory pattern enables clean dependency injection:
 export function createUserRepository(executor: Executor<Database>) {
   return {
     async findById(id: number): Promise<User | null> {
-      return executor.selectFrom('users').where('id', '=', id).executeTakeFirst()
+      const row = await executor
+        .selectFrom('users')
+        .selectAll()
+        .where('id', '=', id)
+        .executeTakeFirst()
+      return row ?? null
     },
     async create(input: CreateUserInput): Promise<User> {
       return executor.insertInto('users').values(input).returningAll().executeTakeFirstOrThrow()
@@ -239,6 +244,7 @@ Modify queries before execution through the executor:
 // Plugin definition
 {
   name: 'soft-delete',
+  version: '1.0.0',
   interceptQuery(qb, context) {
     if (context.operation === 'select') {
       // Qualify with the alias when the table reference has one
@@ -263,6 +269,7 @@ Add new methods to repositories:
 // Plugin definition
 {
   name: 'soft-delete',
+  version: '1.0.0',
   extendRepository(repo) {
     return {
       ...repo,
@@ -291,8 +298,8 @@ await userRepo.softDelete(1) // Extension method
 | @kysera/core       | ~8KB        | Minimal                   | executor     |
 | @kysera/executor   | ~8KB        | &lt;0.1ms (no interceptors)  | 0            |
 |                    |             | &lt;0.2ms (with interceptors)| (kysely peer)|
-| @kysera/repository | ~12KB       | &lt;0.3ms per query          | executor, dal|
-| @kysera/dal        | ~7KB        | &lt;0.2ms per query          | executor     |
+| @kysera/repository | ~22KB       | &lt;0.3ms per query          | executor, dal, core|
+| @kysera/dal        | ~4KB        | &lt;0.2ms per query          | executor, core|
 | @kysera/infra      | ~12KB       | &lt;0.2ms per query          | core         |
 | @kysera/debug      | ~5KB        | &lt;0.1ms per query          | core         |
 | @kysera/testing    | ~6KB        | Dev-only                  | core         |

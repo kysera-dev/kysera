@@ -138,20 +138,25 @@ Shows additional information:
 Enable an installed plugin.
 
 ```bash
-kysera plugin enable <name> [options]
+kysera plugin enable [name] [options]
 ```
 
 ### Arguments
 
-| Argument | Description                       |
-| -------- | --------------------------------- |
-| `name`   | Plugin name (e.g., @kysera/audit) |
+| Argument | Description                                  |
+| -------- | -------------------------------------------- |
+| `name`   | Plugin name (e.g., @kysera/audit); optional with `--all` |
 
 ### Options
 
-| Option            | Description                |
-| ----------------- | -------------------------- |
-| `--config <path>` | Path to configuration file |
+| Option            | Description                        |
+| ----------------- | ---------------------------------- |
+| `--all`           | Enable all installed plugins       |
+| `-f, --force`     | Force enable without checks        |
+| `--configure`     | Configure plugin after enabling    |
+| `--restart`       | Restart application after enabling |
+| `--json`          | Output as JSON                     |
+| `--config <path>` | Path to configuration file         |
 
 ### Examples
 
@@ -159,8 +164,11 @@ kysera plugin enable <name> [options]
 # Enable a plugin
 kysera plugin enable @kysera/soft-delete
 
-# Enable with full package name
-kysera plugin enable @kysera/audit
+# Enable and configure interactively
+kysera plugin enable @kysera/audit --configure
+
+# Enable everything that is installed
+kysera plugin enable --all
 ```
 
 ### Effect
@@ -176,27 +184,34 @@ Enabling a plugin:
 Disable an enabled plugin without uninstalling.
 
 ```bash
-kysera plugin disable <name> [options]
+kysera plugin disable [name] [options]
 ```
 
 ### Arguments
 
-| Argument | Description                       |
-| -------- | --------------------------------- |
-| `name`   | Plugin name (e.g., @kysera/audit) |
+| Argument | Description                                  |
+| -------- | -------------------------------------------- |
+| `name`   | Plugin name (e.g., @kysera/audit); optional with `--all` |
 
 ### Options
 
-| Option            | Description                |
-| ----------------- | -------------------------- |
-| `--all`           | Disable all plugins        |
-| `--config <path>` | Path to configuration file |
+| Option            | Description                             |
+| ----------------- | --------------------------------------- |
+| `--all`           | Disable all enabled plugins             |
+| `-f, --force`     | Force disable without dependency checks |
+| `--keep-config`   | Keep plugin configuration               |
+| `--restart`       | Restart application after disabling     |
+| `--json`          | Output as JSON                          |
+| `--config <path>` | Path to configuration file              |
 
 ### Examples
 
 ```bash
 # Disable a specific plugin
-kysera plugin disable @kysera/cache
+kysera plugin disable @kysera/audit
+
+# Disable but keep its configuration for later
+kysera plugin disable @kysera/audit --keep-config
 
 # Disable all plugins
 kysera plugin disable --all
@@ -215,71 +230,75 @@ Disabling a plugin:
 Configure plugin settings.
 
 ```bash
-kysera plugin config <name> [options]
+kysera plugin config [name] [options]
 ```
 
 ### Arguments
 
-| Argument | Description                       |
-| -------- | --------------------------------- |
-| `name`   | Plugin name (e.g., @kysera/cache) |
+| Argument | Description                             |
+| -------- | --------------------------------------- |
+| `name`   | Plugin name (e.g., @kysera/soft-delete) |
 
 ### Options
 
-| Option              | Description                    |
-| ------------------- | ------------------------------ |
-| `--set <key=value>` | Set a configuration value      |
-| `--get <key>`       | Get a configuration value      |
-| `--reset`           | Reset to default configuration |
-| `--show`            | Show current configuration     |
-| `--json`            | Output as JSON                 |
-| `--config <path>`   | Path to configuration file     |
+| Option              | Description                        |
+| ------------------- | ---------------------------------- |
+| `-g, --get <key>`   | Get a configuration value          |
+| `-s, --set <key>`   | Set a configuration key            |
+| `--value <value>`   | Value for the key given via `--set`|
+| `--reset`           | Reset to default configuration     |
+| `--show`            | Show current configuration         |
+| `--edit`            | Edit configuration interactively   |
+| `--validate`        | Validate configuration             |
+| `--export <file>`   | Export configuration to file       |
+| `--import <file>`   | Import configuration from file     |
+| `--json`            | Output as JSON                     |
+| `--config <path>`   | Path to configuration file         |
+
+Setting a value uses the `--set <key> --value <value>` pair — one key per invocation; run the command again for each additional key.
 
 ### Examples
 
 ```bash
 # Show current configuration
-kysera plugin config @kysera/cache --show
+kysera plugin config @kysera/soft-delete --show
 
-# Set a configuration value
-kysera plugin config @kysera/cache --set "ttl=3600"
-
-# Set multiple values
-kysera plugin config @kysera/cache --set "ttl=3600" --set "driver=redis"
+# Set a configuration value (one key per invocation)
+kysera plugin config @kysera/soft-delete --set deletedAtColumn --value deleted_at
 
 # Get a specific value
-kysera plugin config @kysera/cache --get ttl
+kysera plugin config @kysera/soft-delete --get deletedAtColumn
+
+# Edit interactively
+kysera plugin config @kysera/audit --edit
 
 # Reset to defaults
-kysera plugin config @kysera/cache --reset
+kysera plugin config @kysera/soft-delete --reset
 ```
 
 ### Configuration in kysera.config.ts
 
-Plugin configuration is stored in the config file:
+Plugin configuration is stored in the config file under the keys `softDelete`, `timestamps`, `audit`, and `rls`:
 
 ```typescript
-import { defineConfig } from '@kysera/cli'
-
-export default defineConfig({
+export default {
   plugins: {
-    '@kysera/soft-delete': {
+    softDelete: {
       enabled: true,
-      column: 'deleted_at',
+      deletedAtColumn: 'deleted_at',
       includeDeleted: false
     },
-    '@kysera/timestamps': {
+    timestamps: {
       enabled: true,
-      createdAt: 'created_at',
-      updatedAt: 'updated_at'
+      createdAtColumn: 'created_at',
+      updatedAtColumn: 'updated_at'
     },
-    '@kysera/cache': {
+    audit: {
       enabled: true,
-      ttl: 3600,
-      driver: 'memory'
+      auditTable: 'audit_logs'
     }
   }
-})
+}
 ```
 
 ## Official Plugins
@@ -290,7 +309,7 @@ Soft delete support with automatic filtering.
 
 ```bash
 kysera plugin enable @kysera/soft-delete
-kysera plugin config @kysera/soft-delete --set "column=deleted_at"
+kysera plugin config @kysera/soft-delete --set deletedAtColumn --value deleted_at
 ```
 
 ### @kysera/timestamps
@@ -307,7 +326,7 @@ Comprehensive audit logging.
 
 ```bash
 kysera plugin enable @kysera/audit
-kysera plugin config @kysera/audit --set "table=audit_logs"
+kysera plugin config @kysera/audit --set auditTable --value audit_logs
 ```
 
 ### @kysera/rls

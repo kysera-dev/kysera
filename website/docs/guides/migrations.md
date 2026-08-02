@@ -200,6 +200,113 @@ kysera migrate down --steps 1
 kysera migrate status
 ```
 
+## Advanced
+
+### Defining Migrations with Helpers
+
+`createMigration` and `createMigrationWithMeta` build migration objects; `defineMigrations` turns an object literal into an array of migrations with metadata:
+
+```typescript
+import { createMigration, createMigrationWithMeta, defineMigrations } from '@kysera/migrations'
+
+// Simple: name + up + optional down
+const createUsers = createMigration(
+  '001_create_users',
+  async db => {
+    await db.schema
+      .createTable('users')
+      .addColumn('id', 'serial', col => col.primaryKey())
+      .execute()
+  },
+  async db => {
+    await db.schema.dropTable('users').execute()
+  }
+)
+
+// With metadata
+const addPhone = createMigrationWithMeta('002_add_users_phone', {
+  up: async db => {
+    await db.schema.alterTable('users').addColumn('phone', 'varchar(20)').execute()
+  },
+  down: async db => {
+    await db.schema.alterTable('users').dropColumn('phone').execute()
+  },
+  description: 'Add phone number to users',
+  breaking: false,
+  estimatedDuration: 100, // ms
+  tags: ['users']
+})
+
+// Object syntax - keys become migration names
+const migrations = defineMigrations({
+  '001_create_users': {
+    up: async db => { /* ... */ },
+    down: async db => { /* ... */ },
+    description: 'Create users table'
+  },
+  '002_add_users_phone': {
+    up: async db => { /* ... */ },
+    tags: ['users']
+  }
+})
+```
+
+### Partial Runs and Baselining
+
+```typescript
+const runner = createMigrationRunner(db, migrations)
+
+// Run pending migrations up to (and including) a target
+await runner.upTo('002_add_users_phone')
+
+// Baseline: record a migration as executed WITHOUT running it
+// (useful when adopting Kysera on an existing schema)
+await runner.markAsExecuted('001_create_users')
+```
+
+### Runner Plugins
+
+`MigrationRunnerWithPlugins` calls lifecycle hooks (`onInit`, `beforeMigration`, `afterMigration`, `onMigrationError`) around each migration. Two plugins ship with the package:
+
+```typescript
+import {
+  createMigrationRunnerWithPlugins,
+  createLoggingPlugin,
+  createMetricsPlugin
+} from '@kysera/migrations'
+
+const metrics = createMetricsPlugin()
+
+const runner = await createMigrationRunnerWithPlugins(db, migrations, {
+  plugins: [
+    createLoggingPlugin(console), // Defaults to silentLogger - pass a logger to see output
+    metrics
+  ]
+})
+
+await runner.up()
+
+console.log(metrics.getMetrics())
+// { migrations: [{ name: '001_create_users', operation: 'up', duration: 12, success: true }] }
+```
+
+Custom plugins implement the `MigrationPlugin` interface:
+
+```typescript
+import type { MigrationPlugin } from '@kysera/migrations'
+
+const slackNotifier: MigrationPlugin = {
+  name: 'slack-notifier',
+  version: '1.0.0',
+  async afterMigration(migration, operation, duration) {
+    await notifySlack(`${migration.name} ${operation} completed in ${duration}ms`)
+  },
+  async onMigrationError(migration, operation, error) {
+    await notifySlack(`${migration.name} ${operation} FAILED: ${String(error)}`)
+  }
+}
+```
+
 ## Safe Migrations
 
 ### Non-Destructive Changes
@@ -252,7 +359,7 @@ export async function up(db: Kysely<any>) {
 export async function up(db: Kysely<any>) {
   await db
     .updateTable('users')
-    .set({ email_new: db.ref('email') })
+    .set(eb => ({ email_new: eb.ref('email') }))
     .execute()
 }
 

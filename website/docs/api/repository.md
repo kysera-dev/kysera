@@ -36,6 +36,7 @@ npm install zod           # Popular schema validation
 export { createRepositoryFactory } from './repository'
 export { createRepositoriesFactory } from './helpers'
 export { createSimpleRepository } from './repository'
+export type { Executor, RepositoryFactoryMap, RepositoriesFromFactory } from './helpers'
 
 // Repository manager with plugins
 export { createORM, withPlugins } from './plugin'
@@ -51,9 +52,15 @@ export {
   typeboxAdapter,
   nativeAdapter,
   customAdapter,
-  normalizeSchema
+  normalizeSchema,
+  isValidationSchema
 } from './validation-adapter'
-export type { ValidationSchema, ValidationError } from './validation-adapter'
+export type {
+  ValidationSchema,
+  ValidationError,
+  ValidationIssue,
+  ValidationResult
+} from './validation-adapter'
 
 // Base repository
 export { createBaseRepository } from './base-repository'
@@ -85,8 +92,10 @@ export {
 } from './operators'
 export type {
   FindOptions,
+  FindResult,
   WhereClause,
   SortSpec,
+  OperatorKey,
   ComparisonOperators,
   ArrayOperators,
   StringOperators,
@@ -100,14 +109,25 @@ export type {
 export { ContextAwareRepository } from './context-aware'
 
 // Upsert helpers
-export { upsert, upsertMany } from './upsert'
-export type { UpsertOptions } from './upsert'
+export { upsert, upsertMany, atomicStatusTransition } from './upsert'
+export type { UpsertOptions, StatusTransitionOptions } from './upsert'
+
+// Primary key & column-safety utilities
+export { extractPrimaryKey } from './primary-key-utils'
+export {
+  assertValidIdentifier,
+  validateColumnNames,
+  validateConditions,
+  getAllowedColumnsFromPkConfig
+} from './column-validation'
+export type { ColumnValidationOptions } from './column-validation'
 
 // Re-export executor types
 export type { Plugin, QueryBuilderContext } from '@kysera/executor'
 export { PluginValidationError, validatePlugins, resolvePluginOrder } from '@kysera/executor'
 
-// Types
+// Types AND runtime primary-key helpers (normalizePrimaryKeyConfig,
+// isCompositeKey, getPrimaryKeyColumns, normalizePrimaryKeyInput, isValidRow)
 export * from './types'
 ```
 
@@ -128,19 +148,20 @@ Create a typed repository factory that provides methods for creating individual 
 function createRepositoryFactory<DB>(executor: Executor<DB>): {
   executor: Executor<DB>
   create<TableName extends keyof DB & string, Entity, PK = number>(
-    config: RepositoryConfig<TableName, Entity, PK>
+    config: RepositoryConfig<DB[TableName], Entity> & { tableName: TableName }
   ): Repository<Entity, DB, PK>
 }
 
-// Executor type accepts both Kysely instance and Transaction
-type Executor<DB> = Kysely<DB> | Transaction<DB>
+// Executor accepts a Kysely instance, a Transaction, or a plugin-aware
+// KyseraExecutor from @kysera/executor (alias of AnyExecutor from @kysera/core)
+type Executor<DB> = Kysely<DB> | Transaction<DB> | (Kysely<DB> & KyseraExecutorMarker<DB>)
 ```
 
 ### RepositoryConfig
 
 ```typescript
-interface RepositoryConfig<TableName, Entity, PK = number> {
-  tableName: TableName
+interface RepositoryConfig<Table, Entity> {
+  tableName: string // factory.create() narrows this to keyof DB & string
   /**
    * PostgreSQL schema for this repository.
    * When set, all queries are scoped to this schema.
@@ -152,9 +173,10 @@ interface RepositoryConfig<TableName, Entity, PK = number> {
   /**
    * Database dialect configuration.
    * Recommended for production to avoid relying on Kysely internals.
+   * @deprecated Wrapper kept for backwards compatibility — see note below
    */
   dialect?: DialectConfig
-  mapRow: (row: Selectable<DB[TableName]>) => Entity
+  mapRow: (row: Selectable<Table>) => Entity
   schemas: {
     entity?: ValidationSchema<Entity> // Optional result validation
     create: ValidationSchema // Required input validation
@@ -162,6 +184,7 @@ interface RepositoryConfig<TableName, Entity, PK = number> {
   }
   validateDbResults?: boolean // Default: NODE_ENV === 'development'
   validationStrategy?: 'none' | 'strict' // Default: 'strict'
+  logger?: KyseraLogger // Warnings and diagnostics. Default: silentLogger
 }
 
 // Primary key types
@@ -170,9 +193,15 @@ type PrimaryKeyTypeHint = 'number' | 'string' | 'uuid'
 
 // Dialect configuration
 interface DialectConfig {
-  dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql'
+  dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql' // = Dialect from @kysera/core
 }
 ```
+
+:::note DialectConfig is deprecated
+`DialectConfig` is a legacy wrapper around the `Dialect` union and is kept for
+backwards compatibility. For new code, import `Dialect` from `@kysera/core`
+when you need the dialect type itself.
+:::
 
 **Schema Option:**
 
@@ -263,7 +292,8 @@ async create(input: unknown): Promise<Entity>
 // Update - validates input with update schema (or create.partial())
 async update(id: PK, input: unknown): Promise<Entity>
 
-// Delete - soft delete if plugin enabled, hard delete otherwise
+// Delete - always a hard DELETE. The soft-delete plugin never converts this
+// method; it adds separate softDelete()/restore()/hardDelete() methods instead.
 async delete(id: PK): Promise<boolean>
 ```
 
@@ -375,8 +405,8 @@ The `find()` method supports MongoDB-style query operators for advanced filterin
 import type { FindOptions, WhereClause } from '@kysera/repository'
 
 interface FindOptions<Entity, Cols extends keyof Entity = keyof Entity> {
-  where?: WhereClause<Entity>
-  orderBy?: keyof Entity
+  where?: WhereClause<Entity> | Record<string, unknown> // plain records allowed for dynamic conditions
+  orderBy?: keyof Entity | string // strings are validated as plain SQL identifiers
   orderDirection?: 'asc' | 'desc'
   sort?: Array<{ column: keyof Entity; direction: 'asc' | 'desc' }>
   select?: Cols[]
@@ -605,9 +635,13 @@ await repos.posts.findAll()
 await db.transaction().execute(async trx => {
   const repos = createRepos(trx)
   const user = await repos.users.create({ name: 'Alice', email: 'alice@example.com' })
-  await repos.posts.create({ userId: user.id, title: 'Hello World' })
+  const post = await repos.posts.create({ userId: user.id, title: 'Hello World' })
   await repos.comments.create({ postId: post.id, text: 'Great post!' })
 })
+
+// Infer the bundle type from the factory
+import type { RepositoriesFromFactory } from '@kysera/repository'
+type Repositories = RepositoriesFromFactory<typeof createRepos>
 ```
 
 ## createORM
@@ -616,16 +650,16 @@ Create a plugin container (repository manager) with plugin support. Despite its 
 
 ```typescript
 async function createORM<DB>(
-  db: Kysely<DB> | KyseraExecutor<DB>,
+  db: Kysely<DB>, // a KyseraExecutor is accepted too — it is a Kysely subtype
   plugins?: Plugin[]
 ): Promise<PluginOrm<DB>>
 
 interface PluginOrm<DB> {
-  /** Plugin-aware executor from @kysera/executor */
-  executor: KyseraExecutor<DB>
+  /** Plugin-aware executor from @kysera/executor (declared as Kysely<DB>) */
+  executor: Kysely<DB>
   /** Create a repository with plugin support */
   createRepository: <T extends object>(
-    factory: (executor: KyseraExecutor<DB>, applyPlugins: ApplyPluginsFunction) => T
+    factory: (executor: Kysely<DB>, applyPlugins: ApplyPluginsFunction) => T
   ) => T
   /** Apply plugin interceptors to query builders */
   applyPlugins: ApplyPluginsFunction
@@ -644,6 +678,14 @@ type ApplyPluginsFunction = <QB extends AnyQueryBuilder>(
   metadata?: Record<string, unknown>
 ) => QB
 ```
+
+:::note Declared vs runtime type
+`PluginOrm.executor` (and the executor passed to repository factories) is
+declared as plain `Kysely<DB>` so existing Kysely-typed code accepts it without
+casts. At runtime it is the plugin-aware executor created by
+`createExecutor()` — use `isKyseraExecutor()` / `getPlugins()` from
+`@kysera/executor` to introspect it.
+:::
 
 **Parameters:**
 
@@ -1105,6 +1147,60 @@ await db.transaction().execute(async trx => {
 })
 ```
 
+### atomicStatusTransition
+
+Race-safe status transition: updates a record's status only if it currently has
+the expected status, using a single atomic `UPDATE ... WHERE status = ?`.
+Returns the updated record, or `null` when the status didn't match — meaning
+another process already performed the transition.
+
+```typescript
+async function atomicStatusTransition<DB, Table extends keyof DB & string, S>(
+  db: Executor<DB>,
+  table: Table,
+  where: Partial<Selectable<DB[Table]>>,
+  options: StatusTransitionOptions<Selectable<DB[Table]>, S>
+): Promise<Selectable<DB[Table]> | null>
+
+interface StatusTransitionOptions<T, S> {
+  /** Column name containing the status (default: 'status') */
+  statusColumn?: string
+  /** Current status that must match for the transition to occur */
+  fromStatus: S
+  /** New status to set */
+  toStatus: S
+  /** Additional data to update along with the status */
+  additionalUpdates?: Partial<T>
+  /** Whether to return the updated entity (default: true) */
+  returning?: boolean
+}
+```
+
+```typescript
+import { atomicStatusTransition } from '@kysera/repository'
+
+// Prevent double-processing: only one worker wins the pending → processing race
+const payment = await atomicStatusTransition(
+  db,
+  'payments',
+  { id: paymentId },
+  {
+    fromStatus: 'pending',
+    toStatus: 'processing',
+    additionalUpdates: { started_at: new Date() }
+  }
+)
+
+if (!payment) {
+  // Another worker already claimed this payment — safe to skip
+  return
+}
+```
+
+Typical uses: payment pipelines (`pending → processing → completed`), order
+state machines, and any transition that must not be applied twice under
+concurrency.
+
 ## TableOperations
 
 Low-level interface for database operations. Used internally by `createBaseRepository` but can be used directly for custom repository implementations.
@@ -1136,8 +1232,18 @@ interface TableOperations<Table> {
   deleteById(id: PrimaryKeyInput): Promise<boolean>
   deleteByIds(ids: PrimaryKeyInput[]): Promise<number>
   count(conditions?: Record<string, unknown>): Promise<number>
-  paginate(options: PaginateOptions): Promise<Selectable<Table>[]>
-  paginateCursor(options: PaginateCursorOptions): Promise<Selectable<Table>[]>
+  paginate(options: {
+    limit: number
+    offset: number
+    orderBy: string
+    orderDirection: 'asc' | 'desc'
+  }): Promise<Selectable<Table>[]>
+  paginateCursor(options: {
+    limit: number
+    cursor?: { value: unknown; id: PrimaryKeyInput } | null
+    orderBy: string
+    orderDirection: 'asc' | 'desc'
+  }): Promise<Selectable<Table>[]>
 }
 ```
 
@@ -1231,11 +1337,23 @@ interface BaseRepository<DB, Entity, PK = number> {
     total: number
   }>
 
-  // Pagination
-  paginate(options: PaginateOptions): Promise<PaginateResult<Entity>>
-  paginateCursor<K extends keyof Entity>(
-    options: PaginateCursorOptions<Entity, K>
-  ): Promise<PaginateCursorResult<Entity, K>>
+  // Pagination (option/result shapes are inline — see the Pagination section)
+  paginate(options: {
+    limit: number
+    offset?: number
+    orderBy?: string
+    orderDirection?: 'asc' | 'desc'
+  }): Promise<{ items: Entity[]; total: number; limit: number; offset: number }>
+  paginateCursor<K extends keyof Entity>(options: {
+    limit: number
+    cursor?: { value: Entity[K]; id: PK } | null
+    orderBy?: K
+    orderDirection?: 'asc' | 'desc'
+  }): Promise<{
+    items: Entity[]
+    nextCursor: { value: Entity[K]; id: PK } | null
+    hasMore: boolean
+  }>
 
   // Transaction
   transaction<R>(fn: (trx: Transaction<DB>) => Promise<R>): Promise<R>
@@ -1392,6 +1510,68 @@ const users = await tenantUserRepo.findByIds([
 ])
 ```
 
+### extractPrimaryKey
+
+Extract the primary key value from a row or entity — a scalar for single-column
+keys, an object for composite keys:
+
+```typescript
+import { extractPrimaryKey } from '@kysera/repository'
+
+extractPrimaryKey({ id: 1, name: 'Alice' }, { columns: 'id', type: 'number' })
+// 1
+
+extractPrimaryKey(
+  { tenant_id: 1, user_id: 42, role: 'admin' },
+  { columns: ['tenant_id', 'user_id'], type: 'number' }
+)
+// { tenant_id: 1, user_id: 42 }
+```
+
+## Dynamic Column Safety
+
+Repository methods that accept dynamic column names (`find` conditions,
+`orderBy` strings, `selectWhere`, …) validate them before they reach SQL. The
+guard surface is exported for use in custom query code:
+
+```typescript
+import {
+  assertValidIdentifier,
+  validateColumnNames,
+  validateConditions,
+  getAllowedColumnsFromPkConfig
+} from '@kysera/repository'
+import type { ColumnValidationOptions } from '@kysera/repository'
+
+// Reject anything that is not a plain SQL identifier
+assertValidIdentifier('created_at', 'orderBy column') // OK
+assertValidIdentifier('name desc', 'orderBy column') // throws
+
+// Strict whitelist check for condition keys
+validateColumnNames({ name: 'Alice' }, new Set(['id', 'name', 'email'])) // OK
+validateColumnNames({ evil: '1' }, new Set(['id', 'name'])) // throws
+
+// Combined helper used by table operations:
+// - with options.allowedColumns: strict whitelist membership
+// - without: identifier-shape check on every key
+validateConditions(conditions, pkConfig, {
+  allowedColumns: new Set(['id', 'name', 'email'])
+})
+
+// Derive a minimal whitelist from a PrimaryKeyConfig
+const allowed = getAllowedColumnsFromPkConfig({
+  columns: ['tenant_id', 'user_id'],
+  type: 'number'
+})
+// Set { 'tenant_id', 'user_id' }
+```
+
+`ColumnValidationOptions` is `{ enabled?: boolean; allowedColumns?: ReadonlySet<string> }`
+— validation is on by default and cheap enough to keep enabled in production.
+Dynamic `orderBy` values that are not plain identifiers (e.g. `'name desc'`)
+throw instead of being sent to the database, which also catches the SQLite
+failure mode where such a value would be treated as a string literal.
+
 ## CQRS-lite Pattern
 
 Use `orm.createContext()` and `orm.transaction()` to mix Repository (writes with validation) and DAL (complex reads) patterns:
@@ -1445,51 +1625,57 @@ const result = await orm.transaction(async ctx => {
 
 ## Validation Control
 
-Control validation behavior via environment variables or options:
+Repository validation is controlled **per repository** through config options —
+environment variables never change the behavior of factory-created repositories:
 
 ```typescript
-// Environment variables (in order of precedence)
-KYSERA_VALIDATION_MODE = always // Always validate
-KYSERA_VALIDATION_MODE = never // Never validate
-KYSERA_VALIDATION_MODE = development // Validate in development
-KYSERA_VALIDATION_MODE = production // Don't validate in production
-NODE_ENV = development // Fallback: enables validation
-
-// Repository-level control
 const userRepo = factory.create({
   tableName: 'users',
   mapRow: row => row,
   schemas: {
-    create: zodAdapter(UserSchema)
+    entity: zodAdapter(UserSchema), // used only when validateDbResults is on
+    create: zodAdapter(CreateUserSchema)
   },
-  validateDbResults: true, // Validate DB results
-  validationStrategy: 'strict' // 'strict' | 'none'
+  validationStrategy: 'strict', // input validation: 'strict' (default) | 'none'
+  validateDbResults: true // output validation; default: NODE_ENV === 'development'
 })
+```
 
-// Validation helpers
+- **Input validation** (`create`, `update`, and bulk variants) runs through
+  `schemas.create` / `schemas.update` unless `validationStrategy: 'none'` is set.
+- **Output validation** re-parses mapped rows with `schemas.entity`, only when
+  `validateDbResults` is `true`. Its default is derived from `NODE_ENV` at
+  repository creation (`'development'` → on, anything else → off).
+
+The `KYSERA_VALIDATION_MODE` environment variable affects **only** the
+standalone helpers `shouldValidate()` and `createValidator().validateConditional()`
+— it is never consulted by factory-created repositories:
+
+```typescript
 import { getValidationMode, shouldValidate } from '@kysera/repository'
 
+// KYSERA_VALIDATION_MODE=always|never|development|production (falls back to NODE_ENV)
 console.log(getValidationMode()) // 'development' | 'production' | 'always' | 'never'
-console.log(shouldValidate()) // boolean
+console.log(shouldValidate()) // single boolean derived from the mode
 ```
 
 ## Database Support
 
-| Feature        | PostgreSQL   | MySQL        | SQLite       | MSSQL        |
-| -------------- | ------------ | ------------ | ------------ | ------------ |
-| RETURNING      | Native       | Emulated     | Native       | OUTPUT       |
-| Bulk Insert    | Single query | Single query | Single query | Single query |
-| Boolean        | true/false   | 1/0          | 1/0          | BIT (1/0)    |
-| Composite Keys | ✓            | ✓            | ✓            | ✓            |
-| UUID           | ✓            | ✓            | ✓            | ✓            |
-| Pagination     | LIMIT/OFFSET | LIMIT/OFFSET | LIMIT/OFFSET | OFFSET/FETCH |
+| Feature        | PostgreSQL   | MySQL                       | SQLite       |
+| -------------- | ------------ | --------------------------- | ------------ |
+| RETURNING      | Native       | Emulated (insert + refetch) | Native       |
+| Bulk Insert    | Single query | Row-by-row in a transaction | Single query |
+| Composite Keys | ✓            | ✓                           | ✓            |
+| UUID           | ✓            | ✓                           | ✓            |
+| Pagination     | LIMIT/OFFSET | LIMIT/OFFSET                | LIMIT/OFFSET |
 
 **Notes:**
 
-- MySQL doesn't support RETURNING clause - Kysera automatically emulates it by fetching inserted/updated records
-- MSSQL uses OUTPUT clause for returning inserted/updated records
-- MSSQL pagination requires ORDER BY clause (Kysera handles this automatically)
-- All databases support composite primary keys
-- Boolean values are automatically normalized
+- MySQL is the only dialect with special handling: it lacks `RETURNING`, so Kysera re-fetches created/updated records by primary key (using `insertId` for auto-increment keys). Every other dialect gets standard `RETURNING`-based queries via `returningAll()`.
+- MySQL bulk inserts run row-by-row inside an automatic transaction and are rolled back as a whole on failure — see [`bulkCreate` behavior](#batch-operations).
+- `'mssql'` is accepted as a `DialectConfig` value, but repository operations contain no MSSQL-specific code paths (in particular, no OUTPUT-clause handling).
+- `paginate()` and `paginateCursor()` always emit `ORDER BY`, defaulting `orderBy` to the first primary-key column when not given. `find({ limit, offset })` adds no default ordering — pass `orderBy` or `sort` for deterministic pages.
+- Boolean values are returned as the driver provides them (e.g. `1`/`0` on MySQL and SQLite) — Kysera performs no normalization; convert in `mapRow` if your entity uses `boolean`.
+- All databases support composite primary keys.
 
 See [Factory](/docs/api/repository/factory), [Validation](/docs/api/repository/validation), and [Types](/docs/api/repository/types) for more details.

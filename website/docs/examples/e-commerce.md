@@ -110,7 +110,7 @@ export class InvalidStatusTransitionError extends Error {
 The most critical operation - must be atomic. This example uses optimistic locking to prevent overselling. Here's the actual implementation from the example:
 
 ```typescript
-// From examples/e-commerce/src/index.ts (lines 88-122)
+// From examples/e-commerce/src/index.ts
 
 const order = await db.transaction().execute(async trx => {
   const transactionalProductRepo = createProductRepository(trx)
@@ -194,7 +194,7 @@ const order = await withTransaction(executor, async ctx => {
 The `decreaseStock` method uses optimistic locking to prevent race conditions. This is the actual implementation:
 
 ```typescript
-// From examples/e-commerce/src/repositories/product.repository.ts (lines 162-180)
+// From examples/e-commerce/src/repositories/product.repository.ts
 // Note: validateDbResults = process.env['NODE_ENV'] === 'development'
 
 /**
@@ -236,7 +236,7 @@ async decreaseStock(productId: number, quantity: number): Promise<Product> {
 The order repository provides state machine validation for status transitions:
 
 ```typescript
-// From examples/e-commerce/src/repositories/order.repository.ts (lines 142-160)
+// From examples/e-commerce/src/repositories/order.repository.ts
 
 /**
  * Validate state transitions using state machine
@@ -265,7 +265,7 @@ async updateStatus(orderId: number, newStatus: OrderStatus): Promise<Order> {
 **Usage from the example:**
 
 ```typescript
-// From examples/e-commerce/src/index.ts (lines 130-151)
+// From examples/e-commerce/src/index.ts
 
 // Valid transitions
 console.log('Processing order...')
@@ -296,7 +296,7 @@ The cart repository handles adding, updating, and managing cart items. Here are 
 ### Add Item to Cart
 
 ```typescript
-// From examples/e-commerce/src/repositories/cart.repository.ts (lines 92-125)
+// From examples/e-commerce/src/repositories/cart.repository.ts
 // Note: validateDbResults = process.env['NODE_ENV'] === 'development'
 
 async addItem(input: unknown): Promise<CartItem> {
@@ -340,7 +340,7 @@ async addItem(input: unknown): Promise<CartItem> {
 Note: The cart items don't store price - prices are fetched via JOIN with products table:
 
 ```typescript
-// From examples/e-commerce/src/repositories/cart.repository.ts (lines 72-90)
+// From examples/e-commerce/src/repositories/cart.repository.ts
 
 export interface CartItemWithProduct {
   id: number
@@ -367,13 +367,19 @@ async getCartWithProducts(userId: number): Promise<CartItemWithProduct[]> {
       'products.name as product_name',
       'products.price',
       'cart_items.quantity',
-      sql<number>`products.price * cart_items.quantity`.as('subtotal'),
+      // NUMERIC comes back as a string from PostgreSQL
+      sql<string>`products.price * cart_items.quantity`.as('subtotal'),
       'cart_items.created_at'
     ])
     .where('cart_items.user_id', '=', userId)
     .execute()
 
-  return rows as CartItemWithProduct[]
+  // PostgreSQL returns numeric types as strings, so we parse them
+  return rows.map(row => ({
+    ...row,
+    price: typeof row.price === 'string' ? parseFloat(row.price) : row.price,
+    subtotal: typeof row.subtotal === 'string' ? parseFloat(row.subtotal) : row.subtotal
+  }))
 }
 ```
 
@@ -474,6 +480,13 @@ To run this example:
 ```bash
 cd examples/e-commerce
 pnpm install
+
+# Create the database (defaults to postgresql://localhost/ecommerce_example)
+createdb ecommerce_example
+# Or point at your own server:
+# export DATABASE_URL=postgres://user:pass@localhost:5432/ecommerce_example
+
+pnpm migrate   # create tables
 pnpm dev
 ```
 
@@ -485,13 +498,13 @@ This example uses the following packages:
 
 - `@kysera/core` - Core types, `Executor` type, and error handling
 - `@kysera/infra` - Health checks via `checkDatabaseHealth()`
+- `@kysera/debug` - Query logging via `withDebug()` (see `src/db/connection.ts`)
 
 **Kysera packages (listed but not currently used):**
 
 - `@kysera/repository` - Not used (example uses custom repository pattern)
 - `@kysera/audit` - Not used yet (planned)
 - `@kysera/timestamps` - Not used yet (planned)
-- `@kysera/debug` - Not used yet (planned)
 
 **Other dependencies:**
 

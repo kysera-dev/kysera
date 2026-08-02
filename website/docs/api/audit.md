@@ -16,11 +16,11 @@ npm install @kysera/audit
 
 ## Overview
 
-| Metric                | Value                               |
-| --------------------- | ----------------------------------- |
-| **Bundle Size**       | ~8 KB (minified)                    |
-| **Dependencies**      | @kysera/core (workspace)            |
-| **Peer Dependencies** | kysely >=0.29.0, @kysera/repository |
+| Metric                | Value                                                                             |
+| --------------------- | --------------------------------------------------------------------------------- |
+| **Bundle Size**       | ~8 KB (minified)                                                                   |
+| **Dependencies**      | @kysera/core                                                                       |
+| **Peer Dependencies** | @kysera/executor, kysely >=0.29.0, @kysera/repository (optional), zod (optional) |
 
 ## Exports
 
@@ -28,13 +28,9 @@ npm install @kysera/audit
 // Main plugin
 export { auditPlugin } from './index'
 
-// Database-specific plugins (deprecated — auditPlugin() auto-detects dialect)
+// Deprecated aliases — each simply calls auditPlugin(), which auto-detects the dialect
 /** @deprecated Use auditPlugin() instead */
-export { auditPluginPostgreSQL } from './dialects/postgres'
-/** @deprecated Use auditPlugin() instead */
-export { auditPluginMySQL } from './dialects/mysql'
-/** @deprecated Use auditPlugin() instead */
-export { auditPluginSQLite } from './dialects/sqlite'
+export { auditPluginPostgreSQL, auditPluginMySQL, auditPluginSQLite }
 
 // Types
 export type {
@@ -110,8 +106,10 @@ interface AuditOptions {
   getUserId?: () => string | null
 
   /**
-   * Function to get the timestamp for audit entries
-   * @default () => new Date().toISOString()
+   * Function to get the timestamp for audit entries.
+   * By default the plugin stores formatTimestampForDb(new Date(), dialect) —
+   * ISO 8601 for PostgreSQL/SQLite, 'YYYY-MM-DD HH:MM:SS.mmm' for MySQL/MSSQL.
+   * A returned Date is formatted the same way; a returned string is stored as-is.
    */
   getTimestamp?: () => Date | string
 
@@ -397,16 +395,25 @@ async restoreFromAudit(auditId: number): Promise<T>
 
 **Returns:** The restored entity
 
+**Behavior by operation type:**
+
+- `UPDATE` entries — the entity is updated back to the entry's `old_values`, reverting the change. This works even if the row was soft-deleted after the audited update. The restore runs through the audited `update()`, so a new audit entry is written for it.
+- `DELETE` entries — the entity is re-created from `old_values` via the audited `create()`, which records a new INSERT entry.
+- `INSERT` entries — cannot be restored (the entity already exists); throws `AuditRestoreError`.
+
+**Throws:**
+
+- `NotFoundError` — no audit log entry exists with the given ID
+- `AuditMissingValuesError` — the entry has no `old_values` (or they cannot be parsed)
+- `AuditRestoreError` — INSERT entries, a missing primary key in `old_values`, or a repository without the needed `create`/`update` method
+
+All three error classes are exported from `@kysera/core`.
+
 **Example:**
 
 ```typescript
-// Restore user to previous state
+// Revert an UPDATE (or undo a DELETE) recorded in the audit log
 const restoredUser = await userRepo.restoreFromAudit(auditLogId)
-
-// This will:
-// 1. Read the old_values from the audit log
-// 2. Update the entity with those values
-// 3. Create a new audit entry for the restore operation
 ```
 
 ## AuditLogEntry
@@ -418,16 +425,16 @@ interface AuditLogEntry {
   id: number
   table_name: string
   entity_id: string
-  operation: AuditOperation
+  operation: string
   old_values: string | null // JSON string
   new_values: string | null // JSON string
   changed_by: string | null
   changed_at: string
   metadata: string | null // JSON string
 }
-
-type AuditOperation = 'INSERT' | 'UPDATE' | 'DELETE'
 ```
+
+`operation` is typed as a plain `string` (there is no exported `AuditOperation` type); the plugin writes the conventional values `'INSERT'`, `'UPDATE'`, and `'DELETE'`.
 
 ## AuditFilters
 
@@ -435,8 +442,8 @@ Filters for querying audit logs.
 
 ```typescript
 interface AuditFilters extends AuditPaginationOptions {
-  /** Filter by operation type */
-  operation?: AuditOperation
+  /** Filter by operation type ('INSERT', 'UPDATE', 'DELETE') */
+  operation?: string
   /** Filter by user who made the change */
   userId?: string
   /** Filter changes from this date - accepts Date, ISO string, or unix timestamp (ms) */
@@ -483,6 +490,17 @@ history.forEach(entry => {
 
 **Note:** The `getAuditLog(auditId)` method returns a raw `AuditLogEntry` (with JSON strings), not a `ParsedAuditLogEntry`.
 
+### BigInt and Date Serialization
+
+`old_values` and `new_values` are stored as JSON. Values JSON cannot represent natively are written in a tagged form and transparently revived by `restoreFromAudit()`:
+
+```json
+{ "created_at": { "$kysera": "date", "value": "2026-01-15T10:30:00.000Z" } }
+{ "big_number": { "$kysera": "bigint", "value": "9007199254740993" } }
+```
+
+On restore, tagged dates come back as `Date` objects and tagged bigints as `bigint` values — instead of degrading to strings (Date) or throwing during serialization (BigInt).
+
 ## Automatic Audit Logging
 
 The plugin automatically logs changes for INSERT, UPDATE, and DELETE operations:
@@ -526,31 +544,33 @@ await userRepo.delete(userId)
 // }
 ```
 
-## Query Interception
+## How It Works
 
-The plugin intercepts operations to capture changes:
+The plugin has **no query interceptor** — it works entirely through the `extendRepository()` hook. When a repository is created, the plugin wraps its mutation methods (`create`, `update`, `delete`, their bulk variants, and the soft-delete methods when present) so each call captures old/new values and writes an audit entry:
 
 ```typescript
 // Plugin implementation (simplified)
-async interceptQuery(qb, context) {
-  if (context.operation === 'update') {
-    // Capture old values before update
-    const oldValues = await fetchCurrentValues(context.entityId)
+extendRepository(repo) {
+  const originalUpdate = repo.update.bind(repo)
 
-    // Execute update
-    const result = await qb.execute()
-
-    // Log audit entry
-    await logAuditEntry({
-      operation: 'UPDATE',
-      oldValues,
-      newValues: context.data
-    })
-
-    return result
+  return {
+    ...repo,
+    async update(id, input) {
+      const oldValues = await repo.findById(id) // capture old values
+      const result = await originalUpdate(id, input)
+      await insertAuditEntry({
+        operation: 'UPDATE',
+        old_values: oldValues,
+        new_values: result
+      })
+      return result
+    }
+    // create/delete/bulk methods are wrapped the same way
   }
 }
 ```
+
+Because the plugin wraps repository methods rather than intercepting queries, mutations made directly through the executor or DAL (`executor.updateTable(...)`, raw Kysely queries) are **not** audited — only repository methods are.
 
 ## Usage with Plugin Container
 
@@ -598,19 +618,15 @@ const history = await userRepo.getAuditHistory(userId)
 ## Database-Specific Plugins (Deprecated)
 
 :::warning Deprecated
-Since v0.8.7, `auditPlugin()` automatically detects the dialect and formats timestamps correctly. Use `auditPlugin()` for all databases.
+Since v0.8.7, `auditPlugin()` automatically detects the dialect and formats timestamps correctly. Use `auditPlugin()` for all databases. `auditPluginPostgreSQL`, `auditPluginMySQL`, and `auditPluginSQLite` are thin aliases that simply call `auditPlugin()` — they contain no dialect-specific behavior of their own.
 :::
 
 ```typescript
 // Recommended: works with all databases
 import { auditPlugin } from '@kysera/audit'
 
-// @deprecated — dialect-specific variants
-import { auditPluginPostgreSQL } from '@kysera/audit'
-import { auditPluginMySQL } from '@kysera/audit'
-
-// SQLite - uses TEXT with JSON
-import { auditPluginSQLite } from '@kysera/audit'
+// @deprecated — aliases of auditPlugin(), kept for backwards compatibility
+import { auditPluginPostgreSQL, auditPluginMySQL, auditPluginSQLite } from '@kysera/audit'
 
 const orm = await createORM(db, [
   auditPluginPostgreSQL({
@@ -620,6 +636,10 @@ const orm = await createORM(db, [
 ```
 
 ## Database Schema
+
+:::info Automatic table creation
+`auditPlugin()` checks for the audit table during `onInit` and creates it automatically if missing, using a portable all-TEXT column schema. The DDL below is optional — write it yourself when you want database-native types (JSONB, DATETIME), indexes, or partitioning.
+:::
 
 Create the audit_logs table:
 
@@ -684,6 +704,10 @@ await db.transaction().execute(async (trx) => {
 })
 ```
 
+### Atomic Audit Entries (v0.9)
+
+Since v0.9, mutations on the **root executor** (outside any transaction) are re-dispatched through an implicit transaction, so the mutation and its audit entry commit or roll back together. If the repository cannot be rebound to a transaction (e.g. custom repository shapes without `withTransaction`), the plugin falls back to best-effort sequential writes — the mutation commits first and the audit entry is written afterwards. Inside an explicit transaction, both writes simply join it and the caller controls atomicity.
+
 ## Bulk Operation Optimization
 
 The audit plugin optimizes bulk operations:
@@ -704,10 +728,17 @@ await userRepo.bulkUpdate([
 
 ## TypeScript Types
 
-### AuditRepository
+### AuditRepositoryExtensions
+
+The package does not export an `AuditRepository` type — compose the `AuditRepositoryExtensions<T>` interface with your repository type instead:
 
 ```typescript
-type AuditRepository<Entity, DB> = Repository<Entity, DB> & AuditMethods<Entity>
+import type { AuditRepositoryExtensions } from '@kysera/audit'
+
+type AuditedUserRepo = Repository<User, Database> & AuditRepositoryExtensions<User>
+
+const userRepo = orm.createRepository(createUserRepository) as AuditedUserRepo
+const history = await userRepo.getAuditHistory(123)
 ```
 
 ### AuditLogEntry
@@ -717,7 +748,7 @@ interface AuditLogEntry {
   id: number
   table_name: string
   entity_id: string
-  operation: 'INSERT' | 'UPDATE' | 'DELETE'
+  operation: string // 'INSERT' | 'UPDATE' | 'DELETE' by convention
   old_values: string | null
   new_values: string | null
   changed_by: string | null
@@ -826,6 +857,14 @@ const orm = await createORM(db, [
 // - Soft delete creates audit entry
 // - Timestamps are included in audit values
 ```
+
+### Soft-Delete Coverage
+
+When the soft-delete plugin is installed alongside audit, its methods are audited too:
+
+- `softDelete()` and `restore()` (plus `softDeleteMany()` / `restoreMany()`) are recorded as `UPDATE` entries — they are state transitions on the `deleted_at` column
+- `hardDelete()` and `hardDeleteMany()` are recorded as `DELETE` entries
+- Old values are fetched through an `includeDeleted`-scoped executor, so entries are complete even when the target row is already soft-deleted (e.g. a `restore()` or `hardDelete()` of an invisible row)
 
 ## Schema Validation (Optional)
 

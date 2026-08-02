@@ -58,19 +58,19 @@ const result = await paginate(
 **Solution:** Ensure the cursor matches the columns specified in `orderBy`:
 
 ```typescript
-// If you ordered by 'created_at'
+// paginateCursor applies the ordering itself from `orderBy`
 const firstPage = await paginateCursor(
-  db.selectFrom('posts').selectAll().orderBy('created_at', 'desc'),
-  { limit: 20, cursorColumns: ['created_at'] }
+  db.selectFrom('posts').selectAll(),
+  { limit: 20, orderBy: [{ column: 'created_at', direction: 'desc' }] }
 )
 
 // Use the cursor from the response
 const nextPage = await paginateCursor(
-  db.selectFrom('posts').selectAll().orderBy('created_at', 'desc'),
+  db.selectFrom('posts').selectAll(),
   {
     limit: 20,
-    cursorColumns: ['created_at'],
-    cursor: firstPage.nextCursor // Must be from the same query
+    orderBy: [{ column: 'created_at', direction: 'desc' }],
+    cursor: firstPage.pagination.nextCursor // Must be from the same query
   }
 )
 ```
@@ -156,9 +156,9 @@ const pgQuery = db
   .where('is_active', '=', true)
 
 // Use dialect detection for cross-database code
-import { getDialect } from '@kysera/core'
+import { detectDialect } from '@kysera/core'
 
-const dialect = getDialect(db)
+const dialect = detectDialect(db)
 const activeValue = dialect === 'sqlite' ? 1 : true
 
 const query = db
@@ -240,8 +240,8 @@ const result = await paginate(
 
 // ✅ Fast and consistent performance
 const result = await paginateCursor(
-  db.selectFrom('posts').selectAll().orderBy('id', 'asc'),
-  { limit: 20, cursor: lastCursor, cursorColumns: ['id'] }
+  db.selectFrom('posts').selectAll(),
+  { limit: 20, cursor: lastCursor, orderBy: [{ column: 'id', direction: 'asc' }] }
 )
 ```
 
@@ -283,24 +283,25 @@ const result = await paginate(
 
 **Problem:** Multiple plugins chained together slow down queries.
 
-**Solution:** Plugins are applied in order. Optimize by:
+**Solution:** Plugin execution order is fixed by `priority` (higher runs first: RLS 1000 → soft-delete 500 → timestamps 100 → audit 50) — the order of the array you pass does not matter. Optimize by:
 
-1. Placing filtering plugins first (RLS, soft-delete)
-2. Using database indexes on filtered columns
-3. Profiling with the debug plugin
+1. Using database indexes on plugin-filtered columns
+2. Profiling with `withDebug` from `@kysera/debug`
 
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { rlsPlugin } from '@kysera/rls'
-import { debugPlugin } from '@kysera/debug'
+import { withDebug } from '@kysera/debug'
 
-// Order matters for performance
+// Array order is irrelevant — execution order comes from plugin priority
 const executor = await createExecutor(db, [
-  rlsPlugin({ schema: rlsSchema }),    // Filter first
-  softDeletePlugin(),                   // Then soft-delete filter
-  debugPlugin({ logQueries: true })     // Debug last
+  softDeletePlugin(),
+  rlsPlugin({ schema: rlsSchema })
 ])
+
+// withDebug wraps a Kysely instance for profiling (it is not an executor plugin)
+const debugDb = withDebug(db, { logQuery: true, slowQueryThreshold: 100 })
 
 // Ensure indexes exist on filtered columns
 // CREATE INDEX idx_users_tenant_id ON users(tenant_id);
@@ -359,10 +360,10 @@ For full plugin functionality (soft-delete, RLS, audit, etc.), use `createExecut
 **A:** Use dialect-specific values or create abstraction utilities:
 
 ```typescript
-import { getDialect } from '@kysera/core'
+import { detectDialect } from '@kysera/core'
 
 // Option 1: Detect dialect at runtime
-const dialect = getDialect(db)
+const dialect = detectDialect(db)
 const boolValue = (val: boolean) =>
   dialect === 'sqlite' ? (val ? 1 : 0) : val
 
@@ -407,13 +408,13 @@ import { auditPlugin } from '@kysera/audit'
 import { timestampsPlugin } from '@kysera/timestamps'
 
 const executor = await createExecutor(db, [
-  timestampsPlugin(),              // Auto timestamps
-  softDeletePlugin(),               // Soft deletes
-  rlsPlugin({ schema: rlsSchema }), // Row-level security
-  auditPlugin({ auditTable: 'audit_log' }) // Audit logging
+  timestampsPlugin(),              // Repository-only (extendRepository)
+  softDeletePlugin(),               // Query interceptor: filters soft-deleted rows
+  rlsPlugin({ schema: rlsSchema }), // Query interceptor: row-level security
+  auditPlugin({ auditTable: 'audit_log' }) // Repository-only (extendRepository)
 ])
 
-// All plugins apply to queries
+// Query-interceptor plugins (soft-delete, RLS) apply to executor/DAL queries
 const user = await executor
   .selectFrom('users')
   .selectAll()
@@ -421,7 +422,9 @@ const user = await executor
   .executeTakeFirst()
 ```
 
-Plugins are applied in order, which can affect performance. Place filtering plugins (RLS, soft-delete) first.
+Note that `timestampsPlugin` and `auditPlugin` work through `extendRepository` only — they do nothing on direct executor or DAL queries. To get automatic timestamps and audit logging, use `createORM()` and repositories created with `orm.createRepository()`.
+
+Array order does not matter: execution order is resolved from each plugin's `priority` (RLS 1000 → soft-delete 500 → timestamps 100 → audit 50).
 
 ---
 
@@ -467,18 +470,18 @@ describe.skipIf(!shouldTestMysql)('MySQL tests', () => {
 
 #### Q: What's the maximum page size?
 
-**A:** The default maximum is **10,000 items per page**, configurable via the `MAX_LIMIT` constant:
+**A:** The maximum is **10,000 items per page**. Higher limits are clamped internally — the cap is module-private, so it cannot be imported or configured:
 
 ```typescript
-import { paginate, MAX_LIMIT } from '@kysera/core'
+import { paginate } from '@kysera/core'
 
-// Default max is 10,000
+// Maximum is 10,000
 const result = await paginate(
   db.selectFrom('users').selectAll().orderBy('id', 'asc'),
   { page: 1, limit: 15000 } // Clamped to 10,000
 )
 
-console.log(result.limit) // 10000
+console.log(result.pagination.limit) // 10000
 ```
 
 **Why this limit?**
@@ -490,7 +493,7 @@ console.log(result.limit) // 10000
 **To override (not recommended):**
 
 ```typescript
-// Custom implementation without MAX_LIMIT
+// Custom implementation without the cap
 const customPaginate = async (query, { page, limit }) => {
   const offset = (page - 1) * limit
   return query.limit(limit).offset(offset).execute()
@@ -506,12 +509,16 @@ const customPaginate = async (query, { page, limit }) => {
 **A:** Use both together (CQRS-lite pattern):
 
 ```typescript
+import type { Transaction } from 'kysely'
+
 const orm = await createORM(db, [softDeletePlugin()])
+const userRepo = orm.createRepository(createUserRepository)
 
 await orm.transaction(async ctx => {
-  // Repository for writes (type-safe, validated)
-  const userRepo = orm.createRepository(createUserRepository)
-  const user = await userRepo.create({
+  // Repository for writes — rebind to the transaction (repositories stay
+  // bound to the base executor and would otherwise run OUTSIDE it)
+  const txUserRepo = userRepo.withTransaction(ctx.db as Transaction<Database>)
+  const user = await txUserRepo.create({
     name: 'Alice',
     email: 'alice@example.com'
   })
@@ -567,7 +574,7 @@ await orm.transaction(async ctx => {
 
 #### Q: Can I disable plugins for specific queries?
 
-**A:** Not directly, but you can use the raw Kysely instance:
+**A:** Yes — bypass all plugins with the raw Kysely instance, or opt out of a single plugin's behavior with per-query metadata:
 
 ```typescript
 import { createExecutor } from '@kysera/executor'
@@ -588,14 +595,16 @@ const allUsers = await db
   .execute() // Includes soft-deleted
 ```
 
-Alternatively, use plugin-specific options:
+Alternatively, use per-query plugin metadata — soft-delete skips its filter when `includeDeleted` is set:
 
 ```typescript
-// Some plugins support bypassing
-const allUsers = await executor
+import { withPluginMetadata } from '@kysera/executor'
+
+// Soft-delete filter disabled for queries made through this wrapper;
+// every other plugin stays active
+const allUsers = await withPluginMetadata(executor, { includeDeleted: true })
   .selectFrom('users')
   .selectAll()
-  .where('deleted_at', 'is not', null) // Explicit filter
   .execute()
 ```
 
@@ -605,24 +614,28 @@ const allUsers = await executor
 
 #### Q: How do I create custom plugins?
 
-**A:** Implement the `KyseraPlugin` interface:
+**A:** Implement the `Plugin` interface from `@kysera/executor`:
 
 ```typescript
-import type { KyseraPlugin } from '@kysera/executor'
+import type { Plugin, QueryBuilderContext } from '@kysera/executor'
 
-export function customPlugin(): KyseraPlugin {
+export function customPlugin(): Plugin {
   return {
     name: 'custom-plugin',
-    transformQuery: async (args) => {
-      const { node, executor } = args
+    version: '1.0.0',
+    priority: 0, // Higher runs first (RLS uses 1000, soft-delete 500)
 
-      // Modify query AST
-      if (node.kind === 'SelectQueryNode') {
-        // Add custom WHERE clause, etc.
+    // Modify query builders before execution
+    interceptQuery<QB>(qb: QB, context: QueryBuilderContext): QB {
+      if (context.operation === 'select' && context.table === 'users') {
+        // Add WHERE clauses, etc. (cast qb to the specific builder type)
       }
-
-      return node
+      return qb
     }
+
+    // Also available:
+    // extendRepository?(repo) — add methods to repositories (Repository pattern only)
+    // onInit?(db) / onDestroy?() — lifecycle hooks
   }
 }
 
@@ -630,10 +643,12 @@ export function customPlugin(): KyseraPlugin {
 const executor = await createExecutor(db, [customPlugin()])
 ```
 
+Kysera plugins intercept **query builders** (`interceptQuery`), not query ASTs. A `transformQuery` hook belongs to Kysely's own `KyselyPlugin` API — if you need AST-level transforms, write a Kysely plugin and attach it with `db.withPlugin()`.
+
 See existing plugins for examples:
 - `@kysera/soft-delete` - Simple WHERE clause injection
 - `@kysera/rls` - Tenant-based filtering
-- `@kysera/audit` - Query interception and logging
+- `@kysera/audit` - Repository extension methods (audit logging + restore)
 
 ---
 
@@ -664,10 +679,12 @@ For Repository:
 
 ```typescript
 const orm = await createORM(db, [softDeletePlugin()])
+const userRepo = orm.createRepository(createUserRepository)
 
 await orm.transaction(async ctx => {
-  const userRepo = orm.createRepository(createUserRepository)
-  await userRepo.softDelete(1) // Works in transaction
+  // Rebind so the write actually joins the transaction
+  const txUserRepo = userRepo.withTransaction(ctx.db as Transaction<Database>)
+  await txUserRepo.softDelete(1) // Works in transaction (rebound repo keeps plugins)
 })
 ```
 

@@ -150,7 +150,7 @@ interface SoftDeleteMethods<T> {
 
 | Method                | Description                              | Returns             | Throws                                  |
 | --------------------- | ---------------------------------------- | ------------------- | --------------------------------------- |
-| `softDelete(id)`      | Sets deleted_at to CURRENT_TIMESTAMP     | Soft-deleted record | `NotFoundError` if record doesn't exist |
+| `softDelete(id)`      | Sets deleted_at to the current time (client-generated, dialect-formatted timestamp — not SQL `CURRENT_TIMESTAMP`) | Soft-deleted record | `NotFoundError` if record doesn't exist |
 | `restore(id)`         | Sets deleted_at to NULL                  | Restored record     | `NotFoundError` if not found, `RecordNotDeletedError` if not deleted |
 | `hardDelete(id)`      | Permanently deletes record (real DELETE) | void                | N/A                                     |
 | `findWithDeleted(id)` | Finds by ID including soft-deleted       | Record or null      | N/A                                     |
@@ -301,7 +301,7 @@ await restoreUser(withDeleted, userId)
 
 ### Combined Pattern (CQRS-lite)
 
-````typescript
+```typescript
 import { createORM } from '@kysera/repository'
 import { createQuery } from '@kysera/dal'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -337,6 +337,7 @@ await orm.transaction(async (ctx) => {
   // Soft delete with repository
   await userRepo.softDelete(user.id)
 })
+```
 
 ## Database Schema
 
@@ -354,7 +355,7 @@ CREATE INDEX idx_users_deleted_at ON users(deleted_at);
 -- SQLite
 ALTER TABLE users ADD COLUMN deleted_at TEXT DEFAULT NULL;
 CREATE INDEX idx_users_deleted_at ON users(deleted_at);
-````
+```
 
 ## Transaction Support
 

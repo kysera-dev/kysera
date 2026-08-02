@@ -23,21 +23,11 @@ v0.8 removes all deprecated APIs from v0.7. If you haven't migrated away from de
 
 ## What's Changed in v0.8
 
-### 1. Cursor Pagination Functions Are Now Async
+### 1. Cursor Encoding Now Lazy-Loads Crypto
 
-The `encodeCursor` and `decodeCursor` functions now return Promises because cursor security features (signing/encryption) are lazy-loaded to avoid pulling in `node:crypto` for all consumers. This means `paginateCursor` and `paginateCursorSimple` remain async (as before), but if you were calling `encodeCursor`/`decodeCursor` directly, you must now `await` them.
+Cursor encoding inside `paginateCursor` and `paginateCursorSimple` now lazy-loads the cursor security machinery, so `node:crypto` is only pulled in when cursor signing/encryption is actually used. This preserves cross-runtime compatibility (Node.js, Bun, Deno) for consumers who don't need signed cursors.
 
-**Before (v0.7.x):**
-```typescript
-const cursor = encodeCursor(orderBy, lastRow)
-const decoded = decodeCursor(cursor)
-```
-
-**After (v0.8.x):**
-```typescript
-const cursor = await encodeCursor(orderBy, lastRow)
-const decoded = await decodeCursor(cursor)
-```
+No call-site changes are required: both pagination functions were already async, and cursors remain opaque strings flowing through `pagination.nextCursor` and the `cursor` option. (`encodeCursor`/`decodeCursor` are internal helpers — they have never been public exports of `@kysera/core`.)
 
 ### 2. Cursor Crypto Available as Subpath Export
 
@@ -95,19 +85,22 @@ The `requireContext` option now defaults to `true` instead of `false`. This is a
 **Before (v0.7.x - permissive default):**
 ```typescript
 // Queries without RLS context ran unfiltered (potential data leak!)
-await orm.posts.findAll() // ⚠️ No context = no filtering
+const postRepo = orm.createRepository(createPostRepository)
+await postRepo.findAll() // ⚠️ No context = no filtering
 ```
 
 **After (v0.8.0 - secure default):**
 ```typescript
+const postRepo = orm.createRepository(createPostRepository)
+
 // Option 1: Always run within RLS context (recommended)
 await rlsContext.runAsync(userContext, async () => {
-  await orm.posts.findAll() // ✅ Properly filtered
+  await postRepo.findAll() // ✅ Properly filtered
 })
 
 // Option 2: Use system context for privileged operations
 await rlsContext.asSystemAsync(async () => {
-  await orm.posts.findAll() // ✅ Explicit bypass
+  await postRepo.findAll() // ✅ Explicit bypass
 })
 
 // Option 3: Opt out of secure defaults (not recommended)
@@ -256,7 +249,7 @@ pnpm add @kysera/core@^0.8.5 \
 Ensure peer dependencies are up to date:
 
 ```bash
-# Kysely (unchanged - still >=0.29.0)
+# Kysely (v0.8 requires >=0.28.14; >=0.29.0 arrived with v0.9)
 pnpm add kysely@latest
 
 # Zod (if using Repository validation)
@@ -270,12 +263,14 @@ Replace all `skipTables` options with `excludeTables`:
 **Before (v0.7.x):**
 ```typescript
 import { createExecutor } from '@kysera/executor'
-import { rlsPlugin } from '@kysera/rls'
+import { rlsPlugin, filter } from '@kysera/rls'
 import type { RLSSchema } from '@kysera/rls'
 
 const rlsSchema: RLSSchema = {
   users: {
-    tenant: { column: 'tenant_id' }
+    policies: [
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
+    ]
   }
 }
 
@@ -290,12 +285,14 @@ const executor = await createExecutor(db, [
 **After (v0.8.0):**
 ```typescript
 import { createExecutor } from '@kysera/executor'
-import { rlsPlugin } from '@kysera/rls'
+import { rlsPlugin, filter } from '@kysera/rls'
 import type { RLSSchema } from '@kysera/rls'
 
 const rlsSchema: RLSSchema = {
   users: {
-    tenant: { column: 'tenant_id' }
+    policies: [
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
+    ]
   }
 }
 
@@ -380,7 +377,7 @@ turbo typecheck
 
 1. **Missing excludeTables:**
    ```
-   Error: Property 'skipTables' does not exist on type 'RLSPluginConfig'
+   Error: Property 'skipTables' does not exist on type 'RLSPluginOptions'
    ```
    **Fix:** Replace `skipTables` with `excludeTables`
 
@@ -397,7 +394,7 @@ If your tests reference deprecated APIs, update them:
 **Before (v0.7.x):**
 ```typescript
 import { createExecutor } from '@kysera/executor'
-import { rlsPlugin } from '@kysera/rls'
+import { rlsPlugin, filter } from '@kysera/rls'
 import type { DatabaseDialect } from '@kysera/testing'
 
 describe('RLS Tests', () => {
@@ -406,7 +403,7 @@ describe('RLS Tests', () => {
   it('excludes system tables', async () => {
     const executor = await createExecutor(db, [
       rlsPlugin({
-        schema: { users: { tenant: { column: 'tenant_id' } } },
+        schema: { users: { policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))] } },
         skipTables: ['system_logs']  // ❌ Old option
       })
     ])
@@ -419,7 +416,7 @@ describe('RLS Tests', () => {
 **After (v0.8.0):**
 ```typescript
 import { createExecutor } from '@kysera/executor'
-import { rlsPlugin } from '@kysera/rls'
+import { rlsPlugin, filter } from '@kysera/rls'
 import type { Dialect } from '@kysera/testing'
 
 describe('RLS Tests', () => {
@@ -428,7 +425,7 @@ describe('RLS Tests', () => {
   it('excludes system tables', async () => {
     const executor = await createExecutor(db, [
       rlsPlugin({
-        schema: { users: { tenant: { column: 'tenant_id' } } },
+        schema: { users: { policies: [filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))] } },
         excludeTables: ['system_logs']  // ✅ New option
       })
     ])
@@ -469,7 +466,7 @@ Here's a full example showing all changes together:
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
-import { rlsPlugin } from '@kysera/rls'
+import { rlsPlugin, filter, allow } from '@kysera/rls'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import type { DatabaseDialect } from '@kysera/dialects'  // ❌ Old type
 import type { RLSSchema } from '@kysera/rls'
@@ -478,11 +475,15 @@ const dialect: DatabaseDialect = 'postgres'  // ❌ Old type
 
 const rlsSchema: RLSSchema = {
   users: {
-    tenant: { column: 'tenant_id' },
-    user: { column: 'created_by' }
+    policies: [
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+      allow(['update', 'delete'], ctx => ctx.auth.userId === ctx.row.created_by)
+    ]
   },
   posts: {
-    tenant: { column: 'tenant_id' }
+    policies: [
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
+    ]
   }
 }
 
@@ -504,7 +505,7 @@ async function setupDatabase() {
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
-import { rlsPlugin } from '@kysera/rls'
+import { rlsPlugin, filter, allow } from '@kysera/rls'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import type { Dialect } from '@kysera/dialects'  // ✅ New type
 import type { RLSSchema } from '@kysera/rls'
@@ -513,11 +514,15 @@ const dialect: Dialect = 'postgres'  // ✅ New type
 
 const rlsSchema: RLSSchema = {
   users: {
-    tenant: { column: 'tenant_id' },
-    user: { column: 'created_by' }
+    policies: [
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId })),
+      allow(['update', 'delete'], ctx => ctx.auth.userId === ctx.row.created_by)
+    ]
   },
   posts: {
-    tenant: { column: 'tenant_id' }
+    policies: [
+      filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
+    ]
   }
 }
 
@@ -543,7 +548,7 @@ This is the complete list of breaking changes in v0.8.0:
 
 | Change                             | Previous Behavior            | New Behavior                                        |
 | ---------------------------------- | ---------------------------- | --------------------------------------------------- |
-| `encodeCursor` / `decodeCursor`    | Synchronous (returns value)  | **Async** (returns Promise) - lazy-loads crypto      |
+| Internal cursor encoding           | Crypto loaded eagerly        | Lazy-loads crypto (no public API change)             |
 | Cursor crypto subpath              | Not available                | Available via `@kysera/core/cursor-crypto`           |
 
 ### @kysera/rls
@@ -577,17 +582,19 @@ Ensure code runs within rlsContext.runAsync() or use rlsContext.asSystemAsync() 
 **Solutions:**
 
 ```typescript
+const postRepo = orm.createRepository(createPostRepository)
+
 // Solution 1: Wrap in RLS context (for user operations)
 await rlsContext.runAsync(
   { auth: { userId: user.id, tenantId: user.tenantId, roles: user.roles }, timestamp: new Date() },
   async () => {
-    await orm.posts.findAll()
+    await postRepo.findAll()
   }
 )
 
 // Solution 2: Use system context (for background jobs)
 await rlsContext.asSystemAsync(async () => {
-  await orm.posts.findAll()
+  await postRepo.findAll()
 })
 
 // Solution 3: Opt out of secure defaults (not recommended)
@@ -602,7 +609,7 @@ rlsPlugin({
 
 **Full Error:**
 ```
-Property 'skipTables' does not exist on type 'RLSPluginConfig'.
+Property 'skipTables' does not exist on type 'RLSPluginOptions'.
 Did you mean 'excludeTables'?
 ```
 
@@ -771,7 +778,7 @@ After successfully migrating to v0.8:
 2. **Check for v1.0 Roadmap:** [Kysera v1.0 Planning](https://github.com/kysera-dev/kysera/discussions)
 3. **Update CI/CD:** Ensure deployment pipelines use v0.8.x
 4. **Monitor for Issues:** Watch for edge cases in production
-5. **Plan for v1.0:** v0.8 is the last major release before v1.0
+5. **Plan the next upgrade:** v0.9 is available — see the [Migration Guide v0.8 → v0.9](/docs/guides/migration-v09)
 
 ## Getting Help
 

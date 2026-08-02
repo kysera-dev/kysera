@@ -6,7 +6,7 @@ description: Automatic timestamp management plugin for Kysera
 
 # Timestamps Plugin
 
-Automatically manage `created_at` and `updated_at` timestamps on your entities. Works through **@kysera/executor's** Unified Execution Layer for consistent behavior across both Repository and DAL patterns.
+Automatically manage `created_at` and `updated_at` timestamps on your entities. This is a **repository-level plugin**: it works by wrapping repository write methods via `extendRepository()` and has no query interceptor — writes made directly on the executor or through DAL queries are **not** timestamped.
 
 ## Installation
 
@@ -42,7 +42,9 @@ console.log(post.created_at) // 2024-01-15T10:30:00.000Z
 await postRepo.update(post.id, { title: 'Updated Title' })
 ```
 
-### With Executor Directly
+### Executor and DAL Writes Are NOT Timestamped
+
+The plugin has no `interceptQuery` hook — it only extends repositories. An insert issued directly on the executor (or from a DAL query) passes through unchanged:
 
 ```typescript
 import { createExecutor } from '@kysera/executor'
@@ -50,14 +52,26 @@ import { timestampsPlugin } from '@kysera/timestamps'
 
 const executor = await createExecutor(db, [timestampsPlugin()])
 
-// Timestamps work with direct executor usage
+// NOT timestamped — the plugin never sees this query
 const post = await executor
   .insertInto('posts')
   .values({ title: 'Hello World', content: 'My first post' })
   .returningAll()
   .executeTakeFirst()
-// created_at and updated_at set automatically
+// post.created_at is NULL (or whatever your schema default provides)
 ```
+
+Route writes through a repository to get automatic timestamps:
+
+```typescript
+const orm = await createORM(db, [timestampsPlugin()])
+const postRepo = orm.createRepository(createPostRepository)
+
+const post = await postRepo.create({ title: 'Hello World', content: 'My first post' })
+console.log(post.created_at) // Set automatically
+```
+
+For executor/DAL writes, set the columns yourself or rely on database defaults (`DEFAULT CURRENT_TIMESTAMP`).
 
 ## Configuration
 
@@ -70,7 +84,7 @@ interface TimestampsOptions {
   excludeTables?: string[] // Blacklist tables
   getTimestamp?: () => Date | string | number
   dateFormat?: 'iso' | 'unix' | 'date' // Default: 'iso'
-  primaryKeyColumn?: string // Default: 'id' (only affects touch() method)
+  primaryKeyColumn?: string // Default: 'id' (touch, touchMany, updateMany, createMany fallback)
   logger?: KyseraLogger
 }
 ```
@@ -86,7 +100,7 @@ All methods that use ID-based filtering respect the `primaryKeyColumn` configura
 | `touch(id)`       | ✅ Yes                   | Uses configured primary key |
 | `updateMany(ids)` | ✅ Yes                   | Uses configured primary key |
 | `touchMany(ids)`  | ✅ Yes                   | Uses configured primary key |
-| `createMany()`    | N/A                      | No ID-based filtering       |
+| `createMany()`    | ✅ On MySQL/MSSQL        | Fallback fetches inserted rows by primary key |
 
 :::tip UUID Primary Keys
 For tables with UUID or custom primary keys, configure `primaryKeyColumn`:
@@ -130,6 +144,8 @@ timestampsPlugin({
 ```
 
 ## Added Methods
+
+Besides the methods below, the plugin transparently wraps the base repository's `create()`, `update()`, `bulkCreate()`, and `bulkUpdate()` methods (when present), so single-row and bulk writes all receive the same timestamp injection — no separate call needed.
 
 ### Date Range Queries
 
@@ -248,30 +264,37 @@ The timestamps plugin handles database-specific differences in how records are r
 
 ### RETURNING Clause Support
 
-| Database   | RETURNING Support | Fallback Behavior                              |
+| Database   | RETURNING Support | Behavior                                       |
 | ---------- | ----------------- | ---------------------------------------------- |
-| PostgreSQL | ✅ Full support   | Uses `RETURNING *` for immediate data access   |
-| SQLite     | ✅ 3.35+          | Uses `RETURNING *` for immediate data access   |
-| MySQL      | ❌ Not supported  | Insert then fetch: requires extra SELECT query |
-| MSSQL      | ⚠️ OUTPUT clause  | Uses OUTPUT for single inserts, fallback for batch |
+| PostgreSQL | ✅ Full support   | Single `INSERT ... RETURNING *`                |
+| SQLite     | ✅ 3.35+          | Single `INSERT ... RETURNING *`                |
+| MySQL      | ❌ Not supported  | Per-row insert-then-fetch fallback             |
+| MSSQL      | ❌ Not used       | Per-row insert-then-fetch fallback (the plugin does not use the OUTPUT clause) |
 
 ### How the Fallback Works
 
-For MySQL and batch operations on MSSQL, the plugin uses an **insert-then-fetch** strategy:
+On dialects without `RETURNING` support (MySQL, MSSQL), `createMany()` falls back to inserting rows **one at a time** and fetching each inserted row back by primary key:
 
 ```typescript
-// PostgreSQL/SQLite: Single query with RETURNING
-const result = await db.insertInto('posts').values(data).returningAll().executeTakeFirst()
+// PostgreSQL/SQLite: single bulk query with RETURNING
+const rows = await db.insertInto('posts').values(allRows).returningAll().execute()
 
-// MySQL/MSSQL fallback: Two queries
-await db.insertInto('posts').values(data).execute()
-const result = await db.selectFrom('posts').where('id', '=', insertId).executeTakeFirst()
+// MySQL/MSSQL fallback: two queries PER ROW (2N total)
+for (const item of allRows) {
+  const result = await db.insertInto('posts').values(item).executeTakeFirst()
+  // Fetch by insertId (auto-increment PKs) or by the PK value from the input
+  const row = await db
+    .selectFrom('posts')
+    .selectAll()
+    .where('id', '=', Number(result.insertId))
+    .executeTakeFirst()
+}
 ```
 
 **Performance implications:**
-- MySQL/MSSQL require an extra SELECT query for each insert
-- Batch inserts (`createMany`) use optimized single-query fetching
-- Consider using database defaults for timestamps in high-throughput MySQL scenarios
+- MySQL/MSSQL: `createMany()` issues 2 queries per row (insert + fetch) — 2N round trips for N rows
+- PostgreSQL/SQLite: `createMany()` is a single bulk INSERT with `RETURNING`
+- Consider using database defaults for timestamps in high-throughput MySQL/MSSQL scenarios
 
 ## Database Schema
 
@@ -295,12 +318,31 @@ ALTER TABLE posts ADD COLUMN updated_at TEXT;
 
 The timestamps plugin adds minimal overhead:
 
-| Operation           | Overhead                          |
-| ------------------- | --------------------------------- |
-| create              | +0.1ms                            |
-| update              | +0.1ms                            |
-| findRecentlyCreated | +0.2ms                            |
-| createMany          | Less than 1ms regardless of count |
+| Operation                        | Overhead                                       |
+| -------------------------------- | ---------------------------------------------- |
+| create                           | +0.1ms                                         |
+| update                           | +0.1ms                                         |
+| findRecentlyCreated              | +0.2ms                                         |
+| createMany (PostgreSQL/SQLite)   | Single bulk INSERT with RETURNING              |
+| createMany (MySQL/MSSQL)         | 2 queries per row (insert + fetch by primary key) |
+
+## Schema Validation (Optional)
+
+The plugin's configuration can be validated with Zod via the `/schema` subpath:
+
+```typescript
+import { TimestampsOptionsSchema } from '@kysera/timestamps/schema'
+
+const result = TimestampsOptionsSchema.safeParse({
+  createdAtColumn: 'created_at',
+  updatedAtColumn: 'updated_at',
+  setUpdatedAtOnInsert: true
+})
+```
+
+:::tip
+The main `@kysera/timestamps` package works without Zod installed. Only import from `/schema` if you need runtime validation.
+:::
 
 ## Best Practices
 

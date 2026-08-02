@@ -32,7 +32,7 @@ const UpdateUserSchema = CreateUserSchema.partial()
 const orm = await createORM(db, [softDeletePlugin()])
 // Equivalent to:
 // const executor = await createExecutor(db, [softDeletePlugin()])
-// const orm = createORM(executor, [])
+// const orm = await createORM(executor, [])
 
 // Define repository factory function
 const createUserRepository = (executor, applyPlugins) => ({
@@ -226,6 +226,7 @@ const result = await userRepo.paginateCursor({
 Create multiple repositories with shared plugins:
 
 ```typescript
+import type { Transaction } from 'kysely'
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
@@ -242,14 +243,23 @@ const user = await userRepo.findById(1)
 
 // Transaction with orm.transaction() - plugins preserved
 await orm.transaction(async (ctx) => {
-  const user = await userRepo.create({ ... })
+  // Rebind the repository to the transaction (inside orm.transaction,
+  // ctx.db is always the transaction)
+  const trx = ctx.db as Transaction<Database>
+  const txUserRepo = userRepo.withTransaction(trx)
 
-  // Can also use DAL queries in same transaction
+  const user = await txUserRepo.create({ ... })
+
+  // DAL queries take ctx directly (same transaction, same plugins)
   const stats = await getAnalytics(ctx, user.id)
 
   return { user, stats }
 })
 ```
+
+:::warning Repositories do not auto-join transactions
+Repositories created with `orm.createRepository()` stay bound to the base executor. Calling `userRepo.create()` directly inside `orm.transaction()` would run **outside** the transaction — the write would not roll back with it. Always rebind with `repo.withTransaction(trx)` inside the callback; the rebound repository keeps all plugins.
+:::
 
 ### Without Plugins (Factory Pattern)
 
@@ -345,6 +355,7 @@ Repositories work seamlessly with transactions:
 ### With createORM (Recommended)
 
 ```typescript
+import type { Transaction } from 'kysely'
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
 
@@ -354,16 +365,25 @@ const postRepo = orm.createRepository(createPostRepository)
 
 // Use orm.transaction() - plugins preserved automatically
 await orm.transaction(async (ctx) => {
-  // All repos use the same transaction
-  const user = await userRepo.create({ ... })
-  await postRepo.create({ user_id: user.id, ... })
+  // Rebind each repository to the transaction (inside orm.transaction,
+  // ctx.db is always the transaction)
+  const trx = ctx.db as Transaction<Database>
+  const txUserRepo = userRepo.withTransaction(trx)
+  const txPostRepo = postRepo.withTransaction(trx)
 
-  // Can also use DAL queries in same transaction
+  const user = await txUserRepo.create({ ... })
+  await txPostRepo.create({ user_id: user.id, ... })
+
+  // DAL queries take ctx directly (same transaction, same plugins)
   const stats = await getDashboardStats(ctx, user.id)
 
   return { user, stats }
 })
 ```
+
+:::warning Do not call outer repositories inside the transaction
+`userRepo` and `postRepo` remain bound to the base executor. Calling `userRepo.create()` directly inside `orm.transaction()` executes **outside** the transaction, so those writes are not rolled back if the transaction fails. Rebind with `repo.withTransaction(trx)` — the rebound repository preserves all plugin behavior.
+:::
 
 ### Without createORM (Repository Factory)
 

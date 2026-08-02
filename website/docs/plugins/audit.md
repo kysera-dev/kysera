@@ -6,7 +6,7 @@ description: Audit logging plugin for Kysera
 
 # Audit Plugin
 
-Automatically track all database changes with comprehensive audit logging. Works through **@kysera/executor's** Unified Execution Layer for consistent behavior.
+Automatically track database changes with comprehensive audit logging. This is a **repository-level plugin**: it works by wrapping repository mutation methods via `extendRepository()` and has no query interceptor — only mutations made through repositories are audited.
 
 ## Installation
 
@@ -44,7 +44,9 @@ await userRepo.delete(userId)
 const history = await userRepo.getAuditHistory(userId)
 ```
 
-### With Executor Directly
+### Direct Executor Writes Are NOT Audited
+
+The plugin has no `interceptQuery` hook — auditing happens only in the repository method wrappers. A write issued directly on the executor (or from a DAL mutation) executes normally but produces **no audit log entry**. This is silent: nothing fails, the row simply never appears in the audit trail.
 
 ```typescript
 import { createExecutor } from '@kysera/executor'
@@ -56,14 +58,17 @@ const executor = await createExecutor(db, [
   })
 ])
 
-// Audit logging works with direct executor usage
+// Executes fine — but NO audit entry is written (silent audit-trail loss)
 const user = await executor
   .insertInto('users')
   .values({ email: 'john@example.com', name: 'John' })
   .returningAll()
   .executeTakeFirst()
-// Audit log entry created automatically
 ```
+
+:::warning
+If a complete audit trail matters, route **every mutation** through a repository and keep direct executor/DAL usage for reads.
+:::
 
 ## Configuration
 
@@ -135,7 +140,7 @@ interface AuditLogEntry {
 | `getAuditLogs(entityId, options?)`    | Alias for getAuditHistory                      | `ParsedAuditLogEntry[]`  |
 | `getAuditLog(auditId)`                | Get specific audit log entry (raw)             | `AuditLogEntry \| null`  |
 | `getTableAuditLogs(filters?)`         | Query audit logs across the table with filters | `ParsedAuditLogEntry[]`  |
-| `getUserChanges(userId, options?)`    | Get all changes made by a specific user        | `ParsedAuditLogEntry[]`  |
+| `getUserChanges(userId, options?)`    | Changes made by a user to this repository's table | `ParsedAuditLogEntry[]`  |
 | `restoreFromAudit(auditId)`           | Restore entity to previous state               | `T`                      |
 
 :::info Parsed vs Raw
@@ -183,7 +188,8 @@ const deletions = await userRepo.getTableAuditLogs({
 ### User Activity Tracking
 
 ```typescript
-// Get all changes made by a specific user
+// Get changes made by a specific user to THIS repository's table
+// (scoped with WHERE table_name = 'users' — query each repo for cross-table activity)
 const userActivity = await userRepo.getUserChanges('admin-123', {
   limit: 100,
   offset: 0
@@ -222,16 +228,23 @@ interface AuditPaginationOptions {
 ```typescript
 // Restore entity to a previous state
 const restoredUser = await userRepo.restoreFromAudit(auditLogId)
-
-// This will:
-// 1. Read the old_values from the audit log
-// 2. Update the entity with those values
-// 3. Create a new audit entry for the restore operation
 ```
+
+What happens depends on the operation recorded in the audit entry:
+
+| Entry operation | Restore behavior                                                       |
+| --------------- | ---------------------------------------------------------------------- |
+| `UPDATE`        | Reverts the entity to `old_values` via an audited update. Works even if the row was soft-deleted after the audited change — the update is re-dispatched through an `includeDeleted`-scoped executor. |
+| `DELETE`        | Re-creates the entity from `old_values` via an audited create.          |
+| `INSERT`        | Throws `AuditRestoreError` — the entity already exists; there is no previous state to revert to. |
+
+The restore runs through the audited create/update path, so it produces a new audit entry and is atomic like any other mutation.
 
 ## Database Schema
 
-Create the audit_logs table:
+You do not have to create the audit table yourself: during initialization (`onInit`) the plugin checks whether the table exists and **auto-creates it if missing**, using portable `TEXT` columns for all value fields so it works on every supported dialect.
+
+Creating the table manually is optional — do it when you want database-native types (e.g. `JSONB` on PostgreSQL) or when your migration system should own the schema:
 
 ```sql
 CREATE TABLE audit_logs (
@@ -267,6 +280,13 @@ await db.transaction().execute(async (trx) => {
 })
 ```
 
+### Atomicity Outside Explicit Transactions
+
+When a mutation runs on the **root executor** (no transaction open), the plugin re-dispatches it inside an implicit transaction with the full plugin chain re-applied, so the mutation and its audit entry commit or roll back **together**.
+
+- **Inside an explicit transaction**: the caller already controls atomicity — mutation and audit entry are written on the same transaction.
+- **Implicit transaction unavailable** (e.g. the repository cannot be rebuilt on a transaction): the plugin falls back to best-effort sequential logging — mutation first, audit entry after.
+
 ## Bulk Operation Optimization
 
 :::tip Performance Optimizations (v0.7.3)
@@ -297,12 +317,27 @@ await userRepo.bulkUpdate([
 
 ### Optimized Methods
 
-All bulk methods use batch audit logging:
+The audit plugin wraps the base repository's bulk methods with batch audit logging:
 
-- `createMany(inputs)` - Single batch INSERT for audit entries
-- `updateMany(ids, data)` - Batch fetch old values, batch audit INSERT
-- `deleteMany(ids)` - Batch fetch old values, batch audit INSERT
-- `bulkUpdate(updates)` - Optimized for mixed updates
+- `bulkCreate(inputs)` - Single batch INSERT for audit entries
+- `bulkUpdate(updates)` - Batch fetch old values, batch audit INSERT
+- `bulkDelete(ids)` - Batch pre-delete probe (also captures old values), batch audit INSERT
+
+:::warning createMany / updateMany are NOT audited
+`createMany()` and `updateMany()` are added by the **timestamps plugin** and write through the executor directly — they never pass through the audit wrappers, so they produce no audit entries. For audited bulk writes, use `bulkCreate()` / `bulkUpdate()` / `bulkDelete()`.
+:::
+
+### Soft-Delete Operation Coverage
+
+When the soft-delete plugin extends the same repository (it runs first — higher priority), the audit plugin wraps its methods too:
+
+| Method                                   | Audited As |
+| ---------------------------------------- | ---------- |
+| `softDelete(id)` / `softDeleteMany(ids)` | `UPDATE`   |
+| `restore(id)` / `restoreMany(ids)`       | `UPDATE`   |
+| `hardDelete(id)` / `hardDeleteMany(ids)` | `DELETE`   |
+
+Old values for these entries are captured through an `includeDeleted`-scoped executor, so rows hidden by the soft-delete filter (a restore or hard-delete target) can still be read for the audit entry — every other plugin (RLS, ...) stays active.
 
 ## Database-Specific Plugins
 

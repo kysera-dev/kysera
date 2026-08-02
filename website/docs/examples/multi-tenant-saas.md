@@ -103,13 +103,16 @@ interface Database {
 
 ### Context Setup with rlsContext
 
-The actual implementation uses RLS context from `@kysera/rls` (see `src/index.ts`):
+The actual implementation uses RLS context from `@kysera/rls` (see `src/index.ts`).
+Shown here is the `users` table only — the example's full schema applies the
+same tenant filter to `projects`, `tasks`, and `audit_logs` as well:
 
 ```typescript
 import { rlsContext, rlsPlugin, defineRLSSchema, filter } from '@kysera/rls'
 import { createExecutor } from '@kysera/executor'
 
-// Define RLS schema with automatic tenant filtering
+// Define RLS schema with automatic tenant filtering (excerpt: users table;
+// the example also covers projects, tasks, and audit_logs)
 const rlsSchema = defineRLSSchema<Database>({
   users: {
     policies: [

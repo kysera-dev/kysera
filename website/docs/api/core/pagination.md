@@ -171,18 +171,17 @@ Cursors are base64-encoded:
 
 ## Database Optimizations
 
-### PostgreSQL
+### Multi-Column Cursor Conditions
 
-When all columns are ASC, uses efficient row value comparison:
+Multi-column cursors generate compound comparison conditions — the same shape on every dialect:
 
 ```sql
--- Efficient: Single comparison
-WHERE (created_at, id) > ($1, $2)
-ORDER BY created_at, id
-
--- Less efficient: Compound conditions
-WHERE created_at > $1 OR (created_at = $1 AND id > $2)
+-- Cursor over (created_at DESC, id DESC):
+WHERE created_at < $1 OR (created_at = $1 AND id < $2)
+ORDER BY created_at DESC, id DESC
 ```
+
+Each ORDER BY column adds one OR branch: strict comparison on the current column, equality on all preceding columns. A matching composite index (below) keeps these lookups fast.
 
 ### Indexing
 
@@ -304,29 +303,30 @@ const page1 = await paginateCursor(
 // ORDER BY created_at DESC, id DESC
 ```
 
-### PostgreSQL Row Value Comparison
+### PostgreSQL
 
-When all columns use the same direction (all `asc` or all `desc`), PostgreSQL uses efficient row value comparison:
+PostgreSQL uses standard `LIMIT` syntax; multi-column cursors produce the same compound conditions as on other dialects:
 
 ```typescript
-// Efficient PostgreSQL query
 const result = await paginateCursor(
   db.selectFrom('posts').selectAll(),
   {
     orderBy: [
       { column: 'created_at', direction: 'desc' },
-      { column: 'id', direction: 'desc' } // Same direction
+      { column: 'id', direction: 'desc' }
     ],
     limit: 20
   }
 )
 
-// PostgreSQL generates:
+// Generated SQL:
 // SELECT * FROM posts
-// WHERE (created_at, id) < ($1, $2)
+// WHERE created_at < $1 OR (created_at = $1 AND id < $2)
 // ORDER BY created_at DESC, id DESC
-// LIMIT 20
+// LIMIT 21
 ```
+
+(The extra row — `LIMIT 21` for `limit: 20` — is fetched to compute `hasNext`, then dropped.)
 
 ### MySQL and SQLite
 

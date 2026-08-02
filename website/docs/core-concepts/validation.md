@@ -63,27 +63,32 @@ const userRepo = factory.create({
     entity: zodAdapter(UserSchema), // Optional - validates DB results
     create: zodAdapter(CreateUserSchema)
   }
-  // Output validation controlled via KYSERA_VALIDATION_MODE or NODE_ENV
+  // Output validation controlled via validateDbResults (default: NODE_ENV === 'development')
 })
 ```
 
 ## Validation Modes
 
-Control validation behavior via environment variables:
+The `KYSERA_VALIDATION_MODE` environment variable controls the **standalone validation helpers** — `getValidationMode()`, `shouldValidate()`, and `createValidator().validateConditional()`. It does **not** affect repository validation:
+
+- Repository **input** validation is controlled by the `validationStrategy` config option (`'strict'` by default, `'none'` to disable)
+- Repository **output** validation is controlled by the `validateDbResults` config option (default: `NODE_ENV === 'development'`)
 
 ```bash
-# Full validation (development)
+# Always validate, in every environment
 KYSERA_VALIDATION_MODE=always
 
-# Input only (production)
-KYSERA_VALIDATION_MODE=production
-
-# No validation (testing/performance)
+# Never validate
 KYSERA_VALIDATION_MODE=never
 
-# Default behavior based on NODE_ENV
+# Validate only when NODE_ENV=development
 KYSERA_VALIDATION_MODE=development
+
+# Never validate (production preset)
+KYSERA_VALIDATION_MODE=production
 ```
+
+When the variable is not set, the mode falls back to `NODE_ENV` (`development` when `NODE_ENV=development`, otherwise `production`).
 
 ### Using getValidationMode
 
@@ -232,8 +237,10 @@ const CreateOrderSchema = z
 
 ### Async Validation
 
+Async refinements are for **standalone validation only** — repositories parse synchronously, and Zod throws if a synchronous `parse()` hits an async refinement. Do not pass an async-refined schema as a repository `create`/`update` schema; validate with `parseAsync()` at the API boundary instead:
+
 ```typescript
-const CreateUserSchema = z
+const CheckedEmailSchema = z
   .object({
     email: z.string().email(),
     name: z.string().min(1)
@@ -245,6 +252,10 @@ const CreateUserSchema = z
     },
     { message: 'Email already exists' }
   )
+
+// Standalone async validation with parseAsync()
+const input = await CheckedEmailSchema.parseAsync(req.body)
+const user = await userRepo.create(input)
 ```
 
 ### Conditional Validation
@@ -326,8 +337,9 @@ const formatValidationError = (error: ValidationError) => {
   }
 }
 
-// Usage with safe validation
-const result = validator.validateSafe(userData)
+// Usage with the adapter's safeParse (validateSafe returns `T | null`,
+// which carries no error details)
+const result = zodAdapter(CreateUserSchema).safeParse(userData)
 if (!result.success) {
   const formatted = formatValidationError(result.error)
   res.status(400).json(formatted)

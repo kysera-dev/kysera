@@ -99,7 +99,6 @@ export interface MyPluginOptions {
 
 ```typescript
 import type { Plugin } from '@kysera/executor'
-import { getRawDb } from '@kysera/executor'
 import type { Kysely } from 'kysely'
 import { silentLogger, type KyseraLogger } from '@kysera/core'
 
@@ -154,8 +153,6 @@ export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
         // Add new method
         async myCustomMethod() {
           logger.debug('Custom method called')
-          // Use getRawDb to bypass interceptors if needed
-          const rawDb = getRawDb(baseRepo.executor)
           return 'result'
         },
 
@@ -203,9 +200,9 @@ const myPlugin = (): Plugin => ({
   version: '1.0.0',
 
   interceptQuery(qb, context: QueryBuilderContext) {
-    // Filter SELECT queries
+    // Filter SELECT queries (qualify with the alias when the table is aliased)
     if (context.operation === 'select' && !context.metadata['includeDeleted']) {
-      return qb.where(`${context.table}.deleted_at`, 'is', null)
+      return qb.where(`${context.alias ?? context.table}.deleted_at`, 'is', null)
     }
 
     // Validate INSERT operations
@@ -260,21 +257,31 @@ extendRepository(repo) {
 }
 ```
 
-### 3. Bypassing Interceptors
+### 3. Scoped Opt-Outs with withPluginMetadata
 
-Use `getRawDb` to access the underlying Kysely instance without plugin interception:
+Extension methods sometimes need to see rows their own plugin normally hides — `findWithDeleted()` must skip the soft-delete filter, for example. Do **not** bypass the executor for this. Derive a metadata-scoped executor with `withPluginMetadata` and make your interceptor honor the flag:
 
 ```typescript
-import { getRawDb } from '@kysera/executor'
+import { withPluginMetadata } from '@kysera/executor'
 
+// In interceptQuery: honor the opt-out flag
+interceptQuery(qb, context) {
+  if (context.operation === 'select' && context.metadata['includeDeleted'] !== true) {
+    return qb.where(`${context.alias ?? context.table}.deleted_at`, 'is', null)
+  }
+  return qb
+},
+
+// In extendRepository: run opt-out queries through the scoped executor
 extendRepository(repo) {
+  const withDeleted = withPluginMetadata(repo.executor, { includeDeleted: true })
+
   return {
     ...repo,
 
     async findWithDeleted(id: number) {
-      // Bypass soft-delete filter
-      const rawDb = getRawDb(repo.executor)
-      return await rawDb
+      // Soft-delete filter off; every other plugin (RLS, ...) stays active
+      return await withDeleted
         .selectFrom(repo.tableName)
         .where('id', '=', id)
         .selectAll()
@@ -283,6 +290,61 @@ extendRepository(repo) {
   }
 }
 ```
+
+The metadata channel is scoped: only plugins that explicitly read a key react to it, and every other interceptor still runs. This is how the first-party soft-delete and audit plugins implement `findWithDeleted()`, `restore()`, and old-value capture. Plugins may honor *behavioral* opt-outs this way (row visibility, verbosity), but must never honor security bypasses — the channel is reachable by any caller holding the executor.
+
+:::danger getRawDb bypasses every plugin
+`getRawDb(executor)` returns the raw Kysely instance with **all** interception disabled — including security plugins. Implementing `findWithDeleted()` with `getRawDb` is exactly the anti-pattern removed in Kysera 0.9: combined with RLS it leaked other tenants' rows. Reserve `getRawDb` for genuinely plugin-free internals (e.g. dialect detection), never for row-visibility opt-outs.
+:::
+
+## Plugin Toolkit (@kysera/core)
+
+`@kysera/core` exports a small plugin-base toolkit that the first-party plugins are built on. Use it to get consistent options, defaults, and table filtering:
+
+```typescript
+import {
+  createPluginConfig,
+  createPluginMetadata,
+  shouldApplyToTable,
+  PLUGIN_PRIORITIES,
+  type BasePluginOptionsWithPrimaryKey
+} from '@kysera/core'
+import type { Plugin } from '@kysera/executor'
+
+// Extend the base options: logger + tables/excludeTables (+ primaryKeyColumn)
+export interface MyPluginOptions extends BasePluginOptionsWithPrimaryKey {
+  myColumn?: string
+}
+
+export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
+  // Resolve defaults once: logger → silentLogger, primaryKeyColumn → 'id', ...
+  const config = createPluginConfig('my-plugin', options)
+
+  return {
+    ...createPluginMetadata('@myorg/my-plugin', '1.0.0', {
+      priority: PLUGIN_PRIORITIES.FILTER // 500
+    }),
+
+    interceptQuery(qb, context) {
+      // Consistent whitelist/blacklist filtering across the ecosystem
+      if (!shouldApplyToTable(context.table, config)) {
+        return qb
+      }
+      // ... plugin logic
+      return qb
+    }
+  }
+}
+```
+
+| Export | Purpose |
+| ------ | ------- |
+| `BasePluginOptions` | Standard options every plugin should accept: `logger` plus the `TableFilterConfig` fields (`tables`, `excludeTables`) |
+| `BasePluginOptionsWithPrimaryKey` | Adds `primaryKeyColumn` (default `'id'`) |
+| `createPluginConfig(name, options)` | Resolves options into a config with defaults applied |
+| `createPluginMetadata(name, version, options?)` | Builds the `name`/`version`/`priority`/`dependencies`/`conflictsWith` block |
+| `PLUGIN_PRIORITIES` | Priority tiers: `CONTEXT` 1100, `SECURITY` 1000, `FILTER` 500, `TRANSFORM` 100, `AUDIT` 50, `DEFAULT` 0, `DEBUG` -100 |
+| `TableFilterConfig` / `shouldApplyToTable(table, config)` | Whitelist/blacklist matching — a `tables` whitelist takes precedence over `excludeTables` |
 
 ## Type Safety
 
@@ -473,7 +535,6 @@ export const myPlugin = (): Plugin => ({
 
 ```typescript
 import type { Plugin, QueryBuilderContext } from '@kysera/executor'
-import { getRawDb } from '@kysera/executor'
 import type { Kysely } from 'kysely'
 import { silentLogger, type KyseraLogger } from '@kysera/core'
 import { z } from 'zod'

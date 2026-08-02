@@ -216,15 +216,21 @@ The `createQuery` function accepts either raw Kysely or `KyseraExecutor`:
 
 ```typescript
 // From @kysera/dal/src/query.ts
-export function createQuery<DB, TArgs, TResult>(
+export function createQuery<DB, TArgs extends readonly unknown[], TResult>(
   queryFn: (ctx: DbContext<DB>, ...args: TArgs) => Promise<TResult>
 ): QueryFunction<DB, TArgs, TResult> {
-  return (dbOrCtx: Kysely<DB> | KyseraExecutor<DB> | DbContext<DB>, ...args: TArgs) => {
-    const ctx = 'db' in dbOrCtx ? dbOrCtx : createContext(dbOrCtx)
+  return (
+    dbOrCtx: Kysely<DB> | KyseraExecutor<DB> | DbContext<DB>,
+    ...args: TArgs
+  ): Promise<TResult> => {
+    const ctx: DbContext<DB> = toContext(dbOrCtx)
+
     return queryFn(ctx, ...args)
   }
 }
 ```
+
+`toContext` recognizes an existing `DbContext` by its `DB_CONTEXT_SYMBOL` marker and passes it through unchanged; anything else (raw Kysely or `KyseraExecutor`) is wrapped with `createContext`.
 
 When you pass a `KyseraExecutor` to a DAL query:
 
@@ -242,7 +248,7 @@ const getUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('us
 await getUsers(executor)
 ```
 
-The `KyseraExecutor` is a **Proxy** that intercepts `selectFrom`, `insertInto`, `updateTable`, and `deleteFrom` calls, applying all plugin `interceptQuery` hooks before returning the query builder.
+The `KyseraExecutor` is a **Proxy** that intercepts `selectFrom`, `insertInto`, `updateTable`, `deleteFrom`, `replaceInto` (MySQL), and `mergeInto` calls, applying all plugin `interceptQuery` hooks before returning the query builder.
 
 ### The Technical Difference
 
@@ -492,7 +498,13 @@ await db.transaction().execute(async (trx) => {
 ### DAL Transactions
 
 ```typescript
-import { withTransaction, createContext, createQuery, type DbContext } from '@kysera/dal'
+import {
+  withTransaction,
+  createContext,
+  createQuery,
+  createTransactionalQuery,
+  type DbContext
+} from '@kysera/dal'
 import { createExecutor } from '@kysera/executor'
 
 // Using withTransaction with executor (plugins propagated)
@@ -521,7 +533,7 @@ You can use both patterns in the same application with the **CQRS-lite** pattern
 import { createORM } from '@kysera/repository'
 import { createQuery, type DbContext } from '@kysera/dal'
 import { softDeletePlugin } from '@kysera/soft-delete'
-import { sql } from 'kysely'
+import { sql, type Transaction } from 'kysely'
 
 // Create ORM with plugins (internally uses createExecutor)
 const orm = await createORM(db, [softDeletePlugin()])
@@ -540,8 +552,10 @@ const getAnalytics = createQuery((ctx: DbContext<Database>, userId: number) =>
 
 // Use both in same transaction with shared plugins
 await orm.transaction(async ctx => {
-  // Repository for writes (plugins + extension methods)
-  const user = await userRepo.create({ email: 'test@example.com' })
+  // Repository for writes — rebind to the transaction first (inside
+  // orm.transaction, ctx.db is always the transaction)
+  const txUserRepo = userRepo.withTransaction(ctx.db as Transaction<Database>)
+  const user = await txUserRepo.create({ email: 'test@example.com' })
 
   // DAL for complex reads (plugins applied via context)
   const stats = await getAnalytics(ctx, user.id)
@@ -552,6 +566,10 @@ await orm.transaction(async ctx => {
 
 :::tip CQRS-lite Pattern
 The `orm.transaction()` method creates a `DbContext` that works with both Repository and DAL patterns. Both share the same plugin interceptors, ensuring consistent behavior. Repository additionally gets extension methods from plugins.
+:::
+
+:::warning Repositories do not auto-join transactions
+Repositories created with `orm.createRepository()` stay bound to the base executor. Calling `userRepo.create()` directly inside `orm.transaction()` would run **outside** the transaction — the write would not roll back with it. Always rebind with `repo.withTransaction(trx)` inside the callback; the rebound repository keeps all plugins.
 :::
 
 ## When to Use Each Pattern
@@ -640,7 +658,7 @@ const user = await userRepo.create(data)
 1. **Keep repositories thin** - data access only, no business logic
 2. **Use factory pattern** for dependency injection
 3. **Define clear schemas** for create/update operations
-4. **Order plugins correctly** - timestamps → soft-delete → audit
+4. **Don't order plugins manually** - execution order comes from plugin `priority` (RLS 1000 → soft-delete 500 → timestamps 100 → audit 50), not from array order
 
 ### For DAL
 

@@ -23,7 +23,7 @@ const config: Config = {
 
   markdown: {
     hooks: {
-      onBrokenMarkdownLinks: 'warn'
+      onBrokenMarkdownLinks: 'throw'
     }
   },
 
@@ -213,8 +213,8 @@ const config: Config = {
               to: '/docs/examples/overview'
             },
             {
-              label: 'Migration v0.7 → v0.8',
-              to: '/docs/guides/migration-v08'
+              label: 'Migration v0.8 → v0.9',
+              to: '/docs/guides/migration-v09'
             }
           ]
         },

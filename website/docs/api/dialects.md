@@ -16,7 +16,7 @@ npm install @kysera/dialects kysely
 
 ## Overview
 
-**Dependencies:** None (peer: kysely >=0.29.0)
+**Dependencies:** @kysera/core (peer: kysely >=0.29.0)
 **Database Support:** PostgreSQL, MySQL, SQLite, MSSQL
 
 :::info Package Type
@@ -127,18 +127,15 @@ export type {
   DialectAdapter,         // Adapter interface
   DialectAdapterOptions,  // Adapter configuration options
   SchemaOptions,          // Schema-aware operation options
-  DatabaseErrorLike,      // Error object shape
-  TenantSchemaConfig,     // Multi-tenant configuration
-  SchemaCopyOptions,      // Schema cloning options
-  ExtractedErrorInfo,     // Normalized error information
-  ErrorMatcherConfig      // Error matcher configuration
+  DatabaseErrorLike       // Error object shape
 } from './types'
 
 // Factory and adapters
 export {
   getAdapter,             // Get singleton adapter instance
   createDialectAdapter,   // Create new adapter instance
-  registerAdapter         // Register custom adapter
+  registerAdapter,        // Register custom adapter
+  type AdapterOptions     // Discriminated union of dialect + adapter options
 } from './factory'
 
 export {
@@ -200,10 +197,14 @@ export {
   isTenantSchema,         // Check if schema is a tenant schema
   filterTenantSchemas,    // Filter array to tenant schemas only
   extractTenantIds,       // Extract tenant IDs from schema array
+  type TenantSchemaConfig,  // Multi-tenant configuration
+  type SchemaCopyOptions,   // Standalone schema-copy options type (NOT the cloneSchema parameter)
   // Error detection utilities
   extractErrorInfo,       // Extract normalized error info
   createErrorMatcher,     // Create custom error matcher
-  errorMatchers           // Pre-built error matchers
+  errorMatchers,          // Pre-built error matchers
+  type ExtractedErrorInfo,  // Normalized error information
+  type ErrorMatcherConfig   // Error matcher configuration
 } from './helpers'
 ```
 
@@ -308,6 +309,22 @@ function registerAdapter(adapter: DialectAdapter): void
 // Example
 const customAdapter = new PostgresAdapter({ defaultSchema: 'custom' })
 registerAdapter(customAdapter)
+```
+
+#### `AdapterOptions` Type
+
+Discriminated union pairing each dialect with its adapter options - useful for storing adapter configuration as a single value:
+
+```typescript
+type AdapterOptions =
+  | { dialect: 'postgres'; options?: PostgresAdapterOptions }
+  | { dialect: 'mysql'; options?: MySQLAdapterOptions }
+  | { dialect: 'sqlite'; options?: SQLiteAdapterOptions }
+  | { dialect: 'mssql'; options?: MSSQLAdapterOptions }
+
+// Example
+const config: AdapterOptions = { dialect: 'postgres', options: { defaultSchema: 'app' } }
+const adapter = createDialectAdapter(config.dialect, config.options)
 ```
 
 ### Connection Utilities
@@ -809,15 +826,15 @@ await adapter.cloneSchema(db, 'template', 'tenant_456', { includeData: true })
 
 // Exclude certain tables
 await adapter.cloneSchema(db, 'template', 'tenant_456', { excludeTables: ['logs'] })
-
-// Include only specific tables
-await adapter.cloneSchema(db, 'template', 'tenant_456', { includeTables: ['users', 'settings'] })
 ```
 
-**Options:**
+**Options:** `{ includeData?: boolean; excludeTables?: string[] }`
 - `includeData` - Include table data (default: `false`)
 - `excludeTables` - Tables to exclude from cloning
-- `includeTables` - Tables to include (if specified, only these are copied)
+
+:::note
+The exported `SchemaCopyOptions` type is a standalone helper type and is **not** the parameter type of `cloneSchema()` - in particular, its `includeTables` field is not supported by `cloneSchema()`.
+:::
 
 #### `compareSchemas(db, schema1, schema2)`
 
@@ -868,7 +885,7 @@ const adapter = getAdapter('mysql')
 adapter.getDefaultPort()                    // 3306
 adapter.getCurrentTimestamp()               // 'CURRENT_TIMESTAMP'
 adapter.escapeIdentifier('my-table')        // `my-table`
-adapter.formatDate(new Date())              // 'YYYY-MM-DD HH:MM:SS'
+adapter.formatDate(new Date())              // 'YYYY-MM-DD HH:MM:SS.mmm' (includes milliseconds)
 adapter.isUniqueConstraintError(e)          // code 'ER_DUP_ENTRY' or '1062'
 adapter.isForeignKeyError(e)                // code '1451', '1452'
 adapter.isNotNullError(e)                   // code 'ER_BAD_NULL_ERROR' or '1048'
@@ -887,7 +904,7 @@ interface SQLiteAdapterOptions extends DialectAdapterOptions {
 ```
 
 :::note SQLite Schema Behavior
-SQLite has no schema support (single schema only). SchemaOptions are accepted for interface compatibility but are ignored. The `defaultSchema` is `'main'`.
+The `defaultSchema` is `'main'`. A non-`'main'` schema passed via SchemaOptions targets an `ATTACH`ed database of that name - introspection queries then go through `<schema>.sqlite_master` and qualified table names. Without attached databases, only `'main'` exists.
 :::
 
 ### Creating an Adapter
@@ -1256,7 +1273,7 @@ async function monitorDatabase(db: Kysely<any>) {
 ## Performance Considerations
 
 - **Adapter lookup is fast:** Singleton instances are cached
-- **Schema proxy caching:** `withSchema()` proxies are cached (up to 100 schemas)
+- **Schema proxy caching:** the executor's `withSchema()` proxies are LRU-cached (up to 100 schemas) - this lives in [@kysera/executor](/docs/api/executor), not in this package
 - **Introspection queries:** Use `information_schema` (fast for small schemas)
 - **Truncate operations:** Use database-specific optimizations (CASCADE, RESTART IDENTITY)
 - **Error detection:** String/code matching is fast (no regex)

@@ -51,15 +51,15 @@ Kysera follows a layered architecture with `@kysera/executor` as the foundation:
 | ------------------------------------------ | -------------------------------------------------- | ----------- |
 | [@kysera/core](/docs/api/core)             | Core utilities - errors, pagination, logger, types | ~8 KB       |
 | [@kysera/executor](/docs/api/executor)     | **Foundation**: Unified plugin execution layer     | ~8 KB       |
-| [@kysera/repository](/docs/api/repository) | Repository pattern with validation                 | ~12 KB      |
-| [@kysera/dal](/docs/api/dal)               | Functional Data Access Layer                       | ~7 KB       |
+| [@kysera/repository](/docs/api/repository) | Repository pattern with validation                 | ~22 KB      |
+| [@kysera/dal](/docs/api/dal)               | Functional Data Access Layer                       | ~4 KB       |
 
 ### Infrastructure Packages
 
 | Package                                    | Description                                            | Bundle Size |
 | ------------------------------------------ | ------------------------------------------------------ | ----------- |
 | [@kysera/infra](/docs/api/infra)           | Health checks, retry, circuit breaker, shutdown        | ~12 KB      |
-| [@kysera/dialects](/docs/api/dialects)     | Dialect-specific utilities - PostgreSQL, MySQL, SQLite, MSSQL | ~5 KB       |
+| [@kysera/dialects](/docs/api/dialects)     | Dialect-specific utilities - PostgreSQL, MySQL, SQLite, MSSQL | ~22 KB      |
 | [@kysera/debug](/docs/api/debug)           | Query logging, profiling, SQL formatting               | ~5 KB       |
 | [@kysera/testing](/docs/api/testing)       | Testing utilities and factories                        | ~6 KB       |
 | [@kysera/migrations](/docs/api/migrations) | Database migration system                              | ~12 KB      |
@@ -70,8 +70,8 @@ Kysera follows a layered architecture with `@kysera/executor` as the foundation:
 | -------------------------------------------- | ------------------------------------ | ----------- |
 | [@kysera/soft-delete](/docs/api/soft-delete) | Soft delete functionality            | ~4 KB       |
 | [@kysera/timestamps](/docs/api/timestamps)   | Automatic timestamp management       | ~4 KB       |
-| [@kysera/audit](/docs/api/audit)             | Comprehensive audit logging          | ~8 KB       |
-| [@kysera/rls](/docs/api/rls)                 | Row-Level Security for multi-tenancy | ~10 KB      |
+| [@kysera/audit](/docs/api/audit)             | Comprehensive audit logging          | ~12 KB      |
+| [@kysera/rls](/docs/api/rls)                 | Row-Level Security for multi-tenancy | ~53 KB      |
 
 ## @kysera/core
 
@@ -94,10 +94,10 @@ Understanding the dependency hierarchy helps you choose the right packages:
 ```
 Layer 1: Foundation
 ┌─────────────────────────────────────────────────────────────┐
-│ @kysera/core (0 deps)                                       │
+│ @kysera/core (deps: @kysera/executor, type-only import)     │
 │   └──> Errors, pagination, logging, types                  │
 │                                                              │
-│ @kysera/dialects (0 deps)                                   │
+│ @kysera/dialects (depends: @kysera/core)                    │
 │   └──> Dialect adapters, introspection, error detection    │
 │                                                              │
 │ @kysera/executor (0 deps - peer: kysely)                    │
@@ -106,10 +106,10 @@ Layer 1: Foundation
 
 Layer 2: Data Access Patterns
 ┌─────────────────────────────────────────────────────────────┐
-│ @kysera/dal (depends: @kysera/executor)                     │
+│ @kysera/dal (depends: @kysera/core, @kysera/executor)       │
 │   └──> Functional queries, context passing, composition    │
 │                                                              │
-│ @kysera/repository (depends: @kysera/executor, @kysera/dal) │
+│ @kysera/repository (depends: core, dal, executor)           │
 │   └──> Repository pattern, validation, CRUD operations     │
 └─────────────────────────────────────────────────────────────┘
 
@@ -139,6 +139,10 @@ Layer 4: Infrastructure (standalone or depend on core)
 │   └──> Migration runner, schema versioning                 │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+:::note
+`@kysera/core` lists `@kysera/executor` in its npm `dependencies`, but only imports types from it — no executor runtime code is pulled into core bundles.
+:::
 
 **Plugin Capabilities:**
 
@@ -384,7 +388,7 @@ await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: [] } }, 
 ### Creating a Repository
 
 ```typescript
-import { createRepositoryFactory } from '@kysera/repository'
+import { createRepositoryFactory, zodAdapter } from '@kysera/repository'
 import { z } from 'zod'
 
 const factory = createRepositoryFactory(db)
@@ -398,13 +402,17 @@ const userRepo = factory.create({
     createdAt: row.created_at
   }),
   schemas: {
-    create: z.object({
-      email: z.string().email(),
-      name: z.string().min(1)
-    })
+    create: zodAdapter(
+      z.object({
+        email: z.string().email(),
+        name: z.string().min(1)
+      })
+    )
   }
 })
 ```
+
+Raw Zod schemas do not satisfy the `ValidationSchema` interface expected by `schemas` — wrap them with `zodAdapter()` (or `valibotAdapter()` / `typeboxAdapter()` for other validators).
 
 ### Using Plugins (Unified Approach)
 
@@ -493,7 +501,10 @@ import { paginate, paginateCursor } from '@kysera/core'
 
 // Offset pagination
 const page = await paginate(db.selectFrom('posts').selectAll(), { page: 1, limit: 20 })
-// { items: [...], total: 100, page: 1, limit: 20, totalPages: 5 }
+// {
+//   data: [...],
+//   pagination: { page: 1, limit: 20, total: 100, totalPages: 5, hasNext: true, hasPrev: false }
+// }
 
 // Cursor pagination
 const result = await paginateCursor(db.selectFrom('posts').selectAll(), {
@@ -501,7 +512,10 @@ const result = await paginateCursor(db.selectFrom('posts').selectAll(), {
   limit: 20,
   cursor: previousCursor
 })
-// { items: [...], nextCursor: {...}, hasMore: true }
+// {
+//   data: [...],
+//   pagination: { limit: 20, hasNext: true, hasPrev: true, nextCursor: '...', prevCursor: '...' }
+// }
 ```
 
 ### Transactions with Plugins
@@ -555,20 +569,20 @@ await executor.transaction().execute(async trx => {
 
 | Package             | Version | Kysely   | Node.js | Bun   | Deno   |
 | ------------------- | ------- | -------- | ------- | ----- | ------ |
-| @kysera/core        | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
-| @kysera/executor    | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
-| @kysera/repository  | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
-| @kysera/dal         | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
-| @kysera/dialects    | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
-| @kysera/infra       | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
-| @kysera/debug       | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
-| @kysera/testing     | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
-| @kysera/migrations  | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
-| @kysera/soft-delete | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
-| @kysera/timestamps  | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
-| @kysera/audit       | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
-| @kysera/rls         | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
-| @kysera/cli         | 0.8.8   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/core        | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/executor    | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/repository  | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/dal         | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/dialects    | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/infra       | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/debug       | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/testing     | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/migrations  | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/soft-delete | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/timestamps  | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/audit       | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/rls         | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
+| @kysera/cli         | 0.9.0   | >=0.29.0 | >=22    | >=1.0 | >=1.40 |
 
 ## Database Support
 

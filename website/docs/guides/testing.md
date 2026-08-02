@@ -86,23 +86,30 @@ it('detects write skew under serializable', async () => {
 Create consistent test data with factories:
 
 ```typescript
-import { createFactory } from '@kysera/testing'
+import { createFactory, createSequenceFactory, createMany } from '@kysera/testing'
 
+// createFactory value functions take NO arguments - they're re-invoked on each build
 const userFactory = createFactory({
-  email: i => `user${i}@example.com`,
-  name: i => `User ${i}`,
+  email: () => `user-${Date.now()}@example.com`,
+  name: 'Test User',
   status: 'active'
 })
-
-// Generate unique users
-const user1 = userFactory() // { email: 'user1@...', name: 'User 1', ... }
-const user2 = userFactory() // { email: 'user2@...', name: 'User 2', ... }
 
 // Override specific fields
 const admin = userFactory({ status: 'admin' })
 
+// For sequential data, use createSequenceFactory - it passes a sequence number
+const sequencedUser = createSequenceFactory(seq => ({
+  email: `user${seq}@example.com`,
+  name: `User ${seq}`,
+  status: 'active'
+}))
+
+const user1 = sequencedUser() // { email: 'user1@...', name: 'User 1', ... }
+const user2 = sequencedUser() // { email: 'user2@...', name: 'User 2', ... }
+
 // Generate multiple
-const users = Array.from({ length: 10 }, () => userFactory())
+const users = createMany(sequencedUser, 10)
 ```
 
 ## Testing Services
@@ -219,6 +226,104 @@ describe('Soft Delete Plugin', () => {
   })
 })
 ```
+
+## Plugin Testing Utilities
+
+`@kysera/testing` ships dedicated helpers for testing plugins in isolation.
+
+### createMockPlugin
+
+Records every intercepted operation — useful for verifying plugin composition and execution order:
+
+```typescript
+import { createMockPlugin } from '@kysera/testing'
+import { createExecutor } from '@kysera/executor'
+
+const mockPlugin = createMockPlugin('test-plugin', {
+  onIntercept: (qb, ctx) => qb // Optional: transform the query or return it unmodified
+})
+
+const executor = await createExecutor(db, [mockPlugin, softDeletePlugin()])
+await executor.selectFrom('users').selectAll().execute()
+
+expect(mockPlugin.operations).toHaveLength(1)
+expect(mockPlugin.operations[0].operation).toBe('select')
+expect(mockPlugin.operations[0].table).toBe('users')
+
+mockPlugin.reset() // Clear recorded operations
+```
+
+### spyOnPlugin
+
+Wraps a real plugin, recording calls while preserving its behavior:
+
+```typescript
+import { spyOnPlugin } from '@kysera/testing'
+
+const spiedPlugin = spyOnPlugin(softDeletePlugin())
+const executor = await createExecutor(db, [spiedPlugin])
+
+await executor.deleteFrom('users').where('id', '=', 1).execute()
+
+expect(spiedPlugin.calls).toHaveLength(1)
+expect(spiedPlugin.calls[0].operation).toBe('delete')
+```
+
+### createInMemoryDatabase
+
+Creates an in-memory SQLite database from a SQL schema string (requires `better-sqlite3` as a dev dependency):
+
+```typescript
+import { createInMemoryDatabase } from '@kysera/testing'
+
+const db = await createInMemoryDatabase<Database>(`
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    email TEXT NOT NULL,
+    deleted_at TEXT
+  )
+`)
+
+const executor = await createExecutor(db, [softDeletePlugin()])
+await executor.insertInto('users').values({ email: 'test@example.com' }).execute()
+```
+
+### createPluginTestHarness
+
+Structured setup/execute/verify/teardown for plugin integration tests, backed by an in-memory database:
+
+```typescript
+import { createPluginTestHarness } from '@kysera/testing'
+
+const harness = createPluginTestHarness<Database>({
+  plugins: [softDeletePlugin(), timestampsPlugin()],
+  schema: `
+    CREATE TABLE posts (
+      id INTEGER PRIMARY KEY,
+      title TEXT,
+      deleted_at TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `
+  // Optional: seedData: async executor => { ... }
+})
+
+await harness.setup()
+
+const result = await harness.execute(executor =>
+  executor.insertInto('posts').values({ title: 'Test Post' }).returningAll().executeTakeFirst()
+)
+
+harness.verify(result, r => {
+  expect(r?.created_at).toBeDefined()
+  expect(r?.updated_at).toBeDefined()
+})
+
+await harness.teardown()
+```
+
+For unit-testing a plugin's `interceptQuery` against a mock query builder, `assertPluginBehavior(plugin, mockQb, context, assertions)` reports whether the plugin intercepted and modified the query.
 
 ## Testing Security (SQL Injection Prevention)
 
@@ -447,15 +552,15 @@ it('should validate input', async () => {
 })
 ```
 
-## Testing Error Parsing (Dialect Detection)
+## Testing Error Parsing
 
-Kysera's `parseDatabaseError()` automatically detects the database dialect and parses errors:
+Kysera's `parseDatabaseError()` converts raw driver errors into typed errors. It does **not** detect the dialect — the second parameter selects the parser and defaults to `'postgres'`:
 
 ```typescript
 import { parseDatabaseError, UniqueConstraintError } from '@kysera/core'
 
 describe('Database Error Parsing', () => {
-  it('should parse unique constraint error (auto-detect dialect)', async () => {
+  it('should parse unique constraint error', async () => {
     await testInTransaction(db, async trx => {
       const repos = createRepos(trx)
 
@@ -465,10 +570,10 @@ describe('Database Error Parsing', () => {
       try {
         // Attempt duplicate
         await repos.users.create({ email: 'test@example.com', name: 'Test2' })
-        fail('Should have thrown')
+        expect.unreachable('Should have thrown')
       } catch (err) {
-        // Auto-detect dialect from error
-        const error = parseDatabaseError(err, 'postgres') // or 'mysql', 'sqlite'
+        // Pass your database's dialect (defaults to 'postgres' when omitted)
+        const error = parseDatabaseError(err, 'postgres') // or 'mysql', 'sqlite', 'mssql'
 
         expect(error).toBeInstanceOf(UniqueConstraintError)
         if (error instanceof UniqueConstraintError) {

@@ -326,11 +326,16 @@ try {
 
 ### MySQL
 
-| Code                 | Error Type            |
-| -------------------- | --------------------- |
-| ER_DUP_ENTRY         | UniqueConstraintError |
-| ER_NO_REFERENCED_ROW | ForeignKeyError       |
-| ER_BAD_NULL_ERROR    | NotNullError          |
+| Code                    | Error Type            |
+| ----------------------- | --------------------- |
+| ER_DUP_ENTRY            | UniqueConstraintError |
+| ER_DUP_KEY              | UniqueConstraintError |
+| ER_NO_REFERENCED_ROW    | ForeignKeyError       |
+| ER_NO_REFERENCED_ROW_2  | ForeignKeyError       |
+| ER_ROW_IS_REFERENCED    | ForeignKeyError       |
+| ER_ROW_IS_REFERENCED_2  | ForeignKeyError       |
+| ER_BAD_NULL_ERROR       | NotNullError          |
+| ER_NO_DEFAULT_FOR_FIELD | NotNullError          |
 
 ### SQLite
 
@@ -339,6 +344,7 @@ try {
 | UNIQUE constraint      | UniqueConstraintError |
 | FOREIGN KEY constraint | ForeignKeyError       |
 | NOT NULL constraint    | NotNullError          |
+| CHECK constraint       | CheckConstraintError  |
 
 ### MSSQL
 

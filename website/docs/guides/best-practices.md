@@ -170,15 +170,22 @@ app.post('/users', async (req, res) => {
 })
 ```
 
-### Use Environment-Based Validation
+### Control Validation Scope
+
+Repository validation is configured per repository, not via environment variable:
 
 ```typescript
-// Development: Full validation
-KYSERA_VALIDATION_MODE = always
-
-// Production: Input only
-KYSERA_VALIDATION_MODE = production
+const userRepo = factory.create({
+  tableName: 'users',
+  // Input validation: 'strict' (default) or 'none'
+  validationStrategy: 'strict',
+  // Result validation: defaults to NODE_ENV === 'development'
+  validateDbResults: false
+  // ...
+})
 ```
+
+The `KYSERA_VALIDATION_MODE` environment variable (`always` / `never` / `development` / `production`) only affects the standalone validation helpers (`getValidationMode()` / `shouldValidate()` from `@kysera/repository`) — it does not change repository behavior.
 
 ## Error Handling
 
@@ -189,14 +196,23 @@ import {
   UniqueConstraintError,
   ForeignKeyError,
   NotNullError,
-  ValidationError,
   parseDatabaseError
 } from '@kysera/core'
+import { ZodError } from 'zod'
 
 // ✅ Good: Specific error handling with type guards
 try {
   await userRepo.create({ email: 'test@test.com' })
 } catch (err) {
+  // Validation failures surface as the validator's own error type
+  // (ZodError when using zodAdapter) — handle them before DB errors
+  if (err instanceof ZodError) {
+    return res.status(400).json({
+      error: 'Invalid input',
+      issues: err.issues
+    })
+  }
+
   // Parse database-specific errors into typed errors
   const error = parseDatabaseError(err, 'postgres') // or 'mysql', 'sqlite'
 
@@ -225,13 +241,6 @@ try {
     })
   }
 
-  if (error instanceof ValidationError) {
-    return res.status(400).json({
-      error: 'Invalid input',
-      issues: error.issues
-    })
-  }
-
   // Unknown error - log and return generic message
   logger.error('Unexpected error', { error })
   return res.status(500).json({ error: 'Internal server error' })
@@ -245,10 +254,14 @@ try {
 }
 ```
 
+:::note
+`@kysera/repository` exports a `ValidationError` **interface** (the error shape inside `safeParse` results: `{ success: false, error: ValidationError }`) — it is not a class, so `instanceof ValidationError` does not work. To handle validation failures without try/catch, call `schema.safeParse(data)` on your adapter and check `result.success`.
+:::
+
 ### Log with Context
 
 ```typescript
-import type { Logger } from '@kysera/core'
+import type { KyseraLogger } from '@kysera/core'
 
 try {
   await userRepo.update(userId, data)
@@ -309,7 +322,7 @@ CREATE INDEX idx_posts_cursor ON posts (created_at DESC, id DESC);
 
 ## Plugins
 
-### Order Plugins Correctly
+### Don't Order Plugins Manually
 
 ```typescript
 import { createORM } from '@kysera/repository'
@@ -317,11 +330,13 @@ import { timestampsPlugin } from '@kysera/timestamps'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { auditPlugin } from '@kysera/audit'
 
-// Execution order matters: plugins wrap each other like onions
+// Array order does NOT matter — execution order is resolved from each
+// plugin's priority (higher runs first):
+// RLS (1000) → soft-delete (500) → timestamps (100) → audit (50)
 const orm = await createORM(db, [
-  timestampsPlugin(), // 1. Modifies data first (adds timestamps)
-  softDeletePlugin(), // 2. Filters queries (excludes soft-deleted)
-  auditPlugin() // 3. Captures everything (outer layer)
+  auditPlugin(),
+  timestampsPlugin(),
+  softDeletePlugin()
 ])
 ```
 
@@ -338,16 +353,18 @@ auditPlugin({
 Plugins may allocate resources (connections, timers, etc.). Always clean up when done:
 
 ```typescript
-import { createExecutor } from '@kysera/executor'
+import { createExecutor, destroyExecutor } from '@kysera/executor'
 
 const executor = await createExecutor(db, [myPlugin()])
 
 // Use executor...
 
 // Cleanup when shutting down
-await executor.destroy()
-// Calls plugin.onDestroy() for each plugin that implements it
+await destroyExecutor(executor) // Calls plugin.onDestroy() for each plugin that implements it
+await db.destroy()              // Then close the underlying connection pool
 ```
+
+Note: `executor.destroy()` forwards to Kysely's own `destroy()` — it closes the connection pool but does **not** run plugin `onDestroy` hooks. Use `destroyExecutor()` for plugin cleanup.
 
 For custom plugins with cleanup needs:
 
@@ -529,10 +546,15 @@ it('creates user', async () => {
 ### Use Factories for Test Data
 
 ```typescript
-const userFactory = createFactory({
-  email: i => `user${i}@test.com`,
-  name: i => `User ${i}`
-})
+import { createSequenceFactory } from '@kysera/testing'
+
+// Sequence factories receive an auto-incrementing counter
+const userFactory = createSequenceFactory(seq => ({
+  email: `user${seq}@test.com`,
+  name: `User ${seq}`
+}))
 
 const users = Array.from({ length: 10 }, () => userFactory())
 ```
+
+With plain `createFactory`, default value functions take **no arguments** (e.g. `email: () => randomEmail()`) — use `createSequenceFactory` when you need numbered sequences.

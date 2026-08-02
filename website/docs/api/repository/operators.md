@@ -33,10 +33,10 @@ const users = await repo.find({
 
 ```typescript
 interface FindOptions<Entity, Cols extends keyof Entity = keyof Entity> {
-  /** Filter conditions with operator support */
-  where?: WhereClause<Entity>
-  /** Column to sort by (single column shorthand) */
-  orderBy?: keyof Entity
+  /** Filter conditions with operator support (plain records allowed for dynamic conditions) */
+  where?: WhereClause<Entity> | Record<string, unknown>
+  /** Column to sort by (single column shorthand; strings are validated as plain SQL identifiers) */
+  orderBy?: keyof Entity | string
   /** Sort direction (used with orderBy) */
   orderDirection?: 'asc' | 'desc'
   /** Multiple sort specifications */
@@ -603,6 +603,30 @@ interface NullOperators {
 interface RangeOperator<T> {
   $between?: [T, T]
 }
+```
+
+### FindResult
+
+Result type of `find()` — narrows to `Pick<Entity, Columns>[]` when `select` is
+used, `Entity[]` otherwise:
+
+```typescript
+type FindResult<Entity, Columns extends keyof Entity> = [Columns] extends [keyof Entity]
+  ? Pick<Entity, Columns>[]
+  : Entity[]
+```
+
+### OperatorKey
+
+Union of all valid operator names, derived from the exported `ALL_OPERATORS`
+constant (`COMPARISON_OPERATORS`, `ARRAY_OPERATORS`, `STRING_OPERATORS`,
+`NULL_OPERATORS`, `RANGE_OPERATORS`, and `LOGICAL_OPERATORS` are also exported):
+
+```typescript
+type OperatorKey = (typeof ALL_OPERATORS)[number]
+// '$eq' | '$ne' | '$gt' | '$gte' | '$lt' | '$lte' | '$in' | '$nin'
+// | '$like' | '$ilike' | '$contains' | '$startsWith' | '$endsWith'
+// | '$isNull' | '$isNotNull' | '$between' | '$or' | '$and'
 ```
 
 ## Error Handling

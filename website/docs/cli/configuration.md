@@ -10,96 +10,177 @@ Kysera CLI configuration file reference.
 
 ## Configuration File
 
-Create `kysera.config.ts` in your project root:
+The CLI searches the current directory and then each parent directory for the first matching file:
+
+1. `kysera.config.ts`
+2. `kysera.config.js`
+3. `kysera.config.mjs`
+4. `kysera.config.cjs`
+5. `kysera.config.json`
+6. `.kyserarc.ts`
+7. `.kyserarc.js`
+8. `.kyserarc.json`
+
+Pass `--config <path>` to use a specific file instead.
+
+Create `kysera.config.ts` in your project root with a plain default export:
 
 ```typescript
-import { defineConfig } from '@kysera/cli'
-
-export default defineConfig({
+export default {
   // Configuration options
-})
+}
 ```
+
+:::note No imports needed
+`@kysera/cli` is a binary-only package — it does not export a `defineConfig` helper (or anything else). Export a plain object; the CLI validates it against its configuration schema at load time, so mistakes are reported when a command runs.
+:::
 
 ## Full Configuration
 
 ```typescript
-import { defineConfig } from '@kysera/cli'
-
-export default defineConfig({
+export default {
   // Database connection
   database: {
     dialect: 'postgres', // postgres | mysql | sqlite
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    database: process.env.DB_NAME || 'myapp',
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD,
+
+    // Primary form: connection string or object.
+    // ${VAR} and $VAR are interpolated from the environment.
+    connection: '${DATABASE_URL}',
+
     schema: 'public', // PostgreSQL schema (default: 'public')
     pool: {
       min: 2,
       max: 10
     },
-    ssl: process.env.DB_SSL === 'true'
+    debug: false
   },
 
   // Migrations
   migrations: {
     directory: './migrations',
-    tableName: 'kysera_migrations',
-    timezone: 'UTC'
+    pattern: '{timestamp}_{name}.ts',
+    tableName: 'migrations', // default: 'migrations' (same as the library runner)
+    lockTable: true,
+    lockTimeout: 10000
   },
 
   // Code generation
-  generation: {
-    outputDir: './src/generated',
-    typescript: true,
-    validation: 'zod' // zod | none
+  generate: {
+    repositories: './src/repositories',
+    models: './src/models',
+    schemas: './src/schemas',
+    migrations: './migrations',
+    style: {
+      quotes: 'single', // single | double
+      semi: false,
+      indent: 2,
+      trailingComma: 'es5' // none | es5 | all
+    }
   },
 
   // Testing
   testing: {
-    seeds: './seeds',
-    fixtures: './fixtures',
-    isolation: 'transaction' // transaction | schema | database
+    seeds: './tests/seeds',
+    fixtures: './tests/fixtures',
+    isolation: {
+      useTransactions: true,
+      resetSequences: true
+    }
   },
 
   // Plugins
   plugins: {
-    '@kysera/soft-delete': {
+    softDelete: {
       enabled: true,
       deletedAtColumn: 'deleted_at'
     },
-    '@kysera/timestamps': {
+    timestamps: {
       enabled: true,
       createdAtColumn: 'created_at',
       updatedAtColumn: 'updated_at'
     },
-    '@kysera/audit': {
+    audit: {
       enabled: false
     },
-    '@kysera/rls': {
+    rls: {
       enabled: false
     }
+  },
+
+  // Logging
+  logging: {
+    level: 'info', // debug | info | warn | error
+    format: 'pretty', // pretty | json
+    destinations: [{ type: 'console' }]
+  },
+
+  // Health checks
+  health: {
+    enabled: true,
+    interval: 60000,
+    slowQueryThreshold: 100
   }
-})
+}
 ```
 
 ## Database Configuration
 
-### PostgreSQL
+`connection` is the primary form and accepts a connection string or an object. When `connection` is absent, PostgreSQL and MySQL also honor the structured fields (`host`, `port`, `database`, `user`, `password`, `ssl`) directly on `database`. If both are present, `connection` wins.
+
+### Connection String
 
 ```typescript
-database: {
-  dialect: 'postgres',
-  host: 'localhost',
-  port: 5432,
-  database: 'myapp',
-  user: 'postgres',
-  password: 'secret',
-  schema: 'public',              // Default schema for operations
-  pool: { min: 2, max: 10 },
-  ssl: {
-    rejectUnauthorized: false  // For self-signed certs
+export default {
+  database: {
+    dialect: 'postgres',
+    connection: 'postgres://user:pass@localhost:5432/myapp'
+  }
+}
+```
+
+Environment variables are interpolated with `${VAR}` or `$VAR` syntax:
+
+```typescript
+export default {
+  database: {
+    dialect: 'postgres',
+    connection: '${DATABASE_URL}'
+  }
+}
+```
+
+### Connection Object
+
+```typescript
+export default {
+  database: {
+    dialect: 'postgres',
+    connection: {
+      host: 'localhost',
+      port: 5432,
+      database: 'myapp',
+      user: 'postgres',
+      password: process.env.DB_PASSWORD ?? '',
+      ssl: true
+    }
+  }
+}
+```
+
+### Structured Fields (PostgreSQL/MySQL)
+
+```typescript
+export default {
+  database: {
+    dialect: 'postgres',
+    host: 'localhost',
+    port: 5432,
+    database: 'myapp',
+    user: 'postgres',
+    password: process.env.DB_PASSWORD,
+    ssl: true,
+    schema: 'public', // Default schema for operations
+    pool: { min: 2, max: 10 }
   }
 }
 ```
@@ -109,14 +190,12 @@ database: {
 For multi-tenant applications using schema-per-tenant pattern:
 
 ```typescript
-database: {
-  dialect: 'postgres',
-  host: 'localhost',
-  port: 5432,
-  database: 'myapp',
-  user: 'postgres',
-  password: 'secret',
-  schema: process.env.TENANT_SCHEMA || 'public'  // Dynamic schema
+export default {
+  database: {
+    dialect: 'postgres',
+    connection: '${DATABASE_URL}',
+    schema: process.env.TENANT_SCHEMA || 'public' // Dynamic schema
+  }
 }
 ```
 
@@ -154,32 +233,165 @@ database: {
 }
 ```
 
-## Environment Variables
-
-Use environment variables for sensitive data:
+## Migrations Configuration
 
 ```typescript
-database: {
-  host: process.env.DB_HOST,
-  password: process.env.DB_PASSWORD
+migrations: {
+  directory: './migrations',        // Migration file location
+  pattern: '{timestamp}_{name}.ts', // Filename pattern
+  tableName: 'migrations',          // Tracking table (default: 'migrations')
+  schema: 'public',                 // PostgreSQL schema for the tracking table
+  lockTable: true,                  // Serialize runs via the kysera_migration_lock table
+  lockTimeout: 10000,               // Lock timeout in ms
+  templates: {
+    create: './templates/migration.ts' // Optional custom template
+  }
 }
 ```
 
-### .env File
+:::note
+`kysera migrate create` writes to `./migrations` or the `--dir` flag — it does not currently read `migrations.directory` from the config. All other migrate commands honor the config.
+:::
 
-```bash
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=myapp
-DB_USER=postgres
-DB_PASSWORD=secret
+## Code Generation
+
+```typescript
+generate: {
+  repositories: './src/repositories', // Repository output directory
+  models: './src/models',             // Model output directory
+  schemas: './src/schemas',           // Zod schema output directory
+  migrations: './migrations',         // Generated migration directory
+  style: {
+    quotes: 'single',
+    semi: false,
+    indent: 2,
+    trailingComma: 'es5'
+  },
+  templates: {
+    repository: './templates/repository.ts', // Optional custom templates
+    model: './templates/model.ts',
+    schema: './templates/schema.ts'
+  }
+}
 ```
+
+## Testing Configuration
+
+```typescript
+testing: {
+  database: '${TEST_DATABASE_URL}', // Optional dedicated test database
+  seeds: './tests/seeds',
+  fixtures: './tests/fixtures',
+  isolation: {
+    useTransactions: true,            // Wrap tests in rolled-back transactions
+    truncateTables: ['users', 'posts'], // Tables to truncate between tests
+    resetSequences: true              // Reset auto-increment sequences
+  }
+}
+```
+
+## Plugin Configuration
+
+Plugin keys are `softDelete`, `timestamps`, `audit`, and `rls`.
+
+### Soft Delete
+
+```typescript
+plugins: {
+  softDelete: {
+    enabled: true,
+    deletedAtColumn: 'deleted_at',
+    tables: ['users', 'posts']      // Only these tables
+  }
+}
+```
+
+### Timestamps
+
+```typescript
+plugins: {
+  timestamps: {
+    enabled: true,
+    createdAtColumn: 'created_at',
+    updatedAtColumn: 'updated_at',
+    dateFormat: 'iso'               // iso | unix | date
+  }
+}
+```
+
+### Audit
+
+```typescript
+plugins: {
+  audit: {
+    enabled: true,
+    auditTable: 'audit_logs',
+    excludeTables: ['audit_logs', 'sessions']
+  }
+}
+```
+
+### Row-Level Security
+
+```typescript
+plugins: {
+  rls: {
+    enabled: true,
+    bypassRoles: ['admin'],
+    requireContext: true,
+    defaultDeny: true
+  }
+}
+```
+
+## Logging Configuration
+
+```typescript
+logging: {
+  level: 'info',    // debug | info | warn | error
+  format: 'pretty', // pretty | json
+  destinations: [
+    { type: 'console' },
+    { type: 'file', path: './logs/kysera.log' }
+  ],
+  queries: {
+    enabled: false,
+    slowQueryThreshold: 100, // ms
+    includeParams: false
+  }
+}
+```
+
+## Health Configuration
+
+```typescript
+health: {
+  enabled: true,
+  interval: 60000,          // Check interval in ms
+  slowQueryThreshold: 100,  // ms
+  collectMetrics: true,
+  metricsRetention: 3600000 // ms
+}
+```
+
+## Environment Variables
+
+Use environment variables for sensitive data — either via `process.env` in a TypeScript config or `${VAR}` interpolation in connection strings:
+
+```typescript
+database: {
+  dialect: 'postgres',
+  connection: 'postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:5432/myapp'
+}
+```
+
+:::caution No .env loading
+The CLI does not load `.env` files. Export the variables in your shell, set them via your process manager or CI environment, or preload dotenv yourself (e.g. `node --env-file=.env` or `dotenv -- kysera migrate up`).
+:::
 
 ## Multiple Environments
 
 ```typescript
-import { defineConfig } from '@kysera/cli'
-
 const env = process.env.NODE_ENV || 'development'
 
 const databases = {
@@ -197,51 +409,12 @@ const databases = {
   }
 }
 
-export default defineConfig({
+export default {
   database: {
     dialect: 'postgres',
     ...databases[env],
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD
-  }
-})
-```
-
-## Plugin Configuration
-
-### Soft Delete
-
-```typescript
-plugins: {
-  '@kysera/soft-delete': {
-    enabled: true,
-    deletedAtColumn: 'deleted_at',
-    tables: ['users', 'posts']      // Only these tables
-  }
-}
-```
-
-### Timestamps
-
-```typescript
-plugins: {
-  '@kysera/timestamps': {
-    enabled: true,
-    createdAtColumn: 'created_at',
-    updatedAtColumn: 'updated_at',
-    dateFormat: 'iso'               // iso | unix | date
-  }
-}
-```
-
-### Audit
-
-```typescript
-plugins: {
-  '@kysera/audit': {
-    enabled: true,
-    auditTable: 'audit_logs',
-    excludeTables: ['audit_logs', 'sessions']
   }
 }
 ```

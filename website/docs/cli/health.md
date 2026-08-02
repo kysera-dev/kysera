@@ -57,9 +57,10 @@ Last Check: 2024-01-15 10:30:00
 
 ### watch
 
-Continuous monitoring mode. Clears screen and updates results at each interval.
+Continuous monitoring mode. Clears screen and updates results at each interval. Available as a standalone command or via `check --watch`:
 
 ```bash
+kysera health watch
 kysera health check --watch
 ```
 
@@ -68,10 +69,17 @@ kysera health check --watch
 ```
 --interval <ms>           Check interval in ms (default: 5000)
 --json                    Output as JSON
+--log <file>              Log results to file
 -v, --verbose             Show detailed metrics
+-c, --config <path>       Path to configuration file
 ```
 
 Press `Ctrl+C` to stop monitoring.
+
+```bash
+# Watch and append results to a log file
+kysera health watch --log health.log
+```
 
 ### metrics
 

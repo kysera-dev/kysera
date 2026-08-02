@@ -97,12 +97,12 @@ kysera schema create <name>
 
 **Arguments:**
 
-- `name` - Schema name to create
+- `name` - Schema name to create (required)
 
 **Options:**
 
 ```
---tenant <id>        Create as tenant schema with specified ID
+--tenant <id>        Create as tenant schema; overrides <name> with tenant_<id>
 --if-not-exists      Do not error if schema already exists
 --force              Skip confirmation prompt
 -v, --verbose        Show detailed output
@@ -118,8 +118,8 @@ kysera schema create auth
 # Create without confirmation
 kysera schema create auth --force
 
-# Create tenant schema (uses tenant_<id> naming convention)
-kysera schema create --tenant acme
+# Create tenant schema (--tenant overrides <name>, resolving to tenant_<id>)
+kysera schema create acme --tenant acme
 # Creates schema: tenant_acme
 
 # Create if not exists
@@ -128,10 +128,10 @@ kysera schema create auth --if-not-exists
 
 **Tenant Schema Creation:**
 
-When using `--tenant`, the schema name follows the `tenant_<id>` naming convention:
+The positional `<name>` is always required. When `--tenant <id>` is also given, it takes precedence and the schema is created as `tenant_<id>`:
 
 ```bash
-kysera schema create --tenant 123
+kysera schema create 123 --tenant 123
 # Output:
 # Schema 'tenant_123' created successfully
 #
@@ -320,15 +320,15 @@ kysera schema clone <source> <target>
 
 **Arguments:**
 
-- `source` - Source schema name
-- `target` - Target schema name
+- `source` - Source schema name (required)
+- `target` - Target schema name (required)
 
 **Options:**
 
 ```
 --include-data         Include table data in the clone
 --exclude <tables...>  Tables to exclude from cloning
---tenant <id>          Create target as tenant schema with specified ID
+--tenant <id>          Overrides <target> with tenant_<id>
 --force                Skip confirmation prompt
 -v, --verbose          Show detailed output
 -c, --config <path>    Path to configuration file
@@ -343,8 +343,8 @@ kysera schema clone template new_tenant
 # Clone with data
 kysera schema clone template new_tenant --include-data
 
-# Clone as tenant schema
-kysera schema clone template --tenant acme
+# Clone as tenant schema (--tenant overrides <target>, resolving to tenant_<id>)
+kysera schema clone template acme --tenant acme
 # Creates: tenant_acme
 
 # Exclude certain tables
@@ -502,11 +502,11 @@ Summary:
 2. **Provision new tenants:**
 
    ```bash
-   # Clone template for new tenant
-   kysera schema clone template --tenant acme
+   # Clone template for new tenant (target resolves to tenant_acme)
+   kysera schema clone template acme --tenant acme
 
    # Or create and migrate separately
-   kysera schema create --tenant acme
+   kysera schema create acme --tenant acme
    kysera migrate up --schema tenant_acme
    ```
 
@@ -545,8 +545,8 @@ kysera migrate up --schema tenant_globex
 #!/bin/bash
 TENANT_ID=$1
 
-# Create tenant schema from template
-kysera schema clone template --tenant "$TENANT_ID" --force
+# Create tenant schema from template (target resolves to tenant_$TENANT_ID)
+kysera schema clone template "tenant_$TENANT_ID" --tenant "$TENANT_ID" --force
 
 # Verify schema
 kysera schema info "tenant_$TENANT_ID"
@@ -563,30 +563,24 @@ echo "Tenant $TENANT_ID provisioned successfully"
 You can set a default schema in `kysera.config.ts`:
 
 ```typescript
-import { defineConfig } from '@kysera/cli'
-
-export default defineConfig({
+export default {
   database: {
     dialect: 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    database: process.env.DB_NAME || 'myapp',
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD,
+    connection: '${DATABASE_URL}',
     schema: 'public'  // Default schema
   }
-})
+}
 ```
 
 ### Environment-Based Schema
 
 ```typescript
-export default defineConfig({
+export default {
   database: {
     // ...
     schema: process.env.DB_SCHEMA || 'public'
   }
-})
+}
 ```
 
 ---

@@ -10,11 +10,11 @@ Database management utilities.
 
 ## Commands
 
-| Command      | Description                     |
-| ------------ | ------------------------------- |
-| `seed`       | Run database seeders            |
-| `reset`      | Truncate all tables             |
-| `tables`     | List database tables            |
+| Command      | Description                          |
+| ------------ | ------------------------------------ |
+| `seed`       | Run database seeders                 |
+| `reset`      | Drop all tables and re-run migrations |
+| `tables`     | List database tables                 |
 | `dump`       | Export database schema and data |
 | `restore`    | Restore database from dump      |
 | `introspect` | Analyze database schema         |
@@ -59,18 +59,23 @@ kysera db seed --dry-run
 
 ### reset
 
-Truncate all tables.
+Reset the database: **drops every table** (CASCADE), then re-runs all migrations.
 
 ```bash
 kysera db reset
 ```
 
+:::danger Destructive
+This is not a truncate — all tables and their data are dropped, and the schema is rebuilt from migrations. There is no way to exclude tables. Take a backup first (`kysera db dump -o backup.sql`).
+:::
+
 **Options:**
 
 ```
---force                   Skip confirmation
---exclude <tables>        Tables to exclude
+--force                   Skip confirmation prompt
+--seed                    Run seeds after reset
 -c, --config <path>       Path to configuration file
+-v, --verbose             Show detailed output
 -s, --schema <name>       PostgreSQL schema name (default: public)
 ```
 

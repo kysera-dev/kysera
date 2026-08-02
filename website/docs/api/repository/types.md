@@ -12,10 +12,13 @@ Type definitions for the repository package.
 
 ### Executor
 
-Union type for database instance or transaction.
+Alias of `AnyExecutor` from `@kysera/core`: a raw Kysely instance, a
+transaction, or a plugin-aware `KyseraExecutor` (a `Kysely` proxy carrying the
+executor marker from `@kysera/executor`).
 
 ```typescript
-type Executor<DB> = Kysely<DB> | Transaction<DB>
+type Executor<DB> = AnyExecutor<DB>
+// = Kysely<DB> | Transaction<DB> | (Kysely<DB> & KyseraExecutorMarker<DB>)
 ```
 
 ### Repository
@@ -56,11 +59,23 @@ interface BaseRepository<DB, Entity, PK = number> {
     options?: FindOptions<Entity, Cols>
   ): Promise<{ items: Pick<Entity, Cols>[] | Entity[]; total: number }>
 
-  // Pagination
-  paginate(options: PaginateOptions): Promise<PaginatedItems<Entity>>
-  paginateCursor<K extends keyof Entity>(
-    options: CursorPaginateOptions<Entity, K, PK>
-  ): Promise<CursorPaginatedItems<Entity, K, PK>>
+  // Pagination (option/result shapes are inline — they are not exported types)
+  paginate(options: {
+    limit: number
+    offset?: number
+    orderBy?: string // Default: first primary-key column
+    orderDirection?: 'asc' | 'desc'
+  }): Promise<{ items: Entity[]; total: number; limit: number; offset: number }>
+  paginateCursor<K extends keyof Entity>(options: {
+    limit: number
+    cursor?: { value: Entity[K]; id: PK } | null
+    orderBy?: K // Default: first primary-key column
+    orderDirection?: 'asc' | 'desc'
+  }): Promise<{
+    items: Entity[]
+    nextCursor: { value: Entity[K]; id: PK } | null
+    hasMore: boolean
+  }>
 
   // Transaction
   transaction<R>(fn: (trx: Transaction<DB>) => Promise<R>): Promise<R>
@@ -94,42 +109,39 @@ interface PrimaryKeyConfig {
 
 ## Query Options
 
-```typescript
-interface QueryOptions {
-  where?: Record<string, unknown>
-}
+Filtering, sorting, and column selection use the exported `FindOptions` type
+(and its companions `SortSpec`, `WhereClause`, and `FindResult`) — see
+[Query Operators](/docs/api/repository/operators#findoptions-interface) for the
+full operator reference:
 
-interface PaginateOptions {
-  limit: number
+```typescript
+interface FindOptions<Entity, Columns extends keyof Entity = keyof Entity> {
+  where?: WhereClause<Entity> | Record<string, unknown>
+  orderBy?: keyof Entity | string
+  orderDirection?: 'asc' | 'desc'
+  sort?: SortSpec<Entity>[]
+  select?: Columns[]
+  limit?: number
   offset?: number
-  orderBy?: string
-  orderDirection?: 'asc' | 'desc'
 }
 
-interface CursorPaginateOptions<Entity, K extends keyof Entity, PK> {
-  limit: number
-  cursor?: { value: Entity[K]; id: PK } | null
-  orderBy?: K
-  orderDirection?: 'asc' | 'desc'
+interface SortSpec<Entity> {
+  column: keyof Entity
+  direction: 'asc' | 'desc'
 }
+
+// Result of find(): Pick<Entity, Columns>[] when select is used, Entity[] otherwise
+type FindResult<Entity, Columns extends keyof Entity> = [Columns] extends [keyof Entity]
+  ? Pick<Entity, Columns>[]
+  : Entity[]
 ```
 
-## Result Types
-
-```typescript
-interface PaginatedItems<T> {
-  items: T[]
-  total: number
-  limit: number
-  offset: number
-}
-
-interface CursorPaginatedItems<T, K extends keyof T, PK> {
-  items: T[]
-  nextCursor: { value: T[K]; id: PK } | null
-  hasMore: boolean
-}
-```
+:::note Pagination shapes are not exported
+There is no `QueryOptions` type, and names like `PaginateOptions` or
+`PaginatedItems` are not importable from `@kysera/repository`. The
+`paginate()` / `paginateCursor()` option and result shapes are declared inline
+in the `BaseRepository` method signatures shown above.
+:::
 
 ## Type Utilities
 
@@ -199,6 +211,16 @@ type WhereConditions<DB, TN extends keyof DB> = Partial<SelectableRow<DB, TN>>
 type TransactionHandler<DB, R> = (trx: Transaction<DB>) => Promise<R>
 ```
 
+### Repository Bundle Helper
+
+Extracts the repository bundle type from a `createRepositoriesFactory` result:
+
+```typescript
+type RepositoriesFromFactory<T extends (...args: never[]) => unknown> = ReturnType<T>
+
+// type Repositories = RepositoriesFromFactory<typeof createRepositories>
+```
+
 ## Helper Functions
 
 ### normalizePrimaryKeyConfig
@@ -255,7 +277,13 @@ interface Plugin {
 
 interface QueryBuilderContext {
   readonly operation: 'select' | 'insert' | 'update' | 'delete' | 'replace' | 'merge'
+  /** Base table name without schema qualifier or alias ('public.users as u' -> 'users') */
   readonly table: string
+  /** Table alias when aliased ('users as u' -> 'u'). Plugins adding column conditions must qualify with alias ?? table */
+  readonly alias?: string
+  /** Original table expression as passed to the query method (e.g. 'public.users as u'); equals table for plain references */
+  readonly tableExpression?: string
+  /** Schema from withSchema(...) or an explicit qualifier in the table expression */
   readonly schema?: string
   readonly metadata: Record<string, unknown>
 }

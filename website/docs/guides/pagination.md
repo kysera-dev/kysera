@@ -81,9 +81,10 @@ console.log(result)
 Kysera automatically enforces safe limits to prevent performance issues:
 
 ```typescript
-// Page bounds
+// Page bounds (internal max = 1,000,000)
 paginate(query, { page: 0 }) // Uses page 1 (minimum)
-paginate(query, { page: 15000 }) // Uses page 15000 (no upper bound on pages)
+paginate(query, { page: 15000 }) // Uses page 15000 (within bounds)
+paginate(query, { page: 2_000_000 }) // Uses page 1,000,000 (max)
 paginate(query, { page: -5 }) // Uses page 1 (minimum)
 
 // Limit bounds (internal max = 10,000 for paginate/paginateCursor)
@@ -307,7 +308,7 @@ const recentPosts = await applyDateRange(
 
 ### Supported Databases
 
-Kysera pagination supports **PostgreSQL**, **MySQL**, **SQLite**, and **MSSQL**. The dialect is usually auto-detected from your Kysely instance, but can be explicitly specified via the `dialect` parameter.
+Kysera pagination supports **PostgreSQL**, **MySQL**, **SQLite**, and **MSSQL**. The dialect is **not** auto-detected: `paginate` and `paginateCursor` only read the `dialect` option and default to standard `LIMIT/OFFSET` SQL. On MSSQL you **must** pass `dialect: 'mssql'` to get valid SQL.
 
 ### MSSQL Requirements and Optimizations
 
@@ -343,7 +344,8 @@ const result = await paginate(
   db.selectFrom('users').selectAll(), // Missing ORDER BY
   { page: 1, limit: 20, dialect: 'mssql' }
 )
-// Error: MSSQL requires ORDER BY for offset pagination
+// Kysera emits the OFFSET/FETCH SQL as-is; SQL Server rejects it:
+// "Invalid usage of the option NEXT in the FETCH statement."
 ```
 
 #### Cursor Pagination
@@ -373,47 +375,48 @@ const page1 = await paginateCursor(
 
 **Why TOP 21 for limit 20?** The extra row is fetched to determine if there's a next page (`hasNext`).
 
-### PostgreSQL Optimizations
+### Multi-Column Cursor Conditions
 
-PostgreSQL uses efficient row value comparison when all ORDER BY columns have the same direction:
+Multi-column cursors generate compound OR conditions — the same SQL shape on every dialect, regardless of column directions:
 
 ```typescript
-// All columns DESC - uses row value comparison
+// All columns DESC
 const result = await paginateCursor(
   db.selectFrom('posts').selectAll(),
   {
     orderBy: [
       { column: 'created_at', direction: 'desc' },
-      { column: 'id', direction: 'desc' } // Same direction
+      { column: 'id', direction: 'desc' }
     ],
     limit: 20
   }
 )
 
-// Efficient PostgreSQL query:
+// Generated SQL (PostgreSQL shown):
 // SELECT * FROM posts
-// WHERE (created_at, id) < ($1, $2)
+// WHERE created_at < $1 OR (created_at = $1 AND id < $2)
 // ORDER BY created_at DESC, id DESC
-// LIMIT 20
+// LIMIT 21
 
-// Mixed directions - uses compound conditions
+// Mixed directions work the same way - each column gets its own operator
 const mixed = await paginateCursor(
   db.selectFrom('posts').selectAll(),
   {
     orderBy: [
       { column: 'created_at', direction: 'desc' },
-      { column: 'id', direction: 'asc' } // Different direction
+      { column: 'id', direction: 'asc' } // asc compares with >, desc with <
     ],
     limit: 20
   }
 )
 
-// Less efficient (but still correct):
 // SELECT * FROM posts
 // WHERE created_at < $1 OR (created_at = $1 AND id > $2)
 // ORDER BY created_at DESC, id ASC
-// LIMIT 20
+// LIMIT 21
 ```
+
+With a multi-column index matching your ORDER BY, these compound conditions remain efficient at any depth.
 
 ### MySQL and SQLite
 
@@ -450,27 +453,34 @@ const page1 = await paginateCursor(
 // LIMIT 20
 ```
 
-### Dialect Auto-Detection
+### Specifying the Dialect
 
-The `dialect` parameter is optional. Kysera auto-detects the database type from your Kysely instance:
+The `dialect` option is what controls SQL generation — `paginate` and `paginateCursor` never inspect your Kysely instance. When omitted, they emit standard `LIMIT/OFFSET` SQL, which works on PostgreSQL, MySQL, and SQLite. MSSQL is the exception: you must pass `dialect: 'mssql'` explicitly, or the generated SQL will fail on the server:
 
 ```typescript
-import { Kysely, MssqlDialect } from 'kysely'
-
-const db = new Kysely({
-  dialect: new MssqlDialect(/* ... */)
-})
-
-// Auto-detected as MSSQL
+// PostgreSQL / MySQL / SQLite: no dialect needed
 const result = await paginate(
   db.selectFrom('users').selectAll().orderBy('id'),
-  { page: 1, limit: 20 } // No dialect needed
+  { page: 1, limit: 20 }
 )
 
-// Explicit override (for testing or multi-database scenarios)
+// MSSQL: dialect is REQUIRED
+const mssqlResult = await paginate(
+  db.selectFrom('users').selectAll().orderBy('id'),
+  { page: 1, limit: 20, dialect: 'mssql' }
+)
+```
+
+To derive the dialect at runtime (e.g. in multi-database code), use `detectDialect` from `@kysera/core`:
+
+```typescript
+import { detectDialect, paginate } from '@kysera/core'
+
+const dialect = detectDialect(db) // 'postgres' | 'mysql' | 'sqlite' | 'mssql'
+
 const result = await paginate(
   db.selectFrom('users').selectAll().orderBy('id'),
-  { page: 1, limit: 20, dialect: 'mssql' } // Explicit
+  { page: 1, limit: 20, dialect }
 )
 ```
 

@@ -80,18 +80,21 @@ my-app/
 
 ### monorepo
 
-Turborepo monorepo structure:
+Monorepo directory structure:
 
 ```
 my-app/
 ├── apps/
-│   └── api/
+│   ├── api/
+│   └── worker/
 ├── packages/
 │   ├── database/
-│   └── shared/
-├── turbo.json
-└── pnpm-workspace.yaml
+│   ├── repositories/
+│   └── schemas/
+└── ...
 ```
+
+Workspace tooling (e.g. `turbo.json`, `pnpm-workspace.yaml`) is not generated — add your preferred workspace manager afterwards.
 
 ## Available Plugins
 
@@ -132,27 +135,26 @@ kysera init . -d postgres
 ### kysera.config.ts
 
 ```typescript
-import { defineConfig } from '@kysera/cli'
-
-export default defineConfig({
+export default {
   database: {
     dialect: 'postgres',
     host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432'),
+    port: Number(process.env.DB_PORT) || 5432,
     database: process.env.DB_NAME || 'myapp',
     user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD
+    password: process.env.DB_PASSWORD || ''
   },
   migrations: {
-    directory: './migrations',
-    tableName: 'kysera_migrations'
+    directory: './migrations'
   },
   plugins: {
-    '@kysera/timestamps': { enabled: true },
-    '@kysera/soft-delete': { enabled: true }
+    timestamps: { enabled: true },
+    softDelete: { enabled: true }
   }
-})
+}
 ```
+
+Migration state is tracked in the default `migrations` table; set `migrations.tableName` only if you need a different one.
 
 ### .env.example
 

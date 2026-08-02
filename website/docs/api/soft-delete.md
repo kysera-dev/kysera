@@ -16,11 +16,11 @@ npm install @kysera/soft-delete
 
 ## Overview
 
-| Metric                | Value                          |
-| --------------------- | ------------------------------ |
-| **Bundle Size**       | ~4 KB (minified)               |
-| **Dependencies**      | @kysera/core, @kysera/executor |
-| **Peer Dependencies** | kysely >=0.29.0                |
+| Metric                | Value                                              |
+| --------------------- | -------------------------------------------------- |
+| **Bundle Size**       | ~4 KB (minified)                                   |
+| **Dependencies**      | @kysera/core                                       |
+| **Peer Dependencies** | @kysera/executor, kysely >=0.29.0, zod (optional) |
 
 ## Exports
 
@@ -31,9 +31,13 @@ export { softDeletePlugin } from './index'
 // Types
 export type { SoftDeleteOptions, SoftDeleteMethods, SoftDeleteRepository }
 
-// Zod schema (for kysera-cli)
-export { SoftDeleteOptionsSchema }
+// Zod schema (optional, requires Zod) - only via the /schema subpath
+export { SoftDeleteOptionsSchema, type SoftDeleteOptionsSchemaType } from './schema'
 ```
+
+:::info Separate Export
+`SoftDeleteOptionsSchema` and `SoftDeleteOptionsSchemaType` are **not** exported from the package root. Import them from `@kysera/soft-delete/schema` — this keeps Zod an optional dependency.
+:::
 
 ## Architecture
 
@@ -138,9 +142,9 @@ const plugin = softDeletePlugin({
 })
 
 // Custom logger
-import { createLogger } from '@kysera/core'
+import { consoleLogger, createPrefixedLogger } from '@kysera/core'
 const plugin = softDeletePlugin({
-  logger: createLogger({ level: 'debug' })
+  logger: createPrefixedLogger('soft-delete', consoleLogger)
 })
 ```
 
@@ -231,7 +235,13 @@ async restore(id: number | string): Promise<T>
 
 **Returns:** The restored record with `deleted_at` set to null
 
-**Throws:** `NotFoundError` if record doesn't exist
+**Throws:**
+
+- `NotFoundError` if the record doesn't exist
+- `RecordNotDeletedError` if the record exists but is not soft-deleted
+- `SoftDeleteError` if the record disappears mid-restore (race condition)
+
+All three error classes are exported from `@kysera/core`.
 
 **Example:**
 
@@ -512,7 +522,7 @@ The plugin uses `interceptQuery()` from the `@kysera/executor` Plugin interface:
 // Simplified plugin implementation
 {
   name: '@kysera/soft-delete',
-  version: '0.7.0',
+  version: '0.9.0', // injected from package.json at build time
 
   interceptQuery<QB>(qb: QB, context: QueryBuilderContext): QB {
     // Filter SELECT/UPDATE/DELETE when not explicitly including deleted
@@ -571,7 +581,7 @@ Soft delete operations respect ACID properties and work correctly with transacti
 
 ```typescript
 await db.transaction().execute(async trx => {
-  const txORM = createORM(trx, [softDeletePlugin()])
+  const txORM = await createORM(trx, [softDeletePlugin()])
   const txRepo = txORM.createRepository(createUserRepository)
 
   await txRepo.softDelete(1)
@@ -668,7 +678,16 @@ CREATE INDEX idx_users_deleted_at ON users(deleted_at);
 ### SoftDeleteRepository
 
 ```typescript
-type SoftDeleteRepository<Entity> = Repository<Entity> & SoftDeleteMethods<Entity>
+type SoftDeleteRepository<
+  Entity,
+  BaseRepo extends object = Record<string, never>
+> = BaseRepo & SoftDeleteMethods<Entity>
+```
+
+The second parameter is your base repository type — the result combines its methods with `SoftDeleteMethods<Entity>`:
+
+```typescript
+type UserRepoWithSoftDelete = SoftDeleteRepository<User, Repository<User, Database>>
 ```
 
 ### Database Schema Type
@@ -789,7 +808,8 @@ try {
   await userRepo.softDelete(userId)
 } catch (error) {
   if (error instanceof NotFoundError) {
-    console.error('User not found:', error.context.id)
+    console.error(error.message) // 'Record not found'
+    console.error(error.detail) // '{"id":123}' — JSON string of the lookup filters
   }
 }
 ```

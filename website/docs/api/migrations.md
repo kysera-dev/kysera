@@ -11,16 +11,22 @@ Lightweight, type-safe database migration system.
 ## Installation
 
 ```bash
-npm install @kysera/migrations zod
+npm install @kysera/migrations kysely zod
 ```
 
 ## Overview
 
 **Dependencies:** @kysera/core
-**Peer Dependencies:** zod (required for schema validation)
+**Peer Dependencies:** kysely >=0.29.0 and zod ^4.3.6 — both required
 
-The Zod option schemas are also available via the `@kysera/migrations/schemas`
-subpath export for tooling that validates migration configuration.
+The Zod option schemas (`MigrationRunnerOptionsSchema`, `MigrationDefinitionSchema`,
+`MigrationPluginOptionsSchema`, `MigrationPluginSchema`, `MigrationStatusSchema`,
+`MigrationResultSchema`, `MigrationRunnerWithPluginsOptionsSchema`) are exported
+from the package root together with their Input/Output types and the
+`parseMigrationRunnerOptions` / `safeParseMigrationRunnerOptions` /
+`parseMigrationDefinition` / `safeParseMigrationDefinition` helpers. The same
+schemas are also available via the `@kysera/migrations/schemas` subpath export
+for tooling that validates migration configuration.
 
 ## Creating Migrations
 
@@ -119,6 +125,19 @@ const migrations = defineMigrations({
 })
 ```
 
+## Setup
+
+### setupMigrations
+
+Create the `migrations` bookkeeping table (`name` primary key + `executed_at`).
+Idempotent — safe to run multiple times. The migration runner calls it
+automatically before its first database access, so calling it yourself is only
+needed for custom tooling.
+
+```typescript
+async function setupMigrations(db: Kysely<unknown>): Promise<void>
+```
+
 ## Migration Runner
 
 ### createMigrationRunner
@@ -149,6 +168,11 @@ With `advisoryLock` enabled (the default), concurrent `up()` runs from several
 application instances are serialized through a database advisory lock; a
 runner that cannot acquire the lock within `lockTimeoutMs` throws
 `MigrationLockError`. The lock is skipped for dry runs.
+
+Advisory locking is implemented for **PostgreSQL** (`pg_try_advisory_lock`) and
+**MySQL** (`GET_LOCK`) only. On SQLite (single-writer by design) and MSSQL (not
+yet supported) the option is a no-op — concurrent runners are **not**
+serialized there.
 
 ### Runner Methods
 
@@ -308,6 +332,40 @@ const loggingPlugin = createLoggingPlugin(logger)
 const metricsPlugin = createMetricsPlugin()
 ```
 
+### createMigrationRunnerWithPlugins
+
+Async factory that awaits each plugin's `onInit` hook and returns a
+`MigrationRunnerWithPlugins` instance.
+
+```typescript
+async function createMigrationRunnerWithPlugins<DB = unknown>(
+  db: Kysely<DB>,
+  migrations: Migration<DB>[],
+  options?: MigrationRunnerWithPluginsOptions<DB>
+): Promise<MigrationRunnerWithPlugins<DB>>
+
+interface MigrationRunnerWithPluginsOptions<DB = unknown> extends MigrationRunnerOptions {
+  /** Plugins to apply */
+  plugins?: MigrationPlugin<DB>[]
+}
+```
+
+### MigrationRunnerWithPlugins
+
+Subclass of `MigrationRunner` that overrides `up()` and `down()` to invoke the
+plugin lifecycle hooks (`beforeMigration`, `afterMigration`,
+`onMigrationError`) around each migration. All other runner methods are
+inherited unchanged.
+
+```typescript
+class MigrationRunnerWithPlugins<DB = unknown> extends MigrationRunner<DB> {
+  constructor(db: Kysely<DB>, migrations: Migration<DB>[], options?: MigrationRunnerWithPluginsOptions<DB>)
+
+  // Returns a copy of the registered plugin list
+  getPlugins(): MigrationPlugin<DB>[]
+}
+```
+
 ### Usage
 
 ```typescript
@@ -316,6 +374,8 @@ import { createMigrationRunnerWithPlugins, createLoggingPlugin } from '@kysera/m
 const runner = await createMigrationRunnerWithPlugins(db, migrations, {
   plugins: [createLoggingPlugin()]
 })
+
+runner.getPlugins() // => [loggingPlugin]
 ```
 
 ## Error Handling
@@ -337,6 +397,28 @@ try {
   }
 }
 ```
+
+### Error Codes
+
+`MigrationError.code` uses the unified codes from `@kysera/core`:
+
+```typescript
+import { MigrationErrorCodes, type MigrationErrorCode } from '@kysera/migrations'
+
+MigrationErrorCodes.UP_FAILED         // ErrorCodes.MIGRATION_UP_FAILED
+MigrationErrorCodes.DOWN_FAILED       // ErrorCodes.MIGRATION_DOWN_FAILED
+MigrationErrorCodes.VALIDATION_FAILED // ErrorCodes.MIGRATION_VALIDATION_FAILED
+```
+
+### Core Errors
+
+The package root re-exports `DatabaseError`, `NotFoundError`,
+`BadRequestError`, `silentLogger`, and the `KyseraLogger` type from
+`@kysera/core`. Besides `MigrationError` and `MigrationLockError`, the runner
+throws:
+
+- `BadRequestError` — invalid runner options or duplicate migration names
+- `NotFoundError` — `upTo(targetName)` names a migration that doesn't exist
 
 ## Best Practices
 

@@ -141,7 +141,7 @@ Plugins are:
 
 **Performance:**
 
-- **No plugins / no interceptors:** Returns a marker-only Proxy that adds the `__kysera*` properties and passes everything else straight through (near-zero overhead)
+- **No plugins / no interceptors:** Returns a lightweight Proxy that adds the `__kysera*` marker properties and skips query interception entirely (near-zero overhead). Derived-instance APIs (`transaction()`, `connection()`, `withSchema()`, `with()`) still return re-wrapped instances so the markers and plugins are preserved
 - **With interceptors:** Uses optimized Proxy with method caching
 
 ### destroyExecutor
@@ -615,13 +615,13 @@ interface Plugin {
 
 **Error Wrapping in interceptQuery:**
 
-If a plugin's `interceptQuery` throws an error, the executor wraps it with context information:
+If a plugin's `interceptQuery` throws an error, the executor wraps it in a generic `Error` with context information; the original error is preserved as `error.cause`:
 
 ```
 Plugin "my-plugin" threw during interceptQuery for select on "users": <original error message>
 ```
 
-This applies both to automatic interception (via the proxy) and manual `applyPlugins()` calls.
+This applies both to automatic interception (via the proxy) and manual `applyPlugins()` calls. Because of the wrapping, `instanceof` checks against the plugin's own error class must be done on `error.cause`, not on the caught error itself. (Errors thrown from `onInit` are wrapped differently — in a `PluginValidationError` of type `INITIALIZATION_FAILED`.)
 
 **Plugin Hooks:**
 
@@ -1249,16 +1249,21 @@ The executor uses different strategies based on plugin configuration:
 **1. Marker-Only Path** (no plugins, or no plugin has `interceptQuery`):
 
 ```typescript
-// Returns a lightweight Proxy that only answers the marker properties
-// (__kysera, __plugins = the plugins you passed, __rawDb) and forwards
-// everything else to Kysely unchanged — near-zero overhead
-return createMarkerProxy(db, sortedPlugins)
+// Returns a lightweight Proxy that answers the marker properties
+// (__kysera, __plugins = the plugins you passed, __rawDb) and skips
+// query interception entirely — near-zero overhead
+return createProxy(db, sortedPlugins, /* interceptors: */ [])
 ```
 
 The instance is never mutated with `Object.assign` — Kysely relies on
 `#private` fields, and mutating the caller's instance would leak the markers
 onto it. `__plugins` always reflects the plugins you passed (they may still
 provide `extendRepository` or lifecycle hooks even without interceptors).
+
+Even on this path, not everything is forwarded raw: derived-instance APIs
+(`transaction()`, `connection()`, `withSchema()`, `with()`, ...) still return
+re-wrapped instances so the markers and plugins survive derivation. Plain
+query methods are bound to the underlying Kysely instance and passed through.
 
 **2. Proxy Path** (with interceptors):
 
@@ -1296,6 +1301,13 @@ These methods trigger plugin interception:
 
 Methods not listed above pass through without interception (bound to the target); derived-instance methods (`withSchema()`, `transaction()`, `with()`, ...) return re-wrapped instances so plugins are never silently lost.
 
+:::note CTE names are not intercepted
+After registering a CTE via `.with('name', cb)`, the executor tracks `'name'` and **skips plugin interception** when it later appears in `selectFrom('name')` (or the other intercepted methods) — a CTE is not a real table, so filtering it would break the query. Two consequences:
+
+- **Plugin authors:** don't expect `interceptQuery` to fire for CTE names; the CTE's inner query builder also never originates from the proxy, so its contents cannot be intercepted here either.
+- **Soft-delete / RLS users:** apply filters manually *inside* the CTE body — `db.with('active', qb => qb.selectFrom('users').where('deleted_at', 'is', null))` — because plugin filters won't be added to the CTE definition or to selects from it.
+:::
+
 ### Plugin Lifecycle
 
 1. **Validation** - `validatePlugins()` checks for conflicts, dependencies, circular dependencies
@@ -1319,7 +1331,11 @@ Manual wrapping is also supported via `wrapTransaction(trx, plugins)`.
 
 Note that the wrapped transaction and connection builders are structurally
 compatible with Kysely's builders but are **not** `instanceof` them; when a
-library insists on the native classes, `__rawDb` is the escape hatch.
+library insists on the native classes, `__rawDb` is the escape hatch. Their
+types are exported as `WrappedTransactionBuilder<DB>` (from
+`executor.transaction()`, with `setAccessMode` / `setIsolationLevel` /
+`execute`) and `WrappedControlledTransactionBuilder<DB>` (from
+`executor.startTransaction()`) for use in your own signatures.
 
 ## Performance
 
@@ -1398,9 +1414,14 @@ const executor = await createExecutor(db, [
   schemaPlugin({ defaultSchema: 'public' })
 ])
 
-// All queries use 'public' schema
+// Queries run unchanged; 'public' is recorded as the resolved schema
+// in query metadata for other plugins to read via getResolvedSchema()
 const users = await executor.selectFrom('users').selectAll().execute()
 ```
+
+:::info Validation and metadata only — not query rewriting
+`schemaPlugin` does **not** rewrite queries to another schema. Its `interceptQuery` only validates the schema (against `allowedSchemas`) and records the resolved schema in `context.metadata.__resolvedSchema` for downstream plugins. To actually route queries to a schema, use `executor.withSchema('...')` — as in the multi-tenant example below.
+:::
 
 **With allowed schemas whitelist:**
 
@@ -1445,16 +1466,16 @@ app.get('/users', async (req, res) => {
 })
 ```
 
-**Dynamic schema resolution (table-based routing):**
+**Dynamic schema resolution (per-query metadata):**
 
-Use `resolveSchema` when you need automatic schema routing based on table names:
+Use `resolveSchema` to compute the *resolved schema* per query — for validation and for downstream plugins to consume. It does not change which schema the SQL runs against:
 
 ```typescript
 const executor = await createExecutor(db, [
   schemaPlugin({
     defaultSchema: 'public',
     resolveSchema: (context) => {
-      // Route tables to specific schemas automatically
+      // Classify tables into logical schemas
       if (context.table.startsWith('auth_')) return 'auth'
       if (context.table.startsWith('admin_')) return 'admin'
       // Use schema from withSchema() if set, otherwise default
@@ -1463,15 +1484,17 @@ const executor = await createExecutor(db, [
   })
 ])
 
-// auth_users -> 'auth' schema (automatic)
+// metadata.__resolvedSchema = 'auth' (query SQL unchanged)
 await executor.selectFrom('auth_users').selectAll().execute()
 
-// admin_settings -> 'admin' schema (automatic)
+// metadata.__resolvedSchema = 'admin' (query SQL unchanged)
 await executor.selectFrom('admin_settings').selectAll().execute()
 
-// users -> 'public' schema (default)
+// metadata.__resolvedSchema = 'public' (default)
 await executor.selectFrom('users').selectAll().execute()
 ```
+
+The resolved value is validated against `allowedSchemas` (throwing or falling back per `strictValidation`) and stored in `context.metadata.__resolvedSchema`, where security or filtering plugins can read it via `getResolvedSchema()`. For actual schema routing, combine with `executor.withSchema()`.
 
 **With schema validation:**
 
@@ -1528,26 +1551,30 @@ class SchemaValidationError extends Error {
 
 **Example:**
 
+When thrown from `interceptQuery`, the executor wraps the error in a generic `Error` with the original available as `error.cause` (see [Error Wrapping in interceptQuery](#plugin)) — so check `error.cause`:
+
 ```typescript
 import { SchemaValidationError } from '@kysera/executor'
 
 try {
   await executor.withSchema('invalid').selectFrom('users').execute()
 } catch (error) {
-  if (error instanceof SchemaValidationError) {
-    console.log(`Invalid schema: ${error.schema}`)
-    console.log(`Allowed schemas: ${error.allowedSchemas?.join(', ')}`)
+  if (error instanceof Error && error.cause instanceof SchemaValidationError) {
+    console.log(`Invalid schema: ${error.cause.schema}`)
+    console.log(`Allowed schemas: ${error.cause.allowedSchemas?.join(', ')}`)
   }
 }
 ```
+
+During `createExecutor()` (i.e. thrown from `onInit`, e.g. an invalid `defaultSchema`), the error surfaces as a `PluginValidationError` of type `INITIALIZATION_FAILED` instead.
 
 ### Plugin Details
 
 - **Name:** `@kysera/schema`
 - **Version:** `1.0.0`
-- **Priority:** `1000` (runs early, before other plugins)
+- **Priority:** `1100` (CONTEXT tier — deliberately above SECURITY/RLS at 1000)
 
-The high priority ensures schema context is resolved before other plugins like soft-delete or RLS process the query.
+The CONTEXT-tier priority ensures the schema context is resolved before security plugins like RLS (priority 1000) and filter plugins like soft-delete (priority 500) process the query, so they can read `metadata.__resolvedSchema`.
 
 ## See Also
 

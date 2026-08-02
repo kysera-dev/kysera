@@ -413,6 +413,9 @@ pnpm install
 createdb blog_example
 export DATABASE_URL="postgresql://localhost/blog_example"
 
+# Create tables
+pnpm migrate
+
 # Build the example
 pnpm build
 

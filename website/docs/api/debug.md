@@ -133,6 +133,16 @@ console.log(`Recorded: ${profiler.count} queries`)
 profiler.clear()
 ```
 
+### ProfilerOptions
+
+```typescript
+interface ProfilerOptions {
+  maxQueries?: number // Max queries kept in memory (default: 1000)
+}
+```
+
+When the limit is reached, the oldest recorded queries are overwritten (backed by a [CircularBuffer](#circularbuffer)).
+
 ### QueryProfiler Methods
 
 | Method                      | Returns           | Description                            |
@@ -156,6 +166,44 @@ interface ProfilerSummary {
   queries: QueryMetrics[]
 }
 ```
+
+## CircularBuffer
+
+The fixed-size ring buffer backing metrics storage is exported for standalone use. When full, the oldest entry is overwritten.
+
+```typescript
+import { CircularBuffer } from '@kysera/debug'
+
+const buffer = new CircularBuffer<number>(3)
+
+buffer.add(1)
+buffer.add(2)
+buffer.add(3)
+buffer.add(4) // Overwrites oldest (1)
+
+buffer.getOrdered() // [2, 3, 4] - chronological order
+buffer.getRaw() // Storage order (not chronological)
+buffer.size // 3 (current item count)
+buffer.capacity // 3 (maximum size)
+buffer.isFull // true
+buffer.isEmpty // false
+buffer.clear() // Remove all items
+```
+
+### CircularBuffer API
+
+| Member             | Returns   | Description                                          |
+| ------------------ | --------- | ---------------------------------------------------- |
+| `add(item)`        | `void`    | Add an item, overwriting the oldest when full - O(1) |
+| `getOrdered()`     | `T[]`     | Copy of items in chronological order - O(n)          |
+| `getRaw()`         | `T[]`     | Copy of items in storage order - O(n)                |
+| `clear()`          | `void`    | Remove all items                                     |
+| `size` (getter)    | `number`  | Current number of items                              |
+| `capacity` (getter)| `number`  | Maximum number of items                              |
+| `isFull` (getter)  | `boolean` | Whether the buffer is at capacity                    |
+| `isEmpty` (getter) | `boolean` | Whether the buffer has no items                      |
+
+The constructor throws if `maxSize` is not a positive integer.
 
 ## SQL Formatting Functions
 
@@ -262,10 +310,12 @@ setInterval(() => {
 import type { KyseraLogger } from '@kysera/core'
 
 const customLogger: KyseraLogger = {
+  trace: message => loggingService.trace('db-query', message),
   debug: message => loggingService.debug('db-query', message),
   info: message => loggingService.info('db-query', message),
   warn: message => loggingService.warn('db-query', message),
-  error: message => loggingService.error('db-query', message)
+  error: message => loggingService.error('db-query', message),
+  fatal: message => loggingService.fatal('db-query', message)
 }
 
 const debugDb = withDebug(db, { logger: customLogger })
@@ -275,13 +325,13 @@ const debugDb = withDebug(db, { logger: customLogger })
 
 ### Memory Management
 
-The debug plugin uses an **O(1) circular buffer** for efficient metrics storage:
+The debug plugin uses a **circular buffer** for efficient metrics storage:
 
 - Default limit: 1000 metrics
 - Oldest metrics automatically overwritten when limit reached
 - Configure via `maxMetrics` option
 - **O(1) insertion** - no array shifting or reallocation
-- **O(1) retrieval** - direct index access
+- **O(n) retrieval** - `getMetrics()` copies entries into chronological order (handling wrap-around)
 - Minimal memory overhead - fixed-size array
 - No garbage collection pressure from array resizing
 

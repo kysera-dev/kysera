@@ -19,19 +19,24 @@ npm install @kysera/core
 
 ```typescript
 interface KyseraLogger {
+  trace(message: string, ...args: unknown[]): void
   debug(message: string, ...args: unknown[]): void
   info(message: string, ...args: unknown[]): void
   warn(message: string, ...args: unknown[]): void
   error(message: string, ...args: unknown[]): void
+  fatal(message: string, ...args: unknown[]): void
 }
 ```
 
-A simple interface that any logging library can implement.
+A simple six-level interface (`trace` through `fatal`) that any logging library can implement.
 
 ### consoleLogger
 
 ```typescript
 import { consoleLogger } from '@kysera/core'
+
+consoleLogger.trace('Entering createUser')
+// Output: [kysera:trace] Entering createUser
 
 consoleLogger.debug('Fetching user', { id: 1 })
 // Output: [kysera:debug] Fetching user { id: 1 }
@@ -44,9 +49,12 @@ consoleLogger.warn('Deprecated method used')
 
 consoleLogger.error('Failed to connect', error)
 // Output: [kysera:error] Failed to connect Error: ...
+
+consoleLogger.fatal('Unrecoverable failure', error)
+// Output: [kysera:fatal] FATAL: Unrecoverable failure Error: ...
 ```
 
-Built-in console logger with `[kysera:level]` prefixes.
+Built-in console logger with `[kysera:level]` prefixes (`trace` maps to `console.debug`, `fatal` to `console.error` with a `FATAL:` prefix).
 
 ### silentLogger
 
@@ -104,8 +112,8 @@ const debugDb = withDebug(db, {
 import { HealthMonitor } from '@kysera/infra'
 import { createPrefixedLogger } from '@kysera/core'
 
-const monitor = new HealthMonitor({
-  interval: 30_000,
+const monitor = new HealthMonitor(db, {
+  intervalMs: 30_000,
   logger: createPrefixedLogger('HealthCheck')
 })
 ```
@@ -118,13 +126,15 @@ Integrate with your preferred logging library:
 import pino from 'pino'
 import type { KyseraLogger } from '@kysera/core'
 
-const pinoLogger = pino({ level: 'debug' })
+const pinoLogger = pino({ level: 'trace' })
 
 const kyseraLogger: KyseraLogger = {
+  trace: (msg, ...args) => pinoLogger.trace({ args }, msg),
   debug: (msg, ...args) => pinoLogger.debug({ args }, msg),
   info: (msg, ...args) => pinoLogger.info({ args }, msg),
   warn: (msg, ...args) => pinoLogger.warn({ args }, msg),
-  error: (msg, ...args) => pinoLogger.error({ args }, msg)
+  error: (msg, ...args) => pinoLogger.error({ args }, msg),
+  fatal: (msg, ...args) => pinoLogger.fatal({ args }, msg)
 }
 ```
 
@@ -135,15 +145,17 @@ import winston from 'winston'
 import type { KyseraLogger } from '@kysera/core'
 
 const winstonLogger = winston.createLogger({
-  level: 'debug',
+  level: 'silly',
   transports: [new winston.transports.Console()]
 })
 
 const kyseraLogger: KyseraLogger = {
+  trace: (msg, ...args) => winstonLogger.silly(msg, ...args), // Winston uses 'silly' for trace
   debug: (msg, ...args) => winstonLogger.debug(msg, ...args),
   info: (msg, ...args) => winstonLogger.info(msg, ...args),
   warn: (msg, ...args) => winstonLogger.warn(msg, ...args),
-  error: (msg, ...args) => winstonLogger.error(msg, ...args)
+  error: (msg, ...args) => winstonLogger.error(msg, ...args),
+  fatal: (msg, ...args) => winstonLogger.error(msg, ...args) // Winston has no fatal level
 }
 ```
 

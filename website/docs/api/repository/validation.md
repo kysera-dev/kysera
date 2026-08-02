@@ -15,41 +15,69 @@ Kysera supports multiple validation libraries through adapters:
 ```typescript
 import { zodAdapter, valibotAdapter, typeboxAdapter, nativeAdapter } from '@kysera/repository'
 
-// With Zod (default)
+// With Zod
 const userRepo = factory.create({
+  tableName: 'users',
+  mapRow: row => row,
   schemas: {
     create: zodAdapter(CreateUserSchema),
     update: zodAdapter(UpdateUserSchema)
   }
 })
 
-// With Valibot
+// With Valibot — pass the valibot module as the second argument
 import * as v from 'valibot'
 const userRepo = factory.create({
+  tableName: 'users',
+  mapRow: row => row,
   schemas: {
-    create: valibotAdapter(v.object({ email: v.string(), name: v.string() }))
+    create: valibotAdapter(v.object({ email: v.string(), name: v.string() }), v)
   }
 })
 
-// With TypeBox
+// With TypeBox — pass the Value module as the second argument
 import { Type } from '@sinclair/typebox'
+import { Value } from '@sinclair/typebox/value'
 const userRepo = factory.create({
+  tableName: 'users',
+  mapRow: row => row,
   schemas: {
-    create: typeboxAdapter(Type.Object({ email: Type.String(), name: Type.String() }))
+    create: typeboxAdapter(Type.Object({ email: Type.String(), name: Type.String() }), Value)
   }
 })
 
 // Native TypeScript (no runtime validation)
 const userRepo = factory.create({
+  tableName: 'users',
+  mapRow: row => row,
   schemas: {
     create: nativeAdapter<CreateUserInput>()
   }
 })
 ```
 
-:::info Auto-detection
-When using Zod schemas directly without an adapter, Kysera automatically wraps them for backward compatibility.
+:::warning No auto-wrapping
+The factory never wraps raw validator schemas: `schemas` entries must implement
+the `ValidationSchema` interface (`parse` + `safeParse`), so wrap Zod schemas
+with `zodAdapter()` explicitly. The exported `normalizeSchema()` helper can wrap
+a Zod-like schema for you, but it is never called automatically.
 :::
+
+### isValidationSchema
+
+Type guard for the `ValidationSchema` interface — checks that a value has
+callable `parse` and `safeParse`:
+
+```typescript
+function isValidationSchema(value: unknown): value is ValidationSchema
+```
+
+```typescript
+import { isValidationSchema, zodAdapter } from '@kysera/repository'
+
+isValidationSchema(zodAdapter(UserSchema)) // true
+isValidationSchema({ parse: () => ({}) }) // false — safeParse missing
+```
 
 ## getValidationMode
 
@@ -189,7 +217,7 @@ try {
 
 ## Validation in Repositories
 
-### Input Validation (Always On)
+### Input Validation (On by Default)
 
 ```typescript
 import { zodAdapter } from '@kysera/repository'
@@ -205,9 +233,14 @@ const userRepo = factory.create({
   }
 })
 
-// Input is ALWAYS validated
+// Input is validated by default (validationStrategy: 'strict')
 await userRepo.create({ email: 'invalid' }) // Throws!
 ```
+
+Input validation **can** be disabled with `validationStrategy: 'none'` — inputs
+are then passed to the database unvalidated. Keep the default `'strict'` unless
+the data is already validated at another trust boundary, and never disable it
+for untrusted input.
 
 ### Output Validation (Configurable)
 
@@ -221,26 +254,38 @@ const userRepo = factory.create({
     entity: zodAdapter(UserSchema), // For output validation
     create: zodAdapter(CreateUserSchema)
   }
-  // Output validation controlled via validateDbResults option or NODE_ENV
+  // Output validation controlled by the validateDbResults option
+  // (default: NODE_ENV === 'development' at repository creation)
 })
 ```
 
 ## Validation Modes
 
-| Mode          | Input Validation | Output Validation       |
-| ------------- | ---------------- | ----------------------- |
-| `always`      | Yes              | Yes                     |
-| `never`       | Yes\*            | No                      |
-| `development` | Yes              | If NODE_ENV=development |
-| `production`  | Yes              | No                      |
+The `KYSERA_VALIDATION_MODE` environment variable (values: `always`, `never`,
+`development`, `production`; falls back to `NODE_ENV`) drives **only** the
+standalone helpers `shouldValidate()` and
+`createValidator().validateConditional()`, which resolve it to a single
+boolean:
 
-\* Input validation cannot be disabled for security
+| Mode          | `shouldValidate()` returns       |
+| ------------- | -------------------------------- |
+| `always`      | `true`                           |
+| `never`       | `false`                          |
+| `development` | `true` if `NODE_ENV=development` |
+| `production`  | `false`                          |
+
+Repositories created through the factory **never read this variable**. Their
+behavior is set per repository: `validationStrategy` (`'strict'` default \|
+`'none'`) controls input validation, and `validateDbResults` (default:
+`NODE_ENV === 'development'`) controls output validation against
+`schemas.entity`.
 
 ## Error Handling
 
-```typescript
-import { ValidationError } from '@kysera/core'
+Adapters re-throw the underlying library's error from `parse()` — with
+`zodAdapter` that is a `ZodError`:
 
+```typescript
 try {
   await userRepo.create(invalidData)
 } catch (error) {
@@ -254,6 +299,27 @@ try {
     ]
     */
   }
+}
+```
+
+For non-throwing flows, `safeParse()` returns a normalized error shape. Both
+types live in `@kysera/repository` (not `@kysera/core`, which only exports
+`ValidationErrorCodes`), and `ValidationError` is an interface — it cannot be
+used with `instanceof`:
+
+```typescript
+import type { ValidationError, ValidationIssue } from '@kysera/repository'
+
+interface ValidationError {
+  message: string // Primary error message
+  path?: (string | number)[] // Path to the first invalid field
+  issues?: ValidationIssue[] // All validation issues
+}
+
+interface ValidationIssue {
+  code: string // Error code (library-specific)
+  message: string // Human-readable error message
+  path: (string | number)[] // Path to the invalid field
 }
 ```
 
@@ -295,12 +361,27 @@ app.post('/users', async (req, res) => {
 })
 ```
 
-### 3. Use Environment-Based Validation
+### 3. Configure Validation Where It Applies
+
+For repositories, use per-repository options — environment variables have no
+effect on them:
 
 ```typescript
-// .env.development
-KYSERA_VALIDATION_MODE = always
+const userRepo = factory.create({
+  tableName: 'users',
+  mapRow: row => row,
+  schemas: { entity: zodAdapter(UserSchema), create: zodAdapter(CreateUserSchema) },
+  validateDbResults: process.env['NODE_ENV'] !== 'production' // explicit beats implicit
+})
+```
 
-// .env.production
-KYSERA_VALIDATION_MODE = production
+Reserve `KYSERA_VALIDATION_MODE` for code built on the standalone helpers
+(`shouldValidate()`, `createValidator().validateConditional()`):
+
+```bash
+# .env.development — validateConditional() always parses
+KYSERA_VALIDATION_MODE=always
+
+# .env.production — validateConditional() skips parsing
+KYSERA_VALIDATION_MODE=production
 ```

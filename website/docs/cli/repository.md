@@ -108,35 +108,38 @@ The command provides a summary showing:
 Inspect a specific repository in detail.
 
 ```bash
-kysera repository inspect <name> [options]
+kysera repository inspect [options]
 ```
 
-### Arguments
-
-| Argument | Description                                  |
-| -------- | -------------------------------------------- |
-| `name`   | Repository class name (e.g., UserRepository) |
+The repository is selected with `-f/--file` or `-c/--className` — there is no positional argument.
 
 ### Options
 
-| Option            | Description                |
-| ----------------- | -------------------------- |
-| `--show-source`   | Show source code           |
-| `--show-types`    | Show TypeScript types      |
-| `--json`          | Output as JSON             |
-| `--config <path>` | Path to configuration file |
+| Option                  | Description                |
+| ----------------------- | -------------------------- |
+| `-f, --file <path>`     | Repository file to inspect |
+| `-c, --className <name>`| Repository class name      |
+| `--show-ast`            | Show abstract syntax tree  |
+| `--show-dependencies`   | Show dependencies graph    |
+| `--show-complexity`     | Show complexity metrics    |
+| `--show-database`       | Show database table info   |
+| `--json`                | Output as JSON             |
+| `--config <path>`       | Path to configuration file |
 
 ### Examples
 
 ```bash
-# Inspect UserRepository
-kysera repository inspect UserRepository
+# Inspect by class name
+kysera repository inspect -c UserRepository
 
-# Show source code
-kysera repository inspect UserRepository --show-source
+# Inspect a specific file
+kysera repository inspect -f src/repos/UserRepository.ts
 
-# Show TypeScript types
-kysera repository inspect UserRepository --show-types
+# Include dependency graph and complexity metrics
+kysera repository inspect -c UserRepository --show-dependencies --show-complexity
+
+# Cross-check against the database table
+kysera repository inspect -c UserRepository --show-database
 ```
 
 ### Output
@@ -161,13 +164,15 @@ kysera repository validate [options]
 
 ### Options
 
-| Option            | Description                          |
-| ----------------- | ------------------------------------ |
-| `--strict`        | Strict validation (fail on warnings) |
-| `--fix`           | Suggest fixes for mismatches         |
-| `--table <name>`  | Validate specific table only         |
-| `--json`          | Output as JSON                       |
-| `--config <path>` | Path to configuration file           |
+| Option                   | Description                                  |
+| ------------------------ | -------------------------------------------- |
+| `-d, --directory <path>` | Directory to scan (default: src)             |
+| `-p, --pattern <glob>`   | File pattern to match (default: \**/*Repository.ts) |
+| `--fix`                  | Attempt to fix issues                        |
+| `--strict`               | Strict validation (fail on warnings)         |
+| `--show-details`         | Show detailed validation results             |
+| `--json`                 | Output as JSON                               |
+| `--config <path>`        | Path to configuration file                   |
 
 ### Examples
 
@@ -175,13 +180,13 @@ kysera repository validate [options]
 # Validate all repositories
 kysera repository validate
 
-# Strict validation
-kysera repository validate --strict
+# Strict validation with details
+kysera repository validate --strict --show-details
 
-# Validate specific table
-kysera repository validate --table users
+# Validate a different directory
+kysera repository validate -d lib
 
-# Get fix suggestions
+# Attempt automatic fixes
 kysera repository validate --fix
 ```
 
@@ -229,13 +234,18 @@ kysera repository methods [options]
 
 ### Options
 
-| Option               | Description                       |
-| -------------------- | --------------------------------- |
-| `--show-signatures`  | Show full method signatures       |
-| `--filter <pattern>` | Filter methods by name pattern    |
-| `--group-by <type>`  | Group by: repository, method-type |
-| `--json`             | Output as JSON                    |
-| `--config <path>`    | Path to configuration file        |
+| Option                  | Description                                              |
+| ----------------------- | -------------------------------------------------------- |
+| `-r, --repository <name>` | Repository class name                                  |
+| `-f, --file <path>`     | Repository file path                                     |
+| `-g, --group-by <type>` | Group by: visibility, type, category (default: visibility) |
+| `--filter <pattern>`    | Filter methods by name pattern                           |
+| `--show-signatures`     | Show full method signatures                              |
+| `--show-examples`       | Show usage examples                                      |
+| `--show-complexity`     | Show complexity metrics                                  |
+| `--markdown`            | Output as markdown documentation                         |
+| `--json`                | Output as JSON                                           |
+| `--config <path>`       | Path to configuration file                               |
 
 ### Examples
 
@@ -250,7 +260,10 @@ kysera repository methods --show-signatures
 kysera repository methods --filter "find*"
 
 # Group by method type
-kysera repository methods --group-by method-type
+kysera repository methods --group-by type
+
+# Methods of a single repository, as markdown docs
+kysera repository methods -r UserRepository --markdown
 ```
 
 ### Output
@@ -327,22 +340,21 @@ kysera repository list --json --show-methods > repositories.json
 kysera repository methods --filter "find*"
 
 # Inspect specific repository
-kysera repository inspect UserRepository --show-source
+kysera repository inspect -c UserRepository
 ```
 
 ## Configuration
 
-Repository commands scan the project directory. Configure the default scan path in `kysera.config.ts`:
+Repository commands scan the directory given by `-d/--directory` (default: `src`) with the `-p/--pattern` glob (default: `**/*Repository.ts`). Output locations for generated code come from the `generate` section of `kysera.config.ts`:
 
 ```typescript
-import { defineConfig } from '@kysera/cli'
-
-export default defineConfig({
-  generation: {
-    outputDir: './src/generated',
-    repositoryPattern: '**/*Repository.ts'
+export default {
+  generate: {
+    repositories: './src/repositories',
+    models: './src/models',
+    schemas: './src/schemas'
   }
-})
+}
 ```
 
 ## See Also
