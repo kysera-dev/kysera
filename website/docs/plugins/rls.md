@@ -103,6 +103,13 @@ interface RLSPluginOptions<DB = unknown> {
 
   // Configuration
   primaryKeyColumn?: string  // Primary key column name (default: 'id')
+
+  // Conditional policy activation (see "Conditional Policy Activation")
+  activation?: {
+    environment?: string // Environment for whenEnvironment gates (default: NODE_ENV)
+    features?: Set<string> | string[] | Record<string, unknown> // Feature flags for whenFeature gates
+    meta?: Record<string, unknown> // Static activation metadata; per-request ctx.meta overrides on conflict
+  }
 }
 ```
 
@@ -1856,19 +1863,34 @@ interface PolicyActivationContext {
   features?: Set<string> | string[] | Record<string, unknown>
   timestamp?: Date
   meta?: Record<string, unknown>
-  auth?: { userId?: string; roles?: string[]; isSystem?: boolean; [key: string]: unknown }
+  auth?: { userId?: string | number; roles?: string[]; isSystem?: boolean; [key: string]: unknown }
 }
 ```
 
-:::caution Standalone API
-`rlsPlugin()` does not evaluate `activationCondition` during query interception.
-The condition is metadata on the returned `ConditionalPolicyDefinition` — evaluate
-it yourself when assembling the schema (e.g. at startup) and drop inactive policies:
+`rlsPlugin()` evaluates activation conditions at enforcement time, on every call where policies are resolved. A policy whose condition returns `false` is treated as **absent** for that call: an absent `allow` under `defaultDeny` still denies, while an absent `deny`/`filter`/`validate` simply doesn't constrain.
+
+The activation context is assembled per call from these sources:
+
+- `environment` — the plugin's `activation.environment` option, falling back to the `NODE_ENV` environment variable
+- `features` — the plugin's `activation.features` option (feature flags have no environment fallback)
+- `timestamp` — the current time at query/mutation time (so `whenTimeRange` gates follow the clock, not the context's creation time)
+- `auth` / `meta` — the active RLS context; `meta` merges the plugin's static `activation.meta` with the context's per-request `meta` (the context wins on conflicts)
 
 ```typescript
-const activationCtx = { environment: process.env['NODE_ENV'], features: enabledFlags }
-const activePolicies = allPolicies.filter(p => p.activationCondition?.(activationCtx) ?? true)
+const orm = await createORM(db, [
+  rlsPlugin({
+    schema,
+    activation: {
+      environment: config.env,          // default: NODE_ENV
+      features: { 'strict-rls': true }, // Set, array, or object map
+      meta: { region: 'eu' }
+    }
+  })
+])
 ```
+
+:::info Sync-only, fail-active on error
+Activation conditions must be **synchronous** — they run inside query transformation. Async conditions are rejected with `RLSSchemaError` at plugin init (or on first use, if a non-`async` function returns a Promise). A condition that **throws** fails closed: the policy is treated as **active** — the most restrictive interpretation, so a broken gate never silently widens access — and the error is logged through the plugin logger. Resolve async inputs (flag services, config stores) before defining the policy and close over the result.
 :::
 
 ### Database-Native RLS (`@kysera/rls/native`)

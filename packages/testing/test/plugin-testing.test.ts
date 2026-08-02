@@ -10,6 +10,7 @@ import {
   assertPluginBehavior,
   createInMemoryDatabase,
   createPluginTestHarness,
+  createTestExecutor,
   type RecordedOperation,
   type PluginTestResult
 } from '../src/plugin-testing.js'
@@ -1280,5 +1281,140 @@ describe('type exports', () => {
 
     expect(result.error).toBeInstanceOf(Error)
     expect(result.error?.message).toBe('Test error')
+  })
+})
+
+describe('createTestExecutor', () => {
+  const USERS_SCHEMA = `
+    CREATE TABLE users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      name TEXT,
+      deleted_at TEXT
+    )
+  `
+
+  it('returns an executor that runs queries through the given plugins', async () => {
+    const db = await createInMemoryDatabase<TestDB>(USERS_SCHEMA)
+    const mockPlugin = createMockPlugin('tracking-plugin')
+
+    const { executor, cleanup } = await createTestExecutor({
+      db,
+      plugins: [mockPlugin]
+    })
+
+    await db
+      .insertInto('users')
+      .values({ email: 'a@example.com', name: 'A', deleted_at: null })
+      .execute()
+
+    const users = await executor.selectFrom('users').selectAll().execute()
+
+    expect(users).toHaveLength(1)
+    expect(mockPlugin.operations).toHaveLength(1)
+    expect(mockPlugin.operations[0]?.operation).toBe('select')
+    expect(mockPlugin.operations[0]?.table).toBe('users')
+
+    await cleanup()
+  })
+
+  it('applies query-modifying plugins while the raw db bypasses them', async () => {
+    const db = await createInMemoryDatabase<TestDB>(USERS_SCHEMA)
+
+    const softDeleteFilter: Plugin = {
+      name: 'test-soft-delete-filter',
+      version: '1.0.0',
+      interceptQuery<QB>(qb: QB, context: QueryBuilderContext): QB {
+        if (context.operation === 'select' && context.table === 'users') {
+          const builder = qb as { where: (col: string, op: string, val: unknown) => QB }
+          return builder.where('deleted_at', 'is', null)
+        }
+        return qb
+      }
+    }
+
+    const { executor, db: rawDb, cleanup } = await createTestExecutor({
+      db,
+      plugins: [softDeleteFilter]
+    })
+
+    await db
+      .insertInto('users')
+      .values([
+        { email: 'live@example.com', name: 'Live', deleted_at: null },
+        { email: 'gone@example.com', name: 'Gone', deleted_at: '2026-01-01' }
+      ])
+      .execute()
+
+    const filtered = await executor.selectFrom('users').selectAll().execute()
+    const unfiltered = await rawDb.selectFrom('users').selectAll().execute()
+
+    expect(filtered).toHaveLength(1)
+    expect(filtered[0]?.email).toBe('live@example.com')
+    expect(unfiltered).toHaveLength(2)
+
+    await cleanup()
+  })
+
+  it('records operations when debug is enabled', async () => {
+    const db = await createInMemoryDatabase<TestDB>(USERS_SCHEMA)
+
+    const { executor, operations, cleanup } = await createTestExecutor({
+      db,
+      plugins: [],
+      debug: true
+    })
+
+    await executor
+      .insertInto('users')
+      .values({ email: 'a@example.com', name: 'A', deleted_at: null })
+      .execute()
+    await executor.selectFrom('users').selectAll().execute()
+
+    expect(operations).toHaveLength(2)
+    expect(operations[0]?.operation).toBe('insert')
+    expect(operations[1]?.operation).toBe('select')
+    expect(operations.every(op => op.table === 'users')).toBe(true)
+
+    await cleanup()
+  })
+
+  it('does not record operations when debug is disabled', async () => {
+    const db = await createInMemoryDatabase<TestDB>(USERS_SCHEMA)
+
+    const { executor, operations, cleanup } = await createTestExecutor({
+      db,
+      plugins: []
+    })
+
+    await executor.selectFrom('users').selectAll().execute()
+
+    expect(operations).toHaveLength(0)
+
+    await cleanup()
+  })
+
+  it('cleanup destroys the underlying database', async () => {
+    const db = await createInMemoryDatabase<TestDB>(USERS_SCHEMA)
+
+    const { executor, cleanup } = await createTestExecutor({ db, plugins: [] })
+    await executor.selectFrom('users').selectAll().execute()
+
+    await cleanup()
+
+    await expect(db.selectFrom('users').selectAll().execute()).rejects.toThrow()
+  })
+
+  it('returns a KyseraExecutor carrying the given plugins', async () => {
+    const db = await createInMemoryDatabase<TestDB>(USERS_SCHEMA)
+    const { isKyseraExecutor, getPlugins } = await import('@kysera/executor')
+
+    const mockPlugin = createMockPlugin('marker-check')
+    const { executor, cleanup } = await createTestExecutor({ db, plugins: [mockPlugin] })
+
+    expect(isKyseraExecutor(executor)).toBe(true)
+    expect(getPlugins(executor).map(p => p.name)).toEqual(['marker-check'])
+
+    await cleanup()
   })
 })

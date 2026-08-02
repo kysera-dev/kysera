@@ -37,12 +37,16 @@ export { allow, deny, filter, validate } from './policy/builder'
 // Context management
 export { rlsContext, createRLSContext, withRLSContext, withRLSContextAsync } from './context'
 
+// Activation context resolution (conditional policies)
+export { resolveActivationContext } from './policy/activation'
+
 // Errors
 export { RLSError, RLSPolicyViolation, RLSPolicyEvaluationError, RLSContextError } from './errors'
 
 // Types
 export type {
   RLSPluginOptions,
+  RLSActivationOptions,
   RLSSchema,
   RLSAuthContext,
   RLSContext,
@@ -122,6 +126,20 @@ interface RLSPluginOptions<DB = unknown> {
    * @default 'id'
    */
   primaryKeyColumn?: string
+
+  /**
+   * Static inputs for conditional policy activation
+   * (whenEnvironment / whenFeature / whenTimeRange / whenCondition
+   * and PolicyOptions.condition)
+   * environment defaults to NODE_ENV; auth/meta/timestamp resolve per call
+   */
+  activation?: RLSActivationOptions
+}
+
+interface RLSActivationOptions {
+  environment?: string
+  features?: Set<string> | string[] | Record<string, unknown>
+  meta?: Record<string, unknown> // static; per-request ctx.meta overrides on conflict
 }
 ```
 
@@ -1939,7 +1957,13 @@ function whenCondition(
 ): ConditionalPolicyDefinition
 ```
 
-Each wrapper sets the policy's `activationCondition` — the same field the policy builders accept via `options.condition`. Note that `rlsPlugin()` does not evaluate activation conditions during query interception; filter your policy list yourself (e.g. at startup) with `policy.activationCondition?.(activationCtx) ?? true`.
+Each wrapper sets the policy's `activationCondition` — the same field the policy builders accept via `options.condition`. `rlsPlugin()` evaluates activation conditions at enforcement time on every call where policies are resolved; a policy whose condition returns `false` is treated as absent for that call (an absent `allow` under `defaultDeny` still denies).
+
+Semantics:
+
+- **Sync-only**: conditions run inside query transformation. Async conditions throw `RLSSchemaError` at plugin init; a non-`async` function returning a Promise throws `RLSSchemaError` on first use.
+- **Fail-active on error**: a condition that throws is logged via the plugin logger and the policy stays **active** (most restrictive interpretation — a broken gate never widens access).
+- **Registry access**: `PolicyRegistry.getAllows/getDenies/getValidates/getFilters` accept an optional trailing `activation?: PolicyActivationContext`; without it, no activation gating is applied.
 
 ### PolicyActivationContext
 
@@ -1950,9 +1974,22 @@ interface PolicyActivationContext {
   features?: Set<string> | string[] | Record<string, unknown>
   timestamp?: Date
   meta?: Record<string, unknown>
-  auth?: { userId?: string; roles?: string[]; isSystem?: boolean; [key: string]: unknown }
+  auth?: { userId?: string | number; roles?: string[]; isSystem?: boolean; [key: string]: unknown }
 }
 ```
+
+### resolveActivationContext
+
+Builds the per-call activation context the plugin uses internally — exported for advanced/manual use:
+
+```typescript
+function resolveActivationContext(
+  options: RLSActivationOptions | undefined,
+  ctx: RLSContext | null
+): PolicyActivationContext
+```
+
+Resolution: `environment` from `options.environment` falling back to `NODE_ENV`; `features` from `options.features`; `timestamp` is the current time; `auth` and `meta` come from the RLS context (`meta` is merged over `options.meta`, context winning on conflicts).
 
 ## Native PostgreSQL RLS (`@kysera/rls/native`)
 

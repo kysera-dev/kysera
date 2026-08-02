@@ -75,9 +75,11 @@ export {
   assertPluginBehavior,
   createInMemoryDatabase,
   createPluginTestHarness,
+  createTestExecutor,
   type RecordedOperation,
   type MockOperationContext,
   type PluginTestResult,
   type CreateTestExecutorOptions,
+  type TestExecutorResult,
   type PluginAssertionOptions
 } from './plugin-testing.js'

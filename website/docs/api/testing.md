@@ -604,6 +604,40 @@ await harness.teardown()
 | `getDb()` | Returns raw Kysely instance |
 | `teardown()` | Destroys database, cleans up resources |
 
+### createTestExecutor()
+
+One-shot alternative to the harness: wraps an existing test database (e.g. from `createInMemoryDatabase`) in a plugin-aware executor. With `debug: true`, a low-priority recorder plugin is appended that captures every intercepted operation on the returned `operations` array.
+
+```typescript
+import { createInMemoryDatabase, createTestExecutor } from '@kysera/testing'
+import { softDeletePlugin } from '@kysera/soft-delete'
+
+const db = await createInMemoryDatabase<MyDB>(`
+  CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, deleted_at TEXT)
+`)
+
+const { executor, operations, cleanup } = await createTestExecutor({
+  db,
+  plugins: [softDeletePlugin()],
+  debug: true
+})
+
+// Queries through `executor` are intercepted by the plugins;
+// queries through `db` bypass them
+const users = await executor.selectFrom('users').selectAll().execute()
+expect(operations[0]?.operation).toBe('select')
+
+await cleanup() // destroys the underlying database
+```
+
+```typescript
+function createTestExecutor<DB>(
+  options: CreateTestExecutorOptions<DB>
+): Promise<TestExecutorResult<DB>>
+```
+
+Requires the optional peer `@kysera/executor` (the executor is created via `createExecutor` under the hood).
+
 ### Plugin Testing Types
 
 ```typescript
@@ -633,12 +667,18 @@ interface MockOperationContext {
   executor: Kysely<unknown> | Transaction<unknown>
 }
 
-// Options shape for building a plugin-aware test executor. Note: the package
-// exports only this type — there is no createTestExecutor() function; pass
-// the plugins to createExecutor() from @kysera/executor instead.
+// Options for createTestExecutor()
 interface CreateTestExecutorOptions<DB> {
-  db: Kysely<DB>
-  plugins: Plugin[]
-  debug?: boolean
+  db: Kysely<DB> // database to wrap (e.g. from createInMemoryDatabase)
+  plugins: Plugin[] // plugins to apply to the executor
+  debug?: boolean // record intercepted operations on the result's `operations`
+}
+
+// Result of createTestExecutor()
+interface TestExecutorResult<DB> {
+  executor: KyseraExecutor<DB> // plugin-aware executor
+  db: Kysely<DB> // the underlying database (bypasses plugins)
+  operations: RecordedOperation[] // empty unless debug: true
+  cleanup: () => Promise<void> // destroys the underlying database
 }
 ```
