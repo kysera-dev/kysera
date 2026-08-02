@@ -7,10 +7,12 @@ import { withDatabase } from '../../utils/with-database.js'
 
 import { safePath, isPathSafe } from '../../utils/fs.js'
 import { formatBytes } from '../../utils/formatting.js'
+import { isJsonMode, output } from '../../utils/output.js'
 import { writeFileSync } from 'fs'
 import { resolve, dirname } from 'path'
 
 export interface DumpOptions {
+  json?: boolean
   output?: string
   tables?: string
   dataOnly?: boolean
@@ -28,6 +30,7 @@ export function dumpCommand(): Command {
     .option('--data-only', 'Export data only (no schema)')
     .option('--schema-only', 'Export schema only (no data)')
     .option('-f, --format <type>', 'Format (sql/json)', 'sql')
+    .option('--json', 'Output dump summary as JSON')
     .option('-c, --config <path>', 'Path to configuration file')
     .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: DumpOptions) => {
@@ -53,94 +56,111 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
     throw new CLIError('Cannot use both --data-only and --schema-only', 'INVALID_OPTIONS')
   }
 
-  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
-    const dumpSpinner = spinner() as any
-    dumpSpinner.start(`Creating database dump${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
+  await withDatabase(
+    { config: options.config, schema: options.schema },
+    async (db, config, schema) => {
+      const dumpSpinner = spinner() as any
+      dumpSpinner.start(
+        `Creating database dump${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
+      )
 
-    const introspector = new DatabaseIntrospector(db, config.database!.dialect as any, schema)
+      const introspector = new DatabaseIntrospector(db, config.database!.dialect as any, schema)
 
-    // Get tables to dump
-    let tables: string[]
-    if (options.tables) {
-      tables = options.tables.split(',').map(t => t.trim())
-      // Validate tables exist
-      const allTables = await introspector.getTables()
-      const invalidTables = tables.filter(t => !allTables.includes(t))
-      if (invalidTables.length > 0) {
-        throw new CLIError(`Table(s) not found: ${invalidTables.join(', ')}`, 'TABLE_NOT_FOUND')
+      // Get tables to dump
+      let tables: string[]
+      if (options.tables) {
+        tables = options.tables.split(',').map(t => t.trim())
+        // Validate tables exist
+        const allTables = await introspector.getTables()
+        const invalidTables = tables.filter(t => !allTables.includes(t))
+        if (invalidTables.length > 0) {
+          throw new CLIError(`Table(s) not found: ${invalidTables.join(', ')}`, 'TABLE_NOT_FOUND')
+        }
+      } else {
+        tables = await introspector.getTables()
       }
-    } else {
-      tables = await introspector.getTables()
-    }
 
-    if (tables.length === 0) {
-      dumpSpinner.warn('No tables to dump')
-      return
-    }
+      if (tables.length === 0) {
+        dumpSpinner.warn('No tables to dump')
+        return
+      }
 
-    dumpSpinner.text = `Dumping ${tables.length} table${tables.length !== 1 ? 's' : ''}...`
+      dumpSpinner.text = `Dumping ${tables.length} table${tables.length !== 1 ? 's' : ''}...`
 
-    // Generate output filename
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
-    const outputFile =
-      options.output || `dump_${timestamp}.${options.format === 'json' ? 'json' : 'sql'}`
+      // Generate output filename
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
+      const outputFile =
+        options.output || `dump_${timestamp}.${options.format === 'json' ? 'json' : 'sql'}`
 
-    // Validate output path is safe (within current working directory or absolute path)
-    const baseDir = process.cwd()
-    let outputPath: string
+      // Validate output path is safe (within current working directory or absolute path)
+      const baseDir = process.cwd()
+      let outputPath: string
 
-    if (resolve(outputFile) === outputFile) {
-      // Absolute path provided - validate it's within a reasonable location
-      outputPath = outputFile
-      const outputDir = dirname(outputPath)
-      // Ensure the output directory exists and is accessible
-      if (!outputDir.startsWith(baseDir) && !outputDir.startsWith('/tmp')) {
-        // For absolute paths outside cwd, just use them directly but warn
-        console.log(
-          prism.yellow(`Warning: Writing to path outside current directory: ${outputPath}`)
+      if (resolve(outputFile) === outputFile) {
+        // Absolute path provided - validate it's within a reasonable location
+        outputPath = outputFile
+        const outputDir = dirname(outputPath)
+        // Ensure the output directory exists and is accessible
+        if (!outputDir.startsWith(baseDir) && !outputDir.startsWith('/tmp')) {
+          // For absolute paths outside cwd, just use them directly but warn
+          console.log(
+            prism.yellow(`Warning: Writing to path outside current directory: ${outputPath}`)
+          )
+        }
+      } else {
+        // Relative path - validate no traversal
+        if (!isPathSafe(baseDir, outputFile)) {
+          throw new CLIError(`Invalid output path: ${outputFile}`, 'PATH_TRAVERSAL', [
+            'Output path must not contain path traversal sequences',
+            'Use a path within the current directory'
+          ])
+        }
+        outputPath = safePath(baseDir, outputFile)
+      }
+
+      let dumpContent: string
+
+      if (options.format === 'json') {
+        // JSON format
+        dumpContent = await generateJsonDump(db, introspector, tables, options)
+      } else {
+        // SQL format
+        dumpContent = await generateSqlDump(
+          db,
+          introspector,
+          tables,
+          options,
+          config.database!.dialect
         )
       }
-    } else {
-      // Relative path - validate no traversal
-      if (!isPathSafe(baseDir, outputFile)) {
-        throw new CLIError(`Invalid output path: ${outputFile}`, 'PATH_TRAVERSAL', [
-          'Output path must not contain path traversal sequences',
-          'Use a path within the current directory'
-        ])
+
+      // Write to file
+      writeFileSync(outputPath, dumpContent, 'utf-8')
+
+      dumpSpinner.succeed(`Database dump created: ${outputPath}`)
+
+      if (isJsonMode()) {
+        output({
+          file: outputPath,
+          format: options.format || 'sql',
+          tables: tables.length,
+          schemaIncluded: !options.dataOnly,
+          dataIncluded: !options.schemaOnly,
+          bytes: dumpContent.length
+        })
+        return
       }
-      outputPath = safePath(baseDir, outputFile)
+
+      // Show summary
+      console.log('')
+      console.log(prism.gray('Dump Summary:'))
+      console.log(`  Format: ${options.format || 'sql'}`)
+      console.log(`  Tables: ${tables.length}`)
+      console.log(`  Schema: ${options.dataOnly ? 'No' : 'Yes'}`)
+      console.log(`  Data: ${options.schemaOnly ? 'No' : 'Yes'}`)
+      console.log(`  File Size: ${formatBytes(dumpContent.length)}`)
     }
-
-    let dumpContent: string
-
-    if (options.format === 'json') {
-      // JSON format
-      dumpContent = await generateJsonDump(db, introspector, tables, options)
-    } else {
-      // SQL format
-      dumpContent = await generateSqlDump(
-        db,
-        introspector,
-        tables,
-        options,
-        config.database!.dialect
-      )
-    }
-
-    // Write to file
-    writeFileSync(outputPath, dumpContent, 'utf-8')
-
-    dumpSpinner.succeed(`Database dump created: ${outputPath}`)
-
-    // Show summary
-    console.log('')
-    console.log(prism.gray('Dump Summary:'))
-    console.log(`  Format: ${options.format || 'sql'}`)
-    console.log(`  Tables: ${tables.length}`)
-    console.log(`  Schema: ${options.dataOnly ? 'No' : 'Yes'}`)
-    console.log(`  Data: ${options.schemaOnly ? 'No' : 'Yes'}`)
-    console.log(`  File Size: ${formatBytes(dumpContent.length)}`)
-  })
+  )
 }
 
 async function generateJsonDump(

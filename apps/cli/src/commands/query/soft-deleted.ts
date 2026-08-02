@@ -56,115 +56,118 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
 
   const tableName = options.table
 
-  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
-    // Use schema-aware db for PostgreSQL
-    const schemaDb = schema !== 'public' ? db.withSchema(schema) : db
-    const querySpinner = spinner()
-    const column = options.column || 'deleted_at'
-    const limit = parseInt(options.limit || '100', 10)
+  await withDatabase(
+    { config: options.config, schema: options.schema },
+    async (db, config, schema) => {
+      // Use schema-aware db for PostgreSQL
+      const schemaDb = schema !== 'public' ? db.withSchema(schema) : db
+      const querySpinner = spinner()
+      const column = options.column || 'deleted_at'
+      const limit = parseInt(options.limit || '100', 10)
 
-    if (options.restore) {
-      querySpinner.start(`Restoring record ${options.restore}...`)
+      if (options.restore) {
+        querySpinner.start(`Restoring record ${options.restore}...`)
 
-      await schemaDb
-        .updateTable(tableName)
-        .set({ [column]: null } as any)
-        .where('id', '=', options.restore as any)
-        .execute()
+        await schemaDb
+          .updateTable(tableName)
+          .set({ [column]: null } as any)
+          .where('id', '=', options.restore as any)
+          .execute()
 
-      querySpinner.succeed(`Record ${options.restore} restored successfully`)
-      return
-    }
-
-    if (options.purge) {
-      querySpinner.start('Counting soft-deleted records...')
-
-      const countResult = await schemaDb
-        .selectFrom(tableName)
-        .select(schemaDb.fn.countAll().as('count'))
-        .where(column as any, 'is not', null)
-        .executeTakeFirst()
-
-      const count = Number(countResult?.count || 0)
-      querySpinner.stop(`Found ${count} soft-deleted records`)
-
-      if (count === 0) {
-        console.log(prism.gray('No records to purge'))
+        querySpinner.succeed(`Record ${options.restore} restored successfully`)
         return
       }
 
-      if (!options.force) {
-        const { confirm } = await import('@xec-sh/kit')
-        const confirmed = await confirm({
-          message: `Permanently delete ${count} records from ${tableName}?`,
-          initialValue: false
-        })
+      if (options.purge) {
+        querySpinner.start('Counting soft-deleted records...')
 
-        if (!confirmed) {
-          console.log(prism.gray('Purge cancelled'))
+        const countResult = await schemaDb
+          .selectFrom(tableName)
+          .select(schemaDb.fn.countAll().as('count'))
+          .where(column as any, 'is not', null)
+          .executeTakeFirst()
+
+        const count = Number(countResult?.count || 0)
+        querySpinner.stop(`Found ${count} soft-deleted records`)
+
+        if (count === 0) {
+          console.log(prism.gray('No records to purge'))
           return
         }
-      }
 
-      querySpinner.start('Purging soft-deleted records...')
+        if (!options.force) {
+          const { confirm } = await import('@xec-sh/kit')
+          const confirmed = await confirm({
+            message: `Permanently delete ${count} records from ${tableName}?`,
+            initialValue: false
+          })
 
-      await schemaDb
-        .deleteFrom(tableName)
-        .where(column as any, 'is not', null)
-        .execute()
-
-      querySpinner.succeed(`Purged ${count} records from ${tableName}`)
-      return
-    }
-
-    querySpinner.start(`Querying soft-deleted records from ${tableName}...`)
-
-    const results = await schemaDb
-      .selectFrom(tableName)
-      .selectAll()
-      .where(column as any, 'is not', null)
-      .orderBy(column as any, 'desc')
-      .limit(limit)
-      .execute()
-
-    querySpinner.succeed(
-      `Found ${results.length} soft-deleted record${results.length !== 1 ? 's' : ''}`
-    )
-
-    if (results.length === 0) {
-      console.log(prism.gray('No soft-deleted records found'))
-      return
-    }
-
-    if (options.json) {
-      console.log(JSON.stringify(results, null, 2))
-    } else {
-      console.log('')
-      console.log(prism.bold(`Soft-Deleted Records in '${options.table}':`))
-      console.log('')
-
-      const formattedResults = results.map((row: any) => {
-        const formatted: any = {}
-        for (const [key, value] of Object.entries(row)) {
-          if (value === null) {
-            formatted[key] = prism.gray('NULL')
-          } else if (value instanceof Date) {
-            formatted[key] = value.toISOString()
-          } else if (typeof value === 'object') {
-            formatted[key] = JSON.stringify(value)
-          } else {
-            formatted[key] = String(value)
+          if (!confirmed) {
+            console.log(prism.gray('Purge cancelled'))
+            return
           }
         }
-        return formatted
-      })
 
-      console.log(displayTable(formattedResults))
+        querySpinner.start('Purging soft-deleted records...')
 
-      console.log('')
-      console.log(prism.cyan('Actions:'))
-      console.log(`  Restore: kysera query soft-deleted -t ${options.table} --restore <id>`)
-      console.log(`  Purge all: kysera query soft-deleted -t ${options.table} --purge`)
+        await schemaDb
+          .deleteFrom(tableName)
+          .where(column as any, 'is not', null)
+          .execute()
+
+        querySpinner.succeed(`Purged ${count} records from ${tableName}`)
+        return
+      }
+
+      querySpinner.start(`Querying soft-deleted records from ${tableName}...`)
+
+      const results = await schemaDb
+        .selectFrom(tableName)
+        .selectAll()
+        .where(column as any, 'is not', null)
+        .orderBy(column as any, 'desc')
+        .limit(limit)
+        .execute()
+
+      querySpinner.succeed(
+        `Found ${results.length} soft-deleted record${results.length !== 1 ? 's' : ''}`
+      )
+
+      if (results.length === 0) {
+        console.log(prism.gray('No soft-deleted records found'))
+        return
+      }
+
+      if (options.json) {
+        console.log(JSON.stringify(results, null, 2))
+      } else {
+        console.log('')
+        console.log(prism.bold(`Soft-Deleted Records in '${options.table}':`))
+        console.log('')
+
+        const formattedResults = results.map((row: any) => {
+          const formatted: any = {}
+          for (const [key, value] of Object.entries(row)) {
+            if (value === null) {
+              formatted[key] = prism.gray('NULL')
+            } else if (value instanceof Date) {
+              formatted[key] = value.toISOString()
+            } else if (typeof value === 'object') {
+              formatted[key] = JSON.stringify(value)
+            } else {
+              formatted[key] = String(value)
+            }
+          }
+          return formatted
+        })
+
+        console.log(displayTable(formattedResults))
+
+        console.log('')
+        console.log(prism.cyan('Actions:'))
+        console.log(`  Restore: kysera query soft-deleted -t ${options.table} --restore <id>`)
+        console.log(`  Purge all: kysera query soft-deleted -t ${options.table} --purge`)
+      }
     }
-  })
+  )
 }

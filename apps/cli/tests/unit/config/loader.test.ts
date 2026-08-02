@@ -32,6 +32,7 @@ vi.mock('@/config/resolver.js', () => ({
 // Mock the logger
 vi.mock('@/utils/logger.js', () => ({
   logger: {
+    success: vi.fn(),
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
@@ -41,6 +42,7 @@ vi.mock('@/utils/logger.js', () => ({
 
 import {
   loadConfig,
+  clearConfigCache,
   validateConfig,
   getConfigValue,
   setConfigValue,
@@ -55,6 +57,8 @@ import type { KyseraConfig } from '@/config/schema.js'
 describe('loadConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Config is cached per invocation: reset between tests
+    clearConfigCache()
     // Reset process.cwd mock if needed
     vi.spyOn(process, 'cwd').mockReturnValue('/test/project')
   })

@@ -7,6 +7,7 @@ import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
 import { logger } from '../../utils/logger.js'
+import { isJsonMode, output } from '../../utils/output.js'
 import { SeedRunner, type SeedRunnerOptions, type SeedHooks } from './seed-runner.js'
 
 export interface SeedOptions {
@@ -17,6 +18,7 @@ export interface SeedOptions {
   transaction?: boolean
   config?: string
   verbose?: boolean
+  json?: boolean
   schema?: string
 }
 
@@ -30,6 +32,7 @@ export function seedCommand(): Command {
     .option('--transaction', 'Run all seeds in a single transaction', false)
     .option('-c, --config <path>', 'Path to configuration file')
     .option('-v, --verbose', 'Show detailed output')
+    .option('--json', 'Output results as JSON')
     .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: SeedOptions) => {
       try {
@@ -173,6 +176,16 @@ async function runSeeds(options: SeedOptions): Promise<void> {
       seedSpinner.fail('Seeding completed with errors')
     } else {
       seedSpinner.warn('No seed files found')
+    }
+
+    if (isJsonMode()) {
+      output({
+        executed: result.executed,
+        skipped: result.skipped,
+        failed: result.failed,
+        duration: result.duration
+      })
+      return
     }
 
     // Summary

@@ -4,6 +4,7 @@ import { spinner } from '../../utils/spinner.js'
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { logger } from '../../utils/logger.js'
+import { isJsonMode, output } from '../../utils/output.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 import { DatabaseIntrospector, type TableInfo } from './introspector.js'
@@ -29,6 +30,7 @@ export function modelCommand(): Command {
     .option('--timestamps', 'Include timestamp fields', true)
     .option('--no-timestamps', 'Exclude timestamp fields')
     .option('--soft-delete', 'Include soft delete fields', false)
+    .option('--json', 'Output results as JSON')
     .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (table: string | undefined, options: ModelOptions) => {
       try {
@@ -48,60 +50,72 @@ export function modelCommand(): Command {
 }
 
 async function generateModel(tableName: string | undefined, options: ModelOptions): Promise<void> {
-  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
-    const generateSpinner = spinner()
-    generateSpinner.start(`Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
+  await withDatabase(
+    { config: options.config, schema: options.schema },
+    async (db, config, schema) => {
+      const generateSpinner = spinner()
+      generateSpinner.start(
+        `Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
+      )
 
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
+      const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
 
-    let tables: TableInfo[] = []
+      let tables: TableInfo[] = []
 
-    if (tableName) {
-      const tableInfo = await introspector.getTableInfo(tableName)
-      tables = [tableInfo]
-    } else {
-      tables = await introspector.introspect()
-    }
-
-    generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
-
-    const outputDir = options.output || './src/models'
-
-    if (!existsSync(outputDir)) {
-      mkdirSync(outputDir, { recursive: true })
-      logger.debug(`Created output directory: ${outputDir}`)
-    }
-
-    let generated = 0
-
-    for (const table of tables) {
-      const fileName = `${toKebabCase(table.name)}.ts`
-      const filePath = join(outputDir, fileName)
-
-      if (existsSync(filePath) && !options.overwrite) {
-        logger.warn(`Skipping ${fileName} (file exists, use --overwrite to replace)`)
-        continue
+      if (tableName) {
+        const tableInfo = await introspector.getTableInfo(tableName)
+        tables = [tableInfo]
+      } else {
+        tables = await introspector.introspect()
       }
 
-      const modelCode = generateModelCode(table, {
-        timestamps: options.timestamps !== false,
-        softDelete: options.softDelete === true
-      })
+      generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
 
-      writeFileSync(filePath, modelCode, 'utf-8')
-      logger.info(`${prism.green('OK')} Generated ${prism.cyan(fileName)}`)
-      generated++
-    }
+      const outputDir = options.output || './src/models'
 
-    if (generated === 0) {
-      logger.warn('No models were generated')
-    } else {
-      logger.info('')
-      logger.info(
-        prism.green(`Generated ${generated} model${generated !== 1 ? 's' : ''} successfully`)
-      )
+      if (!existsSync(outputDir)) {
+        mkdirSync(outputDir, { recursive: true })
+        logger.debug(`Created output directory: ${outputDir}`)
+      }
+
+      let generated = 0
+      const files: string[] = []
+
+      for (const table of tables) {
+        const fileName = `${toKebabCase(table.name)}.ts`
+        const filePath = join(outputDir, fileName)
+
+        if (existsSync(filePath) && !options.overwrite) {
+          logger.warn(`Skipping ${fileName} (file exists, use --overwrite to replace)`)
+          continue
+        }
+
+        const modelCode = generateModelCode(table, {
+          timestamps: options.timestamps !== false,
+          softDelete: options.softDelete === true
+        })
+
+        writeFileSync(filePath, modelCode, 'utf-8')
+        logger.info(`${prism.green('OK')} Generated ${prism.cyan(fileName)}`)
+        generated++
+        files.push(filePath)
+      }
+
+      if (isJsonMode()) {
+        output({ generated, files })
+        return
+      }
+
+      if (generated === 0) {
+        logger.warn('No models were generated')
+      } else {
+        logger.info('')
+        logger.info(
+          prism.green(`Generated ${generated} model${generated !== 1 ? 's' : ''} successfully`)
+        )
+      }
     }
-  })
+  )
 }
 
 function generateModelCode(

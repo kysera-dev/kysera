@@ -42,148 +42,153 @@ export function tablesCommand(): Command {
 }
 
 async function listTables(options: TablesOptions): Promise<void> {
-  await withDatabase({ config: options.config, verbose: options.verbose, schema: options.schema }, async (db, config, schema) => {
-    const listSpinner = spinner() as any
-    listSpinner.start(`Fetching table information${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
-
-    const introspector = new DatabaseIntrospector(db, config.database!.dialect as any, schema)
-    const tables = await introspector.getTables()
-
-    if (tables.length === 0) {
-      listSpinner.warn('No tables found in database')
-      return
-    }
-
-    listSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
-
-    if (options.json) {
-      // JSON output
-      const tablesData: Record<string, unknown>[] = []
-      for (const tableName of tables) {
-        const info = await introspector.getTableInfo(tableName)
-        const stats = await getTableStatistics(db, tableName, config.database!.dialect)
-        tablesData.push({
-          name: tableName,
-          columns: info.columns.length,
-          indexes: info.indexes.length,
-          primaryKey: info.primaryKey,
-          foreignKeys: info.foreignKeys?.length || 0,
-          rows: stats.rows,
-          size: stats.size,
-          indexSize: stats.indexSize
-        })
-      }
-      console.log(JSON.stringify(tablesData, null, 2))
-    } else if (options.verbose) {
-      // Verbose output - show detailed info for each table
-      for (const tableName of tables) {
-        const info = await introspector.getTableInfo(tableName)
-        const stats = await getTableStatistics(db, tableName, config.database!.dialect)
-
-        console.log('')
-        console.log(prism.bold(`Table: ${tableName}`))
-        console.log(prism.gray('-'.repeat(50)))
-
-        // Statistics
-        console.log('')
-        console.log(prism.cyan('Statistics:'))
-        console.log(`  Rows: ${formatNumber(stats.rows)}`)
-        console.log(`  Size: ${formatBytes(stats.size)}`)
-        console.log(`  Index Size: ${formatBytes(stats.indexSize)}`)
-        console.log(`  Total Size: ${formatBytes(stats.size + stats.indexSize)}`)
-
-        // Columns
-        console.log('')
-        console.log(prism.cyan(`Columns (${info.columns.length}):`))
-        const columnData = info.columns.map((col: any) => ({
-          Name: col.name,
-          Type: col.dataType,
-          Nullable: col.isNullable ? 'Yes' : 'No',
-          Default: col.defaultValue || '-',
-          Key: col.isPrimaryKey ? 'PK' : col.isForeignKey ? 'FK' : '-'
-        }))
-        console.log(table(columnData as any))
-
-        // Indexes
-        if (info.indexes.length > 0) {
-          console.log('')
-          console.log(prism.cyan(`Indexes (${info.indexes.length}):`))
-          const indexData = info.indexes.map((idx: any) => ({
-            Name: idx.name,
-            Columns: idx.columns.join(', '),
-            Unique: idx.isUnique ? 'Yes' : 'No',
-            Primary: idx.isPrimary ? 'Yes' : 'No'
-          }))
-          console.log(table(indexData as any))
-        }
-
-        // Foreign Keys
-        if (info.foreignKeys && info.foreignKeys.length > 0) {
-          console.log('')
-          console.log(prism.cyan(`Foreign Keys (${info.foreignKeys.length}):`))
-          const fkData = info.foreignKeys.map((fk: any) => ({
-            Column: fk.column,
-            References: `${fk.referencedTable}.${fk.referencedColumn}`
-          }))
-          console.log(table(fkData as any))
-        }
-      }
-
-      // Summary
-      console.log('')
-      console.log(prism.gray('-'.repeat(50)))
-      console.log(prism.bold('Database Summary'))
-      const totalStats = await getDatabaseStatistics(db, tables, config.database!.dialect)
-      console.log(`  Total Tables: ${tables.length}`)
-      console.log(`  Total Rows: ${formatNumber(totalStats.totalRows)}`)
-      console.log(`  Total Size: ${formatBytes(totalStats.totalSize)}`)
-      console.log(`  Total Index Size: ${formatBytes(totalStats.totalIndexSize)}`)
-      console.log(
-        `  Database Size: ${formatBytes(totalStats.totalSize + totalStats.totalIndexSize)}`
+  await withDatabase(
+    { config: options.config, verbose: options.verbose, schema: options.schema },
+    async (db, config, schema) => {
+      const listSpinner = spinner() as any
+      listSpinner.start(
+        `Fetching table information${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
       )
-    } else {
-      // Default table view
-      const tableData: Record<string, string | number>[] = []
 
-      for (const tableName of tables) {
-        try {
+      const introspector = new DatabaseIntrospector(db, config.database!.dialect as any, schema)
+      const tables = await introspector.getTables()
+
+      if (tables.length === 0) {
+        listSpinner.warn('No tables found in database')
+        return
+      }
+
+      listSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
+
+      if (options.json) {
+        // JSON output
+        const tablesData: Record<string, unknown>[] = []
+        for (const tableName of tables) {
+          const info = await introspector.getTableInfo(tableName)
+          const stats = await getTableStatistics(db, tableName, config.database!.dialect)
+          tablesData.push({
+            name: tableName,
+            columns: info.columns.length,
+            indexes: info.indexes.length,
+            primaryKey: info.primaryKey,
+            foreignKeys: info.foreignKeys?.length || 0,
+            rows: stats.rows,
+            size: stats.size,
+            indexSize: stats.indexSize
+          })
+        }
+        console.log(JSON.stringify(tablesData, null, 2))
+      } else if (options.verbose) {
+        // Verbose output - show detailed info for each table
+        for (const tableName of tables) {
           const info = await introspector.getTableInfo(tableName)
           const stats = await getTableStatistics(db, tableName, config.database!.dialect)
 
-          tableData.push({
-            Table: tableName,
-            Rows: formatNumber(stats.rows),
-            Size: formatBytes(stats.size),
-            Indexes: info.indexes.length,
-            Columns: info.columns.length,
-            'Foreign Keys': info.foreignKeys?.length || 0
-          })
-        } catch (error) {
-          logger.debug(`Failed to get stats for ${tableName}: ${error}`)
-          tableData.push({
-            Table: tableName,
-            Rows: '?',
-            Size: '?',
-            Indexes: '?',
-            Columns: '?',
-            'Foreign Keys': '?'
-          })
+          console.log('')
+          console.log(prism.bold(`Table: ${tableName}`))
+          console.log(prism.gray('-'.repeat(50)))
+
+          // Statistics
+          console.log('')
+          console.log(prism.cyan('Statistics:'))
+          console.log(`  Rows: ${formatNumber(stats.rows)}`)
+          console.log(`  Size: ${formatBytes(stats.size)}`)
+          console.log(`  Index Size: ${formatBytes(stats.indexSize)}`)
+          console.log(`  Total Size: ${formatBytes(stats.size + stats.indexSize)}`)
+
+          // Columns
+          console.log('')
+          console.log(prism.cyan(`Columns (${info.columns.length}):`))
+          const columnData = info.columns.map((col: any) => ({
+            Name: col.name,
+            Type: col.dataType,
+            Nullable: col.isNullable ? 'Yes' : 'No',
+            Default: col.defaultValue || '-',
+            Key: col.isPrimaryKey ? 'PK' : col.isForeignKey ? 'FK' : '-'
+          }))
+          console.log(table(columnData as any))
+
+          // Indexes
+          if (info.indexes.length > 0) {
+            console.log('')
+            console.log(prism.cyan(`Indexes (${info.indexes.length}):`))
+            const indexData = info.indexes.map((idx: any) => ({
+              Name: idx.name,
+              Columns: idx.columns.join(', '),
+              Unique: idx.isUnique ? 'Yes' : 'No',
+              Primary: idx.isPrimary ? 'Yes' : 'No'
+            }))
+            console.log(table(indexData as any))
+          }
+
+          // Foreign Keys
+          if (info.foreignKeys && info.foreignKeys.length > 0) {
+            console.log('')
+            console.log(prism.cyan(`Foreign Keys (${info.foreignKeys.length}):`))
+            const fkData = info.foreignKeys.map((fk: any) => ({
+              Column: fk.column,
+              References: `${fk.referencedTable}.${fk.referencedColumn}`
+            }))
+            console.log(table(fkData as any))
+          }
         }
-      }
 
-      console.log('')
-      console.log(prism.bold('Database Tables'))
-      console.log('')
-      console.log(table(tableData as any))
-
-      // Summary
-      const totalStats = await getDatabaseStatistics(db, tables, config.database!.dialect)
-      console.log('')
-      console.log(
-        prism.gray(
-          `Total: ${tables.length} tables, ${formatBytes(totalStats.totalSize + totalStats.totalIndexSize)}`
+        // Summary
+        console.log('')
+        console.log(prism.gray('-'.repeat(50)))
+        console.log(prism.bold('Database Summary'))
+        const totalStats = await getDatabaseStatistics(db, tables, config.database!.dialect)
+        console.log(`  Total Tables: ${tables.length}`)
+        console.log(`  Total Rows: ${formatNumber(totalStats.totalRows)}`)
+        console.log(`  Total Size: ${formatBytes(totalStats.totalSize)}`)
+        console.log(`  Total Index Size: ${formatBytes(totalStats.totalIndexSize)}`)
+        console.log(
+          `  Database Size: ${formatBytes(totalStats.totalSize + totalStats.totalIndexSize)}`
         )
-      )
+      } else {
+        // Default table view
+        const tableData: Record<string, string | number>[] = []
+
+        for (const tableName of tables) {
+          try {
+            const info = await introspector.getTableInfo(tableName)
+            const stats = await getTableStatistics(db, tableName, config.database!.dialect)
+
+            tableData.push({
+              Table: tableName,
+              Rows: formatNumber(stats.rows),
+              Size: formatBytes(stats.size),
+              Indexes: info.indexes.length,
+              Columns: info.columns.length,
+              'Foreign Keys': info.foreignKeys?.length || 0
+            })
+          } catch (error) {
+            logger.debug(`Failed to get stats for ${tableName}: ${error}`)
+            tableData.push({
+              Table: tableName,
+              Rows: '?',
+              Size: '?',
+              Indexes: '?',
+              Columns: '?',
+              'Foreign Keys': '?'
+            })
+          }
+        }
+
+        console.log('')
+        console.log(prism.bold('Database Tables'))
+        console.log('')
+        console.log(table(tableData as any))
+
+        // Summary
+        const totalStats = await getDatabaseStatistics(db, tables, config.database!.dialect)
+        console.log('')
+        console.log(
+          prism.gray(
+            `Total: ${tables.length} tables, ${formatBytes(totalStats.totalSize + totalStats.totalIndexSize)}`
+          )
+        )
+      }
     }
-  })
+  )
 }

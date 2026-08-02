@@ -1,11 +1,12 @@
 import { Command } from 'commander'
-import { prism, spinner, confirm, select } from '@xec-sh/kit'
+import { prism, confirm, select } from '@xec-sh/kit'
+import { spinner } from '../../utils/spinner.js'
 import { displayTable as table } from '../../utils/table-helper.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
-import { type CircuitState } from '@kysera/infra'
+import type { CircuitState } from '@kysera/infra'
 
 export interface CircuitBreakerOptions {
   action?: 'status' | 'reset' | 'open' | 'close'

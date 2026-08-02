@@ -4,6 +4,7 @@ import { spinner } from '../../utils/spinner.js'
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { logger } from '../../utils/logger.js'
+import { isJsonMode, output } from '../../utils/output.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 import { DatabaseIntrospector, type TableInfo } from './introspector.js'
@@ -35,6 +36,7 @@ export function repositoryCommand(): Command {
     .option('--with-soft-delete', 'Include soft delete support', false)
     .option('--with-timestamps', 'Include timestamp support', true)
     .option('--no-with-timestamps', 'Skip timestamp support')
+    .option('--json', 'Output results as JSON')
     .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (table: string | undefined, options: RepositoryOptions) => {
       try {
@@ -57,62 +59,76 @@ async function generateRepository(
   tableName: string | undefined,
   options: RepositoryOptions
 ): Promise<void> {
-  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
-    const generateSpinner = spinner()
-    generateSpinner.start(`Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
+  await withDatabase(
+    { config: options.config, schema: options.schema },
+    async (db, config, schema) => {
+      const generateSpinner = spinner()
+      generateSpinner.start(
+        `Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
+      )
 
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
+      const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
 
-    let tables: TableInfo[] = []
+      let tables: TableInfo[] = []
 
-    if (tableName) {
-      const tableInfo = await introspector.getTableInfo(tableName)
-      tables = [tableInfo]
-    } else {
-      tables = await introspector.introspect()
-    }
-
-    generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
-
-    const outputDir = options.output || './src/repositories'
-
-    if (!existsSync(outputDir)) {
-      mkdirSync(outputDir, { recursive: true })
-      logger.debug(`Created output directory: ${outputDir}`)
-    }
-
-    let generated = 0
-
-    for (const table of tables) {
-      const fileName = `${toKebabCase(table.name)}.repository.ts`
-      const filePath = join(outputDir, fileName)
-
-      if (existsSync(filePath) && !options.overwrite) {
-        logger.warn(`Skipping ${fileName} (file exists, use --overwrite to replace)`)
-        continue
+      if (tableName) {
+        const tableInfo = await introspector.getTableInfo(tableName)
+        tables = [tableInfo]
+      } else {
+        tables = await introspector.introspect()
       }
 
-      const repositoryCode = generateRepositoryCode(table, {
-        withValidation: options.withValidation !== false,
-        withPagination: options.withPagination !== false,
-        withSoftDelete: options.withSoftDelete === true,
-        withTimestamps: options.withTimestamps !== false
-      })
+      generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
 
-      writeFileSync(filePath, repositoryCode, 'utf-8')
-      logger.info(`${prism.green('OK')} Generated ${prism.cyan(fileName)}`)
-      generated++
-    }
+      const outputDir = options.output || './src/repositories'
 
-    if (generated === 0) {
-      logger.warn('No repositories were generated')
-    } else {
-      logger.info('')
-      logger.info(
-        prism.green(`Generated ${generated} repositor${generated !== 1 ? 'ies' : 'y'} successfully`)
-      )
+      if (!existsSync(outputDir)) {
+        mkdirSync(outputDir, { recursive: true })
+        logger.debug(`Created output directory: ${outputDir}`)
+      }
+
+      let generated = 0
+      const files: string[] = []
+
+      for (const table of tables) {
+        const fileName = `${toKebabCase(table.name)}.repository.ts`
+        const filePath = join(outputDir, fileName)
+
+        if (existsSync(filePath) && !options.overwrite) {
+          logger.warn(`Skipping ${fileName} (file exists, use --overwrite to replace)`)
+          continue
+        }
+
+        const repositoryCode = generateRepositoryCode(table, {
+          withValidation: options.withValidation !== false,
+          withPagination: options.withPagination !== false,
+          withSoftDelete: options.withSoftDelete === true,
+          withTimestamps: options.withTimestamps !== false
+        })
+
+        writeFileSync(filePath, repositoryCode, 'utf-8')
+        logger.info(`${prism.green('OK')} Generated ${prism.cyan(fileName)}`)
+        generated++
+        files.push(filePath)
+      }
+
+      if (isJsonMode()) {
+        output({ generated, files })
+        return
+      }
+
+      if (generated === 0) {
+        logger.warn('No repositories were generated')
+      } else {
+        logger.info('')
+        logger.info(
+          prism.green(
+            `Generated ${generated} repositor${generated !== 1 ? 'ies' : 'y'} successfully`
+          )
+        )
+      }
     }
-  })
+  )
 }
 
 function generateRepositoryCode(

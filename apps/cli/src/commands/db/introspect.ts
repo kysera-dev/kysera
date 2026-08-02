@@ -47,85 +47,92 @@ async function introspectDatabase(
   tableName: string | undefined,
   options: IntrospectOptions
 ): Promise<void> {
-  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
-    const introspectSpinner = spinner() as any
-    introspectSpinner.start(`Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
+  await withDatabase(
+    { config: options.config, schema: options.schema },
+    async (db, config, schema) => {
+      const introspectSpinner = spinner() as any
+      introspectSpinner.start(
+        `Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
+      )
 
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
+      const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
 
-    if (tableName) {
-      const tableInfo = await introspector.getTableInfo(tableName)
-      introspectSpinner.succeed(`Found table '${tableName}'`)
+      if (tableName) {
+        const tableInfo = await introspector.getTableInfo(tableName)
+        introspectSpinner.succeed(`Found table '${tableName}'`)
 
-      if (options.json) {
-        console.log(JSON.stringify(tableInfo, null, 2))
-      } else {
-        displayTableInfo(tableInfo, options.detailed || false)
-      }
-    } else {
-      const tables = await introspector.getTables()
-
-      if (tables.length === 0) {
-        introspectSpinner.warn('No tables found in database')
-        return
-      }
-
-      introspectSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
-
-      if (options.json) {
-        const allTableInfo = await introspector.introspect()
-        console.log(JSON.stringify(allTableInfo, null, 2))
-      } else if (options.detailed) {
-        for (const tblName of tables) {
-          const tableInfo = await introspector.getTableInfo(tblName)
-          displayTableInfo(tableInfo, true)
-          console.log('')
+        if (options.json) {
+          console.log(JSON.stringify(tableInfo, null, 2))
+        } else {
+          displayTableInfo(tableInfo, options.detailed || false)
         }
       } else {
-        const summaryData: Record<string, string | number>[] = []
-        for (const tblName of tables) {
-          try {
-            const info = await introspector.getTableInfo(tblName)
-            const rowCount = await getTableRowCount(db, tblName)
-            summaryData.push({
-              Table: tblName,
-              Columns: info.columns.length,
-              Indexes: info.indexes.length,
-              'Primary Key': info.primaryKey ? info.primaryKey.join(', ') : '-',
-              'Foreign Keys': info.foreignKeys?.length || 0,
-              Rows: rowCount
-            })
-          } catch (error) {
-            logger.debug(`Failed to get info for ${tblName}: ${error}`)
-            summaryData.push({
-              Table: tblName,
-              Columns: '?',
-              Indexes: '?',
-              'Primary Key': '?',
-              'Foreign Keys': '?',
-              Rows: '?'
-            })
+        const tables = await introspector.getTables()
+
+        if (tables.length === 0) {
+          introspectSpinner.warn('No tables found in database')
+          return
+        }
+
+        introspectSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
+
+        if (options.json) {
+          const allTableInfo = await introspector.introspect()
+          console.log(JSON.stringify(allTableInfo, null, 2))
+        } else if (options.detailed) {
+          for (const tblName of tables) {
+            const tableInfo = await introspector.getTableInfo(tblName)
+            displayTableInfo(tableInfo, true)
+            console.log('')
           }
+        } else {
+          const summaryData: Record<string, string | number>[] = []
+          for (const tblName of tables) {
+            try {
+              const info = await introspector.getTableInfo(tblName)
+              const rowCount = await getTableRowCount(db, tblName)
+              summaryData.push({
+                Table: tblName,
+                Columns: info.columns.length,
+                Indexes: info.indexes.length,
+                'Primary Key': info.primaryKey ? info.primaryKey.join(', ') : '-',
+                'Foreign Keys': info.foreignKeys?.length || 0,
+                Rows: rowCount
+              })
+            } catch (error) {
+              logger.debug(`Failed to get info for ${tblName}: ${error}`)
+              summaryData.push({
+                Table: tblName,
+                Columns: '?',
+                Indexes: '?',
+                'Primary Key': '?',
+                'Foreign Keys': '?',
+                Rows: '?'
+              })
+            }
+          }
+
+          console.log('')
+          console.log(prism.bold('Database Schema Summary'))
+          console.log('')
+          console.log(table(summaryData))
+
+          console.log('')
+          console.log(prism.gray('Database Information:'))
+          console.log(`  Dialect: ${config.database.dialect}`)
+          console.log(`  Schema: ${schema}`)
+          console.log(`  Tables: ${tables.length}`)
+          console.log('')
+          const schemaFlag = schema !== 'public' ? ` --schema ${schema}` : ''
+          console.log(
+            prism.gray(
+              `Run ${prism.cyan(`kysera db introspect <table>${schemaFlag}`)} to see table details`
+            )
+          )
         }
-
-        console.log('')
-        console.log(prism.bold('Database Schema Summary'))
-        console.log('')
-        console.log(table(summaryData))
-
-        console.log('')
-        console.log(prism.gray('Database Information:'))
-        console.log(`  Dialect: ${config.database.dialect}`)
-        console.log(`  Schema: ${schema}`)
-        console.log(`  Tables: ${tables.length}`)
-        console.log('')
-        const schemaFlag = schema !== 'public' ? ` --schema ${schema}` : ''
-        console.log(
-          prism.gray(`Run ${prism.cyan(`kysera db introspect <table>${schemaFlag}`)} to see table details`)
-        )
       }
     }
-  })
+  )
 }
 
 function displayTableInfo(tableInfo: TableInfo, detailed: boolean): void {

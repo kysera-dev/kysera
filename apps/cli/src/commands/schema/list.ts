@@ -3,7 +3,6 @@ import { prism, table } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
-import { createPostgresAdapter, isTenantSchema, parseTenantSchemaName } from '@kysera/dialects'
 
 export interface ListOptions {
   json?: boolean
@@ -49,6 +48,8 @@ async function listSchemas(options: ListOptions): Promise<void> {
     const listSpinner = spinner()
     listSpinner.start('Fetching schemas...')
 
+    const { createPostgresAdapter, isTenantSchema, parseTenantSchemaName } =
+      await import('@kysera/dialects')
     const adapter = createPostgresAdapter()
     let schemas = await adapter.getSchemas(db)
 

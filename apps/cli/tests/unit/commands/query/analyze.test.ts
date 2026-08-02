@@ -51,6 +51,7 @@ vi.mock('@xec-sh/kit', () => ({
 
 vi.mock('../../../../src/utils/logger.js', () => ({
   logger: {
+    success: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     message: vi.fn(),

@@ -9,10 +9,11 @@ import { Kysely, sql } from 'kysely'
 import type { Database } from '@/utils/database'
 
 // Mock pg and mysql2 to avoid actual network connections
+// (Pool is constructed with `new`, so the implementation must be constructible)
 vi.mock('pg', () => ({
-  Pool: vi.fn().mockImplementation(() => ({
-    end: vi.fn()
-  }))
+  Pool: vi.fn().mockImplementation(function () {
+    return { end: vi.fn() }
+  })
 }))
 
 vi.mock('mysql2', () => ({

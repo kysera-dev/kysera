@@ -8,7 +8,11 @@ import { loadConfig } from '../../config/loader.js'
 import { validateIdentifier, safeTruncate } from '../../utils/sql-sanitizer.js'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { faker } from '@faker-js/faker'
+import type { Faker } from '@faker-js/faker'
+
+// Faker costs ~60ms to import; loaded on demand when seeding starts so
+// building the command tree stays cheap.
+let faker!: Faker
 
 export interface TestSeedOptions {
   tables?: string[]
@@ -94,6 +98,7 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
     ])
   }
 
+  faker = (await import('@faker-js/faker')).faker
   if (options.seed) {
     faker.seed(options.seed)
   }

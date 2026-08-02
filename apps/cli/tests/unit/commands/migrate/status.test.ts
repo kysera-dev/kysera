@@ -50,6 +50,7 @@ vi.mock('@xec-sh/kit', () => ({
 
 vi.mock('../../../../src/utils/logger.js', () => ({
   logger: {
+    success: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     message: vi.fn(),
@@ -148,47 +149,47 @@ describe('migrate status command', () => {
 
     it('should output JSON when --json option is used', async () => {
       const mockRunner = {
-        getMigrationStatus: vi
-          .fn()
-          .mockResolvedValue([
-            {
-              name: 'migration1',
-              status: 'executed',
-              timestamp: '20231201120000',
-              executedAt: new Date()
-            }
-          ])
+        getMigrationStatus: vi.fn().mockResolvedValue([
+          {
+            name: 'migration1',
+            status: 'executed',
+            timestamp: '20231201120000',
+            executedAt: new Date()
+          }
+        ])
       }
       ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
         Object.assign(this, mockRunner)
         return this
       })
 
+      // JSON results go to stdout via the output contract (not console.log)
+      const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
       await command.parseAsync(['node', 'test', '--json'])
 
-      const jsonOutput = consoleSpy.log.mock.calls.find(call => {
+      const jsonOutput = stdoutSpy.mock.calls.find(call => {
         try {
-          JSON.parse(call[0])
+          JSON.parse(String(call[0]))
           return true
         } catch {
           return false
         }
       })
       expect(jsonOutput).toBeDefined()
+      stdoutSpy.mockRestore()
     })
 
     it('should show verbose output when --verbose is used', async () => {
       const mockRunner = {
-        getMigrationStatus: vi
-          .fn()
-          .mockResolvedValue([
-            {
-              name: 'migration1',
-              status: 'executed',
-              timestamp: '20231201120000',
-              executedAt: new Date()
-            }
-          ])
+        getMigrationStatus: vi.fn().mockResolvedValue([
+          {
+            name: 'migration1',
+            status: 'executed',
+            timestamp: '20231201120000',
+            executedAt: new Date()
+          }
+        ])
       }
       ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
         Object.assign(this, mockRunner)

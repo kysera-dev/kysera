@@ -89,8 +89,9 @@ describe('Migration Commands Integration', () => {
       const result = await runCLI(['migrate', 'up'], { cwd: testProject.dir })
 
       expect(result.code).toBe(0)
-      expect(result.stdout).toContain('Running migrations')
-      expect(result.stdout).toContain('001_initial')
+      // Progress diagnostics are emitted on stderr; stdout is data-only
+      expect(result.stderr).toContain('Running migrations')
+      expect(result.stderr).toContain('001_initial')
     })
 
     it('should run specific number of migrations', async () => {
@@ -101,8 +102,8 @@ describe('Migration Commands Integration', () => {
       const result = await runCLI(['migrate', 'up', '--count', '1'], { cwd: testProject.dir })
 
       expect(result.code).toBe(0)
-      expect(result.stdout).toContain('001_initial')
-      expect(result.stdout).not.toContain('second_migration')
+      expect(result.stderr).toContain('001_initial')
+      expect(result.stderr).not.toContain('second_migration')
     })
 
     it('should handle no pending migrations', async () => {
@@ -113,7 +114,7 @@ describe('Migration Commands Integration', () => {
       const result = await runCLI(['migrate', 'up'], { cwd: testProject.dir })
 
       expect(result.code).toBe(0)
-      expect(result.stdout).toContain('No pending migrations')
+      expect(result.stderr).toContain('No pending migrations')
     })
   })
 
@@ -127,25 +128,25 @@ describe('Migration Commands Integration', () => {
       const result = await runCLI(['migrate', 'down'], { cwd: testProject.dir })
 
       expect(result.code).toBe(0)
-      expect(result.stdout).toContain('Rolling back')
+      expect(result.stderr).toContain('Rolling back')
     })
 
     it('should rollback specific number of migrations', async () => {
       const result = await runCLI(['migrate', 'down', '--count', '1'], { cwd: testProject.dir })
 
       expect(result.code).toBe(0)
-      expect(result.stdout).toContain('Rolling back 1 migration')
+      expect(result.stderr).toContain('Rolling back 1 migration')
     })
 
     it('should handle no migrations to rollback', async () => {
-      // Rollback all first
-      await runCLI(['migrate', 'down', '--all'], { cwd: testProject.dir })
+      // Rollback all first (--all is destructive and requires --force headless)
+      await runCLI(['migrate', 'down', '--all', '--force'], { cwd: testProject.dir })
 
       // Try to rollback again
       const result = await runCLI(['migrate', 'down'], { cwd: testProject.dir })
 
       expect(result.code).toBe(0)
-      expect(result.stdout).toContain('No migrations to rollback')
+      expect(result.stderr).toContain('No migrations to rollback')
     })
   })
 
@@ -191,7 +192,7 @@ describe('Migration Commands Integration', () => {
       const result = await runCLI(['migrate', 'reset', '--force'], { cwd: testProject.dir })
 
       expect(result.code).toBe(0)
-      expect(result.stdout).toContain('Resetting all migrations')
+      expect(result.stderr).toContain('Resetting all migrations')
 
       // Check status
       const status = await runCLI(['migrate', 'status'], { cwd: testProject.dir })
@@ -208,10 +209,12 @@ describe('Migration Commands Integration', () => {
     it('should re-run migrations after reset', async () => {
       await runCLI(['migrate', 'reset', '--force'], { cwd: testProject.dir })
 
-      const result = await runCLI(['migrate', 'reset', '--run'], { cwd: testProject.dir })
+      const result = await runCLI(['migrate', 'reset', '--run', '--force'], {
+        cwd: testProject.dir
+      })
 
       expect(result.code).toBe(0)
-      expect(result.stdout).toContain('Running migrations')
+      expect(result.stderr).toContain('Running migrations')
 
       // Check status
       const status = await runCLI(['migrate', 'status'], { cwd: testProject.dir })

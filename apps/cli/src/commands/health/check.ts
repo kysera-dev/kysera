@@ -4,7 +4,7 @@ import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
-import { performHealthCheck, type HealthCheckResult } from '@kysera/infra'
+import type { HealthCheckResult } from '@kysera/infra'
 
 export interface CheckOptions {
   json?: boolean
@@ -51,6 +51,7 @@ async function checkHealth(options: CheckOptions): Promise<void> {
     }
 
     // Perform health check
+    const { performHealthCheck } = await import('@kysera/infra')
     const startTime = Date.now()
     const result = await performHealthCheck(db, {
       verbose: options.verbose

@@ -90,7 +90,8 @@ async function setupTestEnvironment(options: TestSetupOptions): Promise<void> {
 
   try {
     const testDbName =
-      options.database || generateTestDatabaseName(config.database.database ?? 'test', options.environment)
+      options.database ||
+      generateTestDatabaseName(config.database.database ?? 'test', options.environment)
     result.database.name = testDbName
 
     const testConfig = {

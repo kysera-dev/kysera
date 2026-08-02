@@ -57,13 +57,11 @@
     "registry": "https://registry.npmjs.org/"
   },
   "engines": {
-    "node": ">=22.0.0",
+    "node": ">=22.18.0",
     "bun": ">=1.0.0"
   },
   "dependencies": {
     "commander": "^15.0.0",
-    "handlebars": "^4.7.9",
-    "fs-extra": "^11.4.0",
     "kysely": "^0.29.4",
     "zod": "^4.4.3",
     "dotenv": "^17.4.2",
@@ -90,7 +88,6 @@
     "@xec-sh/kit": "^0.9.0"
   },
   "devDependencies": {
-    "@types/fs-extra": "^11.0.4",
     "@types/node": "^26.1.2",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",

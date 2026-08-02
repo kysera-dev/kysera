@@ -3,7 +3,6 @@ import { prism, table } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
-import { createPostgresAdapter, isTenantSchema, parseTenantSchemaName } from '@kysera/dialects'
 
 export interface InfoOptions {
   json?: boolean
@@ -51,6 +50,8 @@ async function showSchemaInfo(name: string, options: InfoOptions): Promise<void>
     const infoSpinner = spinner()
     infoSpinner.start(`Fetching schema info for '${name}'...`)
 
+    const { createPostgresAdapter, isTenantSchema, parseTenantSchemaName } =
+      await import('@kysera/dialects')
     const adapter = createPostgresAdapter()
 
     // Check if schema exists

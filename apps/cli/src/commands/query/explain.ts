@@ -1,5 +1,6 @@
 import { Command } from 'commander'
-import { prism, spinner, table as displayTable } from '@xec-sh/kit'
+import { prism, table as displayTable } from '@xec-sh/kit'
+import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
@@ -40,10 +41,12 @@ export function explainCommand(): Command {
     .option('--costs', 'Show cost estimates', true)
     .option('--timing', 'Show timing information', true)
     .option('--summary', 'Show summary at the end', true)
+    .option('--json', 'Output results as JSON (same as --format json)')
     .option('-c, --config <path>', 'Path to configuration file')
     .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
-    .action(async (options: ExplainOptions) => {
+    .action(async (options: ExplainOptions & { json?: boolean }) => {
       try {
+        if (options.json) options.format = 'json'
         await explainQuery(options)
       } catch (error) {
         if (error instanceof CLIError) {

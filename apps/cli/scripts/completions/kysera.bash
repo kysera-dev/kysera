@@ -9,8 +9,8 @@ _kysera_completions() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="init migrate generate db health audit debug query repository test plugin schema hello stats help"
-    local global_opts="--verbose --quiet --dry-run --config --no-color --json --env --stats --version --help"
+    local commands="init migrate generate db health audit debug query repository test plugin schema help"
+    local global_opts="--verbose --quiet --dry-run --config --no-color --json --env --version --help"
 
     local cmd="" sub=""
     if (( COMP_CWORD > 1 )); then cmd="${COMP_WORDS[1]}"; fi
@@ -81,26 +81,25 @@ _kysera_completions() {
     local opts=""
     case "${cmd}" in
         init) opts="--template --database --plugins --package-manager --typescript --no-typescript --git --no-git --install --no-install" ;;
-        hello) opts="--name" ;;
     esac
     case "${cmd} ${sub}" in
         "migrate create") opts="--dir --directory --template --ts --no-ts --table --columns" ;;
-        "migrate down") opts="--steps --count --to --all --dry-run --verbose --config --force --schema" ;;
+        "migrate down") opts="--steps --count --to --all --dry-run --verbose --config --force --json --schema" ;;
         "migrate list") opts="--pending --executed --json --config --schema" ;;
         "migrate reset") opts="--force --run --seed --config --verbose --schema" ;;
         "migrate fresh") opts="--seed --force --config --verbose --schema" ;;
         "migrate status") opts="--json --verbose --config --schema" ;;
-        "migrate up") opts="--to --steps --count --dry-run --force --verbose --config --schema" ;;
-        "generate crud") opts="--output-dir --overwrite --config --with-validation --no-with-validation --with-pagination --no-with-pagination --with-soft-delete --with-timestamps --no-with-timestamps --format --no-format --schema" ;;
-        "generate model") opts="--output --overwrite --config --timestamps --no-timestamps --soft-delete --schema" ;;
-        "generate repository") opts="--output --overwrite --config --with-validation --no-with-validation --with-pagination --no-with-pagination --with-soft-delete --with-timestamps --no-with-timestamps --schema" ;;
-        "generate schema") opts="--output --overwrite --config --strict --no-strict --schema" ;;
-        "db console") opts="--query --config" ;;
-        "db dump") opts="--output --tables --data-only --schema-only --format --config --schema" ;;
+        "migrate up") opts="--to --steps --count --dry-run --force --verbose --config --json --schema" ;;
+        "generate crud") opts="--output-dir --overwrite --config --with-validation --no-with-validation --with-pagination --no-with-pagination --with-soft-delete --with-timestamps --no-with-timestamps --format --no-format --json --schema" ;;
+        "generate model") opts="--output --overwrite --config --timestamps --no-timestamps --soft-delete --json --schema" ;;
+        "generate repository") opts="--output --overwrite --config --with-validation --no-with-validation --with-pagination --no-with-pagination --with-soft-delete --with-timestamps --no-with-timestamps --json --schema" ;;
+        "generate schema") opts="--output --overwrite --config --strict --no-strict --json --schema" ;;
+        "db console") opts="--execute --force --config" ;;
+        "db dump") opts="--output --tables --data-only --schema-only --format --json --config --schema" ;;
         "db introspect") opts="--json --detailed --config --schema" ;;
         "db reset") opts="--force --seed --config --verbose --schema" ;;
         "db restore") opts="--force --config" ;;
-        "db seed") opts="--file --directory --fresh --dry-run --transaction --config --verbose --schema" ;;
+        "db seed") opts="--file --directory --fresh --dry-run --transaction --config --verbose --json --schema" ;;
         "db tables") opts="--json --verbose --config --schema" ;;
         "health check") opts="--json --watch --interval --verbose --config" ;;
         "health metrics") opts="--json --period --config" ;;
@@ -117,9 +116,9 @@ _kysera_completions() {
         "debug errors") opts="--since --until --limit --pattern --group-by --show-queries --json --config" ;;
         "debug profile") opts="--query --table --operation --iterations --warmup --show-plan --compare --json --config" ;;
         "debug sql") opts="--watch --filter --highlight --show-params --show-duration --limit --config" ;;
-        "query analyze") opts="--query --file --format --show-indexes --show-statistics --suggestions --benchmark --config" ;;
+        "query analyze") opts="--query --file --format --show-indexes --show-statistics --suggestions --benchmark --json --config" ;;
         "query by-timestamp") opts="--table --column --from --to --last --order --limit --json --config" ;;
-        "query explain") opts="--query --file --analyze --verbose --format --buffers --costs --timing --summary --config --schema" ;;
+        "query explain") opts="--query --file --analyze --verbose --format --buffers --costs --timing --summary --json --config --schema" ;;
         "query soft-deleted") opts="--table --column --restore --purge --force --limit --json --config --schema" ;;
         "repository inspect") opts="--file --className --show-ast --show-dependencies --show-complexity --show-database --json --config" ;;
         "repository list") opts="--directory --pattern --show-methods --show-schemas --json --config" ;;
@@ -127,7 +126,7 @@ _kysera_completions() {
         "repository validate") opts="--directory --pattern --fix --strict --show-details --json --config" ;;
         "test fixtures") opts="--load --directory --format --save --list --validate --dependencies --checksum --tags --verbose --json --config" ;;
         "test seed") opts="--tables --count --clean --strategy --relationships --locale --seed --custom --verbose --json --config" ;;
-        "test setup") opts="--environment --database --clean --migrate --seed --fixtures --parallel --isolation --verbose --json --config" ;;
+        "test setup") opts="--environment --database --clean --force --migrate --seed --fixtures --parallel --isolation --verbose --json --config" ;;
         "test teardown") opts="--environment --database --force --keep-data --preserve-logs --clean-artifacts --pattern --verbose --json --config" ;;
         "plugin config") opts="--get --set --value --reset --show --edit --validate --export --import --json --config" ;;
         "plugin disable") opts="--all --force --keep-config --restart --json --config" ;;

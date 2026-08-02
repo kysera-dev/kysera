@@ -47,9 +47,13 @@ function applyEnvOverrides(config: KyseraConfig): KyseraConfig {
     ])
   }
 
+  const base: NonNullable<KyseraConfig['database']> = config.database ?? {
+    dialect,
+    debug: false
+  }
   return {
     ...config,
-    database: { ...(config.database ?? {}), connection: databaseUrl, dialect }
+    database: { ...base, connection: databaseUrl, dialect }
   }
 }
 

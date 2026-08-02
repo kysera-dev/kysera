@@ -4,7 +4,6 @@ import { guardDestructive } from '../../utils/guard.js'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
-import { createPostgresAdapter } from '@kysera/dialects'
 
 export interface DropOptions {
   cascade?: boolean
@@ -52,13 +51,12 @@ async function dropSchema(name: string, options: DropOptions): Promise<void> {
     // Prevent dropping protected schemas
     const protectedSchemas = ['public', 'pg_catalog', 'information_schema']
     if (protectedSchemas.includes(name)) {
-      throw new CLIError(
-        `Cannot drop protected schema: ${name}`,
-        'PROTECTED_SCHEMA',
-        ['The public, pg_catalog, and information_schema schemas cannot be dropped']
-      )
+      throw new CLIError(`Cannot drop protected schema: ${name}`, 'PROTECTED_SCHEMA', [
+        'The public, pg_catalog, and information_schema schemas cannot be dropped'
+      ])
     }
 
+    const { createPostgresAdapter } = await import('@kysera/dialects')
     const adapter = createPostgresAdapter()
 
     // Check if schema exists

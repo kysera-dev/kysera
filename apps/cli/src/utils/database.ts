@@ -76,7 +76,8 @@ export async function createDatabaseConnection(
   if ('dialect' in configOrOptions && !('config' in configOrOptions)) {
     // This is the format expected by tests - return Kysely instance directly
     const config = configOrOptions as DatabaseConfig
-    const connection = (config as { connectionString?: string }).connectionString || config.connection
+    const connection =
+      (config as { connectionString?: string }).connectionString || config.connection
 
     const { Kysely, PostgresDialect, MysqlDialect, SqliteDialect } = await import('kysely')
 
@@ -618,7 +619,11 @@ export async function testDatabaseConnection(db: Kysely<Database>): Promise<bool
   const { sql } = await import('kysely')
   const destroy = async (): Promise<void> => {
     if (typeof (db as { destroy?: unknown }).destroy === 'function') {
-      await db.destroy().catch(() => {})
+      try {
+        await db.destroy()
+      } catch {
+        // Connection already closed
+      }
     }
   }
   try {

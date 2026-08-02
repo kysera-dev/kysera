@@ -63,94 +63,100 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
     }
   }
 
-  await withDatabase({ config: options.config, verbose: options.verbose, schema: options.schema }, async (db, config, schema) => {
-    const migrationsDir = config.migrations?.directory || './migrations'
-    const tableName = config.migrations?.tableName || 'migrations'
+  await withDatabase(
+    { config: options.config, verbose: options.verbose, schema: options.schema },
+    async (db, config, schema) => {
+      const migrationsDir = config.migrations?.directory || './migrations'
+      const tableName = config.migrations?.tableName || 'migrations'
 
-    if (schema !== 'public') {
-      logger.info(`Using schema: ${schema}`)
-    }
+      if (schema !== 'public') {
+        logger.info(`Using schema: ${schema}`)
+      }
 
-    // Create migration runner
-    const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
+      // Create migration runner
+      const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 
-    // Acquire lock to prevent concurrent migrations
-    let releaseLock: (() => Promise<void>) | null = null
+      // Acquire lock to prevent concurrent migrations
+      let releaseLock: (() => Promise<void>) | null = null
 
-    try {
-      if (!options.dryRun) {
-        try {
-          releaseLock = await runner.acquireLock()
-        } catch (error: any) {
-          if (error.code === 'MIGRATION_LOCKED') {
-            throw new CLIError(
-              'Migrations are already running in another process',
-              'MIGRATION_LOCKED',
-              undefined,
-              ['Wait for the other process to complete', 'Or check for stuck locks in the database']
+      try {
+        if (!options.dryRun) {
+          try {
+            releaseLock = await runner.acquireLock()
+          } catch (error: any) {
+            if (error.code === 'MIGRATION_LOCKED') {
+              throw new CLIError(
+                'Migrations are already running in another process',
+                'MIGRATION_LOCKED',
+                undefined,
+                [
+                  'Wait for the other process to complete',
+                  'Or check for stuck locks in the database'
+                ]
+              )
+            }
+            // Lock mechanism might not be set up yet, continue without it
+            logger.debug('Could not acquire migration lock, continuing without lock')
+          }
+        }
+
+        // Get migration status before rolling back
+        const statusBefore = await runner.getMigrationStatus()
+        const executedCount = statusBefore.filter((m: any) => m.status === 'executed').length
+
+        if (executedCount === 0) {
+          logger.info('No migrations to rollback')
+          return
+        }
+
+        // Show what will be rolled back in dry-run mode
+        if (options.dryRun) {
+          logger.info(prism.yellow('DRY RUN MODE - No changes will be made'))
+          logger.info('')
+        }
+
+        // Rollback migrations
+        const { rolledBack, duration } = await runner.down({
+          to: options.to,
+          steps: options.steps || options.count, // Use count as alias for steps
+          all: options.all,
+          dryRun: options.dryRun,
+          verbose: options.verbose
+        })
+
+        if (isJsonMode()) {
+          output({
+            rolledBack,
+            count: rolledBack.length,
+            duration,
+            dryRun: options.dryRun === true
+          })
+          return
+        }
+
+        // Show summary
+        if (rolledBack.length > 0) {
+          logger.info('')
+          if (options.dryRun) {
+            logger.info(
+              prism.yellow(
+                `Would have rolled back ${rolledBack.length} migration${rolledBack.length > 1 ? 's' : ''} (${duration}ms)`
+              )
+            )
+          } else {
+            logger.info(
+              prism.green(
+                `[OK] ${rolledBack.length} migration${rolledBack.length > 1 ? 's' : ''} rolled back successfully (${duration}ms)`
+              )
             )
           }
-          // Lock mechanism might not be set up yet, continue without it
-          logger.debug('Could not acquire migration lock, continuing without lock')
         }
-      }
-
-      // Get migration status before rolling back
-      const statusBefore = await runner.getMigrationStatus()
-      const executedCount = statusBefore.filter((m: any) => m.status === 'executed').length
-
-      if (executedCount === 0) {
-        logger.info('No migrations to rollback')
-        return
-      }
-
-      // Show what will be rolled back in dry-run mode
-      if (options.dryRun) {
-        logger.info(prism.yellow('DRY RUN MODE - No changes will be made'))
-        logger.info('')
-      }
-
-      // Rollback migrations
-      const { rolledBack, duration } = await runner.down({
-        to: options.to,
-        steps: options.steps || options.count, // Use count as alias for steps
-        all: options.all,
-        dryRun: options.dryRun,
-        verbose: options.verbose
-      })
-
-      if (isJsonMode()) {
-        output({
-          rolledBack,
-          count: rolledBack.length,
-          duration,
-          dryRun: options.dryRun === true
-        })
-        return
-      }
-
-      // Show summary
-      if (rolledBack.length > 0) {
-        logger.info('')
-        if (options.dryRun) {
-          logger.info(
-            prism.yellow(
-              `Would have rolled back ${rolledBack.length} migration${rolledBack.length > 1 ? 's' : ''} (${duration}ms)`
-            )
-          )
-        } else {
-          logger.info(
-            prism.green(
-              `[OK] ${rolledBack.length} migration${rolledBack.length > 1 ? 's' : ''} rolled back successfully (${duration}ms)`
-            )
-          )
+      } finally {
+        // Release lock
+        if (releaseLock) {
+          await releaseLock()
         }
-      }
-    } finally {
-      // Release lock
-      if (releaseLock) {
-        await releaseLock()
       }
     }
-  })
+  )
 }

@@ -6,7 +6,6 @@ import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { writeFileSync } from 'node:fs'
-import { execa } from 'execa'
 
 // Simple template rendering helper
 function renderTemplate(templateName: string, data: any, outputPath: string): void {
@@ -340,6 +339,7 @@ async function initProject(projectName: string | undefined, options: InitOptions
       }
 
       try {
+        const { execa } = await import('execa')
         await execa('git', ['init'], { cwd: projectPath, stdio: 'ignore' })
         await execa('git', ['add', '.'], { cwd: projectPath, stdio: 'ignore' })
         await execa('git', ['commit', '-m', 'Initial commit'], {
@@ -372,6 +372,7 @@ async function initProject(projectName: string | undefined, options: InitOptions
       }
 
       try {
+        const { execa } = await import('execa')
         await execa(packageManager, ['install'], { cwd: projectPath, stdio: 'ignore' })
         if (installSpinner) {
           installSpinner.succeed('Dependencies installed')

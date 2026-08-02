@@ -5,7 +5,6 @@ import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
-import { getMetrics } from '@kysera/infra'
 
 export interface MetricsOptions {
   json?: boolean
@@ -59,6 +58,7 @@ async function showMetrics(options: MetricsOptions): Promise<void> {
 
   try {
     // Get metrics from the database
+    const { getMetrics } = await import('@kysera/infra')
     const metrics = await getMetrics(db, {
       period: options.period || '1h'
     })

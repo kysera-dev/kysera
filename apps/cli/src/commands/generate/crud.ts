@@ -1,13 +1,14 @@
 import { Command } from 'commander'
-import { prism, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
+import { guardDestructive } from '../../utils/guard.js'
 import { spinner } from '../../utils/spinner.js'
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { logger } from '../../utils/logger.js'
+import { isJsonMode, output } from '../../utils/output.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 import { DatabaseIntrospector, type TableInfo } from './introspector.js'
-import { execa } from 'execa'
 import { toCamelCase, toPascalCase, toKebabCase } from '../../utils/templates.js'
 import { validatePath } from '../../utils/fs.js'
 
@@ -40,6 +41,7 @@ export function crudCommand(): Command {
     .option('--no-with-timestamps', 'Skip timestamp support')
     .option('--format', 'Format generated files with Prettier', true)
     .option('--no-format', 'Skip formatting')
+    .option('--json', 'Output results as JSON')
     .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (table: string, options: CrudOptions) => {
       try {
@@ -59,127 +61,138 @@ export function crudCommand(): Command {
 }
 
 async function generateCrud(tableName: string, options: CrudOptions): Promise<void> {
-  await withDatabase({ config: options.config, schema: options.schema }, async (db, config, schema) => {
-    const generateSpinner = spinner()
-    generateSpinner.start(`Introspecting table '${tableName}'${schema !== 'public' ? ` (schema: ${schema})` : ''}...`)
+  await withDatabase(
+    { config: options.config, schema: options.schema },
+    async (db, config, schema) => {
+      const generateSpinner = spinner()
+      generateSpinner.start(
+        `Introspecting table '${tableName}'${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
+      )
 
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
+      const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
 
-    let tableInfo: TableInfo
-    try {
-      tableInfo = await introspector.getTableInfo(tableName)
-    } catch (error) {
-      generateSpinner.fail(`Table '${tableName}' not found`)
-      throw new CLIError(`Table '${tableName}' does not exist in the database`, 'TABLE_NOT_FOUND', [
-        'Check the table name spelling',
-        'Ensure you are connected to the correct database'
-      ])
-    }
-
-    generateSpinner.succeed(`Found table '${tableName}' with ${tableInfo.columns.length} columns`)
-
-    const outputDir = options.outputDir || './src'
-
-    // Validate output directory to prevent path traversal
-    validatePath(outputDir)
-
-    const filesToGenerate = [
-      {
-        type: 'Model',
-        path: join(outputDir, 'models', `${toKebabCase(tableName)}.ts`),
-        generator: generateModelCode
-      },
-      {
-        type: 'Repository',
-        path: join(outputDir, 'repositories', `${toKebabCase(tableName)}.repository.ts`),
-        generator: generateRepositoryCode
-      },
-      {
-        type: 'Schema',
-        path: join(outputDir, 'schemas', `${toKebabCase(tableName)}.schema.ts`),
-        generator: generateSchemaCode
+      let tableInfo: TableInfo
+      try {
+        tableInfo = await introspector.getTableInfo(tableName)
+      } catch (error) {
+        generateSpinner.fail(`Table '${tableName}' not found`)
+        throw new CLIError(
+          `Table '${tableName}' does not exist in the database`,
+          'TABLE_NOT_FOUND',
+          ['Check the table name spelling', 'Ensure you are connected to the correct database']
+        )
       }
-    ]
 
-    if (!options.overwrite) {
-      const existingFiles = filesToGenerate.filter(f => existsSync(f.path))
+      generateSpinner.succeed(`Found table '${tableName}' with ${tableInfo.columns.length} columns`)
 
-      if (existingFiles.length > 0) {
-        console.log('')
-        console.log(prism.yellow('The following files already exist:'))
-        for (const file of existingFiles) {
-          console.log(`  - ${file.type}: ${prism.cyan(file.path)}`)
+      const outputDir = options.outputDir || './src'
+
+      // Validate output directory to prevent path traversal
+      validatePath(outputDir)
+
+      const filesToGenerate = [
+        {
+          type: 'Model',
+          path: join(outputDir, 'models', `${toKebabCase(tableName)}.ts`),
+          generator: generateModelCode
+        },
+        {
+          type: 'Repository',
+          path: join(outputDir, 'repositories', `${toKebabCase(tableName)}.repository.ts`),
+          generator: generateRepositoryCode
+        },
+        {
+          type: 'Schema',
+          path: join(outputDir, 'schemas', `${toKebabCase(tableName)}.schema.ts`),
+          generator: generateSchemaCode
         }
-        console.log('')
+      ]
 
-        const shouldOverwrite = await confirm({
-          message: 'Do you want to overwrite these files?',
-          initialValue: false
+      if (!options.overwrite) {
+        const existingFiles = filesToGenerate.filter(f => existsSync(f.path))
+
+        if (existingFiles.length > 0) {
+          console.log('')
+          console.log(prism.yellow('The following files already exist:'))
+          for (const file of existingFiles) {
+            console.log(`  - ${file.type}: ${prism.cyan(file.path)}`)
+          }
+          console.log('')
+
+          const shouldOverwrite = await guardDestructive('Do you want to overwrite these files?', {
+            force: options.overwrite
+          })
+
+          if (!shouldOverwrite) {
+            logger.info('Generation cancelled')
+            return
+          }
+        }
+      }
+
+      console.log('')
+      logger.info('Generating CRUD stack...')
+
+      const generatedFiles: string[] = []
+
+      for (const file of filesToGenerate) {
+        const dir = join(file.path, '..')
+        if (!existsSync(dir)) {
+          mkdirSync(dir, { recursive: true })
+        }
+
+        const code = file.generator(tableInfo, {
+          withValidation: options.withValidation !== false,
+          withPagination: options.withPagination !== false,
+          withSoftDelete: options.withSoftDelete === true,
+          withTimestamps: options.withTimestamps !== false
         })
 
-        if (!shouldOverwrite) {
-          logger.info('Generation cancelled')
-          return
-        }
-      }
-    }
-
-    console.log('')
-    logger.info('Generating CRUD stack...')
-
-    const generatedFiles: string[] = []
-
-    for (const file of filesToGenerate) {
-      const dir = join(file.path, '..')
-      if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true })
+        writeFileSync(file.path, code, 'utf-8')
+        logger.info(`  ${prism.green('OK')} Generated ${file.type}: ${prism.cyan(file.path)}`)
+        generatedFiles.push(file.path)
       }
 
-      const code = file.generator(tableInfo, {
-        withValidation: options.withValidation !== false,
-        withPagination: options.withPagination !== false,
-        withSoftDelete: options.withSoftDelete === true,
-        withTimestamps: options.withTimestamps !== false
-      })
-
-      writeFileSync(file.path, code, 'utf-8')
-      logger.info(`  ${prism.green('OK')} Generated ${file.type}: ${prism.cyan(file.path)}`)
-      generatedFiles.push(file.path)
-    }
-
-    // Generate index file
-    const indexPath = join(outputDir, 'index.ts')
-    const indexContent = `export * from './models/${toKebabCase(tableName)}.js'
+      // Generate index file
+      const indexPath = join(outputDir, 'index.ts')
+      const indexContent = `export * from './models/${toKebabCase(tableName)}.js'
 export * from './repositories/${toKebabCase(tableName)}.repository.js'
 export * from './schemas/${toKebabCase(tableName)}.schema.js'
 `
-    writeFileSync(indexPath, indexContent, 'utf-8')
-    logger.info(`  ${prism.green('OK')} Generated index file: ${prism.cyan(indexPath)}`)
-    generatedFiles.push(indexPath)
+      writeFileSync(indexPath, indexContent, 'utf-8')
+      logger.info(`  ${prism.green('OK')} Generated index file: ${prism.cyan(indexPath)}`)
+      generatedFiles.push(indexPath)
 
-    if (options.format !== false && generatedFiles.length > 0) {
-      try {
-        const formatSpinner = spinner()
-        formatSpinner.start('Formatting generated files...')
-        await execa('npx', ['prettier', '--write', ...generatedFiles], { stdio: 'ignore' })
-        formatSpinner.succeed('Files formatted successfully')
-      } catch {
-        logger.warn('Failed to format files (Prettier may not be installed)')
+      if (options.format !== false && generatedFiles.length > 0) {
+        try {
+          const formatSpinner = spinner()
+          formatSpinner.start('Formatting generated files...')
+          const { execa } = await import('execa')
+          await execa('npx', ['prettier', '--write', ...generatedFiles], { stdio: 'ignore' })
+          formatSpinner.succeed('Files formatted successfully')
+        } catch {
+          logger.warn('Failed to format files (Prettier may not be installed)')
+        }
       }
-    }
 
-    console.log('')
-    console.log(prism.green('CRUD stack generated successfully!'))
-    console.log('')
-    console.log('Next steps:')
-    console.log(`  1. Update your Database interface in ${prism.cyan('src/database.ts')}:`)
-    console.log(`     ${prism.gray(`${tableName}: ${toPascalCase(tableName)}Table`)}`)
-    console.log(`  2. Import and use the generated repository:`)
-    console.log(
-      `     ${prism.gray(`import { ${toPascalCase(tableName)}Repository } from './repositories/${toKebabCase(tableName)}.repository.js'`)}`
-    )
-    console.log('')
-  })
+      if (isJsonMode()) {
+        output({ generated: generatedFiles.length, files: generatedFiles })
+        return
+      }
+
+      console.log('')
+      console.log(prism.green('CRUD stack generated successfully!'))
+      console.log('')
+      console.log('Next steps:')
+      console.log(`  1. Update your Database interface in ${prism.cyan('src/database.ts')}:`)
+      console.log(`     ${prism.gray(`${tableName}: ${toPascalCase(tableName)}Table`)}`)
+      console.log(`  2. Import and use the generated repository:`)
+      console.log(
+        `     ${prism.gray(`import { ${toPascalCase(tableName)}Repository } from './repositories/${toKebabCase(tableName)}.repository.js'`)}`
+      )
+      console.log('')
+    }
+  )
 }
 
 function generateModelCode(table: TableInfo, options: any): string {

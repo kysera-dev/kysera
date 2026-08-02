@@ -87,6 +87,7 @@ vi.mock('@xec-sh/kit', () => ({
 
 vi.mock('../../../../src/utils/logger.js', () => ({
   logger: {
+    success: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     message: vi.fn(),
@@ -266,11 +267,15 @@ describe('test teardown command', () => {
   })
 
   describe('confirmation flow', () => {
-    it('should ask for confirmation before teardown', async () => {
+    // Destructive operations never auto-proceed: without a TTY the guard
+    // fails fast instead of prompting or silently continuing.
+    it('should refuse teardown without --force when not interactive', async () => {
       mockDb.execute.mockResolvedValue([{ datname: 'myapp_test' }])
 
-      await command.parseAsync(['node', 'test'])
-      // In non-force mode, confirmation is asked
+      await expect(command.parseAsync(['node', 'test'])).rejects.toThrow(
+        /Refusing to run destructive operation/
+      )
+      expect(confirm).not.toHaveBeenCalled()
     })
 
     it('should skip confirmation with --force', async () => {
@@ -278,14 +283,6 @@ describe('test teardown command', () => {
 
       await command.parseAsync(['node', 'test', '--force'])
       expect(confirm).not.toHaveBeenCalled()
-    })
-
-    it('should cancel teardown if not confirmed', async () => {
-      mockDb.execute.mockResolvedValue([{ datname: 'myapp_test' }])
-      ;(confirm as Mock).mockResolvedValueOnce(false)
-
-      await command.parseAsync(['node', 'test'])
-      // Should cancel gracefully
     })
   })
 

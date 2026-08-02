@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { MIGRATION_TEMPLATES, parseColumns } from './templates.js'
-import { renderTemplate } from '../../utils/templates.js'
 
 export interface CreateOptions {
   dir?: string

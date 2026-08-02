@@ -15,7 +15,6 @@ complete -c kysera -n "__fish_use_subcommand" -l config -r -F -d "Path to config
 complete -c kysera -n "__fish_use_subcommand" -l no-color -d "Disable colored output"
 complete -c kysera -n "__fish_use_subcommand" -l json -d "Output results as JSON"
 complete -c kysera -n "__fish_use_subcommand" -l env -x -a "development production test" -d "Environment (development/production/test)"
-complete -c kysera -n "__fish_use_subcommand" -l stats -d "Show performance statistics"
 complete -c kysera -n "__fish_use_subcommand" -s v -l version -d "Show CLI version"
 complete -c kysera -n "__fish_use_subcommand" -s h -l help -d "Display help"
 
@@ -32,8 +31,6 @@ complete -c kysera -f -n "__fish_use_subcommand" -a repository -d "Repository pa
 complete -c kysera -f -n "__fish_use_subcommand" -a test -d "Test environment management"
 complete -c kysera -f -n "__fish_use_subcommand" -a plugin -d "Plugin management"
 complete -c kysera -f -n "__fish_use_subcommand" -a schema -d "PostgreSQL schema management"
-complete -c kysera -f -n "__fish_use_subcommand" -a hello -d "Test command to verify CLI setup"
-complete -c kysera -f -n "__fish_use_subcommand" -a stats -d "Show CLI performance statistics"
 complete -c kysera -f -n "__fish_use_subcommand" -a help -d "Display help for command"
 complete -c kysera -f -n "__fish_use_subcommand" -a g -d "Code generation utilities (alias for generate)"
 
@@ -64,6 +61,7 @@ complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subc
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -s v -l verbose -d "Show detailed output"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -s c -l config -r -F -d "Path to configuration file"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -l force -d "Skip confirmation prompt"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -l json -d "Output results as JSON"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
 # migrate list options
@@ -102,6 +100,7 @@ complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subc
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -l force -d "Force migration even if already executed"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -s v -l verbose -d "Show detailed output"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -s c -l config -r -F -d "Path to configuration file"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -l json -d "Output results as JSON"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
 # generate subcommands
@@ -123,6 +122,7 @@ complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_s
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from crud" -l no-with-timestamps -d "Skip timestamp support"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from crud" -l format -d "Format generated files with Prettier"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from crud" -l no-format -d "Skip formatting"
+complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from crud" -l json -d "Output results as JSON"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from crud" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
 # generate model options
@@ -132,6 +132,7 @@ complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_s
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from model" -l timestamps -d "Include timestamp fields"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from model" -l no-timestamps -d "Exclude timestamp fields"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from model" -l soft-delete -d "Include soft delete fields"
+complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from model" -l json -d "Output results as JSON"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from model" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
 # generate repository options
@@ -145,6 +146,7 @@ complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_s
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from repository" -l with-soft-delete -d "Include soft delete support"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from repository" -l with-timestamps -d "Include timestamp support"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from repository" -l no-with-timestamps -d "Skip timestamp support"
+complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from repository" -l json -d "Output results as JSON"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from repository" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
 # generate schema options
@@ -153,6 +155,7 @@ complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_s
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from schema" -s c -l config -r -F -d "Path to configuration file"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from schema" -l strict -d "Use strict validation (no unknown keys)"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from schema" -l no-strict -d "Allow unknown keys in validation"
+complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from schema" -l json -d "Output results as JSON"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from schema" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
 # db subcommands
@@ -165,7 +168,8 @@ complete -c kysera -f -n "__fish_seen_subcommand_from db; and not __fish_seen_su
 complete -c kysera -f -n "__fish_seen_subcommand_from db; and not __fish_seen_subcommand_from console dump introspect reset restore seed tables" -a tables -d "List all database tables with statistics"
 
 # db console options
-complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from console" -s q -l query -x -d "Execute SQL query and exit"
+complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from console" -s e -l execute -x -d "Execute SQL query and exit"
+complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from console" -l force -d "Skip confirmation for destructive queries"
 complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from console" -s c -l config -r -F -d "Path to configuration file"
 
 # db dump options
@@ -174,6 +178,7 @@ complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcomman
 complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from dump" -l data-only -d "Export data only (no schema)"
 complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from dump" -l schema-only -d "Export schema only (no data)"
 complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from dump" -s f -l format -x -a "sql json" -d "Format (sql/json)"
+complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from dump" -l json -d "Output dump summary as JSON"
 complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from dump" -s c -l config -r -F -d "Path to configuration file"
 complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from dump" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
@@ -202,6 +207,7 @@ complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcomman
 complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from seed" -l transaction -d "Run all seeds in a single transaction"
 complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from seed" -s c -l config -r -F -d "Path to configuration file"
 complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from seed" -s v -l verbose -d "Show detailed output"
+complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from seed" -l json -d "Output results as JSON"
 complete -c kysera -n "__fish_seen_subcommand_from db; and __fish_seen_subcommand_from seed" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
 # db tables options
@@ -366,6 +372,7 @@ complete -c kysera -n "__fish_seen_subcommand_from query; and __fish_seen_subcom
 complete -c kysera -n "__fish_seen_subcommand_from query; and __fish_seen_subcommand_from analyze" -s s -l show-statistics -d "Show table statistics"
 complete -c kysera -n "__fish_seen_subcommand_from query; and __fish_seen_subcommand_from analyze" -l suggestions -d "Show optimization suggestions"
 complete -c kysera -n "__fish_seen_subcommand_from query; and __fish_seen_subcommand_from analyze" -s b -l benchmark -x -d "Benchmark query N times"
+complete -c kysera -n "__fish_seen_subcommand_from query; and __fish_seen_subcommand_from analyze" -l json -d "Output results as JSON (same as --format json)"
 complete -c kysera -n "__fish_seen_subcommand_from query; and __fish_seen_subcommand_from analyze" -s c -l config -r -F -d "Path to configuration file"
 
 # query by-timestamp options
@@ -389,6 +396,7 @@ complete -c kysera -n "__fish_seen_subcommand_from query; and __fish_seen_subcom
 complete -c kysera -n "__fish_seen_subcommand_from query; and __fish_seen_subcommand_from explain" -l costs -d "Show cost estimates"
 complete -c kysera -n "__fish_seen_subcommand_from query; and __fish_seen_subcommand_from explain" -l timing -d "Show timing information"
 complete -c kysera -n "__fish_seen_subcommand_from query; and __fish_seen_subcommand_from explain" -l summary -d "Show summary at the end"
+complete -c kysera -n "__fish_seen_subcommand_from query; and __fish_seen_subcommand_from explain" -l json -d "Output results as JSON (same as --format json)"
 complete -c kysera -n "__fish_seen_subcommand_from query; and __fish_seen_subcommand_from explain" -s c -l config -r -F -d "Path to configuration file"
 complete -c kysera -n "__fish_seen_subcommand_from query; and __fish_seen_subcommand_from explain" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
@@ -485,6 +493,7 @@ complete -c kysera -n "__fish_seen_subcommand_from test; and __fish_seen_subcomm
 complete -c kysera -n "__fish_seen_subcommand_from test; and __fish_seen_subcommand_from setup" -s e -l environment -x -d "Test environment"
 complete -c kysera -n "__fish_seen_subcommand_from test; and __fish_seen_subcommand_from setup" -s d -l database -x -d "Test database name"
 complete -c kysera -n "__fish_seen_subcommand_from test; and __fish_seen_subcommand_from setup" -l clean -d "Clean existing test database"
+complete -c kysera -n "__fish_seen_subcommand_from test; and __fish_seen_subcommand_from setup" -s f -l force -d "Skip confirmation when dropping an existing database"
 complete -c kysera -n "__fish_seen_subcommand_from test; and __fish_seen_subcommand_from setup" -l migrate -d "Run migrations"
 complete -c kysera -n "__fish_seen_subcommand_from test; and __fish_seen_subcommand_from setup" -l seed -d "Run seeders"
 complete -c kysera -n "__fish_seen_subcommand_from test; and __fish_seen_subcommand_from setup" -l fixtures -r -F -d "Load specific fixtures"
@@ -612,9 +621,6 @@ complete -c kysera -n "__fish_seen_subcommand_from init" -l no-git -d "Skip git 
 complete -c kysera -n "__fish_seen_subcommand_from init" -l install -d "Install dependencies"
 complete -c kysera -n "__fish_seen_subcommand_from init" -l no-install -d "Skip dependency installation"
 
-# hello options
-complete -c kysera -n "__fish_seen_subcommand_from hello" -s n -l name -x -d "Name to greet"
-
 # help completes command names
 complete -c kysera -f -n "__fish_seen_subcommand_from help" -a init -d "Initialize a new Kysera project"
 complete -c kysera -f -n "__fish_seen_subcommand_from help" -a migrate -d "Database migration management"
@@ -628,5 +634,3 @@ complete -c kysera -f -n "__fish_seen_subcommand_from help" -a repository -d "Re
 complete -c kysera -f -n "__fish_seen_subcommand_from help" -a test -d "Test environment management"
 complete -c kysera -f -n "__fish_seen_subcommand_from help" -a plugin -d "Plugin management"
 complete -c kysera -f -n "__fish_seen_subcommand_from help" -a schema -d "PostgreSQL schema management"
-complete -c kysera -f -n "__fish_seen_subcommand_from help" -a hello -d "Test command to verify CLI setup"
-complete -c kysera -f -n "__fish_seen_subcommand_from help" -a stats -d "Show CLI performance statistics"

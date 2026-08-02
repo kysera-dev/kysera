@@ -42,6 +42,7 @@ _kysera_migrate() {
                 '(-v --verbose)'{-v,--verbose}'[Show detailed output]' \
                 '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                 '--force[Skip confirmation prompt]' \
+                '--json[Output results as JSON]' \
                 '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
@@ -90,6 +91,7 @@ _kysera_migrate() {
                 '--force[Force migration even if already executed]' \
                 '(-v --verbose)'{-v,--verbose}'[Show detailed output]' \
                 '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
+                '--json[Output results as JSON]' \
                 '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
@@ -123,6 +125,7 @@ _kysera_generate() {
                 '--no-with-timestamps[Skip timestamp support]' \
                 '--format[Format generated files with Prettier]' \
                 '--no-format[Skip formatting]' \
+                '--json[Output results as JSON]' \
                 '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
@@ -134,6 +137,7 @@ _kysera_generate() {
                 '--timestamps[Include timestamp fields]' \
                 '--no-timestamps[Exclude timestamp fields]' \
                 '--soft-delete[Include soft delete fields]' \
+                '--json[Output results as JSON]' \
                 '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
@@ -149,6 +153,7 @@ _kysera_generate() {
                 '--with-soft-delete[Include soft delete support]' \
                 '--with-timestamps[Include timestamp support]' \
                 '--no-with-timestamps[Skip timestamp support]' \
+                '--json[Output results as JSON]' \
                 '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
@@ -159,6 +164,7 @@ _kysera_generate() {
                 '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                 '--strict[Use strict validation (no unknown keys)]' \
                 '--no-strict[Allow unknown keys in validation]' \
+                '--json[Output results as JSON]' \
                 '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
@@ -183,7 +189,8 @@ _kysera_db() {
     case $words[2] in
         console)
             _arguments \
-                '(-q --query)'{-q,--query}'[Execute SQL query and exit]:sql:' \
+                '(-e --execute)'{-e,--execute}'[Execute SQL query and exit]:sql:' \
+                '--force[Skip confirmation for destructive queries]' \
                 '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
@@ -194,6 +201,7 @@ _kysera_db() {
                 '--data-only[Export data only (no schema)]' \
                 '--schema-only[Export schema only (no data)]' \
                 '(-f --format)'{-f,--format}'[Format (sql/json)]:type:(sql json)' \
+                '--json[Output dump summary as JSON]' \
                 '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                 '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
                 '(-h --help)'{-h,--help}'[Display help]'
@@ -231,6 +239,7 @@ _kysera_db() {
                 '--transaction[Run all seeds in a single transaction]' \
                 '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                 '(-v --verbose)'{-v,--verbose}'[Show detailed output]' \
+                '--json[Output results as JSON]' \
                 '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
@@ -469,6 +478,7 @@ _kysera_query() {
                 '(-s --show-statistics)'{-s,--show-statistics}'[Show table statistics]' \
                 '--suggestions[Show optimization suggestions]' \
                 '(-b --benchmark)'{-b,--benchmark}'[Benchmark query N times]:n:' \
+                '--json[Output results as JSON (same as --format json)]' \
                 '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
@@ -496,6 +506,7 @@ _kysera_query() {
                 '--costs[Show cost estimates]' \
                 '--timing[Show timing information]' \
                 '--summary[Show summary at the end]' \
+                '--json[Output results as JSON (same as --format json)]' \
                 '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                 '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
                 '(-h --help)'{-h,--help}'[Display help]'
@@ -628,6 +639,7 @@ _kysera_test() {
                 '(-e --environment)'{-e,--environment}'[Test environment]:env:' \
                 '(-d --database)'{-d,--database}'[Test database name]:name:' \
                 '--clean[Clean existing test database]' \
+                '(-f --force)'{-f,--force}'[Skip confirmation when dropping an existing database]' \
                 '--migrate[Run migrations]' \
                 '--seed[Run seeders]' \
                 '--fixtures[Load specific fixtures]:files:_files' \
@@ -804,8 +816,6 @@ _kysera() {
         'test:Test environment management'
         'plugin:Plugin management'
         'schema:PostgreSQL schema management'
-        'hello:Test command to verify CLI setup'
-        'stats:Show CLI performance statistics'
         'help:Display help for command'
     )
 
@@ -818,7 +828,6 @@ _kysera() {
         '--no-color[Disable colored output]'
         '--json[Output results as JSON]'
         '--env[Environment (development/production/test)]:environment:(development production test)'
-        '--stats[Show performance statistics]'
         '(-v --version)'{-v,--version}'[Show CLI version]'
         '(-h --help)'{-h,--help}'[Display help]'
     )
@@ -880,15 +889,6 @@ _kysera() {
                         '--no-git[Skip git initialization]' \
                         '--install[Install dependencies]' \
                         '--no-install[Skip dependency installation]' \
-                        '(-h --help)'{-h,--help}'[Display help]'
-                    ;;
-                hello)
-                    _arguments \
-                        '(-n --name)'{-n,--name}'[Name to greet]:name:' \
-                        '(-h --help)'{-h,--help}'[Display help]'
-                    ;;
-                stats)
-                    _arguments \
                         '(-h --help)'{-h,--help}'[Display help]'
                     ;;
                 help)

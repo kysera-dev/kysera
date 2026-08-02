@@ -51,9 +51,11 @@ export function analyzeCommand(): Command {
     .option('-s, --show-statistics', 'Show table statistics')
     .option('--suggestions', 'Show optimization suggestions', true)
     .option('-b, --benchmark <n>', 'Benchmark query N times', '1')
+    .option('--json', 'Output results as JSON (same as --format json)')
     .option('-c, --config <path>', 'Path to configuration file')
-    .action(async (options: AnalyzeOptions) => {
+    .action(async (options: AnalyzeOptions & { json?: boolean }) => {
       try {
+        if (options.json) options.format = 'json'
         await analyzeQueryPerformance(options)
       } catch (error) {
         if (error instanceof CLIError) {

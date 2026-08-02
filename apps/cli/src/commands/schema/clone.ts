@@ -3,7 +3,6 @@ import { prism, confirm } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
-import { createPostgresAdapter, getTenantSchemaName } from '@kysera/dialects'
 
 export interface CloneOptions {
   includeData?: boolean
@@ -52,6 +51,7 @@ async function cloneSchema(source: string, target: string, options: CloneOptions
     }
 
     // Resolve target schema name (use tenant naming convention if --tenant is specified)
+    const { createPostgresAdapter, getTenantSchemaName } = await import('@kysera/dialects')
     const targetSchema = options.tenant ? getTenantSchemaName(options.tenant) : target
 
     const adapter = createPostgresAdapter()
@@ -65,11 +65,9 @@ async function cloneSchema(source: string, target: string, options: CloneOptions
     // Check if target schema already exists
     const targetExists = await adapter.schemaExists(db, targetSchema)
     if (targetExists) {
-      throw new CLIError(
-        `Target schema '${targetSchema}' already exists`,
-        'TARGET_EXISTS',
-        ['Use a different target name or drop the existing schema first']
-      )
+      throw new CLIError(`Target schema '${targetSchema}' already exists`, 'TARGET_EXISTS', [
+        'Use a different target name or drop the existing schema first'
+      ])
     }
 
     // Get source schema info
@@ -87,7 +85,9 @@ async function cloneSchema(source: string, target: string, options: CloneOptions
         console.log(`  Target: ${prism.cyan(targetSchema)}`)
         console.log(`  Tables: ${sourceInfo.tableCount}`)
         console.log(`  Size: ${formatBytes(sourceInfo.sizeBytes)}`)
-        console.log(`  Include Data: ${options.includeData ? prism.green('Yes') : prism.gray('No')}`)
+        console.log(
+          `  Include Data: ${options.includeData ? prism.green('Yes') : prism.gray('No')}`
+        )
         if (options.exclude && options.exclude.length > 0) {
           console.log(`  Exclude: ${options.exclude.join(', ')}`)
         }

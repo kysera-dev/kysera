@@ -3,7 +3,6 @@ import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
-import { createPostgresAdapter } from '@kysera/dialects'
 
 export interface CompareOptions {
   json?: boolean
@@ -52,6 +51,7 @@ async function compareSchemas(
     const compareSpinner = spinner()
     compareSpinner.start(`Comparing schemas '${schema1}' and '${schema2}'...`)
 
+    const { createPostgresAdapter } = await import('@kysera/dialects')
     const adapter = createPostgresAdapter()
 
     // Check if both schemas exist
@@ -114,9 +114,7 @@ async function compareSchemas(
     console.log('')
     console.log(`  ${prism.bold(schema1.padEnd(30))} ${prism.bold(schema2)}`)
     console.log(`  ${'-'.repeat(30)} ${'-'.repeat(30)}`)
-    console.log(
-      `  Tables: ${String(info1.tableCount).padEnd(22)} Tables: ${info2.tableCount}`
-    )
+    console.log(`  Tables: ${String(info1.tableCount).padEnd(22)} Tables: ${info2.tableCount}`)
     console.log(
       `  Size: ${formatBytes(info1.sizeBytes).padEnd(24)} Size: ${formatBytes(info2.sizeBytes)}`
     )
@@ -152,7 +150,11 @@ async function compareSchemas(
             console.log(prism.gray(`  = ${table}`))
           }
         } else {
-          console.log(prism.gray(`  ${diff.inBoth.slice(0, 5).join(', ')}${diff.inBoth.length > 5 ? ` ... and ${diff.inBoth.length - 5} more` : ''}`))
+          console.log(
+            prism.gray(
+              `  ${diff.inBoth.slice(0, 5).join(', ')}${diff.inBoth.length > 5 ? ` ... and ${diff.inBoth.length - 5} more` : ''}`
+            )
+          )
         }
         console.log('')
       }
@@ -172,14 +174,10 @@ async function compareSchemas(
       console.log('')
       console.log(prism.gray('Hints:'))
       if (diff.onlyInFirst.length > 0) {
-        console.log(
-          `  To sync missing tables, run migrations on '${schema2}'`
-        )
+        console.log(`  To sync missing tables, run migrations on '${schema2}'`)
       }
       if (diff.onlyInSecond.length > 0) {
-        console.log(
-          `  Or clone: ${prism.cyan(`kysera schema clone ${schema2} new_schema`)}`
-        )
+        console.log(`  Or clone: ${prism.cyan(`kysera schema clone ${schema2} new_schema`)}`)
       }
     }
   })

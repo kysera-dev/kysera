@@ -340,9 +340,7 @@ export class MigrationRunner {
       } catch (error: any) {
         const duration = Date.now() - migrationStart
         logger.error(`${prism.red('↑')} ${migration.name}... ${prism.red('✗')} (${duration}ms)`)
-        const remaining = pending
-          .slice(pending.indexOf(migrationStatus) + 1)
-          .map(m => m.name)
+        const remaining = pending.slice(pending.indexOf(migrationStatus) + 1).map(m => m.name)
         throw new CLIError(
           `Migration ${migration.name} failed: ${error.message}`,
           'MIGRATION_FAILED',

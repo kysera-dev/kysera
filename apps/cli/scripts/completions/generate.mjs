@@ -20,8 +20,8 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const COMMANDS_DIR = join(HERE, '..', '..', 'src', 'commands')
 
-// Top-level commands: groups come from src/utils/lazy-loader.ts (descriptions
-// shown by `kysera --help`), leaf commands from src/cli.ts.
+// Top-level command groups registered in src/cli.ts (descriptions shown
+// by `kysera --help`).
 const GROUPS = [
   { name: 'migrate', desc: 'Database migration management' },
   { name: 'generate', desc: 'Code generation utilities', alias: 'g' },
@@ -45,7 +45,6 @@ const GLOBAL_OPTS = [
   opt('--no-color', 'Disable colored output'),
   opt('--json', 'Output results as JSON'),
   opt('--env <environment>', 'Environment (development/production/test)'),
-  opt('--stats', 'Show performance statistics'),
   opt('-v, --version', 'Show CLI version'),
   opt('-h, --help', 'Display help')
 ]
@@ -64,8 +63,10 @@ function opt(flags, desc) {
   const values = enumMatch ? enumMatch[1].split('/') : null
   const long = m[2]
   const dirish =
-    placeholder === 'path' && (/director/i.test(desc) || /--dir/.test(long) || long === '--directory')
-  const fileish = !dirish && (placeholder === 'path' || placeholder === 'file' || placeholder === 'files')
+    placeholder === 'path' &&
+    (/director/i.test(desc) || /--dir/.test(long) || long === '--directory')
+  const fileish =
+    !dirish && (placeholder === 'path' || placeholder === 'file' || placeholder === 'files')
   return { short: m[1] ?? null, long, placeholder, desc, values, dirish, fileish }
 }
 
@@ -108,18 +109,10 @@ const tree = GROUPS.map(g => ({ ...g, subs: parseGroup(g.name) }))
 // Leaf commands (no subcommands)
 const initCmd = parseCommandFile(join(COMMANDS_DIR, 'init', 'index.ts'))[0]
 const LEAVES = [
-  { name: 'init', desc: 'Initialize a new Kysera project', args: initCmd.args, opts: initCmd.opts },
-  { name: 'hello', desc: 'Test command to verify CLI setup', args: [], opts: [opt('-n, --name <name>', 'Name to greet')] },
-  { name: 'stats', desc: 'Show CLI performance statistics', args: [], opts: [] }
+  { name: 'init', desc: 'Initialize a new Kysera project', args: initCmd.args, opts: initCmd.opts }
 ]
 
-const ALL_TOP = [
-  LEAVES[0],
-  ...tree,
-  LEAVES[1],
-  LEAVES[2],
-  { name: 'help', desc: 'Display help for command' }
-]
+const ALL_TOP = [LEAVES[0], ...tree, { name: 'help', desc: 'Display help for command' }]
 
 const topNames = ALL_TOP.map(c => c.name).join(' ')
 
@@ -318,12 +311,6 @@ for (const g of tree) {
 }
 zsh += `                init)
 ${zshArguments(LEAVES[0].opts, '                    ', [`'1:project name:'`])}
-                    ;;
-                hello)
-${zshArguments(LEAVES[1].opts, '                    ')}
-                    ;;
-                stats)
-${zshArguments([], '                    ')}
                     ;;
                 help)
                     _describe -t commands 'kysera commands' commands

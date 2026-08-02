@@ -52,6 +52,7 @@ vi.mock('@xec-sh/kit', () => ({
 
 vi.mock('../../../../src/utils/logger.js', () => ({
   logger: {
+    success: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     message: vi.fn(),
@@ -334,7 +335,10 @@ describe('migrate down command', () => {
       expect(releaseLock).toHaveBeenCalled()
     })
 
-    it('should skip confirmation in test environment for --all', async () => {
+    // --all wipes the schema: without a TTY it must FAIL fast instead of
+    // auto-confirming (the old behavior silently proceeded in test/non-TTY
+    // environments).
+    it('should refuse --all without --force when not interactive', async () => {
       const mockRunner = {
         acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
         getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'test' }]),
@@ -345,8 +349,27 @@ describe('migrate down command', () => {
         return this
       })
 
-      await command.parseAsync(['node', 'test', '--all'])
+      await expect(command.parseAsync(['node', 'test', '--all'])).rejects.toThrow(
+        /Refusing to run destructive operation/
+      )
       expect(confirm).not.toHaveBeenCalled()
+      expect(mockRunner.down).not.toHaveBeenCalled()
+    })
+
+    it('should run --all with --force without prompting', async () => {
+      const mockRunner = {
+        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
+        getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'test' }]),
+        down: vi.fn().mockResolvedValue({ rolledBack: ['test'], duration: 50 })
+      }
+      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
+        Object.assign(this, mockRunner)
+        return this
+      })
+
+      await command.parseAsync(['node', 'test', '--all', '--force'])
+      expect(confirm).not.toHaveBeenCalled()
+      expect(mockRunner.down).toHaveBeenCalled()
     })
   })
 })

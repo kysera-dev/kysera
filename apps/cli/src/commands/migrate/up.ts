@@ -34,10 +34,6 @@ export function upCommand(): Command {
       try {
         await runMigrationsUp(options)
       } catch (error) {
-        logger.error('Error in migrate up command:', error)
-        if (error instanceof Error) {
-          logger.error('Error stack:', error.stack)
-        }
         if (error instanceof CLIError) {
           throw error
         }
@@ -54,119 +50,125 @@ export function upCommand(): Command {
 async function runMigrationsUp(options: UpOptions): Promise<void> {
   logger.debug('Starting runMigrationsUp with options:', options)
 
-  await withDatabase({ config: options.config, verbose: options.verbose, schema: options.schema }, async (db, config, schema) => {
-    const migrationsDir = config.migrations?.directory || './migrations'
-    const tableName = config.migrations?.tableName || 'migrations'
+  await withDatabase(
+    { config: options.config, verbose: options.verbose, schema: options.schema },
+    async (db, config, schema) => {
+      const migrationsDir = config.migrations?.directory || './migrations'
+      const tableName = config.migrations?.tableName || 'migrations'
 
-    if (schema !== 'public') {
-      logger.info(`Using schema: ${schema}`)
-    }
+      if (schema !== 'public') {
+        logger.info(`Using schema: ${schema}`)
+      }
 
-    // Check if migrations directory exists
-    const { existsSync } = await import('node:fs')
-    if (!existsSync(migrationsDir)) {
-      throw new CLIError(
-        `Migrations directory not found: ${migrationsDir}`,
-        'MIGRATIONS_DIR_NOT_FOUND',
-        undefined,
-        [
-          `Create the migrations directory: mkdir -p ${migrationsDir}`,
-          `Or run: kysera migrate create <name> to create your first migration`
-        ]
-      )
-    }
+      // Check if migrations directory exists
+      const { existsSync } = await import('node:fs')
+      if (!existsSync(migrationsDir)) {
+        throw new CLIError(
+          `Migrations directory not found: ${migrationsDir}`,
+          'MIGRATIONS_DIR_NOT_FOUND',
+          undefined,
+          [
+            `Create the migrations directory: mkdir -p ${migrationsDir}`,
+            `Or run: kysera migrate create <name> to create your first migration`
+          ]
+        )
+      }
 
-    // Create migration runner
-    const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
+      // Create migration runner
+      const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 
-    // Acquire lock to prevent concurrent migrations
-    let releaseLock: (() => Promise<void>) | null = null
+      // Acquire lock to prevent concurrent migrations
+      let releaseLock: (() => Promise<void>) | null = null
 
-    try {
-      if (!options.dryRun) {
+      try {
+        if (!options.dryRun) {
+          try {
+            releaseLock = await runner.acquireLock()
+          } catch (error: any) {
+            if (error.code === 'MIGRATION_LOCKED') {
+              throw new CLIError(
+                'Migrations are already running in another process',
+                'MIGRATION_LOCKED',
+                undefined,
+                [
+                  'Wait for the other process to complete',
+                  'Or check for stuck locks in the database'
+                ]
+              )
+            }
+            // Lock mechanism might not be set up yet, continue without it
+            logger.debug('Could not acquire migration lock, continuing without lock')
+          }
+        }
+
+        // Get migration status before running
+        let statusBefore: any
         try {
-          releaseLock = await runner.acquireLock()
-        } catch (error: any) {
-          if (error.code === 'MIGRATION_LOCKED') {
-            throw new CLIError(
-              'Migrations are already running in another process',
-              'MIGRATION_LOCKED',
-              undefined,
-              ['Wait for the other process to complete', 'Or check for stuck locks in the database']
+          statusBefore = await runner.getMigrationStatus()
+        } catch (error) {
+          logger.error('Failed to get migration status:', error)
+          throw error
+        }
+
+        if (!statusBefore || !Array.isArray(statusBefore)) {
+          logger.debug('Migration status is not an array:', statusBefore)
+          statusBefore = []
+        }
+
+        const pendingCount = statusBefore.filter((m: any) => m.status === 'pending').length
+
+        if (pendingCount === 0 && !options.force) {
+          if (isJsonMode()) {
+            output({ executed: [], count: 0, duration: 0, dryRun: options.dryRun === true })
+          } else {
+            logger.info('No pending migrations to run')
+          }
+          return
+        }
+
+        // Show what will be run in dry-run mode
+        if (options.dryRun) {
+          logger.info(prism.yellow('DRY RUN MODE - No changes will be made'))
+          logger.info('')
+        }
+
+        // Run migrations
+        const { executed, duration } = await runner.up({
+          to: options.to,
+          steps: options.steps || options.count, // Use count as alias for steps
+          dryRun: options.dryRun,
+          force: options.force,
+          verbose: options.verbose
+        })
+
+        if (isJsonMode()) {
+          output({ executed, count: executed.length, duration, dryRun: options.dryRun === true })
+          return
+        }
+
+        // Show summary
+        if (executed.length > 0) {
+          logger.info('')
+          if (options.dryRun) {
+            logger.info(
+              prism.yellow(
+                `Would have run ${executed.length} migration${executed.length > 1 ? 's' : ''} (${duration}ms)`
+              )
+            )
+          } else {
+            logger.info(
+              prism.green(
+                `[OK] ${executed.length} migration${executed.length > 1 ? 's' : ''} completed successfully (${duration}ms)`
+              )
             )
           }
-          // Lock mechanism might not be set up yet, continue without it
-          logger.debug('Could not acquire migration lock, continuing without lock')
         }
-      }
-
-      // Get migration status before running
-      let statusBefore: any
-      try {
-        statusBefore = await runner.getMigrationStatus()
-      } catch (error) {
-        logger.error('Failed to get migration status:', error)
-        throw error
-      }
-
-      if (!statusBefore || !Array.isArray(statusBefore)) {
-        logger.debug('Migration status is not an array:', statusBefore)
-        statusBefore = []
-      }
-
-      const pendingCount = statusBefore.filter((m: any) => m.status === 'pending').length
-
-      if (pendingCount === 0 && !options.force) {
-        if (isJsonMode()) {
-          output({ executed: [], count: 0, duration: 0, dryRun: options.dryRun === true })
-        } else {
-          logger.info('No pending migrations to run')
+      } finally {
+        // Release lock
+        if (releaseLock) {
+          await releaseLock()
         }
-        return
-      }
-
-      // Show what will be run in dry-run mode
-      if (options.dryRun) {
-        logger.info(prism.yellow('DRY RUN MODE - No changes will be made'))
-        logger.info('')
-      }
-
-      // Run migrations
-      const { executed, duration } = await runner.up({
-        to: options.to,
-        steps: options.steps || options.count, // Use count as alias for steps
-        dryRun: options.dryRun,
-        force: options.force,
-        verbose: options.verbose
-      })
-
-      if (isJsonMode()) {
-        output({ executed, count: executed.length, duration, dryRun: options.dryRun === true })
-        return
-      }
-
-      // Show summary
-      if (executed.length > 0) {
-        logger.info('')
-        if (options.dryRun) {
-          logger.info(
-            prism.yellow(
-              `Would have run ${executed.length} migration${executed.length > 1 ? 's' : ''} (${duration}ms)`
-            )
-          )
-        } else {
-          logger.info(
-            prism.green(
-              `[OK] ${executed.length} migration${executed.length > 1 ? 's' : ''} completed successfully (${duration}ms)`
-            )
-          )
-        }
-      }
-    } finally {
-      // Release lock
-      if (releaseLock) {
-        await releaseLock()
       }
     }
-  })
+  )
 }

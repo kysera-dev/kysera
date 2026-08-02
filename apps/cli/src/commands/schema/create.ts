@@ -3,7 +3,6 @@ import { prism, confirm } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
-import { createPostgresAdapter, getTenantSchemaName } from '@kysera/dialects'
 
 export interface CreateOptions {
   tenant?: string
@@ -49,6 +48,7 @@ async function createSchema(name: string, options: CreateOptions): Promise<void>
     }
 
     // Resolve schema name (use tenant naming convention if --tenant is specified)
+    const { createPostgresAdapter, getTenantSchemaName } = await import('@kysera/dialects')
     const schemaName = options.tenant ? getTenantSchemaName(options.tenant) : name
 
     const adapter = createPostgresAdapter()

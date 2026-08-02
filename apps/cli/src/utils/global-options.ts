@@ -51,7 +51,8 @@ export function applyGlobalOptions(rootCommand: Command, actionCommand: Command)
   }
 
   const leafOpts = actionCommand.opts<Record<string, unknown>>()
-  const pick = (key: string): unknown => (leafOpts[key] !== undefined ? leafOpts[key] : rootOpts[key])
+  const pick = (key: string): unknown =>
+    leafOpts[key] !== undefined ? leafOpts[key] : rootOpts[key]
 
   const json = pick('json') === true
   const quiet = pick('quiet') === true
