@@ -169,42 +169,28 @@ export async function down(db: Kysely<any>): Promise<void> {
 `
 }
 
+export interface ParsedColumn {
+  name: string
+  type: string
+  nullable: boolean
+  defaultValue?: string | undefined
+}
+
 /**
  * Parse column definitions from a string
  * Format: "name:type:nullable:default"
  * Example: "email:varchar(255):false:null", "age:integer:true:0"
  */
-export function parseColumns(columnsStr: string): Array<{
-  name: string
-  type: string
-  nullable: boolean
-  defaultValue?: any
-}> {
+export function parseColumns(columnsStr: string): ParsedColumn[] {
   if (!columnsStr) return []
 
   return columnsStr.split(',').map(col => {
-    const parts = col.trim().split(':')
+    const [name = '', type = '', nullable = '', defaultValue] = col.trim().split(':')
     return {
-      name: parts[0] || 'column',
-      type: parts[1] || 'varchar(255)',
-      nullable: parts[2] === 'true',
-      defaultValue: parts[3]
+      name: name === '' ? 'column' : name,
+      type: type === '' ? 'varchar(255)' : type,
+      nullable: nullable === 'true',
+      defaultValue
     }
   })
-}
-
-/**
- * Get a simplified template without handlebars syntax for simple cases
- */
-export function getSimpleTemplate(template: string, data: Record<string, any>): string {
-  let result = template
-
-  // Simple string replacement for non-complex templates
-  if (template === MIGRATION_TEMPLATES.default) {
-    return template
-  }
-
-  // For other templates, we need proper handlebars processing
-  // For now, return the default template
-  return MIGRATION_TEMPLATES.default
 }

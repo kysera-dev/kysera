@@ -1,14 +1,14 @@
+import { existsSync } from 'node:fs'
 import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
-import { displayTable as table } from '../../utils/table-helper.js'
-import { existsSync } from 'node:fs'
-import { logger } from '../../utils/logger.js'
-import { CLIError } from '../../utils/errors.js'
-import { isJsonMode, output, toDate, toIsoDate } from '../../utils/output.js'
-import { MigrationRunner } from './runner.js'
 import { loadConfig } from '../../config/loader.js'
+import { CLIError } from '../../utils/errors.js'
+import { diag, isJsonMode, output, toIsoDate } from '../../utils/output.js'
+import { withDatabase } from '../../utils/with-database.js'
+import type { MigrationStatusEntry } from './runner.js'
+import { createRunner, migrateSettings } from './settings.js'
 
-export interface ListOptions {
+export interface ListCommandOptions {
   pending?: boolean
   executed?: boolean
   json?: boolean
@@ -24,7 +24,7 @@ export function listCommand(): Command {
     .option('--json', 'Output as JSON')
     .option('-c, --config <path>', 'Path to configuration file')
     .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
-    .action(async (options: ListOptions) => {
+    .action(async (options: ListCommandOptions) => {
       try {
         await listMigrations(options)
       } catch (error) {
@@ -41,177 +41,94 @@ export function listCommand(): Command {
   return cmd
 }
 
-async function listMigrations(options: ListOptions): Promise<void> {
-  // Load configuration
+async function listMigrations(options: ListCommandOptions): Promise<void> {
+  const json = options.json === true || isJsonMode()
+
+  // Check the directory before connecting: listing an empty project should
+  // not require a reachable database.
   const config = await loadConfig(options.config)
-
-  if (!config.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option'
-    ])
-  }
-
   const migrationsDir = config.migrations?.directory ?? './migrations'
 
-  // Check if migrations directory exists
   if (!existsSync(migrationsDir)) {
-    if (options.json || isJsonMode()) {
-      output({ migrations: [] }, { format: 'json' })
+    if (json) {
+      output([], { format: 'json' })
     } else {
-      logger.info('No migrations directory found')
-      logger.info(`  Expected location: ${migrationsDir}`)
-      logger.info('')
-      logger.info(
-        `Run ${prism.cyan('kysera migrate create <name>')} to create your first migration`
-      )
+      diag('No migrations directory found')
+      diag(`  Expected location: ${migrationsDir}`)
+      diag(`Run ${prism.cyan('kysera migrate create <name>')} to create your first migration`)
     }
     return
   }
 
-  // Get database connection
-  const { getDatabaseConnection } = await import('../../utils/database.js')
-  const db = await getDatabaseConnection(config.database)
+  await withDatabase(
+    { config: options.config, schema: options.schema },
+    async (db, dbConfig, resolvedSchema) => {
+      const settings = migrateSettings(dbConfig, resolvedSchema, options.schema)
+      const runner = createRunner(db, settings)
 
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
-      'Check your database configuration',
-      'Ensure the database server is running'
-    ])
-  }
-
-  try {
-    const tableName = config.migrations?.tableName ?? 'migrations'
-    // Determine schema: CLI option > config > default 'public'
-    const schema = options.schema ?? config.database.schema ?? 'public'
-
-    // Create migration runner
-    const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
-
-    // Get migration status
-    const status = await runner.getMigrationStatus()
-
-    // Debug logging
-    logger.debug('status type:', typeof status)
-    logger.debug('status is array:', Array.isArray(status))
-
-    if (!Array.isArray(status)) {
-      logger.error('getMigrationStatus did not return an array:', status)
-      throw new CLIError('Invalid migration status returned', 'INVALID_STATUS')
-    }
-
-    // Filter based on options
-    let migrations = status
-    if (options.pending) {
-      migrations = migrations.filter(m => m.status === 'pending')
-    } else if (options.executed) {
-      migrations = migrations.filter(m => m.status === 'executed')
-    }
-
-    if (options.json || isJsonMode()) {
-      output(
-        migrations.map(m => ({
-          name: m.name,
-          timestamp: m.timestamp,
-          status: m.status,
-          executedAt: toIsoDate(m.executedAt)
-        })),
-        { format: 'json' }
-      )
-      return
-    }
-
-    // Display as table or list
-    if (migrations.length === 0) {
-      const filter = options.pending ? 'pending' : options.executed ? 'executed' : ''
-      logger.info(`No ${filter} migrations found`)
-      return
-    }
-
-    console.log('')
-    const title = options.pending
-      ? 'Pending Migrations'
-      : options.executed
-        ? 'Executed Migrations'
-        : 'Available Migrations'
-
-    console.log(prism.bold(title))
-    console.log('')
-
-    // Prepare table data
-    const tableData = migrations.map(m => {
-      const row: Record<string, string> = {
-        Status: m.status === 'executed' ? prism.green('✓') : prism.yellow('○'),
-        Name: m.name,
-        Timestamp: m.timestamp
+      let entries = await runner.getStatusEntries()
+      if (options.pending) {
+        entries = entries.filter(e => e.status === 'pending')
+      } else if (options.executed) {
+        entries = entries.filter(e => e.status === 'executed')
       }
 
-      if (m.status === 'executed' && m.executedAt) {
-        row['Executed At'] = formatDate(m.executedAt)
+      if (json) {
+        output(
+          entries.map(e => ({
+            name: e.name,
+            timestamp: e.timestamp,
+            status: e.status,
+            executedAt: toIsoDate(e.executedAt),
+            path: e.path
+          })),
+          { format: 'json' }
+        )
+        return
       }
 
-      return row
-    })
-
-    // Debug log
-    logger.debug('tableData:', JSON.stringify(tableData, null, 2))
-
-    // Display table
-    if (tableData.length > 0) {
-      const plainTableData = tableData
-
-      try {
-        // Configure columns with proper widths to avoid truncation
-        const columns = [
-          { key: 'Status', header: 'Status', width: 10 },
-          { key: 'Name', header: 'Name', width: 'auto' as const },
-          { key: 'Timestamp', header: 'Timestamp', width: 20 }
-        ]
-
-        // Add Executed At column if any migration has it
-        if (plainTableData.some(row => 'Executed At' in row)) {
-          columns.push({ key: 'Executed At', header: 'Executed At', width: 20 })
-        }
-
-        table(plainTableData, { columns })
-      } catch (tableError) {
-        logger.error('Table rendering error:', tableError)
-        logger.debug('plainTableData:', plainTableData)
-        // Fallback to simple list if table fails
-        migrations.forEach(m => {
-          const status = m.status === 'executed' ? prism.green('✓') : prism.yellow('○')
-          const executedInfo =
-            m.status === 'executed' && m.executedAt ? ` (${formatDate(m.executedAt)})` : ''
-          console.log(`  ${status} ${m.name}${executedInfo}`)
-        })
+      if (entries.length === 0) {
+        const filter = options.pending ? 'pending ' : options.executed ? 'executed ' : ''
+        diag(`No ${filter}migrations found`)
+        return
       }
-    } else if (!Array.isArray(tableData)) {
-      logger.error('tableData is not an array:', typeof tableData, tableData)
-      console.log(prism.gray('  Error: Table data is not an array'))
-    } else {
-      console.log(prism.gray('  No migrations found'))
+
+      const title = options.pending
+        ? 'Pending Migrations'
+        : options.executed
+          ? 'Executed Migrations'
+          : 'Available Migrations'
+
+      output(renderListText(title, entries))
     }
-    console.log('')
-
-    // Show summary
-    const executed = migrations.filter(m => m.status === 'executed').length
-    const pending = migrations.filter(m => m.status === 'pending').length
-
-    console.log(prism.gray('Summary:'))
-    console.log(`  Total: ${migrations.length}`)
-    console.log(`  Executed: ${executed}`)
-    console.log(`  Pending: ${pending}`)
-    console.log('')
-  } finally {
-    // Close database connection
-    await db.destroy()
-  }
+  )
 }
 
-function formatDate(value: Date | string | number): string {
-  // SQLite returns strings where PostgreSQL returns Date objects
-  const date = toDate(value)
-  if (!date) return String(value)
+function renderListText(title: string, entries: MigrationStatusEntry[]): string {
+  const lines: string[] = []
+  lines.push('')
+  lines.push(prism.bold(title))
+  lines.push('')
+
+  for (const entry of entries) {
+    const marker = entry.status === 'executed' ? prism.green('✓') : prism.yellow('○')
+    const executedInfo = entry.executedAt ? ` ${prism.gray(`(${formatDate(entry.executedAt)})`)}` : ''
+    const missing = entry.status === 'executed' && entry.path === null ? ` ${prism.red('(file missing)')}` : ''
+    lines.push(`  ${marker} ${entry.name}${executedInfo}${missing}`)
+  }
+
+  const executed = entries.filter(e => e.status === 'executed').length
+  const pending = entries.filter(e => e.status === 'pending').length
+  lines.push('')
+  lines.push(prism.gray('Summary:'))
+  lines.push(`  Total: ${entries.length}`)
+  lines.push(`  Executed: ${executed}`)
+  lines.push(`  Pending: ${pending}`)
+
+  return lines.join('\n')
+}
+
+function formatDate(date: Date): string {
   return date.toLocaleString('en-US', {
     year: 'numeric',
     month: '2-digit',

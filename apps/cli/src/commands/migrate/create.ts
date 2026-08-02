@@ -1,18 +1,24 @@
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
-import { MIGRATION_TEMPLATES, parseColumns } from './templates.js'
+import { diag, isJsonMode, output } from '../../utils/output.js'
+import { MIGRATION_TEMPLATES, parseColumns, type ParsedColumn } from './templates.js'
 
-export interface CreateOptions {
+export interface CreateCommandOptions {
   dir?: string
   directory?: string
   template?: string
   ts?: boolean
   table?: string
   columns?: string
+  json?: boolean
+}
+
+interface TemplateData {
+  table?: string
+  columns?: ParsedColumn[]
 }
 
 export function createCommand(): Command {
@@ -26,9 +32,10 @@ export function createCommand(): Command {
     .option('--no-ts', 'Generate JavaScript file')
     .option('--table <name>', 'Table name for table-based templates')
     .option('--columns <list>', 'Comma-separated column definitions (name:type:nullable:default)')
-    .action(async (name: string, options: CreateOptions) => {
+    .option('--json', 'Output results as JSON')
+    .action((name: string, options: CreateCommandOptions, command: Command) => {
       try {
-        await createMigration(name, options)
+        createMigration(name, options, command)
       } catch (error) {
         if (error instanceof CLIError) {
           throw error
@@ -43,103 +50,91 @@ export function createCommand(): Command {
   return cmd
 }
 
-async function createMigration(name: string, options: CreateOptions): Promise<void> {
-  const directory = options.dir || options.directory || './migrations'
-  const template = options.template || 'default'
+/** `--dir` wins when given explicitly; `--directory` is honored otherwise. */
+function resolveDirectory(command: Command, options: CreateCommandOptions): string {
+  if (command.getOptionValueSource('dir') === 'cli' && options.dir !== undefined) {
+    return options.dir
+  }
+  if (command.getOptionValueSource('directory') === 'cli' && options.directory !== undefined) {
+    return options.directory
+  }
+  return options.dir ?? './migrations'
+}
+
+function createMigration(name: string, options: CreateCommandOptions, command: Command): void {
+  const directory = resolveDirectory(command, options)
+  const template = options.template ?? 'default'
   const useTypeScript = options.ts !== false
 
-  // Validate template
-  if (!MIGRATION_TEMPLATES[template as keyof typeof MIGRATION_TEMPLATES]) {
+  if (!Object.hasOwn(MIGRATION_TEMPLATES, template)) {
     throw new CLIError(`Invalid template: ${template}`, 'INVALID_TEMPLATE', undefined, [
       `Available templates: ${Object.keys(MIGRATION_TEMPLATES).join(', ')}`
     ])
   }
 
-  // Ensure migrations directory exists
   if (!existsSync(directory)) {
     mkdirSync(directory, { recursive: true })
-    logger.debug(`Created migrations directory: ${directory}`)
   }
 
-  // Generate timestamp and filename
   const timestamp = generateTimestamp()
   const safeName = name.replace(/[^a-z0-9_]/gi, '_').toLowerCase()
   const extension = useTypeScript ? '.ts' : '.js'
   const filename = `${timestamp}_${safeName}${extension}`
   const filepath = join(directory, filename)
 
-  // Check if file already exists
   if (existsSync(filepath)) {
     throw new CLIError(`Migration file already exists: ${filename}`, 'FILE_EXISTS')
   }
 
-  // Prepare template data
-  const templateData: Record<string, any> = {
-    name: safeName,
-    timestamp
-  }
-
-  // Add table-specific data if needed
-  if (options.table) {
+  const templateData: TemplateData = {}
+  if (options.table !== undefined) {
     templateData.table = options.table
   }
-
-  // Parse and add columns if provided
-  if (options.columns) {
+  if (options.columns !== undefined) {
     templateData.columns = parseColumns(options.columns)
   }
 
-  // Validate required data for specific templates
+  // Templates that alter an existing table need to know which one
   const tableTemplates = ['alter-table', 'add-columns', 'drop-columns', 'add-foreign-key']
-  if (tableTemplates.includes(template) && !options.table) {
+  if (tableTemplates.includes(template) && templateData.table === undefined) {
     throw new CLIError(`Template '${template}' requires --table option`, 'MISSING_TABLE')
   }
 
-  // For create-table and create-index, use a default table name if not provided
-  if (template === 'create-table' && !options.table) {
-    // Use the migration name as the table name (e.g., "add_posts" -> "posts")
-    options.table = safeName.replace(/^(add_|create_)/, '')
-    if (!options.table || options.table === safeName) {
-      options.table = 'table_name' // fallback default
-    }
-    templateData.table = options.table
+  if (template === 'create-table' && templateData.table === undefined) {
+    // Derive the table name from the migration name ("add_posts" -> "posts")
+    const derived = safeName.replace(/^(add_|create_)/, '')
+    templateData.table = derived !== '' && derived !== safeName ? derived : 'table_name'
   }
 
-  if (template === 'create-index' && !options.table) {
-    options.table = 'table_name' // default
-    templateData.table = options.table
+  if (template === 'create-index' && templateData.table === undefined) {
+    templateData.table = 'table_name'
   }
 
-  // Get template content
   let content = MIGRATION_TEMPLATES[template as keyof typeof MIGRATION_TEMPLATES]
-
-  // Process template if it has variables
   if (content.includes('{{')) {
-    // Simple template replacement for now (since we removed Handlebars dependency from templates)
     content = processTemplate(content, templateData)
   }
-
-  // Add sql import if needed
   if (content.includes('sql`')) {
     content = content.replace('import { Kysely }', 'import { Kysely, sql }')
   }
 
-  // Write the migration file
   writeFileSync(filepath, content, 'utf-8')
 
-  // Success message
-  console.log(`Migration created: ${filename}`)
-
-  if (process.env.NODE_ENV !== 'test') {
-    logger.info(`${prism.green('✓')} Created migration: ${prism.cyan(filename)}`)
-    logger.info(`  ${prism.gray(filepath)}`)
-
-    // Show next steps
-    logger.info('')
-    logger.info('Next steps:')
-    logger.info(`  1. Edit the migration file to add your changes`)
-    logger.info(`  2. Run ${prism.cyan('kysera migrate up')} to apply the migration`)
+  if (options.json === true || isJsonMode()) {
+    output(
+      { name: safeName, filename, path: filepath, template, timestamp },
+      { format: 'json' }
+    )
+    return
   }
+
+  output(`Migration created: ${filename}`)
+  diag(`${prism.green('✓')} Created migration: ${prism.cyan(filename)}`)
+  diag(`  ${prism.gray(filepath)}`)
+  diag('')
+  diag('Next steps:')
+  diag('  1. Edit the migration file to add your changes')
+  diag(`  2. Run ${prism.cyan('kysera migrate up')} to apply the migration`)
 }
 
 function generateTimestamp(): string {
@@ -154,27 +149,24 @@ function generateTimestamp(): string {
   return `${year}${month}${day}${hours}${minutes}${seconds}`
 }
 
-function processTemplate(template: string, data: Record<string, any>): string {
+function processTemplate(template: string, data: TemplateData): string {
   let result = template
 
-  // Simple replacement for {{table}}
-  if (data.table) {
+  if (data.table !== undefined) {
     result = result.replace(/\{\{table\}\}/g, data.table)
   }
 
-  // Handle columns array
-  if (data.columns && Array.isArray(data.columns) && data.columns.length > 0) {
-    // Handle {{#each columns}} blocks
+  const columns = data.columns
+  if (columns !== undefined && columns.length > 0) {
     const eachRegex = /\{\{#each columns\}\}([\s\S]*?)\{\{\/each\}\}/g
-    result = result.replace(eachRegex, (match, content) => {
-      return data.columns
-        .map((col: any) => {
-          let line = content
+    result = result.replace(eachRegex, (_match, body: string) =>
+      columns
+        .map(col => {
+          let line = body
             .replace(/\{\{this\.name\}\}/g, col.name)
             .replace(/\{\{this\.type\}\}/g, col.type)
-            .replace(/\{\{this\}\}/g, col.name) // For simple column references
+            .replace(/\{\{this\}\}/g, col.name)
 
-          // Handle conditionals
           if (col.nullable) {
             line = line.replace(/\{\{#if this\.nullable\}\}.*?\{\{else\}\}(.*?)\{\{\/if\}\}/g, '')
           } else {
@@ -184,7 +176,7 @@ function processTemplate(template: string, data: Record<string, any>): string {
             )
           }
 
-          if (col.defaultValue) {
+          if (col.defaultValue !== undefined) {
             line = line.replace(/\{\{#if this\.defaultValue\}\}(.*?)\{\{\/if\}\}/g, '$1')
             line = line.replace(/\{\{this\.defaultValue\}\}/g, col.defaultValue)
           } else {
@@ -194,26 +186,21 @@ function processTemplate(template: string, data: Record<string, any>): string {
           return line
         })
         .join('')
-    })
+    )
   } else {
-    // Remove {{#each columns}} blocks entirely if no columns provided
-    const eachRegex = /\s*\{\{#each columns\}\}([\s\S]*?)\{\{\/each\}\}/g
-    result = result.replace(eachRegex, '')
+    result = result.replace(/\s*\{\{#each columns\}\}[\s\S]*?\{\{\/each\}\}/g, '')
   }
 
-  // Handle other simple replacements
-  result = result.replace(/\{\{indexName\}\}/g, data.indexName || 'idx')
-  result = result.replace(/\{\{column\}\}/g, data.column || '')
-  result = result.replace(/\{\{referencedTable\}\}/g, data.referencedTable || '')
-  result = result.replace(/\{\{referencedColumn\}\}/g, data.referencedColumn || 'id')
-
-  // Handle conditionals for unique, onDelete, onUpdate
-  result = result.replace(/\{\{#if unique\}\}(.*?)\{\{\/if\}\}/g, data.unique ? '$1' : '')
-  result = result.replace(/\{\{#if onDelete\}\}(.*?)\{\{\/if\}\}/g, data.onDelete ? '$1' : '')
-  result = result.replace(/\{\{#if onUpdate\}\}(.*?)\{\{\/if\}\}/g, data.onUpdate ? '$1' : '')
-
-  result = result.replace(/\{\{onDelete\}\}/g, data.onDelete || 'CASCADE')
-  result = result.replace(/\{\{onUpdate\}\}/g, data.onUpdate || 'CASCADE')
+  // Placeholders without CLI flags fall back to their defaults
+  result = result.replace(/\{\{indexName\}\}/g, 'idx')
+  result = result.replace(/\{\{column\}\}/g, '')
+  result = result.replace(/\{\{referencedTable\}\}/g, '')
+  result = result.replace(/\{\{referencedColumn\}\}/g, 'id')
+  result = result.replace(/\{\{#if unique\}\}(.*?)\{\{\/if\}\}/g, '')
+  result = result.replace(/\{\{#if onDelete\}\}(.*?)\{\{\/if\}\}/g, '')
+  result = result.replace(/\{\{#if onUpdate\}\}(.*?)\{\{\/if\}\}/g, '')
+  result = result.replace(/\{\{onDelete\}\}/g, 'CASCADE')
+  result = result.replace(/\{\{onUpdate\}\}/g, 'CASCADE')
 
   return result
 }

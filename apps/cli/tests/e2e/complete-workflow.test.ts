@@ -63,9 +63,10 @@ describe('Complete CLI Workflow E2E', () => {
     const statusBefore = runCLISync(['migrate', 'status', '--json'], { cwd: projectDir })
 
     expect(statusBefore.code).toBe(0)
+    // status --json emits executed/pending as arrays ({name, ...} entries)
     const statusData = JSON.parse(statusBefore.stdout)
-    expect(statusData.pending).toBeGreaterThan(0)
-    expect(statusData.executed).toBe(0)
+    expect(statusData.pending.length).toBeGreaterThan(0)
+    expect(statusData.executed.length).toBe(0)
 
     // Step 4: List migrations
     console.log('Step 4: Listing migrations...')

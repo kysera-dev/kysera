@@ -15,74 +15,49 @@ vi.mock('../../../../src/config/loader.js', () => ({
 }))
 
 vi.mock('../../../../src/commands/migrate/runner.js', () => ({
-  MigrationRunner: vi.fn().mockImplementation(function (this: any) {
-    this.acquireLock = vi.fn().mockResolvedValue(() => Promise.resolve())
-    this.getMigrationStatus = vi.fn().mockResolvedValue([])
-    this.up = vi.fn().mockResolvedValue({ executed: [], duration: 0 })
-    return this
-  })
-}))
-
-vi.mock('@xec-sh/kit', () => ({
-  log: {
-    message: vi.fn(),
-    info: vi.fn(),
-    success: vi.fn(),
-    step: vi.fn(),
-    warn: vi.fn(),
-    message: vi.fn(),
-    warning: vi.fn(),
-    error: vi.fn()
-  },
-  strip: (s: string) => s,
-  prism: {
-    cyan: (s: string) => s,
-    green: (s: string) => s,
-    yellow: (s: string) => s,
-    gray: (s: string) => s,
-    red: (s: string) => s,
-    bold: (s: string) => s
-  },
-  spinner: vi.fn(() => ({
-    start: vi.fn(),
-    succeed: vi.fn(),
-    fail: vi.fn(),
-    warn: vi.fn(),
-    message: vi.fn(),
-    stop: vi.fn()
-  }))
-}))
-
-vi.mock('../../../../src/utils/logger.js', () => ({
-  logger: {
-    success: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    message: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn()
-  }
+  MigrationRunner: vi.fn()
 }))
 
 import { existsSync } from 'node:fs'
-import { upCommand } from '../../../../src/commands/migrate/up.js'
+import { upCommand, parsePositiveInt } from '../../../../src/commands/migrate/up.js'
 import { getDatabaseConnection } from '../../../../src/utils/database.js'
 import { loadConfig } from '../../../../src/config/loader.js'
 import { MigrationRunner } from '../../../../src/commands/migrate/runner.js'
 import { CLIError } from '../../../../src/utils/errors.js'
+import { resetOutput } from '../../../../src/utils/output.js'
+
+interface RunnerMock {
+  planUp: Mock
+  up: Mock
+}
+
+function installRunnerMock(overrides: Partial<RunnerMock> = {}): RunnerMock {
+  const instance: RunnerMock = {
+    planUp: vi.fn().mockResolvedValue([]),
+    up: vi
+      .fn()
+      .mockResolvedValue({ executed: [], skipped: [], failed: [], duration: 0, dryRun: false }),
+    ...overrides
+  }
+  ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: object) {
+    Object.assign(this, instance)
+    return this
+  })
+  return instance
+}
+
+const pendingFile = (name: string) => ({ name, path: `/migrations/${name}.ts`, timestamp: '' })
 
 describe('migrate up command', () => {
   let command: Command
-  let mockDb: any
+  let mockDb: { destroy: Mock }
 
   beforeEach(() => {
     vi.clearAllMocks()
-
+    resetOutput()
     process.env['NODE_ENV'] = 'test'
 
-    mockDb = {
-      destroy: vi.fn().mockResolvedValue(undefined)
-    }
+    mockDb = { destroy: vi.fn().mockResolvedValue(undefined) }
 
     ;(existsSync as Mock).mockReturnValue(true)
     ;(getDatabaseConnection as Mock).mockResolvedValue(mockDb)
@@ -90,6 +65,7 @@ describe('migrate up command', () => {
       database: { dialect: 'postgres', connection: 'postgres://localhost/test' },
       migrations: { directory: './migrations', tableName: 'kysera_migrations' }
     })
+    installRunnerMock()
 
     command = upCommand()
   })
@@ -107,233 +83,148 @@ describe('migrate up command', () => {
       expect(command.description()).toContain('Run pending migrations')
     })
 
-    it('should have --to option', () => {
-      const options = command.options
-      const toOpt = options.find(o => o.long === '--to')
-      expect(toOpt).toBeDefined()
+    it.each(['--to', '--steps', '--count', '--dry-run', '--verbose', '--config', '--json', '--schema'])(
+      'should have %s option',
+      flag => {
+        expect(command.options.find(o => o.long === flag)).toBeDefined()
+      }
+    )
+  })
+
+  describe('argument parsing', () => {
+    it('parsePositiveInt accepts positive integers', () => {
+      expect(parsePositiveInt('3')).toBe(3)
     })
 
-    it('should have --steps option', () => {
-      const options = command.options
-      const stepsOpt = options.find(o => o.long === '--steps')
-      expect(stepsOpt).toBeDefined()
-    })
-
-    it('should have --count option as alias', () => {
-      const options = command.options
-      const countOpt = options.find(o => o.long === '--count')
-      expect(countOpt).toBeDefined()
-    })
-
-    it('should have --dry-run option', () => {
-      const options = command.options
-      const dryRunOpt = options.find(o => o.long === '--dry-run')
-      expect(dryRunOpt).toBeDefined()
-    })
-
-    it('should have --force option', () => {
-      const options = command.options
-      const forceOpt = options.find(o => o.long === '--force')
-      expect(forceOpt).toBeDefined()
-    })
-
-    it('should have --verbose option', () => {
-      const options = command.options
-      const verboseOpt = options.find(o => o.long === '--verbose')
-      expect(verboseOpt).toBeDefined()
-    })
-
-    it('should have --config option', () => {
-      const options = command.options
-      const configOpt = options.find(o => o.long === '--config')
-      expect(configOpt).toBeDefined()
+    it.each(['0', '-2', 'abc', '1.5'])('parsePositiveInt rejects %s', value => {
+      expect(() => parsePositiveInt(value)).toThrow()
     })
   })
 
   describe('success scenarios', () => {
-    it('should run migrations successfully', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi
+    it('should run migrations when pending exist', async () => {
+      const runner = installRunnerMock({
+        planUp: vi.fn().mockResolvedValue([pendingFile('m1')]),
+        up: vi
           .fn()
-          .mockResolvedValue([{ status: 'pending', name: 'test_migration' }]),
-        up: vi.fn().mockResolvedValue({ executed: ['test_migration'], duration: 100 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
+          .mockResolvedValue({ executed: ['m1'], skipped: [], failed: [], duration: 10, dryRun: false })
       })
 
       await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow()
-      expect(mockRunner.up).toHaveBeenCalled()
+      expect(runner.up).toHaveBeenCalledWith(expect.objectContaining({ to: undefined, steps: undefined }))
     })
 
-    it('should handle dry-run mode', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi
-          .fn()
-          .mockResolvedValue([{ status: 'pending', name: 'test_migration' }]),
-        up: vi.fn().mockResolvedValue({ executed: ['test_migration'], duration: 100 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await command.parseAsync(['node', 'test', '--dry-run'])
-      expect(mockRunner.up).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }))
-    })
-
-    it('should run specific number of migrations with --steps', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi.fn().mockResolvedValue([
-          { status: 'pending', name: 'migration1' },
-          { status: 'pending', name: 'migration2' }
-        ]),
-        up: vi.fn().mockResolvedValue({ executed: ['migration1'], duration: 50 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
+    it('should pass --steps through to the runner', async () => {
+      const runner = installRunnerMock({
+        planUp: vi.fn().mockResolvedValue([pendingFile('m1')])
       })
 
       await command.parseAsync(['node', 'test', '--steps', '1'])
-      expect(mockRunner.up).toHaveBeenCalledWith(expect.objectContaining({ steps: 1 }))
+      expect(runner.up).toHaveBeenCalledWith(expect.objectContaining({ steps: 1 }))
     })
 
-    it('should run migrations up to specific migration with --to', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi
-          .fn()
-          .mockResolvedValue([{ status: 'pending', name: 'target_migration' }]),
-        up: vi.fn().mockResolvedValue({ executed: ['target_migration'], duration: 50 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
+    it('should use --count as alias for --steps', async () => {
+      const runner = installRunnerMock({
+        planUp: vi.fn().mockResolvedValue([pendingFile('m1')])
+      })
+
+      await command.parseAsync(['node', 'test', '--count', '2'])
+      expect(runner.up).toHaveBeenCalledWith(expect.objectContaining({ steps: 2 }))
+    })
+
+    it('should pass --to through to the runner', async () => {
+      const runner = installRunnerMock({
+        planUp: vi.fn().mockResolvedValue([pendingFile('target_migration')])
       })
 
       await command.parseAsync(['node', 'test', '--to', 'target_migration'])
-      expect(mockRunner.up).toHaveBeenCalledWith(
-        expect.objectContaining({ to: 'target_migration' })
-      )
+      expect(runner.up).toHaveBeenCalledWith(expect.objectContaining({ to: 'target_migration' }))
+    })
+
+    it('should not run when nothing is pending', async () => {
+      const runner = installRunnerMock()
+
+      await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow()
+      expect(runner.up).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('dry run', () => {
+    it('should never invoke the runner in dry-run mode', async () => {
+      const runner = installRunnerMock({
+        planUp: vi.fn().mockResolvedValue([pendingFile('m1'), pendingFile('m2')])
+      })
+
+      await command.parseAsync(['node', 'test', '--dry-run'])
+      expect(runner.planUp).toHaveBeenCalled()
+      expect(runner.up).not.toHaveBeenCalled()
+    })
+
+    it('should emit a machine-readable plan with --dry-run --json', async () => {
+      installRunnerMock({
+        planUp: vi.fn().mockResolvedValue([pendingFile('m1')])
+      })
+      const writes: string[] = []
+      vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string) => {
+        writes.push(String(chunk))
+        return true
+      }) as never)
+
+      await command.parseAsync(['node', 'test', '--dry-run', '--json'])
+
+      const payload = JSON.parse(writes.join(''))
+      expect(payload.dryRun).toBe(true)
+      expect(payload.count).toBe(1)
+      expect(payload.plan).toEqual([{ name: 'm1', path: '/migrations/m1.ts' }])
+      expect(payload.table).toBe('kysera_migrations')
+      expect(payload.dialect).toBe('postgres')
     })
   })
 
   describe('error handling', () => {
-    it('should throw error when database config is not found', async () => {
-      ;(loadConfig as Mock).mockResolvedValue(null)
+    it('should throw when database config is not found', async () => {
+      ;(loadConfig as Mock).mockResolvedValue({})
 
       await expect(command.parseAsync(['node', 'test'])).rejects.toThrow(CLIError)
     })
 
-    it('should throw error when database connection fails', async () => {
+    it('should throw when database connection fails', async () => {
       ;(getDatabaseConnection as Mock).mockResolvedValue(null)
 
       await expect(command.parseAsync(['node', 'test'])).rejects.toThrow(CLIError)
     })
 
-    it('should throw error when migrations directory does not exist', async () => {
+    it('should throw when migrations directory does not exist', async () => {
       ;(existsSync as Mock).mockReturnValue(false)
 
       await expect(command.parseAsync(['node', 'test'])).rejects.toThrow(CLIError)
     })
 
-    it('should handle migration lock error', async () => {
-      const lockError = new Error('Lock error')
-      ;(lockError as any).code = 'MIGRATION_LOCKED'
-
-      const mockRunner = {
-        acquireLock: vi.fn().mockRejectedValue(lockError),
-        getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'pending', name: 'test' }]),
-        up: vi.fn().mockResolvedValue({ executed: [], duration: 0 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
+    it('should propagate runner failures as CLIError', async () => {
+      installRunnerMock({
+        planUp: vi.fn().mockResolvedValue([pendingFile('m1')]),
+        up: vi
+          .fn()
+          .mockRejectedValue(new CLIError('Migration m1 failed: boom', 'MIGRATION_FAILED'))
       })
 
-      await expect(command.parseAsync(['node', 'test'])).rejects.toThrow(CLIError)
+      await expect(command.parseAsync(['node', 'test'])).rejects.toThrow('Migration m1 failed')
     })
   })
 
-  describe('edge cases', () => {
-    it('should handle no pending migrations', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'done' }]),
-        up: vi.fn().mockResolvedValue({ executed: [], duration: 0 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow()
-    })
-
-    it('should use --count as alias for --steps', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'pending', name: 'test' }]),
-        up: vi.fn().mockResolvedValue({ executed: ['test'], duration: 50 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await command.parseAsync(['node', 'test', '--count', '2'])
-      expect(mockRunner.up).toHaveBeenCalledWith(expect.objectContaining({ steps: 2 }))
-    })
-
-    it('should close database connection after execution', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi.fn().mockResolvedValue([]),
-        up: vi.fn().mockResolvedValue({ executed: [], duration: 0 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
+  describe('cleanup', () => {
+    it('should close the database connection after execution', async () => {
       await command.parseAsync(['node', 'test'])
       expect(mockDb.destroy).toHaveBeenCalled()
     })
 
-    it('should release lock after execution', async () => {
-      const releaseLock = vi.fn().mockResolvedValue(undefined)
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(releaseLock),
-        getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'pending', name: 'test' }]),
-        up: vi.fn().mockResolvedValue({ executed: ['test'], duration: 50 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
+    it('should close the database connection when the run fails', async () => {
+      installRunnerMock({
+        planUp: vi.fn().mockRejectedValue(new CLIError('nope', 'DATABASE_ERROR'))
       })
 
-      await command.parseAsync(['node', 'test'])
-      expect(releaseLock).toHaveBeenCalled()
-    })
-
-    it('should handle force option', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi.fn().mockResolvedValue([]),
-        up: vi.fn().mockResolvedValue({ executed: [], duration: 0 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await command.parseAsync(['node', 'test', '--force'])
-      expect(mockRunner.up).toHaveBeenCalledWith(expect.objectContaining({ force: true }))
+      await expect(command.parseAsync(['node', 'test'])).rejects.toThrow()
+      expect(mockDb.destroy).toHaveBeenCalled()
     })
   })
 })

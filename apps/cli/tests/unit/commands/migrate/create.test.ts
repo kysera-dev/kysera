@@ -94,7 +94,7 @@ import { CLIError } from '../../../../src/utils/errors.js'
 
 describe('migrate create command', () => {
   let command: Command
-  let consoleSpy: { log: Mock }
+  let stdoutSpy: Mock
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -107,10 +107,9 @@ describe('migrate create command', () => {
       return true // Directory exists
     })
 
-    consoleSpy = {
-      log: vi.fn()
-    }
-    vi.spyOn(console, 'log').mockImplementation(consoleSpy.log)
+    // Result data is written to stdout via the output contract
+    stdoutSpy = vi.fn().mockReturnValue(true)
+    vi.spyOn(process.stdout, 'write').mockImplementation(stdoutSpy as never)
 
     command = createCommand()
   })
@@ -324,7 +323,7 @@ describe('migrate create command', () => {
     it('should display success message after creation', async () => {
       await command.parseAsync(['node', 'test', 'test_migration'])
 
-      const output = consoleSpy.log.mock.calls.map(c => c.join(' ')).join('\n')
+      const output = stdoutSpy.mock.calls.map(c => String(c[0])).join('')
       expect(output).toContain('Migration created')
     })
   })

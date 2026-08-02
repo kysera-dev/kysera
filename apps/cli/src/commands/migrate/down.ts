@@ -1,16 +1,17 @@
 import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { guardDestructive } from '../../utils/guard.js'
-import { isJsonMode, output } from '../../utils/output.js'
-import { MigrationRunner } from './runner.js'
+import { isDryRun } from '../../utils/global-options.js'
+import { diag, isJsonMode, output } from '../../utils/output.js'
 import { withDatabase } from '../../utils/with-database.js'
+import { createRunner, migrateSettings } from './settings.js'
+import { parsePositiveInt } from './up.js'
 
-export interface DownOptions {
+export interface DownCommandOptions {
   to?: string
   steps?: number
-  count?: number // Alias for steps
+  count?: number
   all?: boolean
   dryRun?: boolean
   verbose?: boolean
@@ -23,17 +24,21 @@ export interface DownOptions {
 export function downCommand(): Command {
   const cmd = new Command('down')
     .description('Rollback migrations')
-    .option('--steps <number>', 'Number of migrations to rollback', parseInt)
-    .option('--count <number>', 'Number of migrations to rollback (alias for --steps)', parseInt)
-    .option('-t, --to <migration>', 'Rollback to specific migration')
+    .option('--steps <number>', 'Number of migrations to rollback', parsePositiveInt)
+    .option(
+      '--count <number>',
+      'Number of migrations to rollback (alias for --steps)',
+      parsePositiveInt
+    )
+    .option('-t, --to <migration>', 'Rollback everything after the given migration')
     .option('--all', 'Rollback all migrations')
-    .option('--dry-run', 'Preview rollback without executing')
+    .option('--dry-run', 'Show the rollback plan without touching the database')
     .option('-v, --verbose', 'Show detailed output')
     .option('-c, --config <path>', 'Path to configuration file')
     .option('--force', 'Skip confirmation prompt')
     .option('--json', 'Output results as JSON')
     .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
-    .action(async (options: DownOptions) => {
+    .action(async (options: DownCommandOptions) => {
       try {
         await rollbackMigrations(options)
       } catch (error) {
@@ -50,113 +55,88 @@ export function downCommand(): Command {
   return cmd
 }
 
-async function rollbackMigrations(options: DownOptions): Promise<void> {
+async function rollbackMigrations(options: DownCommandOptions): Promise<void> {
+  const dryRun = options.dryRun === true || isDryRun()
+
   // Rolling back everything destroys schema and data: require explicit
   // confirmation (--force in non-interactive environments).
-  if (options.all && !options.dryRun) {
+  if (options.all && !dryRun) {
     const proceed = await guardDestructive('This will rollback ALL migrations. Are you sure?', {
       force: options.force
     })
     if (!proceed) {
-      logger.info('Rollback cancelled')
+      diag('Rollback cancelled')
       return
     }
   }
 
   await withDatabase(
     { config: options.config, verbose: options.verbose, schema: options.schema },
-    async (db, config, schema) => {
-      const migrationsDir = config.migrations?.directory ?? './migrations'
-      const tableName = config.migrations?.tableName ?? 'migrations'
+    async (db, config, resolvedSchema) => {
+      const settings = migrateSettings(config, resolvedSchema, options.schema)
+      const runner = createRunner(db, settings)
+      const json = options.json === true || isJsonMode()
+      const steps = options.steps ?? options.count
 
-      if (schema !== 'public') {
-        logger.info(`Using schema: ${schema}`)
+      const targets = await runner.planDown({ to: options.to, steps, all: options.all })
+
+      if (targets.length === 0) {
+        if (json) {
+          output({ rolledBack: [], count: 0, duration: 0, dryRun }, { format: 'json' })
+        } else {
+          diag('No migrations to rollback')
+        }
+        return
       }
 
-      // Create migration runner
-      const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
-
-      // Acquire lock to prevent concurrent migrations
-      let releaseLock: (() => Promise<void>) | null = null
-
-      try {
-        if (!options.dryRun) {
-          try {
-            releaseLock = await runner.acquireLock()
-          } catch (error) {
-            if ((error as { code?: unknown }).code === 'MIGRATION_LOCKED') {
-              throw new CLIError(
-                'Migrations are already running in another process',
-                'MIGRATION_LOCKED',
-                undefined,
-                [
-                  'Wait for the other process to complete',
-                  'Or check for stuck locks in the database'
-                ]
-              )
-            }
-            // Lock mechanism might not be set up yet, continue without it
-            logger.debug('Could not acquire migration lock, continuing without lock')
-          }
-        }
-
-        // Get migration status before rolling back
-        const statusBefore = await runner.getMigrationStatus()
-        const executedCount = statusBefore.filter(m => m.status === 'executed').length
-
-        if (executedCount === 0) {
-          logger.info('No migrations to rollback')
+      if (dryRun) {
+        if (json) {
+          output(
+            {
+              dryRun: true,
+              count: targets.length,
+              plan: targets.map(t => ({ name: t.name, path: t.path })),
+              table: settings.tableName,
+              dialect: settings.dialect
+            },
+            { format: 'json' }
+          )
           return
         }
-
-        // Show what will be rolled back in dry-run mode
-        if (options.dryRun) {
-          logger.info(prism.yellow('DRY RUN MODE - No changes will be made'))
-          logger.info('')
+        diag(prism.yellow('DRY RUN - no changes will be made'))
+        for (const target of targets) {
+          diag(`  ${prism.yellow('↓')} ${target.name}`)
         }
-
-        // Rollback migrations
-        const { rolledBack, duration } = await runner.down({
-          to: options.to,
-          steps: options.steps ?? options.count, // Use count as alias for steps
-          all: options.all,
-          dryRun: options.dryRun,
-          verbose: options.verbose
-        })
-
-        if (isJsonMode()) {
-          output({
-            rolledBack,
-            count: rolledBack.length,
-            duration,
-            dryRun: options.dryRun === true
-          })
-          return
-        }
-
-        // Show summary
-        if (rolledBack.length > 0) {
-          logger.info('')
-          if (options.dryRun) {
-            logger.info(
-              prism.yellow(
-                `Would have rolled back ${rolledBack.length} migration${rolledBack.length > 1 ? 's' : ''} (${duration}ms)`
-              )
-            )
-          } else {
-            logger.info(
-              prism.green(
-                `[OK] ${rolledBack.length} migration${rolledBack.length > 1 ? 's' : ''} rolled back successfully (${duration}ms)`
-              )
-            )
-          }
-        }
-      } finally {
-        // Release lock
-        if (releaseLock) {
-          await releaseLock()
-        }
+        diag(`${targets.length} migration${targets.length === 1 ? '' : 's'} would be rolled back`)
+        return
       }
+
+      if (settings.schema !== 'public') {
+        diag(`Using schema: ${settings.schema}`)
+      }
+      diag(`Rolling back ${targets.length} migration${targets.length === 1 ? '' : 's'}`)
+
+      const result = await runner.down({ to: options.to, steps, all: options.all })
+
+      if (json) {
+        output(
+          {
+            rolledBack: result.executed,
+            count: result.executed.length,
+            duration: result.duration,
+            dryRun: false
+          },
+          { format: 'json' }
+        )
+        return
+      }
+
+      diag('')
+      diag(
+        prism.green(
+          `[OK] ${result.executed.length} migration${result.executed.length === 1 ? '' : 's'} rolled back successfully (${result.duration}ms)`
+        )
+      )
     }
   )
 }

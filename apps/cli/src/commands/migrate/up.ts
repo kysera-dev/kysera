@@ -1,36 +1,43 @@
-import { Command } from 'commander'
+import { existsSync } from 'node:fs'
+import { Command, InvalidArgumentError } from 'commander'
 import { prism } from '@xec-sh/kit'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
-import { isJsonMode, output } from '../../utils/output.js'
-import { MigrationRunner } from './runner.js'
+import { isDryRun } from '../../utils/global-options.js'
+import { diag, isJsonMode, output } from '../../utils/output.js'
 import { withDatabase } from '../../utils/with-database.js'
+import { createRunner, migrateSettings } from './settings.js'
 
-export interface UpOptions {
+export interface UpCommandOptions {
   to?: string
   steps?: number
-  count?: number // Alias for steps
+  count?: number
   dryRun?: boolean
-  force?: boolean
   verbose?: boolean
   config?: string
   json?: boolean
   schema?: string
 }
 
+export function parsePositiveInt(value: string): number {
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new InvalidArgumentError('must be a positive integer')
+  }
+  return parsed
+}
+
 export function upCommand(): Command {
   const cmd = new Command('up')
     .description('Run pending migrations')
-    .option('-t, --to <migration>', 'Migrate up to specific migration')
-    .option('--steps <number>', 'Number of migrations to run', parseInt)
-    .option('--count <number>', 'Number of migrations to run (alias for --steps)', parseInt)
-    .option('--dry-run', 'Preview migrations without executing')
-    .option('--force', 'Force migration even if already executed')
+    .option('-t, --to <migration>', 'Migrate up to a specific migration (inclusive)')
+    .option('--steps <number>', 'Number of migrations to run', parsePositiveInt)
+    .option('--count <number>', 'Number of migrations to run (alias for --steps)', parsePositiveInt)
+    .option('--dry-run', 'Show the execution plan without touching the database')
     .option('-v, --verbose', 'Show detailed output')
     .option('-c, --config <path>', 'Path to configuration file')
     .option('--json', 'Output results as JSON')
     .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
-    .action(async (options: UpOptions) => {
+    .action(async (options: UpCommandOptions) => {
       try {
         await runMigrationsUp(options)
       } catch (error) {
@@ -47,116 +54,91 @@ export function upCommand(): Command {
   return cmd
 }
 
-async function runMigrationsUp(options: UpOptions): Promise<void> {
-  logger.debug('Starting runMigrationsUp with options:', options)
-
+async function runMigrationsUp(options: UpCommandOptions): Promise<void> {
   await withDatabase(
     { config: options.config, verbose: options.verbose, schema: options.schema },
-    async (db, config, schema) => {
-      const migrationsDir = config.migrations?.directory ?? './migrations'
-      const tableName = config.migrations?.tableName ?? 'migrations'
+    async (db, config, resolvedSchema) => {
+      const settings = migrateSettings(config, resolvedSchema, options.schema)
 
-      if (schema !== 'public') {
-        logger.info(`Using schema: ${schema}`)
-      }
-
-      // Check if migrations directory exists
-      const { existsSync } = await import('node:fs')
-      if (!existsSync(migrationsDir)) {
+      if (!existsSync(settings.migrationsDir)) {
         throw new CLIError(
-          `Migrations directory not found: ${migrationsDir}`,
+          `Migrations directory not found: ${settings.migrationsDir}`,
           'MIGRATIONS_DIR_NOT_FOUND',
           undefined,
           [
-            `Create the migrations directory: mkdir -p ${migrationsDir}`,
-            `Or run: kysera migrate create <name> to create your first migration`
+            `Create the migrations directory: mkdir -p ${settings.migrationsDir}`,
+            'Or run: kysera migrate create <name> to create your first migration'
           ]
         )
       }
 
-      // Create migration runner
-      const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
+      const runner = createRunner(db, settings)
+      const json = options.json === true || isJsonMode()
+      const dryRun = options.dryRun === true || isDryRun()
+      const steps = options.steps ?? options.count
+      const plan = await runner.planUp({ to: options.to, steps })
 
-      // Acquire lock to prevent concurrent migrations
-      let releaseLock: (() => Promise<void>) | null = null
-
-      try {
-        if (!options.dryRun) {
-          try {
-            releaseLock = await runner.acquireLock()
-          } catch (error) {
-            if ((error as { code?: unknown }).code === 'MIGRATION_LOCKED') {
-              throw new CLIError(
-                'Migrations are already running in another process',
-                'MIGRATION_LOCKED',
-                undefined,
-                [
-                  'Wait for the other process to complete',
-                  'Or check for stuck locks in the database'
-                ]
-              )
-            }
-            // Lock mechanism might not be set up yet, continue without it
-            logger.debug('Could not acquire migration lock, continuing without lock')
-          }
-        }
-
-        // Get migration status before running
-        const statusBefore = await runner.getMigrationStatus()
-        const pendingCount = statusBefore.filter(m => m.status === 'pending').length
-
-        if (pendingCount === 0 && !options.force) {
-          if (isJsonMode()) {
-            output({ executed: [], count: 0, duration: 0, dryRun: options.dryRun === true })
-          } else {
-            logger.info('No pending migrations to run')
-          }
+      if (dryRun) {
+        if (json) {
+          output(
+            {
+              dryRun: true,
+              count: plan.length,
+              plan: plan.map(f => ({ name: f.name, path: f.path })),
+              table: settings.tableName,
+              dialect: settings.dialect
+            },
+            { format: 'json' }
+          )
           return
         }
-
-        // Show what will be run in dry-run mode
-        if (options.dryRun) {
-          logger.info(prism.yellow('DRY RUN MODE - No changes will be made'))
-          logger.info('')
-        }
-
-        // Run migrations
-        const { executed, duration } = await runner.up({
-          to: options.to,
-          steps: options.steps ?? options.count, // Use count as alias for steps
-          dryRun: options.dryRun,
-          force: options.force,
-          verbose: options.verbose
-        })
-
-        if (isJsonMode()) {
-          output({ executed, count: executed.length, duration, dryRun: options.dryRun === true })
+        if (plan.length === 0) {
+          diag('No pending migrations')
           return
         }
-
-        // Show summary
-        if (executed.length > 0) {
-          logger.info('')
-          if (options.dryRun) {
-            logger.info(
-              prism.yellow(
-                `Would have run ${executed.length} migration${executed.length > 1 ? 's' : ''} (${duration}ms)`
-              )
-            )
-          } else {
-            logger.info(
-              prism.green(
-                `[OK] ${executed.length} migration${executed.length > 1 ? 's' : ''} completed successfully (${duration}ms)`
-              )
-            )
-          }
+        diag(prism.yellow('DRY RUN - no changes will be made'))
+        for (const file of plan) {
+          diag(`  ${prism.green('↑')} ${file.name} ${prism.gray(`(${file.path})`)}`)
         }
-      } finally {
-        // Release lock
-        if (releaseLock) {
-          await releaseLock()
-        }
+        diag(`${plan.length} migration${plan.length === 1 ? '' : 's'} would run`)
+        return
       }
+
+      if (plan.length === 0) {
+        if (json) {
+          output({ executed: [], count: 0, duration: 0, dryRun: false }, { format: 'json' })
+        } else {
+          diag('No pending migrations to run')
+        }
+        return
+      }
+
+      if (settings.schema !== 'public') {
+        diag(`Using schema: ${settings.schema}`)
+      }
+      diag('Running migrations')
+
+      const result = await runner.up({ to: options.to, steps })
+
+      if (json) {
+        output(
+          {
+            executed: result.executed,
+            count: result.executed.length,
+            duration: result.duration,
+            dryRun: false
+          },
+          { format: 'json' }
+        )
+        return
+      }
+
+      diag('')
+      diag(
+        prism.green(
+          `[OK] ${result.executed.length} migration${result.executed.length === 1 ? '' : 's'} completed successfully (${result.duration}ms)`
+        )
+      )
     }
   )
 }

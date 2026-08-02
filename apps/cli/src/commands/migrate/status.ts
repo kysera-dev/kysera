@@ -1,12 +1,12 @@
 import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
-import { displayTable } from '../../utils/table-helper.js'
 import { CLIError } from '../../utils/errors.js'
-import { isJsonMode, output, redactConnection, toDate, toIsoDate } from '../../utils/output.js'
-import { MigrationRunner } from './runner.js'
+import { isJsonMode, output, redactConnection, toIsoDate } from '../../utils/output.js'
 import { withDatabase } from '../../utils/with-database.js'
+import type { MigrationStatusEntry } from './runner.js'
+import { createRunner, migrateSettings, type MigrateSettings } from './settings.js'
 
-export interface StatusOptions {
+export interface StatusCommandOptions {
   json?: boolean
   verbose?: boolean
   config?: string
@@ -20,7 +20,7 @@ export function statusCommand(): Command {
     .option('-v, --verbose', 'Show detailed information')
     .option('-c, --config <path>', 'Path to configuration file')
     .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
-    .action(async (options: StatusOptions) => {
+    .action(async (options: StatusCommandOptions) => {
       try {
         await showMigrationStatus(options)
       } catch (error) {
@@ -37,124 +37,97 @@ export function statusCommand(): Command {
   return cmd
 }
 
-async function showMigrationStatus(options: StatusOptions): Promise<void> {
+async function showMigrationStatus(options: StatusCommandOptions): Promise<void> {
   await withDatabase(
     { config: options.config, verbose: options.verbose, schema: options.schema },
-    async (db, config, schema) => {
-      const migrationsDir = config.migrations?.directory ?? './migrations'
-      const tableName = config.migrations?.tableName ?? 'migrations'
+    async (db, config, resolvedSchema) => {
+      const settings = migrateSettings(config, resolvedSchema, options.schema)
+      const runner = createRunner(db, settings)
+      const entries = await runner.getStatusEntries()
+      const executed = entries.filter(e => e.status === 'executed')
+      const pending = entries.filter(e => e.status === 'pending')
 
-      // Create migration runner
-      const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
-
-      // Get migration status
-      const status = await runner.getMigrationStatus()
-      const executed = status.filter(m => m.status === 'executed')
-      const pending = status.filter(m => m.status === 'pending')
-
-      if (options.json || isJsonMode()) {
-        // Connection strings may embed credentials: always redact.
+      if (options.json === true || isJsonMode()) {
+        // Stable shape for CI consumers. Connection info only with
+        // --verbose, and always credential-redacted.
         output(
           {
-            total: status.length,
-            executed: executed.length,
-            pending: pending.length,
-            migrations: status.map(m => ({
-              name: m.name,
-              timestamp: m.timestamp,
-              status: m.status,
-              executedAt: toIsoDate(m.executedAt)
+            total: entries.length,
+            executed: executed.map(e => ({
+              name: e.name,
+              executedAt: e.executedAt ? toIsoDate(e.executedAt) : null,
+              checksum: e.checksum
             })),
-            database: {
-              dialect: config.database.dialect,
-              connection: options.verbose
-                ? redactConnection(config.database.connection)
-                : undefined
-            }
+            pending: pending.map(e => ({ name: e.name, path: e.path })),
+            table: settings.tableName,
+            dialect: settings.dialect,
+            database: options.verbose
+              ? {
+                  dialect: settings.dialect,
+                  schema: settings.schema,
+                  connection: redactConnection(config.database.connection)
+                }
+              : undefined
           },
           { format: 'json' }
         )
         return
       }
 
-      // Display status header
-      console.log('')
-      console.log(prism.bold('Migration Status'))
-      console.log('')
-
-      // Show executed migrations
-      if (executed.length > 0) {
-        console.log(prism.green(`Executed (${executed.length}):`))
-
-        if (options.verbose) {
-          // Show as table
-          const tableData = executed.map(m => ({
-            Name: m.name,
-            Timestamp: m.timestamp,
-            'Executed At': m.executedAt ? formatDate(m.executedAt) : 'Unknown'
-          }))
-
-          console.log('')
-          console.log(prism.bold('Executed Migrations'))
-          displayTable(tableData)
-        } else {
-          // Simple list
-          for (const migration of executed) {
-            const executedAt = migration.executedAt ? ` (${formatDate(migration.executedAt)})` : ''
-            console.log(
-              `  ${prism.green('[OK]')} ${migration.name} ${prism.green('(executed)')}${prism.gray(executedAt)}`
-            )
-          }
-        }
-        console.log('')
-      } else {
-        console.log(prism.gray('No executed migrations'))
-        console.log('')
-      }
-
-      // Show pending migrations
-      if (pending.length > 0) {
-        console.log(prism.yellow(`Pending (${pending.length}):`))
-
-        if (options.verbose) {
-          // Show as table
-          const tableData = pending.map(m => ({
-            Name: m.name,
-            Timestamp: m.timestamp
-          }))
-
-          console.log('')
-          console.log(prism.bold('Pending Migrations'))
-          displayTable(tableData)
-        } else {
-          // Simple list
-          for (const migration of pending) {
-            console.log(`  ${prism.gray('-')} ${migration.name} ${prism.gray('(pending)')}`)
-          }
-        }
-        console.log('')
-      } else {
-        console.log(prism.gray('No pending migrations'))
-        console.log('')
-      }
-
-      // Show database info
-      if (options.verbose) {
-        console.log(prism.gray('Database Information:'))
-        console.log(`  Dialect: ${config.database.dialect}`)
-        console.log(`  Schema: ${schema}`)
-        console.log(`  Migrations Directory: ${migrationsDir}`)
-        console.log(`  Migrations Table: ${tableName}`)
-        console.log('')
-      }
+      output(renderStatusText(entries, executed, pending, settings, options.verbose === true))
     }
   )
 }
 
-function formatDate(value: Date | string | number): string {
-  // SQLite returns strings where PostgreSQL returns Date objects
-  const date = toDate(value)
-  if (!date) return String(value)
+function renderStatusText(
+  entries: MigrationStatusEntry[],
+  executed: MigrationStatusEntry[],
+  pending: MigrationStatusEntry[],
+  settings: MigrateSettings,
+  verbose: boolean
+): string {
+  const lines: string[] = []
+  lines.push('')
+  lines.push(prism.bold('Migration Status'))
+  lines.push('')
+
+  if (executed.length > 0) {
+    lines.push(prism.green(`Executed (${executed.length}):`))
+    for (const entry of executed) {
+      const when = entry.executedAt ? ` ${prism.gray(`(${formatDate(entry.executedAt)})`)}` : ''
+      const missing = entry.path === null ? ` ${prism.red('(file missing)')}` : ''
+      lines.push(`  ${prism.green('[OK]')} ${entry.name} ${prism.green('(executed)')}${when}${missing}`)
+    }
+  } else {
+    lines.push(prism.gray('No executed migrations'))
+  }
+  lines.push('')
+
+  if (pending.length > 0) {
+    lines.push(prism.yellow(`Pending (${pending.length}):`))
+    for (const entry of pending) {
+      lines.push(`  ${prism.gray('-')} ${entry.name} ${prism.gray('(pending)')}`)
+    }
+  } else {
+    lines.push(prism.gray('No pending migrations'))
+  }
+  lines.push('')
+
+  lines.push(prism.gray(`Total: ${entries.length}`))
+
+  if (verbose) {
+    lines.push('')
+    lines.push(prism.gray('Database Information:'))
+    lines.push(`  Dialect: ${settings.dialect}`)
+    lines.push(`  Schema: ${settings.schema}`)
+    lines.push(`  Migrations Directory: ${settings.migrationsDir}`)
+    lines.push(`  Migrations Table: ${settings.tableName}`)
+  }
+
+  return lines.join('\n')
+}
+
+function formatDate(date: Date): string {
   return date.toLocaleString('en-US', {
     year: 'numeric',
     month: '2-digit',

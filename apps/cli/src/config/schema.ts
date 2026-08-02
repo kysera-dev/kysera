@@ -63,7 +63,9 @@ const MigrationConfigSchema = z.object({
   tableName: z.string().default('migrations'),
   /** PostgreSQL schema for migration table (overrides database.schema) */
   schema: z.string().optional(),
+  /** Serialize concurrent runners via database advisory locks (pg/mysql; sqlite is single-writer) */
   lockTable: z.boolean().default(true),
+  /** Max time to wait for the migration lock, in milliseconds */
   lockTimeout: z.number().default(10000),
   templates: z
     .object({

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
 import { Command } from 'commander'
 
-// Mock external dependencies before importing the module under test
 vi.mock('../../../../src/utils/database.js', () => ({
   getDatabaseConnection: vi.fn()
 }))
@@ -11,54 +10,7 @@ vi.mock('../../../../src/config/loader.js', () => ({
 }))
 
 vi.mock('../../../../src/commands/migrate/runner.js', () => ({
-  MigrationRunner: vi.fn().mockImplementation(function (this: any) {
-    this.acquireLock = vi.fn().mockResolvedValue(() => Promise.resolve())
-    this.getMigrationStatus = vi.fn().mockResolvedValue([])
-    this.down = vi.fn().mockResolvedValue({ rolledBack: [], duration: 0 })
-    return this
-  })
-}))
-
-vi.mock('@xec-sh/kit', () => ({
-  log: {
-    message: vi.fn(),
-    info: vi.fn(),
-    success: vi.fn(),
-    step: vi.fn(),
-    warn: vi.fn(),
-    message: vi.fn(),
-    warning: vi.fn(),
-    error: vi.fn()
-  },
-  strip: (s: string) => s,
-  prism: {
-    cyan: (s: string) => s,
-    green: (s: string) => s,
-    yellow: (s: string) => s,
-    gray: (s: string) => s,
-    red: (s: string) => s,
-    bold: (s: string) => s
-  },
-  confirm: vi.fn().mockResolvedValue(true),
-  spinner: vi.fn(() => ({
-    start: vi.fn(),
-    succeed: vi.fn(),
-    fail: vi.fn(),
-    warn: vi.fn(),
-    message: vi.fn(),
-    stop: vi.fn()
-  }))
-}))
-
-vi.mock('../../../../src/utils/logger.js', () => ({
-  logger: {
-    success: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    message: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn()
-  }
+  MigrationRunner: vi.fn()
 }))
 
 import { downCommand } from '../../../../src/commands/migrate/down.js'
@@ -66,26 +18,47 @@ import { getDatabaseConnection } from '../../../../src/utils/database.js'
 import { loadConfig } from '../../../../src/config/loader.js'
 import { MigrationRunner } from '../../../../src/commands/migrate/runner.js'
 import { CLIError } from '../../../../src/utils/errors.js'
-import { confirm } from '@xec-sh/kit'
+import { resetOutput } from '../../../../src/utils/output.js'
+
+interface RunnerMock {
+  planDown: Mock
+  down: Mock
+}
+
+function installRunnerMock(overrides: Partial<RunnerMock> = {}): RunnerMock {
+  const instance: RunnerMock = {
+    planDown: vi.fn().mockResolvedValue([]),
+    down: vi
+      .fn()
+      .mockResolvedValue({ executed: [], skipped: [], failed: [], duration: 0, dryRun: false }),
+    ...overrides
+  }
+  ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: object) {
+    Object.assign(this, instance)
+    return this
+  })
+  return instance
+}
+
+const target = (name: string) => ({ name, path: `/migrations/${name}.ts` })
 
 describe('migrate down command', () => {
   let command: Command
-  let mockDb: any
+  let mockDb: { destroy: Mock }
 
   beforeEach(() => {
     vi.clearAllMocks()
-
+    resetOutput()
     process.env['NODE_ENV'] = 'test'
 
-    mockDb = {
-      destroy: vi.fn().mockResolvedValue(undefined)
-    }
+    mockDb = { destroy: vi.fn().mockResolvedValue(undefined) }
 
     ;(getDatabaseConnection as Mock).mockResolvedValue(mockDb)
     ;(loadConfig as Mock).mockResolvedValue({
       database: { dialect: 'postgres', connection: 'postgres://localhost/test' },
-      migrations: { directory: './migrations', tableName: 'kysera_migrations' }
+      migrations: { directory: './migrations', tableName: 'migrations' }
     })
+    installRunnerMock()
 
     command = downCommand()
   })
@@ -103,273 +76,167 @@ describe('migrate down command', () => {
       expect(command.description()).toContain('Rollback migrations')
     })
 
-    it('should have --steps option', () => {
-      const options = command.options
-      const stepsOpt = options.find(o => o.long === '--steps')
-      expect(stepsOpt).toBeDefined()
-    })
-
-    it('should have --count option as alias', () => {
-      const options = command.options
-      const countOpt = options.find(o => o.long === '--count')
-      expect(countOpt).toBeDefined()
-    })
-
-    it('should have --to option', () => {
-      const options = command.options
-      const toOpt = options.find(o => o.long === '--to')
-      expect(toOpt).toBeDefined()
-    })
-
-    it('should have --all option', () => {
-      const options = command.options
-      const allOpt = options.find(o => o.long === '--all')
-      expect(allOpt).toBeDefined()
-    })
-
-    it('should have --dry-run option', () => {
-      const options = command.options
-      const dryRunOpt = options.find(o => o.long === '--dry-run')
-      expect(dryRunOpt).toBeDefined()
-    })
-
-    it('should have --force option', () => {
-      const options = command.options
-      const forceOpt = options.find(o => o.long === '--force')
-      expect(forceOpt).toBeDefined()
-    })
-
-    it('should have --verbose option', () => {
-      const options = command.options
-      const verboseOpt = options.find(o => o.long === '--verbose')
-      expect(verboseOpt).toBeDefined()
-    })
-
-    it('should have --config option', () => {
-      const options = command.options
-      const configOpt = options.find(o => o.long === '--config')
-      expect(configOpt).toBeDefined()
+    it.each([
+      '--steps',
+      '--count',
+      '--to',
+      '--all',
+      '--dry-run',
+      '--force',
+      '--verbose',
+      '--config',
+      '--json',
+      '--schema'
+    ])('should have %s option', flag => {
+      expect(command.options.find(o => o.long === flag)).toBeDefined()
     })
   })
 
   describe('success scenarios', () => {
-    it('should rollback migrations successfully', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi
-          .fn()
-          .mockResolvedValue([{ status: 'executed', name: 'test_migration' }]),
-        down: vi.fn().mockResolvedValue({ rolledBack: ['test_migration'], duration: 100 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
+    it('should rollback the last migration by default', async () => {
+      const runner = installRunnerMock({
+        planDown: vi.fn().mockResolvedValue([target('m2')]),
+        down: vi.fn().mockResolvedValue({
+          executed: ['m2'],
+          skipped: [],
+          failed: [],
+          duration: 5,
+          dryRun: false
+        })
       })
 
       await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow()
-      expect(mockRunner.down).toHaveBeenCalled()
-    })
-
-    it('should handle dry-run mode', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi
-          .fn()
-          .mockResolvedValue([{ status: 'executed', name: 'test_migration' }]),
-        down: vi.fn().mockResolvedValue({ rolledBack: ['test_migration'], duration: 100 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await command.parseAsync(['node', 'test', '--dry-run'])
-      expect(mockRunner.down).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }))
-    })
-
-    it('should rollback specific number of migrations with --steps', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi.fn().mockResolvedValue([
-          { status: 'executed', name: 'migration1' },
-          { status: 'executed', name: 'migration2' }
-        ]),
-        down: vi.fn().mockResolvedValue({ rolledBack: ['migration2'], duration: 50 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await command.parseAsync(['node', 'test', '--steps', '1'])
-      expect(mockRunner.down).toHaveBeenCalledWith(expect.objectContaining({ steps: 1 }))
-    })
-
-    it('should rollback to specific migration with --to', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi
-          .fn()
-          .mockResolvedValue([{ status: 'executed', name: 'target_migration' }]),
-        down: vi.fn().mockResolvedValue({ rolledBack: ['target_migration'], duration: 50 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await command.parseAsync(['node', 'test', '--to', 'target_migration'])
-      expect(mockRunner.down).toHaveBeenCalledWith(
-        expect.objectContaining({ to: 'target_migration' })
+      expect(runner.down).toHaveBeenCalledWith(
+        expect.objectContaining({ to: undefined, steps: undefined, all: undefined })
       )
     })
 
-    it('should rollback all migrations with --all and --force', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi.fn().mockResolvedValue([
-          { status: 'executed', name: 'migration1' },
-          { status: 'executed', name: 'migration2' }
-        ]),
-        down: vi.fn().mockResolvedValue({ rolledBack: ['migration1', 'migration2'], duration: 100 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
+    it('should pass --steps through to the runner', async () => {
+      const runner = installRunnerMock({
+        planDown: vi.fn().mockResolvedValue([target('m2')])
       })
 
-      await command.parseAsync(['node', 'test', '--all', '--force'])
-      expect(mockRunner.down).toHaveBeenCalledWith(expect.objectContaining({ all: true }))
+      await command.parseAsync(['node', 'test', '--steps', '1'])
+      expect(runner.down).toHaveBeenCalledWith(expect.objectContaining({ steps: 1 }))
+    })
+
+    it('should use --count as alias for --steps', async () => {
+      const runner = installRunnerMock({
+        planDown: vi.fn().mockResolvedValue([target('m1'), target('m2')])
+      })
+
+      await command.parseAsync(['node', 'test', '--count', '2'])
+      expect(runner.down).toHaveBeenCalledWith(expect.objectContaining({ steps: 2 }))
+    })
+
+    it('should pass --to through to the runner', async () => {
+      const runner = installRunnerMock({
+        planDown: vi.fn().mockResolvedValue([target('m2')])
+      })
+
+      await command.parseAsync(['node', 'test', '--to', 'm1'])
+      expect(runner.down).toHaveBeenCalledWith(expect.objectContaining({ to: 'm1' }))
+    })
+
+    it('should handle nothing to rollback without invoking down', async () => {
+      const runner = installRunnerMock()
+
+      await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow()
+      expect(runner.down).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('destructive guard', () => {
+    it('should refuse --all without --force in non-interactive mode', async () => {
+      const runner = installRunnerMock()
+
+      await expect(command.parseAsync(['node', 'test', '--all'])).rejects.toThrow(
+        /confirmation|force/i
+      )
+      expect(runner.down).not.toHaveBeenCalled()
+      expect(MigrationRunner).not.toHaveBeenCalled()
+    })
+
+    it('should run --all with --force', async () => {
+      const runner = installRunnerMock({
+        planDown: vi.fn().mockResolvedValue([target('m1'), target('m2')]),
+        down: vi.fn().mockResolvedValue({
+          executed: ['m2', 'm1'],
+          skipped: [],
+          failed: [],
+          duration: 8,
+          dryRun: false
+        })
+      })
+
+      await expect(command.parseAsync(['node', 'test', '--all', '--force'])).resolves.not.toThrow()
+      expect(runner.down).toHaveBeenCalledWith(expect.objectContaining({ all: true }))
+    })
+
+    it('should allow --all --dry-run without confirmation', async () => {
+      const runner = installRunnerMock({
+        planDown: vi.fn().mockResolvedValue([target('m1')])
+      })
+
+      await expect(
+        command.parseAsync(['node', 'test', '--all', '--dry-run'])
+      ).resolves.not.toThrow()
+      expect(runner.down).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('dry run', () => {
+    it('should emit a machine-readable plan with --dry-run --json', async () => {
+      installRunnerMock({
+        planDown: vi.fn().mockResolvedValue([target('m2'), target('m1')])
+      })
+      const writes: string[] = []
+      vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string) => {
+        writes.push(String(chunk))
+        return true
+      }) as never)
+
+      await command.parseAsync(['node', 'test', '--steps', '2', '--dry-run', '--json'])
+
+      const payload = JSON.parse(writes.join(''))
+      expect(payload.dryRun).toBe(true)
+      expect(payload.count).toBe(2)
+      expect(payload.plan).toEqual([
+        { name: 'm2', path: '/migrations/m2.ts' },
+        { name: 'm1', path: '/migrations/m1.ts' }
+      ])
     })
   })
 
   describe('error handling', () => {
-    it('should throw error when database config is not found', async () => {
-      ;(loadConfig as Mock).mockResolvedValue(null)
+    it('should throw when database config is not found', async () => {
+      ;(loadConfig as Mock).mockResolvedValue({})
 
       await expect(command.parseAsync(['node', 'test'])).rejects.toThrow(CLIError)
     })
 
-    it('should throw error when database connection fails', async () => {
+    it('should throw when database connection fails', async () => {
       ;(getDatabaseConnection as Mock).mockResolvedValue(null)
 
       await expect(command.parseAsync(['node', 'test'])).rejects.toThrow(CLIError)
     })
 
-    it('should handle migration lock error', async () => {
-      const lockError = new Error('Lock error')
-      ;(lockError as any).code = 'MIGRATION_LOCKED'
-
-      const mockRunner = {
-        acquireLock: vi.fn().mockRejectedValue(lockError),
-        getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'test' }]),
-        down: vi.fn().mockResolvedValue({ rolledBack: [], duration: 0 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
+    it('should propagate rollback failures', async () => {
+      installRunnerMock({
+        planDown: vi.fn().mockResolvedValue([target('m1')]),
+        down: vi
+          .fn()
+          .mockRejectedValue(new CLIError('Rollback of m1 failed: boom', 'ROLLBACK_FAILED'))
       })
 
-      await expect(command.parseAsync(['node', 'test'])).rejects.toThrow(CLIError)
+      await expect(command.parseAsync(['node', 'test'])).rejects.toThrow('Rollback of m1 failed')
     })
   })
 
-  describe('edge cases', () => {
-    it('should handle no executed migrations', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'pending', name: 'pending' }]),
-        down: vi.fn().mockResolvedValue({ rolledBack: [], duration: 0 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow()
-    })
-
-    it('should use --count as alias for --steps', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'test' }]),
-        down: vi.fn().mockResolvedValue({ rolledBack: ['test'], duration: 50 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await command.parseAsync(['node', 'test', '--count', '2'])
-      expect(mockRunner.down).toHaveBeenCalledWith(expect.objectContaining({ steps: 2 }))
-    })
-
-    it('should close database connection after execution', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi.fn().mockResolvedValue([]),
-        down: vi.fn().mockResolvedValue({ rolledBack: [], duration: 0 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
+  describe('cleanup', () => {
+    it('should close the database connection after execution', async () => {
       await command.parseAsync(['node', 'test'])
       expect(mockDb.destroy).toHaveBeenCalled()
-    })
-
-    it('should release lock after execution', async () => {
-      const releaseLock = vi.fn().mockResolvedValue(undefined)
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(releaseLock),
-        getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'test' }]),
-        down: vi.fn().mockResolvedValue({ rolledBack: ['test'], duration: 50 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await command.parseAsync(['node', 'test'])
-      expect(releaseLock).toHaveBeenCalled()
-    })
-
-    // --all wipes the schema: without a TTY it must FAIL fast instead of
-    // auto-confirming (the old behavior silently proceeded in test/non-TTY
-    // environments).
-    it('should refuse --all without --force when not interactive', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'test' }]),
-        down: vi.fn().mockResolvedValue({ rolledBack: ['test'], duration: 50 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await expect(command.parseAsync(['node', 'test', '--all'])).rejects.toThrow(
-        /Refusing to run destructive operation/
-      )
-      expect(confirm).not.toHaveBeenCalled()
-      expect(mockRunner.down).not.toHaveBeenCalled()
-    })
-
-    it('should run --all with --force without prompting', async () => {
-      const mockRunner = {
-        acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-        getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'test' }]),
-        down: vi.fn().mockResolvedValue({ rolledBack: ['test'], duration: 50 })
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await command.parseAsync(['node', 'test', '--all', '--force'])
-      expect(confirm).not.toHaveBeenCalled()
-      expect(mockRunner.down).toHaveBeenCalled()
     })
   })
 })

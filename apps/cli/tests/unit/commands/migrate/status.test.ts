@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
 import { Command } from 'commander'
 
-// Mock external dependencies before importing the module under test
 vi.mock('../../../../src/utils/database.js', () => ({
   getDatabaseConnection: vi.fn()
 }))
@@ -11,52 +10,7 @@ vi.mock('../../../../src/config/loader.js', () => ({
 }))
 
 vi.mock('../../../../src/commands/migrate/runner.js', () => ({
-  MigrationRunner: vi.fn().mockImplementation(function (this: any) {
-    this.getMigrationStatus = vi.fn().mockResolvedValue([])
-    return this
-  })
-}))
-
-vi.mock('@xec-sh/kit', () => ({
-  log: {
-    message: vi.fn(),
-    info: vi.fn(),
-    success: vi.fn(),
-    step: vi.fn(),
-    warn: vi.fn(),
-    message: vi.fn(),
-    warning: vi.fn(),
-    error: vi.fn()
-  },
-  strip: (s: string) => s,
-  prism: {
-    cyan: (s: string) => s,
-    green: (s: string) => s,
-    yellow: (s: string) => s,
-    gray: (s: string) => s,
-    red: (s: string) => s,
-    bold: (s: string) => s
-  },
-  table: vi.fn(() => ''),
-  spinner: vi.fn(() => ({
-    start: vi.fn(),
-    succeed: vi.fn(),
-    fail: vi.fn(),
-    warn: vi.fn(),
-    message: vi.fn(),
-    stop: vi.fn()
-  }))
-}))
-
-vi.mock('../../../../src/utils/logger.js', () => ({
-  logger: {
-    success: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    message: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn()
-  }
+  MigrationRunner: vi.fn()
 }))
 
 import { statusCommand } from '../../../../src/commands/migrate/status.js'
@@ -64,31 +18,66 @@ import { getDatabaseConnection } from '../../../../src/utils/database.js'
 import { loadConfig } from '../../../../src/config/loader.js'
 import { MigrationRunner } from '../../../../src/commands/migrate/runner.js'
 import { CLIError } from '../../../../src/utils/errors.js'
+import { resetOutput } from '../../../../src/utils/output.js'
+import type { MigrationStatusEntry } from '../../../../src/commands/migrate/runner.js'
+
+function installRunnerMock(entries: MigrationStatusEntry[] = []): { getStatusEntries: Mock } {
+  const instance = {
+    getStatusEntries: vi.fn().mockResolvedValue(entries)
+  }
+  ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: object) {
+    Object.assign(this, instance)
+    return this
+  })
+  return instance
+}
+
+const executedEntry: MigrationStatusEntry = {
+  name: '20240101000000_init',
+  timestamp: '20240101000000',
+  status: 'executed',
+  executedAt: new Date('2024-01-02T03:04:05Z'),
+  checksum: 'abc',
+  currentChecksum: 'abc',
+  path: '/migrations/20240101000000_init.ts'
+}
+
+const pendingEntry: MigrationStatusEntry = {
+  name: '20240202000000_more',
+  timestamp: '20240202000000',
+  status: 'pending',
+  executedAt: null,
+  checksum: null,
+  currentChecksum: 'def',
+  path: '/migrations/20240202000000_more.ts'
+}
+
+function captureStdout(): string[] {
+  const writes: string[] = []
+  vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string) => {
+    writes.push(String(chunk))
+    return true
+  }) as never)
+  return writes
+}
 
 describe('migrate status command', () => {
   let command: Command
-  let mockDb: any
-  let consoleSpy: { log: Mock }
+  let mockDb: { destroy: Mock }
 
   beforeEach(() => {
     vi.clearAllMocks()
-
+    resetOutput()
     process.env['NODE_ENV'] = 'test'
 
-    mockDb = {
-      destroy: vi.fn().mockResolvedValue(undefined)
-    }
+    mockDb = { destroy: vi.fn().mockResolvedValue(undefined) }
 
     ;(getDatabaseConnection as Mock).mockResolvedValue(mockDb)
     ;(loadConfig as Mock).mockResolvedValue({
-      database: { dialect: 'postgres', connection: 'postgres://localhost/test' },
-      migrations: { directory: './migrations', tableName: 'kysera_migrations' }
+      database: { dialect: 'postgres', connection: 'postgres://user:secret@localhost/test' },
+      migrations: { directory: './migrations', tableName: 'migrations' }
     })
-
-    consoleSpy = {
-      log: vi.fn()
-    }
-    vi.spyOn(console, 'log').mockImplementation(consoleSpy.log)
+    installRunnerMock()
 
     command = statusCommand()
   })
@@ -106,249 +95,100 @@ describe('migrate status command', () => {
       expect(command.description()).toContain('Show migration status')
     })
 
-    it('should have --json option', () => {
-      const options = command.options
-      const jsonOpt = options.find(o => o.long === '--json')
-      expect(jsonOpt).toBeDefined()
-    })
-
-    it('should have --verbose option', () => {
-      const options = command.options
-      const verboseOpt = options.find(o => o.long === '--verbose')
-      expect(verboseOpt).toBeDefined()
-    })
-
-    it('should have --config option', () => {
-      const options = command.options
-      const configOpt = options.find(o => o.long === '--config')
-      expect(configOpt).toBeDefined()
+    it.each(['--json', '--verbose', '--config', '--schema'])('should have %s option', flag => {
+      expect(command.options.find(o => o.long === flag)).toBeDefined()
     })
   })
 
-  describe('success scenarios', () => {
-    it('should show migration status', async () => {
-      const mockRunner = {
-        getMigrationStatus: vi.fn().mockResolvedValue([
-          {
-            name: 'migration1',
-            status: 'executed',
-            timestamp: '20231201120000',
-            executedAt: new Date()
-          },
-          { name: 'migration2', status: 'pending', timestamp: '20231201130000' }
-        ])
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
+  describe('text output', () => {
+    it('should render executed and pending sections', async () => {
+      installRunnerMock([executedEntry, pendingEntry])
+      const writes = captureStdout()
 
-      await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow()
-      expect(mockRunner.getMigrationStatus).toHaveBeenCalled()
+      await command.parseAsync(['node', 'test'])
+
+      const text = writes.join('')
+      expect(text).toContain('Migration Status')
+      expect(text).toContain('20240101000000_init')
+      expect(text).toContain('(executed)')
+      expect(text).toContain('20240202000000_more')
+      expect(text).toContain('(pending)')
     })
+  })
 
-    it('should output JSON when --json option is used', async () => {
-      const mockRunner = {
-        getMigrationStatus: vi.fn().mockResolvedValue([
-          {
-            name: 'migration1',
-            status: 'executed',
-            timestamp: '20231201120000',
-            executedAt: new Date()
-          }
-        ])
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      // JSON results go to stdout via the output contract (not console.log)
-      const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  describe('json output', () => {
+    it('should emit the stable CI shape', async () => {
+      installRunnerMock([executedEntry, pendingEntry])
+      const writes = captureStdout()
 
       await command.parseAsync(['node', 'test', '--json'])
 
-      const jsonOutput = stdoutSpy.mock.calls.find(call => {
-        try {
-          JSON.parse(String(call[0]))
-          return true
-        } catch {
-          return false
+      const payload = JSON.parse(writes.join(''))
+      expect(payload.total).toBe(2)
+      expect(payload.table).toBe('migrations')
+      expect(payload.dialect).toBe('postgres')
+      expect(payload.executed).toEqual([
+        {
+          name: '20240101000000_init',
+          executedAt: '2024-01-02T03:04:05.000Z',
+          checksum: 'abc'
         }
-      })
-      expect(jsonOutput).toBeDefined()
-      stdoutSpy.mockRestore()
+      ])
+      expect(payload.pending).toEqual([
+        { name: '20240202000000_more', path: '/migrations/20240202000000_more.ts' }
+      ])
+      expect(payload.database).toBeUndefined()
     })
 
-    it('should show verbose output when --verbose is used', async () => {
-      const mockRunner = {
-        getMigrationStatus: vi.fn().mockResolvedValue([
-          {
-            name: 'migration1',
-            status: 'executed',
-            timestamp: '20231201120000',
-            executedAt: new Date()
-          }
-        ])
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
+    it('should redact credentials in verbose connection info', async () => {
+      installRunnerMock([])
+      const writes = captureStdout()
 
-      await command.parseAsync(['node', 'test', '--verbose'])
-      expect(consoleSpy.log).toHaveBeenCalled()
-    })
+      await command.parseAsync(['node', 'test', '--json', '--verbose'])
 
-    it('should display executed migrations count', async () => {
-      const mockRunner = {
-        getMigrationStatus: vi.fn().mockResolvedValue([
-          {
-            name: 'migration1',
-            status: 'executed',
-            timestamp: '20231201120000',
-            executedAt: new Date()
-          },
-          {
-            name: 'migration2',
-            status: 'executed',
-            timestamp: '20231201130000',
-            executedAt: new Date()
-          }
-        ])
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await command.parseAsync(['node', 'test'])
-      const output = consoleSpy.log.mock.calls.map(c => c.join(' ')).join('\n')
-      expect(output).toContain('Executed')
-    })
-
-    it('should display pending migrations count', async () => {
-      const mockRunner = {
-        getMigrationStatus: vi
-          .fn()
-          .mockResolvedValue([
-            { name: 'migration1', status: 'pending', timestamp: '20231201120000' }
-          ])
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await command.parseAsync(['node', 'test'])
-      const output = consoleSpy.log.mock.calls.map(c => c.join(' ')).join('\n')
-      expect(output).toContain('Pending')
+      const text = writes.join('')
+      expect(text).not.toContain('secret')
+      const payload = JSON.parse(text)
+      expect(payload.database.connection).toContain('***')
     })
   })
 
   describe('error handling', () => {
-    it('should throw error when database config is not found', async () => {
-      ;(loadConfig as Mock).mockResolvedValue(null)
+    it('should throw when database config is not found', async () => {
+      ;(loadConfig as Mock).mockResolvedValue({})
 
       await expect(command.parseAsync(['node', 'test'])).rejects.toThrow(CLIError)
     })
 
-    it('should throw error when database connection fails', async () => {
+    it('should throw when database connection fails', async () => {
       ;(getDatabaseConnection as Mock).mockResolvedValue(null)
 
       await expect(command.parseAsync(['node', 'test'])).rejects.toThrow(CLIError)
     })
 
-    it('should handle getMigrationStatus error', async () => {
-      const mockRunner = {
-        getMigrationStatus: vi.fn().mockRejectedValue(new Error('Database error'))
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
+    it('should wrap runner failures in CLIError', async () => {
+      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: object) {
+        Object.assign(this, {
+          getStatusEntries: vi.fn().mockRejectedValue(new Error('query failed'))
+        })
         return this
       })
 
-      await expect(command.parseAsync(['node', 'test'])).rejects.toThrow()
+      await expect(command.parseAsync(['node', 'test'])).rejects.toThrow(
+        'Failed to get migration status'
+      )
     })
   })
 
-  describe('edge cases', () => {
-    it('should handle empty migration status', async () => {
-      const mockRunner = {
-        getMigrationStatus: vi.fn().mockResolvedValue([])
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow()
-    })
-
-    it('should close database connection after execution', async () => {
-      const mockRunner = {
-        getMigrationStatus: vi.fn().mockResolvedValue([])
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
+  describe('cleanup', () => {
+    it('should close the database connection after execution', async () => {
       await command.parseAsync(['node', 'test'])
       expect(mockDb.destroy).toHaveBeenCalled()
     })
 
-    it('should use custom config path when provided', async () => {
-      const mockRunner = {
-        getMigrationStatus: vi.fn().mockResolvedValue([])
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
+    it('should honor a custom config path', async () => {
       await command.parseAsync(['node', 'test', '--config', './custom-config.ts'])
       expect(loadConfig).toHaveBeenCalledWith('./custom-config.ts')
-    })
-
-    it('should include database dialect in JSON output', async () => {
-      const mockRunner = {
-        getMigrationStatus: vi.fn().mockResolvedValue([])
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await command.parseAsync(['node', 'test', '--json'])
-
-      const jsonCall = consoleSpy.log.mock.calls.find(call => {
-        try {
-          const parsed = JSON.parse(call[0])
-          return parsed.database !== undefined
-        } catch {
-          return false
-        }
-      })
-
-      if (jsonCall) {
-        const parsed = JSON.parse(jsonCall[0])
-        expect(parsed.database.dialect).toBe('postgres')
-      }
-    })
-
-    it('should show database info in verbose mode', async () => {
-      const mockRunner = {
-        getMigrationStatus: vi.fn().mockResolvedValue([])
-      }
-      ;(MigrationRunner as unknown as Mock).mockImplementation(function (this: any) {
-        Object.assign(this, mockRunner)
-        return this
-      })
-
-      await command.parseAsync(['node', 'test', '--verbose'])
-      const output = consoleSpy.log.mock.calls.map(c => c.join(' ')).join('\n')
-      expect(output).toContain('Dialect')
     })
   })
 })
