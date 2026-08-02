@@ -8,6 +8,7 @@ import { isJsonMode, output } from '../../utils/output.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 import { DatabaseIntrospector, type TableInfo } from './introspector.js'
+import { buildTableFilter, internalTables } from './table-filter.js'
 import { toCamelCase, toPascalCase, toKebabCase } from '../../utils/templates.js'
 
 export interface SchemaOptions {
@@ -59,20 +60,21 @@ async function generateSchema(
         `Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
       )
 
-      const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
+      const introspector = new DatabaseIntrospector(db, config.database.dialect, schema)
 
-      let tables: TableInfo[] = []
-
+      let tables: TableInfo[]
       if (tableName) {
-        const tableInfo = await introspector.getTableInfo(tableName)
-        tables = [tableInfo]
+        tables = [await introspector.getTableInfo(tableName)]
       } else {
-        tables = await introspector.introspect()
+        // Internal bookkeeping tables (migrations, lock table) are skipped
+        // when generating schemas for the whole database.
+        const filter = buildTableFilter({ internal: internalTables(config) })
+        tables = (await introspector.introspect()).filter(table => filter(table.name))
       }
 
       generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
 
-      const outputDir = options.output || './src/schemas'
+      const outputDir = options.output ?? './src/schemas'
 
       if (!existsSync(outputDir)) {
         mkdirSync(outputDir, { recursive: true })
@@ -120,9 +122,8 @@ async function generateSchema(
 
 function generateSchemaCode(table: TableInfo, options: { strict: boolean }): string {
   const entityName = toPascalCase(table.name)
-  const primaryKey = table.primaryKey?.[0] || 'id'
 
-  let baseSchemaFields: string[] = []
+  const baseSchemaFields: string[] = []
 
   for (const column of table.columns) {
     const fieldName = toCamelCase(column.name)
@@ -155,14 +156,13 @@ function generateSchemaCode(table: TableInfo, options: { strict: boolean }): str
     baseSchemaFields.push(`  ${fieldName}: ${zodType}`)
   }
 
-  let newSchemaFields: string[] = []
+  const newSchemaFields: string[] = []
 
   for (const column of table.columns) {
     const fieldName = toCamelCase(column.name)
 
-    if (column.isPrimaryKey && column.defaultValue) continue
-    if (column.defaultValue && column.defaultValue.toLowerCase().includes('current_timestamp'))
-      continue
+    if (column.isAutoIncrement || (column.isPrimaryKey && column.defaultValue)) continue
+    if (column.defaultValue?.toLowerCase().includes('current_timestamp')) continue
     if (column.name === 'created_at' || column.name === 'updated_at') continue
 
     let zodType = DatabaseIntrospector.mapDataTypeToZod(column.dataType, column.isNullable)
@@ -179,7 +179,7 @@ function generateSchemaCode(table: TableInfo, options: { strict: boolean }): str
     newSchemaFields.push(`  ${fieldName}: ${zodType}`)
   }
 
-  let updateSchemaFields: string[] = []
+  const updateSchemaFields: string[] = []
 
   for (const column of table.columns) {
     const fieldName = toCamelCase(column.name)

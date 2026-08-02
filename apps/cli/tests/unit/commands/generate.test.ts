@@ -5,7 +5,8 @@ import { Command } from 'commander'
 vi.mock('node:fs', () => ({
   existsSync: vi.fn(),
   mkdirSync: vi.fn(),
-  writeFileSync: vi.fn()
+  writeFileSync: vi.fn(),
+  readFileSync: vi.fn()
 }))
 
 vi.mock('@xec-sh/kit', () => ({
@@ -220,6 +221,7 @@ describe('generate command', () => {
 
     it('should have subcommands', () => {
       const subcommands = command.commands.map(c => c.name())
+      expect(subcommands).toContain('database')
       expect(subcommands).toContain('model')
       expect(subcommands).toContain('repository')
       expect(subcommands).toContain('schema')

@@ -1,7 +1,10 @@
 import type { Kysely } from 'kysely'
+import type { Database as CliDatabase } from '../../types/index.js'
 import { logger } from '../../utils/logger.js'
 import { validateIdentifier } from '../../utils/sql-sanitizer.js'
 import { CLIError, CLIErrorCodes } from '../../utils/errors.js'
+
+export type IntrospectorDialect = 'postgres' | 'mysql' | 'sqlite'
 
 export interface TableColumn {
   name: string
@@ -9,12 +12,20 @@ export interface TableColumn {
   isNullable: boolean
   isPrimaryKey: boolean
   isForeignKey: boolean
+  /**
+   * The database fills this column in when the insert omits it:
+   * serial/identity (PostgreSQL), AUTO_INCREMENT (MySQL) or a single
+   * INTEGER PRIMARY KEY rowid alias (SQLite).
+   */
+  isAutoIncrement: boolean
   defaultValue?: string
   maxLength?: number
   numericPrecision?: number
   numericScale?: number
   referencedTable?: string
   referencedColumn?: string
+  /** PostgreSQL underlying type name ('_int4' for int[] arrays, enum name, ...) */
+  udtName?: string
 }
 
 export interface TableIndex {
@@ -29,22 +40,169 @@ export interface TableInfo {
   columns: TableColumn[]
   indexes: TableIndex[]
   primaryKey?: string[]
-  foreignKeys?: Array<{
+  foreignKeys?: {
     column: string
     referencedTable: string
     referencedColumn: string
-  }>
+  }[]
+}
+
+/** information_schema.tables (PostgreSQL and MySQL share the selected shape) */
+interface InformationSchemaTablesRow {
+  table_schema: string
+  table_name: string
+  table_type: string
+}
+
+interface InformationSchemaColumnsRow {
+  table_schema: string
+  table_name: string
+  column_name: string
+  ordinal_position: number
+  data_type: string
+  is_nullable: string
+  column_default: string | null
+  character_maximum_length: number | null
+  numeric_precision: number | null
+  numeric_scale: number | null
+  /** PostgreSQL only */
+  is_identity: string | null
+  /** PostgreSQL only */
+  udt_name: string | null
+  /** MySQL only: 'PRI' | 'UNI' | 'MUL' | '' */
+  column_key: string | null
+  /** MySQL only: contains 'auto_increment' for auto-increment columns */
+  extra: string | null
+}
+
+interface InformationSchemaKeyColumnUsageRow {
+  constraint_name: string
+  table_schema: string
+  table_name: string
+  column_name: string
+  /** MySQL only */
+  referenced_table_name: string | null
+  /** MySQL only */
+  referenced_column_name: string | null
+}
+
+interface InformationSchemaTableConstraintsRow {
+  constraint_name: string
+  table_schema: string
+  table_name: string
+  constraint_type: string
+}
+
+interface InformationSchemaConstraintColumnUsageRow {
+  constraint_name: string
+  table_schema: string
+  table_name: string
+  column_name: string
+}
+
+interface InformationSchemaStatisticsRow {
+  table_schema: string
+  table_name: string
+  index_name: string
+  column_name: string
+  non_unique: number
+  seq_in_index: number
+}
+
+interface PgIndexesRow {
+  schemaname: string
+  tablename: string
+  indexname: string
+  indexdef: string
+}
+
+interface SqliteMasterRow {
+  type: string
+  name: string
+  sql: string | null
+}
+
+/**
+ * System catalogs queried during introspection. These tables are not part
+ * of the user's schema type, so the constructor rebinds the connection to
+ * this interface once.
+ */
+interface IntrospectionDatabase {
+  'information_schema.tables': InformationSchemaTablesRow
+  'information_schema.columns': InformationSchemaColumnsRow
+  'information_schema.key_column_usage': InformationSchemaKeyColumnUsageRow
+  'information_schema.table_constraints': InformationSchemaTableConstraintsRow
+  'information_schema.constraint_column_usage': InformationSchemaConstraintColumnUsageRow
+  'information_schema.statistics': InformationSchemaStatisticsRow
+  pg_indexes: PgIndexesRow
+  sqlite_master: SqliteMasterRow
+}
+
+interface SqliteTableInfoRow {
+  cid: number
+  name: string
+  type: string
+  notnull: number
+  dflt_value: string | number | null
+  pk: number
+}
+
+interface SqliteForeignKeyRow {
+  id: number
+  seq: number
+  table: string
+  from: string
+  to: string | null
+}
+
+interface SqliteIndexListRow {
+  seq: number
+  name: string
+  unique: number
+  origin: string
+  partial: number
+}
+
+interface SqliteIndexInfoRow {
+  seqno: number
+  cid: number
+  name: string | null
+}
+
+/**
+ * MySQL returns information_schema columns upper- or lower-cased depending
+ * on server version and driver settings; read both spellings.
+ */
+function mysqlField(row: object, key: string): unknown {
+  const record = row as Record<string, unknown>
+  return record[key] ?? record[key.toUpperCase()] ?? undefined
+}
+
+function mysqlString(row: object, key: string): string | undefined {
+  const value = mysqlField(row, key)
+  return typeof value === 'string' ? value : undefined
+}
+
+function mysqlNumber(row: object, key: string): number | undefined {
+  const value = mysqlField(row, key)
+  if (typeof value === 'number') return value
+  if (typeof value === 'bigint') return Number(value)
+  return undefined
 }
 
 export class DatabaseIntrospector {
+  private readonly idb: Kysely<IntrospectionDatabase>
+
   constructor(
-    private db: Kysely<any>,
-    private dialect: 'postgres' | 'mysql' | 'sqlite',
-    private schema: string = 'public'
-  ) {}
+    private readonly db: Kysely<CliDatabase>,
+    private readonly dialect: IntrospectorDialect,
+    private readonly schema = 'public'
+  ) {
+    this.idb = db as unknown as Kysely<IntrospectionDatabase>
+  }
 
   /**
-   * Get all tables in the database
+   * Get all tables in the database, sorted by name.
    */
   async getTables(): Promise<string[]> {
     switch (this.dialect) {
@@ -55,7 +213,10 @@ export class DatabaseIntrospector {
       case 'sqlite':
         return this.getSqliteTables()
       default:
-        throw new CLIError(`Unsupported dialect: ${this.dialect}`, CLIErrorCodes.DATABASE_ERROR)
+        throw new CLIError(
+          `Unsupported dialect: ${String(this.dialect)}`,
+          CLIErrorCodes.DATABASE_ERROR
+        )
     }
   }
 
@@ -71,7 +232,10 @@ export class DatabaseIntrospector {
       case 'sqlite':
         return this.getSqliteTableInfo(tableName)
       default:
-        throw new CLIError(`Unsupported dialect: ${this.dialect}`, CLIErrorCodes.DATABASE_ERROR)
+        throw new CLIError(
+          `Unsupported dialect: ${String(this.dialect)}`,
+          CLIErrorCodes.DATABASE_ERROR
+        )
     }
   }
 
@@ -87,7 +251,7 @@ export class DatabaseIntrospector {
         const info = await this.getTableInfo(table)
         tableInfos.push(info)
       } catch (error) {
-        logger.warn(`Failed to introspect table ${table}: ${error}`)
+        logger.warn(`Failed to introspect table ${table}: ${String(error)}`)
       }
     }
 
@@ -96,19 +260,21 @@ export class DatabaseIntrospector {
 
   // PostgreSQL specific methods
   private async getPostgresTables(): Promise<string[]> {
-    const result = (await this.db
+    const rows = await this.idb
       .selectFrom('information_schema.tables')
       .select('table_name')
       .where('table_schema', '=', this.schema)
       .where('table_type', '=', 'BASE TABLE')
-      .execute()) as any[]
+      .orderBy('table_name')
+      .execute()
 
-    return result.map(r => r.table_name)
+    return rows.map(row => row.table_name)
   }
 
   private async getPostgresTableInfo(tableName: string): Promise<TableInfo> {
-    // Get columns
-    const columns = (await this.db
+    // One row per column and matching constraint; rows are merged per column
+    // below because a column can appear in several constraints (PK + FK + UNIQUE).
+    const rows = await this.idb
       .selectFrom('information_schema.columns as c')
       .leftJoin('information_schema.key_column_usage as kcu', join =>
         join
@@ -134,6 +300,8 @@ export class DatabaseIntrospector {
         'c.character_maximum_length',
         'c.numeric_precision',
         'c.numeric_scale',
+        'c.is_identity',
+        'c.udt_name',
         'tc.constraint_type',
         'ccu.table_name as referenced_table',
         'ccu.column_name as referenced_column'
@@ -141,35 +309,56 @@ export class DatabaseIntrospector {
       .where('c.table_schema', '=', this.schema)
       .where('c.table_name', '=', tableName)
       .orderBy('c.ordinal_position')
-      .execute()) as any[]
+      .orderBy('tc.constraint_type')
+      .execute()
 
-    const tableColumns: TableColumn[] = columns.map(col => ({
-      name: col.column_name,
-      dataType: col.data_type,
-      isNullable: col.is_nullable === 'YES',
-      isPrimaryKey: col.constraint_type === 'PRIMARY KEY',
-      isForeignKey: col.constraint_type === 'FOREIGN KEY',
-      defaultValue: col.column_default,
-      maxLength: col.character_maximum_length,
-      numericPrecision: col.numeric_precision,
-      numericScale: col.numeric_scale,
-      referencedTable: col.referenced_table,
-      referencedColumn: col.referenced_column
-    }))
+    const byName = new Map<string, TableColumn>()
+    for (const row of rows) {
+      const isPrimaryKey = row.constraint_type === 'PRIMARY KEY'
+      const isForeignKey = row.constraint_type === 'FOREIGN KEY'
+      const existing = byName.get(row.column_name)
 
-    // Get indexes
-    const indexes = (await this.db
+      if (existing) {
+        existing.isPrimaryKey ||= isPrimaryKey
+        if (isForeignKey) {
+          existing.isForeignKey = true
+          existing.referencedTable ??= row.referenced_table ?? undefined
+          existing.referencedColumn ??= row.referenced_column ?? undefined
+        }
+        continue
+      }
+
+      byName.set(row.column_name, {
+        name: row.column_name,
+        dataType: row.data_type,
+        isNullable: row.is_nullable === 'YES',
+        isPrimaryKey,
+        isForeignKey,
+        isAutoIncrement:
+          row.is_identity === 'YES' || (row.column_default?.startsWith('nextval(') ?? false),
+        defaultValue: row.column_default ?? undefined,
+        maxLength: row.character_maximum_length ?? undefined,
+        numericPrecision: row.numeric_precision ?? undefined,
+        numericScale: row.numeric_scale ?? undefined,
+        referencedTable: isForeignKey ? (row.referenced_table ?? undefined) : undefined,
+        referencedColumn: isForeignKey ? (row.referenced_column ?? undefined) : undefined,
+        udtName: row.udt_name ?? undefined
+      })
+    }
+    const tableColumns = [...byName.values()]
+
+    const indexRows = await this.idb
       .selectFrom('pg_indexes')
       .select(['indexname', 'indexdef'])
       .where('schemaname', '=', this.schema)
       .where('tablename', '=', tableName)
-      .execute()) as any[]
+      .orderBy('indexname')
+      .execute()
 
-    const tableIndexes: TableIndex[] = indexes.map(idx => {
-      // Parse index definition to extract columns
-      const columnsMatch = idx.indexdef.match(/\((.*?)\)/)
-      const columns = columnsMatch
-        ? columnsMatch[1].split(',').map((c: string) => c.trim().replace(/"/g, ''))
+    const tableIndexes: TableIndex[] = indexRows.map(idx => {
+      const columnsMatch = /\((.*?)\)/.exec(idx.indexdef)
+      const columns = columnsMatch?.[1]
+        ? columnsMatch[1].split(',').map(column => column.trim().replace(/"/g, ''))
         : []
 
       return {
@@ -180,42 +369,29 @@ export class DatabaseIntrospector {
       }
     })
 
-    const primaryKey = tableColumns.filter(col => col.isPrimaryKey).map(col => col.name)
-
-    const foreignKeys = tableColumns
-      .filter(col => col.isForeignKey)
-      .map(col => ({
-        column: col.name,
-        referencedTable: col.referencedTable!,
-        referencedColumn: col.referencedColumn!
-      }))
-
-    return {
-      name: tableName,
-      columns: tableColumns,
-      indexes: tableIndexes,
-      primaryKey: primaryKey.length > 0 ? primaryKey : undefined,
-      foreignKeys: foreignKeys.length > 0 ? foreignKeys : undefined
-    }
+    return this.buildTableInfo(tableName, tableColumns, tableIndexes)
   }
 
   // MySQL specific methods
   private async getMysqlTables(): Promise<string[]> {
     const { sql } = await import('kysely')
-    const result = (await this.db
+    const rows = await this.idb
       .selectFrom('information_schema.tables')
       .select('table_name')
-      .where('table_schema', '=', sql.raw('DATABASE()'))
+      .where('table_schema', '=', sql<string>`DATABASE()`)
       .where('table_type', '=', 'BASE TABLE')
-      .execute()) as any[]
+      .orderBy('table_name')
+      .execute()
 
-    return result.map(r => r.table_name || r.TABLE_NAME)
+    return rows
+      .map(row => mysqlString(row, 'table_name'))
+      .filter((name): name is string => typeof name === 'string')
   }
 
   private async getMysqlTableInfo(tableName: string): Promise<TableInfo> {
     const { sql } = await import('kysely')
-    // Get columns
-    const columns = (await this.db
+
+    const columnRows = await this.idb
       .selectFrom('information_schema.columns')
       .select([
         'column_name',
@@ -225,120 +401,159 @@ export class DatabaseIntrospector {
         'character_maximum_length',
         'numeric_precision',
         'numeric_scale',
-        'column_key'
+        'column_key',
+        'extra'
       ])
-      .where('table_schema', '=', sql.raw('DATABASE()'))
+      .where('table_schema', '=', sql<string>`DATABASE()`)
       .where('table_name', '=', tableName)
       .orderBy('ordinal_position')
-      .execute()) as any[]
+      .execute()
 
-    const tableColumns: TableColumn[] = columns.map((col: any) => ({
-      name: col.column_name || col.COLUMN_NAME,
-      dataType: col.data_type || col.DATA_TYPE,
-      isNullable: (col.is_nullable || col.IS_NULLABLE) === 'YES',
-      isPrimaryKey: (col.column_key || col.COLUMN_KEY) === 'PRI',
-      isForeignKey: (col.column_key || col.COLUMN_KEY) === 'MUL',
-      defaultValue: col.column_default || col.COLUMN_DEFAULT,
-      maxLength: col.character_maximum_length || col.CHARACTER_MAXIMUM_LENGTH,
-      numericPrecision: col.numeric_precision || col.NUMERIC_PRECISION,
-      numericScale: col.numeric_scale || col.NUMERIC_SCALE
-    }))
+    const tableColumns: TableColumn[] = columnRows.map(row => {
+      const extra = mysqlString(row, 'extra') ?? ''
+      return {
+        name: mysqlString(row, 'column_name') ?? '',
+        dataType: mysqlString(row, 'data_type') ?? '',
+        isNullable: mysqlString(row, 'is_nullable') === 'YES',
+        isPrimaryKey: mysqlString(row, 'column_key') === 'PRI',
+        isForeignKey: false,
+        isAutoIncrement: extra.toLowerCase().includes('auto_increment'),
+        defaultValue: mysqlString(row, 'column_default'),
+        maxLength: mysqlNumber(row, 'character_maximum_length'),
+        numericPrecision: mysqlNumber(row, 'numeric_precision'),
+        numericScale: mysqlNumber(row, 'numeric_scale')
+      }
+    })
 
-    // Get indexes
-    const indexes = (await this.db
+    const fkRows = await this.idb
+      .selectFrom('information_schema.key_column_usage')
+      .select(['column_name', 'referenced_table_name', 'referenced_column_name'])
+      .where('table_schema', '=', sql<string>`DATABASE()`)
+      .where('table_name', '=', tableName)
+      .where('referenced_table_name', 'is not', null)
+      .orderBy('column_name')
+      .execute()
+
+    for (const row of fkRows) {
+      const columnName = mysqlString(row, 'column_name')
+      const column = tableColumns.find(c => c.name === columnName)
+      if (column) {
+        column.isForeignKey = true
+        column.referencedTable ??= mysqlString(row, 'referenced_table_name')
+        column.referencedColumn ??= mysqlString(row, 'referenced_column_name')
+      }
+    }
+
+    const indexRows = await this.idb
       .selectFrom('information_schema.statistics')
       .select(['index_name', 'column_name', 'non_unique'])
-      .where('table_schema', '=', sql.raw('DATABASE()'))
+      .where('table_schema', '=', sql<string>`DATABASE()`)
       .where('table_name', '=', tableName)
-      .orderBy(['index_name', 'seq_in_index'])
-      .execute()) as any[]
+      .orderBy('index_name')
+      .orderBy('seq_in_index')
+      .execute()
 
-    // Group columns by index
     const indexMap = new Map<string, TableIndex>()
-    for (const idx of indexes) {
-      const indexName = idx.index_name || idx.INDEX_NAME
-      const columnName = idx.column_name || idx.COLUMN_NAME
-      const isUnique = !(idx.non_unique || idx.NON_UNIQUE)
+    for (const row of indexRows) {
+      const indexName = mysqlString(row, 'index_name')
+      const columnName = mysqlString(row, 'column_name')
+      if (indexName === undefined || columnName === undefined) continue
 
-      if (!indexMap.has(indexName)) {
-        indexMap.set(indexName, {
+      const nonUnique = mysqlNumber(row, 'non_unique')
+      let index = indexMap.get(indexName)
+      if (!index) {
+        index = {
           name: indexName,
           columns: [],
-          isUnique,
+          isUnique: !nonUnique,
           isPrimary: indexName === 'PRIMARY'
-        })
+        }
+        indexMap.set(indexName, index)
       }
-      indexMap.get(indexName)!.columns.push(columnName)
+      index.columns.push(columnName)
     }
 
-    const tableIndexes = Array.from(indexMap.values())
-
-    const primaryKey = tableColumns.filter(col => col.isPrimaryKey).map(col => col.name)
-
-    return {
-      name: tableName,
-      columns: tableColumns,
-      indexes: tableIndexes,
-      primaryKey: primaryKey.length > 0 ? primaryKey : undefined
-    }
+    return this.buildTableInfo(tableName, tableColumns, [...indexMap.values()])
   }
 
   // SQLite specific methods
   private async getSqliteTables(): Promise<string[]> {
-    const result = (await this.db
+    const rows = await this.idb
       .selectFrom('sqlite_master')
       .select('name')
       .where('type', '=', 'table')
       .where('name', 'not like', 'sqlite_%')
-      .execute()) as any[]
+      .orderBy('name')
+      .execute()
 
-    return result.map(r => r.name)
+    return rows.map(row => row.name)
   }
 
   private async getSqliteTableInfo(tableName: string): Promise<TableInfo> {
     const { sql } = await import('kysely')
-    // SQLite's PRAGMA commands aren't directly supported by Kysely
-    // We'll use raw SQL for introspection
-    // Validate table name to prevent SQL injection
+    // PRAGMA statements cannot be parameterized; the identifier is validated
+    // to prevent SQL injection.
     const validTableName = validateIdentifier(tableName, 'table')
-    const columns = (await sql.raw(`PRAGMA table_info(${validTableName})`).execute(this.db)) as any
 
-    const tableColumns: TableColumn[] = columns.rows.map((col: any) => ({
-      name: col.name,
-      dataType: col.type,
-      isNullable: col.notnull === 0,
-      isPrimaryKey: col.pk === 1,
-      isForeignKey: false, // Will be updated with foreign key info
-      defaultValue: col.dflt_value
-    }))
+    const ddlRow = await this.idb
+      .selectFrom('sqlite_master')
+      .select('sql')
+      .where('type', '=', 'table')
+      .where('name', '=', tableName)
+      .executeTakeFirst()
+    const withoutRowid = /WITHOUT\s+ROWID/i.test(ddlRow?.sql ?? '')
 
-    // Get foreign keys
-    const foreignKeys = (await sql
-      .raw(`PRAGMA foreign_key_list(${validTableName})`)
-      .execute(this.db)) as any
+    const columnResult = await sql
+      .raw<SqliteTableInfoRow>(`PRAGMA table_info(${validTableName})`)
+      .execute(this.db)
 
-    for (const fk of foreignKeys.rows || []) {
+    const pkCount = columnResult.rows.filter(row => row.pk > 0).length
+
+    const tableColumns: TableColumn[] = columnResult.rows.map(row => {
+      const isPrimaryKey = row.pk > 0
+      // A single INTEGER PRIMARY KEY of a rowid table aliases the rowid:
+      // SQLite generates the value and the column can never hold NULL.
+      const isRowIdAlias =
+        isPrimaryKey && pkCount === 1 && row.type.toUpperCase() === 'INTEGER' && !withoutRowid
+      return {
+        name: row.name,
+        dataType: row.type,
+        isNullable: row.notnull === 0 && !isRowIdAlias,
+        isPrimaryKey,
+        isForeignKey: false,
+        isAutoIncrement: isRowIdAlias,
+        defaultValue: row.dflt_value === null ? undefined : String(row.dflt_value)
+      }
+    })
+
+    const foreignKeyResult = await sql
+      .raw<SqliteForeignKeyRow>(`PRAGMA foreign_key_list(${validTableName})`)
+      .execute(this.db)
+
+    for (const fk of foreignKeyResult.rows) {
       const column = tableColumns.find(c => c.name === fk.from)
       if (column) {
         column.isForeignKey = true
         column.referencedTable = fk.table
-        column.referencedColumn = fk.to
+        // A NULL "to" means the foreign key references the primary key of
+        // the target table; leave the column reference unset in that case.
+        column.referencedColumn = fk.to ?? undefined
       }
     }
 
-    // Get indexes
-    const indexList = (await sql
-      .raw(`PRAGMA index_list(${validTableName})`)
-      .execute(this.db)) as any
+    const indexListResult = await sql
+      .raw<SqliteIndexListRow>(`PRAGMA index_list(${validTableName})`)
+      .execute(this.db)
     const tableIndexes: TableIndex[] = []
 
-    for (const idx of indexList.rows || []) {
-      // Validate index name to prevent SQL injection
+    for (const idx of indexListResult.rows) {
       const validIndexName = validateIdentifier(idx.name, 'index')
-      const indexInfo = (await sql
-        .raw(`PRAGMA index_info(${validIndexName})`)
-        .execute(this.db)) as any
-      const columns = indexInfo.rows.map((info: any) => info.name)
+      const indexInfoResult = await sql
+        .raw<SqliteIndexInfoRow>(`PRAGMA index_info(${validIndexName})`)
+        .execute(this.db)
+      const columns = indexInfoResult.rows
+        .map(info => info.name)
+        .filter((name): name is string => name !== null)
 
       tableIndexes.push({
         name: idx.name,
@@ -348,29 +563,37 @@ export class DatabaseIntrospector {
       })
     }
 
-    const primaryKey = tableColumns.filter(col => col.isPrimaryKey).map(col => col.name)
+    return this.buildTableInfo(tableName, tableColumns, tableIndexes)
+  }
 
-    const fkList = tableColumns
-      .filter(col => col.isForeignKey)
+  private buildTableInfo(
+    tableName: string,
+    columns: TableColumn[],
+    indexes: TableIndex[]
+  ): TableInfo {
+    const primaryKey = columns.filter(col => col.isPrimaryKey).map(col => col.name)
+
+    const foreignKeys = columns
+      .filter(col => col.isForeignKey && col.referencedTable !== undefined)
       .map(col => ({
         column: col.name,
-        referencedTable: col.referencedTable!,
-        referencedColumn: col.referencedColumn!
+        referencedTable: col.referencedTable ?? '',
+        referencedColumn: col.referencedColumn ?? ''
       }))
 
     return {
       name: tableName,
-      columns: tableColumns,
-      indexes: tableIndexes,
+      columns,
+      indexes,
       primaryKey: primaryKey.length > 0 ? primaryKey : undefined,
-      foreignKeys: fkList.length > 0 ? fkList : undefined
+      foreignKeys: foreignKeys.length > 0 ? foreignKeys : undefined
     }
   }
 
   /**
    * Convert database type to TypeScript type
    */
-  static mapDataTypeToTypeScript(dataType: string, isNullable: boolean = false): string {
+  static mapDataTypeToTypeScript(dataType: string, isNullable = false): string {
     const baseType = this.getBaseTypeScriptType(dataType.toLowerCase())
     return isNullable ? `${baseType} | null` : baseType
   }
@@ -393,7 +616,7 @@ export class DatabaseIntrospector {
       return 'boolean'
     }
     if (dataType.includes('json')) {
-      return 'any'
+      return 'unknown'
     }
     if (dataType.includes('date') || dataType.includes('time')) {
       return 'Date'
@@ -420,7 +643,7 @@ export class DatabaseIntrospector {
   /**
    * Convert database type to Zod schema
    */
-  static mapDataTypeToZod(dataType: string, isNullable: boolean = false): string {
+  static mapDataTypeToZod(dataType: string, isNullable = false): string {
     const baseType = this.getBaseZodType(dataType.toLowerCase())
     return isNullable ? `${baseType}.nullable()` : baseType
   }
@@ -442,7 +665,7 @@ export class DatabaseIntrospector {
       return 'z.boolean()'
     }
     if (dataType.includes('json')) {
-      return 'z.any()'
+      return 'z.unknown()'
     }
     if (dataType.includes('date') || dataType.includes('time')) {
       return 'z.date()'

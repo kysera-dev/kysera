@@ -8,6 +8,7 @@ import { isJsonMode, output } from '../../utils/output.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 import { DatabaseIntrospector, type TableInfo } from './introspector.js'
+import { buildTableFilter, internalTables } from './table-filter.js'
 import { toCamelCase, toPascalCase, toKebabCase } from '../../utils/templates.js'
 
 export interface RepositoryOptions {
@@ -67,20 +68,21 @@ async function generateRepository(
         `Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
       )
 
-      const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
+      const introspector = new DatabaseIntrospector(db, config.database.dialect, schema)
 
-      let tables: TableInfo[] = []
-
+      let tables: TableInfo[]
       if (tableName) {
-        const tableInfo = await introspector.getTableInfo(tableName)
-        tables = [tableInfo]
+        tables = [await introspector.getTableInfo(tableName)]
       } else {
-        tables = await introspector.introspect()
+        // Internal bookkeeping tables (migrations, lock table) are skipped
+        // when generating repositories for the whole database.
+        const filter = buildTableFilter({ internal: internalTables(config) })
+        tables = (await introspector.introspect()).filter(table => filter(table.name))
       }
 
       generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
 
-      const outputDir = options.output || './src/repositories'
+      const outputDir = options.output ?? './src/repositories'
 
       if (!existsSync(outputDir)) {
         mkdirSync(outputDir, { recursive: true })
@@ -143,9 +145,9 @@ function generateRepositoryCode(
   const entityName = toPascalCase(table.name)
   const repositoryName = `${entityName}Repository`
   const tableName = table.name
-  const primaryKey = table.primaryKey?.[0] || 'id'
+  const primaryKey = table.primaryKey?.[0] ?? 'id'
 
-  let imports: string[] = [
+  const imports: string[] = [
     `import { Kysely } from 'kysely'`,
     `import type { ${entityName}, New${entityName}, ${entityName}Update, ${entityName}Table } from '../models/${toKebabCase(table.name)}.js'`,
     `import type { Database } from '../database.js'`

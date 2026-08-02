@@ -7,7 +7,8 @@ import { logger } from '../../utils/logger.js'
 import { isJsonMode, output } from '../../utils/output.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
-import { DatabaseIntrospector, type TableInfo } from './introspector.js'
+import { DatabaseIntrospector, type TableColumn, type TableInfo } from './introspector.js'
+import { buildTableFilter, internalTables } from './table-filter.js'
 import { toCamelCase, toPascalCase, toKebabCase } from '../../utils/templates.js'
 
 export interface ModelOptions {
@@ -58,20 +59,21 @@ async function generateModel(tableName: string | undefined, options: ModelOption
         `Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
       )
 
-      const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
+      const introspector = new DatabaseIntrospector(db, config.database.dialect, schema)
 
-      let tables: TableInfo[] = []
-
+      let tables: TableInfo[]
       if (tableName) {
-        const tableInfo = await introspector.getTableInfo(tableName)
-        tables = [tableInfo]
+        tables = [await introspector.getTableInfo(tableName)]
       } else {
-        tables = await introspector.introspect()
+        // Internal bookkeeping tables (migrations, lock table) are skipped
+        // when generating models for the whole database.
+        const filter = buildTableFilter({ internal: internalTables(config) })
+        tables = (await introspector.introspect()).filter(table => filter(table.name))
       }
 
       generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
 
-      const outputDir = options.output || './src/models'
+      const outputDir = options.output ?? './src/models'
 
       if (!existsSync(outputDir)) {
         mkdirSync(outputDir, { recursive: true })
@@ -85,15 +87,12 @@ async function generateModel(tableName: string | undefined, options: ModelOption
         const fileName = `${toKebabCase(table.name)}.ts`
         const filePath = join(outputDir, fileName)
 
-        if (existsSync(filePath) && !options.overwrite) {
+        if (existsSync(filePath) && options.overwrite !== true) {
           logger.warn(`Skipping ${fileName} (file exists, use --overwrite to replace)`)
           continue
         }
 
-        const modelCode = generateModelCode(table, {
-          timestamps: options.timestamps !== false,
-          softDelete: options.softDelete === true
-        })
+        const modelCode = generateModelCode(table)
 
         writeFileSync(filePath, modelCode, 'utf-8')
         logger.info(`${prism.green('OK')} Generated ${prism.cyan(fileName)}`)
@@ -118,97 +117,85 @@ async function generateModel(tableName: string | undefined, options: ModelOption
   )
 }
 
-function generateModelCode(
-  table: TableInfo,
-  options: { timestamps: boolean; softDelete: boolean }
-): string {
+/**
+ * The database fills this column in when an insert omits it, so the Kysely
+ * table interface must mark it `Generated<...>`.
+ */
+function isGeneratedColumn(column: TableColumn): boolean {
+  return column.isAutoIncrement || column.defaultValue !== undefined
+}
+
+function generateModelCode(table: TableInfo): string {
   const interfaceName = toPascalCase(table.name)
   const tableInterfaceName = `${interfaceName}Table`
 
-  let imports = [`import type { Generated } from 'kysely'`]
-
-  let mainInterface = `export interface ${interfaceName} {\n`
-
-  for (const column of table.columns) {
-    const fieldName = toCamelCase(column.name)
+  const mainFields = table.columns.map(column => {
     const fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(
       column.dataType,
       column.isNullable
     )
-    mainInterface += `  ${fieldName}: ${fieldType}\n`
-  }
+    return `  ${toCamelCase(column.name)}: ${fieldType}`
+  })
 
-  mainInterface += '}\n'
-
-  let tableInterface = `export interface ${tableInterfaceName} {\n`
-
-  for (const column of table.columns) {
-    const fieldName = column.name
+  const generatedColumns = new Set(
+    table.columns.filter(column => isGeneratedColumn(column)).map(column => column.name)
+  )
+  const tableFields = table.columns.map(column => {
     let fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(column.dataType, column.isNullable)
-
-    if (column.isPrimaryKey && column.defaultValue) {
-      fieldType = `Generated<${fieldType}>`
-    } else if (
-      column.defaultValue &&
-      column.defaultValue.toLowerCase().includes('current_timestamp')
-    ) {
+    if (generatedColumns.has(column.name)) {
       fieldType = `Generated<${fieldType}>`
     }
+    return `  ${column.name}: ${fieldType}`
+  })
 
-    tableInterface += `  ${fieldName}: ${fieldType}\n`
-  }
-
-  tableInterface += '}\n'
-
-  let newInterface = `export interface New${interfaceName} {\n`
-
-  for (const column of table.columns) {
-    const fieldName = toCamelCase(column.name)
-
-    if (column.isPrimaryKey && column.defaultValue) continue
-    if (column.defaultValue && column.defaultValue.toLowerCase().includes('current_timestamp'))
-      continue
-
-    let fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(column.dataType, column.isNullable)
-
-    if (column.isNullable || column.defaultValue) {
-      newInterface += `  ${fieldName}?: ${fieldType}\n`
-    } else {
-      newInterface += `  ${fieldName}: ${fieldType}\n`
-    }
-  }
-
-  newInterface += '}\n'
-
-  let updateInterface = `export interface ${interfaceName}Update {\n`
-
-  for (const column of table.columns) {
-    const fieldName = toCamelCase(column.name)
-
-    if (column.isPrimaryKey) continue
-    if (['created_at', 'updated_at', 'deleted_at'].includes(column.name)) continue
-
-    const fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(
-      column.dataType,
-      column.isNullable
+  const newFields = table.columns
+    .filter(
+      column =>
+        !column.isAutoIncrement && !(column.isPrimaryKey && column.defaultValue !== undefined)
     )
-    updateInterface += `  ${fieldName}?: ${fieldType}\n`
-  }
+    .map(column => {
+      const optional = column.isNullable || column.defaultValue !== undefined ? '?' : ''
+      const fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(
+        column.dataType,
+        column.isNullable
+      )
+      return `  ${toCamelCase(column.name)}${optional}: ${fieldType}`
+    })
 
-  updateInterface += '}\n'
+  const updateFields = table.columns
+    .filter(
+      column =>
+        !column.isPrimaryKey && !['created_at', 'updated_at', 'deleted_at'].includes(column.name)
+    )
+    .map(column => {
+      const fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(
+        column.dataType,
+        column.isNullable
+      )
+      return `  ${toCamelCase(column.name)}?: ${fieldType}`
+    })
 
-  const databaseAddition = `// Add this to your Database interface:\n// ${table.name}: ${tableInterfaceName}`
+  const importSection =
+    generatedColumns.size > 0 ? `import type { Generated } from 'kysely'\n\n` : ''
 
-  return `${imports.join('\n')}
+  return `${importSection}export interface ${interfaceName} {
+${mainFields.join('\n')}
+}
 
-${mainInterface}
+export interface ${tableInterfaceName} {
+${tableFields.join('\n')}
+}
 
-${tableInterface}
+export interface New${interfaceName} {
+${newFields.join('\n')}
+}
 
-${newInterface}
+export interface ${interfaceName}Update {
+${updateFields.join('\n')}
+}
 
-${updateInterface}
-
-${databaseAddition}
+// Register this table in your Database interface, or run
+// \`kysera generate database\` to emit the full schema file:
+// ${table.name}: ${tableInterfaceName}
 `
 }

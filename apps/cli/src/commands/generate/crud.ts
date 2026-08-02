@@ -69,12 +69,12 @@ async function generateCrud(tableName: string, options: CrudOptions): Promise<vo
         `Introspecting table '${tableName}'${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
       )
 
-      const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
+      const introspector = new DatabaseIntrospector(db, config.database.dialect, schema)
 
       let tableInfo: TableInfo
       try {
         tableInfo = await introspector.getTableInfo(tableName)
-      } catch (error) {
+      } catch {
         generateSpinner.fail(`Table '${tableName}' not found`)
         throw new CLIError(
           `Table '${tableName}' does not exist in the database`,
@@ -85,12 +85,16 @@ async function generateCrud(tableName: string, options: CrudOptions): Promise<vo
 
       generateSpinner.succeed(`Found table '${tableName}' with ${tableInfo.columns.length} columns`)
 
-      const outputDir = options.outputDir || './src'
+      const outputDir = options.outputDir ?? './src'
 
       // Validate output directory to prevent path traversal
       validatePath(outputDir)
 
-      const filesToGenerate = [
+      const filesToGenerate: {
+        type: string
+        path: string
+        generator: (table: TableInfo, generatorOptions: CrudGeneratorOptions) => string
+      }[] = [
         {
           type: 'Model',
           path: join(outputDir, 'models', `${toKebabCase(tableName)}.ts`),
@@ -195,13 +199,27 @@ export * from './schemas/${toKebabCase(tableName)}.schema.js'
   )
 }
 
-function generateModelCode(table: TableInfo, options: any): string {
+interface CrudGeneratorOptions {
+  withValidation: boolean
+  withPagination: boolean
+  withSoftDelete: boolean
+  withTimestamps: boolean
+}
+
+/**
+ * The database fills this column in when an insert omits it, so the Kysely
+ * table interface must mark it `Generated<...>`.
+ */
+function isGeneratedColumn(col: { isAutoIncrement: boolean; defaultValue?: string }): boolean {
+  return col.isAutoIncrement || col.defaultValue !== undefined
+}
+
+function generateModelCode(table: TableInfo, _options: CrudGeneratorOptions): string {
   const entityName = toPascalCase(table.name)
   const tableInterfaceName = `${entityName}Table`
+  const usesGenerated = table.columns.some(col => isGeneratedColumn(col))
 
-  let code = `import type { Generated } from 'kysely'
-
-export interface ${entityName} {
+  const code = `${usesGenerated ? `import type { Generated } from 'kysely'\n\n` : ''}export interface ${entityName} {
 ${table.columns.map(col => `  ${toCamelCase(col.name)}: ${DatabaseIntrospector.mapDataTypeToTypeScript(col.dataType, col.isNullable)}`).join('\n')}
 }
 
@@ -209,7 +227,7 @@ export interface ${tableInterfaceName} {
 ${table.columns
   .map(col => {
     let type = DatabaseIntrospector.mapDataTypeToTypeScript(col.dataType, col.isNullable)
-    if (col.isPrimaryKey && col.defaultValue) {
+    if (isGeneratedColumn(col)) {
       type = `Generated<${type}>`
     }
     return `  ${col.name}: ${type}`
@@ -219,9 +237,9 @@ ${table.columns
 
 export interface New${entityName} {
 ${table.columns
-  .filter(col => !(col.isPrimaryKey && col.defaultValue))
+  .filter(col => !col.isAutoIncrement && !(col.isPrimaryKey && col.defaultValue !== undefined))
   .map(col => {
-    const optional = col.isNullable || col.defaultValue ? '?' : ''
+    const optional = col.isNullable || col.defaultValue !== undefined ? '?' : ''
     return `  ${toCamelCase(col.name)}${optional}: ${DatabaseIntrospector.mapDataTypeToTypeScript(col.dataType, col.isNullable)}`
   })
   .join('\n')}
@@ -243,13 +261,13 @@ ${table.columns
   return code
 }
 
-function generateRepositoryCode(table: TableInfo, options: any): string {
+function generateRepositoryCode(table: TableInfo, options: CrudGeneratorOptions): string {
   const entityName = toPascalCase(table.name)
   const repositoryName = `${entityName}Repository`
   const tableName = table.name
-  const primaryKey = table.primaryKey?.[0] || 'id'
+  const primaryKey = table.primaryKey?.[0] ?? 'id'
 
-  let imports: string[] = [
+  const imports: string[] = [
     `import { Kysely } from 'kysely'`,
     `import type { ${entityName}, New${entityName}, ${entityName}Update } from '../models/${toKebabCase(table.name)}.js'`,
     `import type { Database } from '../database.js'`
@@ -261,7 +279,7 @@ function generateRepositoryCode(table: TableInfo, options: any): string {
     )
   }
 
-  let code = `${imports.join('\n')}
+  const code = `${imports.join('\n')}
 
 export class ${repositoryName} {
   constructor(private db: Kysely<Database>) {}
@@ -331,10 +349,10 @@ export const ${toCamelCase(table.name)}Repository = (db: Kysely<Database>) => ne
   return code
 }
 
-function generateSchemaCode(table: TableInfo, options: any): string {
+function generateSchemaCode(table: TableInfo, _options: CrudGeneratorOptions): string {
   const entityName = toPascalCase(table.name)
 
-  let code = `import { z } from 'zod'
+  const code = `import { z } from 'zod'
 
 export const ${entityName}Schema = z.object({
 ${table.columns.map(col => `  ${toCamelCase(col.name)}: ${DatabaseIntrospector.mapDataTypeToZod(col.dataType, col.isNullable)}`).join(',\n')}
