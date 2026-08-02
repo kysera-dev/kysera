@@ -490,11 +490,18 @@ export class ErrorHandler {
 
     // Handle command errors
     program.exitOverride(err => {
-      if (err.code === 'commander.help' || err.code === 'commander.version') {
+      // commander emits helpDisplayed for --help since v12; keep the legacy
+      // 'commander.help' too. exitCode must pass through 0 (`|| 1` coerced
+      // successful help/version exits into failures, breaking CI scripts).
+      if (
+        err.code === 'commander.help' ||
+        err.code === 'commander.helpDisplayed' ||
+        err.code === 'commander.version'
+      ) {
         process.exit(0)
       }
       handler.setContext({ operation: 'Command Error' })
-      handler.handle(err, err.exitCode || 1)
+      handler.handle(err, err.exitCode ?? 1)
     })
   }
 }
