@@ -1,12 +1,19 @@
 /* ============================================================================
- * Landing page. Theme-aware via Infima vars + [data-theme='dark'] overrides
- * (attribute selectors stay global in CSS modules; only classes are hashed).
+ * Landing page.
+ *
+ * Vertical rhythm contract (every section obeys it):
+ *   section padding: 4.5rem top/bottom (3rem on small screens)
+ *   title → 0.75rem → lead → 2.5rem → content
+ * Column/grid contract: every cell stretches to the row height; code panels
+ * fill their column (flex chain down to <pre>), so no column ends early.
+ * Theme-aware via Infima vars + [data-theme='dark'] overrides (attribute
+ * selectors stay global in CSS modules; only classes are hashed).
  * ========================================================================== */
 
 /* ---- Hero ---------------------------------------------------------------- */
 
 .hero {
-  padding: 4.5rem 0 4rem;
+  padding: 4.5rem 0;
   background:
     radial-gradient(ellipse 80% 60% at 70% -10%, rgba(13, 148, 136, 0.18), transparent),
     radial-gradient(ellipse 60% 50% at 10% 110%, rgba(13, 148, 136, 0.1), transparent);
@@ -41,6 +48,7 @@
   border: 1px solid var(--ifm-color-primary);
   color: var(--ifm-color-primary);
   background: transparent;
+  line-height: 1.4;
 }
 
 .heroTitle {
@@ -82,6 +90,8 @@
 
 .heroCode {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .heroCode :global(.theme-code-block) {
@@ -107,17 +117,20 @@
 /* ---- Positioning --------------------------------------------------------- */
 
 .positioning {
-  padding: 4rem 0;
+  padding: 4.5rem 0;
 }
 
 .positionGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
   gap: 1.5rem;
-  margin-top: 2rem;
+  margin-top: 2.5rem;
 }
 
 .positionCard {
+  display: flex;
+  flex-direction: column;
   padding: 1.5rem;
   border-radius: 12px;
   border: 1px solid var(--ifm-color-emphasis-200);
@@ -138,18 +151,40 @@
 /* ---- Patterns ------------------------------------------------------------ */
 
 .patterns {
-  padding: 4rem 0;
+  padding: 4.5rem 0;
   background: var(--ifm-background-surface-color);
 }
 
 .patternGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
   gap: 1.5rem;
 }
 
+/* Code panel fills the column: flex chain down to the <pre>, so both
+ * columns end on the same line even when snippets differ in length. */
 .patternCol {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.patternCol :global(.theme-code-block) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+
+.patternCol :global(.theme-code-block > div) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.patternCol :global(.theme-code-block pre) {
+  flex: 1;
 }
 
 .patternLabel {
@@ -163,24 +198,26 @@
 
 .patternFooter {
   text-align: center;
-  margin: 1.5rem auto 0;
+  margin: 2rem auto 0;
   color: var(--ifm-color-emphasis-700);
 }
 
 /* ---- Plugins ------------------------------------------------------------- */
 
 .plugins {
-  padding: 4rem 0;
+  padding: 4.5rem 0;
 }
 
 .pluginGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
   gap: 1.25rem;
 }
 
 .pluginCard {
-  display: block;
+  display: flex;
+  flex-direction: column;
   padding: 1.25rem;
   border-radius: 12px;
   border: 1px solid var(--ifm-color-emphasis-200);
@@ -189,14 +226,14 @@
   text-decoration: none;
   transition:
     border-color 0.15s ease,
-    transform 0.15s ease;
+    box-shadow 0.15s ease;
 }
 
 .pluginCard:hover {
   border-color: var(--ifm-color-primary);
+  box-shadow: var(--ifm-global-shadow-lw);
   color: inherit;
   text-decoration: none;
-  transform: translateY(-2px);
 }
 
 .pluginHead {
@@ -215,6 +252,7 @@
   font-size: 0.75rem;
   color: var(--ifm-color-emphasis-600);
   font-family: var(--ifm-font-family-monospace);
+  white-space: nowrap;
 }
 
 .pluginCard p {
@@ -226,18 +264,20 @@
 /* ---- Toolkit ------------------------------------------------------------- */
 
 .toolkit {
-  padding: 4rem 0;
+  padding: 4.5rem 0;
   background: var(--ifm-background-surface-color);
 }
 
 .toolkitGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
   gap: 1.25rem;
 }
 
 .toolkitCard {
-  display: block;
+  display: flex;
+  flex-direction: column;
   padding: 1.25rem 1.5rem;
   border-radius: 12px;
   border: 1px solid var(--ifm-color-emphasis-200);
@@ -246,14 +286,14 @@
   text-decoration: none;
   transition:
     border-color 0.15s ease,
-    transform 0.15s ease;
+    box-shadow 0.15s ease;
 }
 
 .toolkitCard:hover {
   border-color: var(--ifm-color-primary);
+  box-shadow: var(--ifm-global-shadow-lw);
   color: inherit;
   text-decoration: none;
-  transform: translateY(-2px);
 }
 
 .toolkitCard h3 {
@@ -270,7 +310,7 @@
 /* ---- Stats ---------------------------------------------------------------- */
 
 .stats {
-  padding: 3.5rem 0;
+  padding: 4.5rem 0;
   background: linear-gradient(120deg, var(--ifm-color-primary-darkest), var(--ifm-color-primary));
   color: #fff;
 }
@@ -278,8 +318,15 @@
 .statsGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
   gap: 2rem;
   text-align: center;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .statValue {
@@ -287,16 +334,18 @@
   font-weight: 700;
   line-height: 1;
   margin-bottom: 0.5rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .statLabel {
   font-size: 0.9rem;
   opacity: 0.92;
+  max-width: 14rem;
 }
 
 .statsFootnote {
   text-align: center;
-  margin: 2rem auto 0;
+  margin: 2.5rem auto 0;
   max-width: 40rem;
   font-size: 0.85rem;
   opacity: 0.85;
@@ -305,15 +354,47 @@
 /* ---- Quick start ----------------------------------------------------------- */
 
 .quickStart {
-  padding: 4rem 0;
+  padding: 4.5rem 0;
 }
 
-.quickStartGrid {
+/* Two equal command panels side by side, then the full-width usage block —
+ * no tall/short column pairing, so no dead space. */
+.quickStartTop {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
   gap: 2rem;
+}
+
+.quickStartCol {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.quickStartCol :global(.theme-code-block) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+
+.quickStartCol :global(.theme-code-block > div) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.quickStartCol :global(.theme-code-block pre) {
+  flex: 1;
+}
+
+.quickStartUse {
   margin-top: 2rem;
-  align-items: start;
+}
+
+.quickStartUse :global(.theme-code-block) {
+  margin-bottom: 0;
 }
 
 .quickStartLabel {
@@ -322,22 +403,20 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--ifm-color-primary);
-  margin: 1.25rem 0 0.6rem;
-}
-
-.quickStartLabel:first-child {
-  margin-top: 0;
+  margin: 0 0 0.6rem;
 }
 
 .quickStartNote {
   font-size: 0.88rem;
   color: var(--ifm-color-emphasis-700);
+  margin: 0.75rem 0 0;
+  min-height: 2.6em;
 }
 
 /* ---- Final CTA ------------------------------------------------------------- */
 
 .finalCta {
-  padding: 4rem 0 5rem;
+  padding: 4.5rem 0;
   text-align: center;
 }
 
@@ -367,7 +446,7 @@
   }
 
   .patternGrid,
-  .quickStartGrid {
+  .quickStartTop {
     grid-template-columns: 1fr;
   }
 
@@ -375,11 +454,22 @@
   .statsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .quickStartNote {
+    min-height: 0;
+  }
 }
 
 @media screen and (max-width: 576px) {
-  .hero {
-    padding: 3rem 0 2.5rem;
+  .hero,
+  .positioning,
+  .patterns,
+  .plugins,
+  .toolkit,
+  .stats,
+  .quickStart,
+  .finalCta {
+    padding: 3rem 0;
   }
 
   .heroTitle {

@@ -145,25 +145,29 @@ const users = orm.createRepository(exec =>
 )
 
 const user = await users.create({
-  email: 'ada@example.com', name: 'Ada'
+  email: 'ada@example.com',
+  name: 'Ada',
 })
-await users.softDelete(user.id)  // added by the plugin
-await users.findAll()            // deleted rows filtered`
+await users.softDelete(user.id) // added by the plugin
+await users.findAll()           // deleted rows filtered`
 
 const dalCode = `import {
   createQuery, createContext, withTransaction
 } from '@kysera/dal'
 
 const activeUsers = createQuery((ctx: DbContext<DB>) =>
-  ctx.db.selectFrom('users').selectAll().execute()
+  ctx.db
+    .selectFrom('users')
+    .selectAll()
+    .execute()
 )
 
 const ctx = createContext(executor)
-await activeUsers(ctx)  // soft-delete filter applied
+await activeUsers(ctx) // soft-delete filter applied
 
 await withTransaction(executor, async tx => {
   await activeUsers(tx) // plugins survive transactions
-})                      // nested calls become savepoints`
+})                      // nested calls → savepoints`
 
 function Patterns() {
   return (
@@ -350,7 +354,11 @@ function Stats() {
  * Quick start
  * ------------------------------------------------------------------------- */
 
-const installCode = `npm install kysely @kysera/executor @kysera/repository @kysera/soft-delete zod`
+const installCode = `npm install kysely zod
+npm install @kysera/executor @kysera/repository @kysera/soft-delete`
+
+const scaffoldCode = `npx @kysera/cli init my-app
+npx @kysera/cli doctor`
 
 const quickStartCode = `import { Kysely, PostgresDialect } from 'kysely'
 import { createExecutor } from '@kysera/executor'
@@ -390,21 +398,31 @@ function QuickStart() {
         <Heading as="h2" className={styles.sectionTitle}>
           Up and running in a minute
         </Heading>
-        <div className={styles.quickStartGrid}>
-          <div>
+        <p className={styles.sectionLead}>
+          Add the packages to an existing project, or let the CLI scaffold one — config,
+          migrations, and a health check included.
+        </p>
+        <div className={styles.quickStartTop}>
+          <div className={styles.quickStartCol}>
             <h3 className={styles.quickStartLabel}>Install</h3>
             <CodeBlock language="bash">{installCode}</CodeBlock>
-            <h3 className={styles.quickStartLabel}>Or scaffold a project</h3>
-            <CodeBlock language="bash">{`npx @kysera/cli init my-app`}</CodeBlock>
             <p className={styles.quickStartNote}>
-              The CLI sets up config, migrations, and a health check — then{' '}
-              <code>kysera doctor</code> verifies the whole environment in one shot.
+              ESM-only, Node 22+. Zod is optional — bring Valibot or TypeBox instead, or skip
+              validation entirely.
             </p>
           </div>
-          <div>
-            <h3 className={styles.quickStartLabel}>Use</h3>
-            <CodeBlock language="typescript">{quickStartCode}</CodeBlock>
+          <div className={styles.quickStartCol}>
+            <h3 className={styles.quickStartLabel}>Or scaffold a project</h3>
+            <CodeBlock language="bash">{scaffoldCode}</CodeBlock>
+            <p className={styles.quickStartNote}>
+              <code>init</code> sets up config and migrations; <code>doctor</code> verifies the
+              whole environment in one shot.
+            </p>
           </div>
+        </div>
+        <div className={styles.quickStartUse}>
+          <h3 className={styles.quickStartLabel}>Use</h3>
+          <CodeBlock language="typescript">{quickStartCode}</CodeBlock>
         </div>
       </div>
     </section>

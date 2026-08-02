@@ -245,7 +245,7 @@ const config: Config = {
           ]
         }
       ],
-      copyright: `Copyright ${new Date().getFullYear()} Kysera. Built with Docusaurus.`
+      copyright: `Copyright ${new Date().getFullYear()} Kysera`
     },
     prism: {
       theme: prismThemes.github,
