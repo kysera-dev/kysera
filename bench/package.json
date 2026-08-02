@@ -1,0 +1,34 @@
+{
+  "name": "@kysera/bench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Micro-benchmarks measuring Kysera's overhead over raw Kysely (in-memory SQLite)",
+  "scripts": {
+    "bench": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0"
+  },
+  "devDependencies": {
+    "@kysera/audit": "workspace:*",
+    "@kysera/core": "workspace:*",
+    "@kysera/dal": "workspace:*",
+    "@kysera/executor": "workspace:*",
+    "@kysera/repository": "workspace:*",
+    "@kysera/rls": "workspace:*",
+    "@kysera/soft-delete": "workspace:*",
+    "@kysera/timestamps": "workspace:*",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.1.2",
+    "better-sqlite3": "^13.0.2",
+    "eslint": "^10.8.0",
+    "kysely": "^0.29.4",
+    "tinybench": "6.1.2",
+    "tsx": "^4.23.1",
+    "typescript": "^6.0.3",
+    "zod": "^4.4.3"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

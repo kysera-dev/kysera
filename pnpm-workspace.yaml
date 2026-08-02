@@ -3,6 +3,7 @@ packages:
   - apps/*
   - examples/*
   - website
+  - bench
 
 onlyBuiltDependencies:
   - better-sqlite3

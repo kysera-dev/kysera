@@ -1,0 +1,54 @@
+# Non-gating benchmark run: manual dispatch + weekly cron only. Deliberately
+# not wired into PR checks — the numbers are informational (relative overhead
+# indicators, see bench/README.md), not a merge gate.
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays 05:17 UTC — off-peak, avoids top-of-hour cron congestion
+    - cron: '17 5 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    name: Run benchmark suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Run benchmarks
+        run: pnpm bench
+
+      - name: Publish results to job summary
+        run: cat bench/RESULTS.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload RESULTS.md artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: bench-results
+          path: bench/RESULTS.md
+          if-no-files-found: error
