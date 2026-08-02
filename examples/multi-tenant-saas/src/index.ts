@@ -76,6 +76,10 @@ async function main() {
 
   console.log('\n📋 Automatic Tenant Isolation Demo')
 
+  // Captured at creation time so the later CRUD demo operates on the row
+  // created THIS run (emails are unique per run for idempotent re-runs)
+  let demoUserEmail = ''
+
   // ============================================================================
   // Tenant 1 Operations (Acme Corporation)
   // ============================================================================
@@ -101,6 +105,7 @@ async function main() {
         name: 'Eve Engineer',
         role: 'member'
       })
+      demoUserEmail = tenant1User.email
       console.log('Created user in Tenant 1:', {
         id: tenant1User.id,
         name: tenant1User.name,
@@ -211,8 +216,8 @@ async function main() {
     async () => {
       const userRepo = createRepo()
 
-      // Find user by email
-      const user = await userRepo.findByEmail('eve@acme.com')
+      // Find the user created earlier this run by its captured email
+      const user = await userRepo.findByEmail(demoUserEmail)
       if (user) {
         console.log('Found user:', user.name)
 
