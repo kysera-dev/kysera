@@ -124,6 +124,7 @@ const executor = await createExecutor(db, [
 The `skipTables` option is no longer available in the RLS plugin configuration.
 
 **Before (v0.7.x with deprecation warning):**
+<!-- doc-snippet: skip -->
 ```typescript
 import { rlsPlugin } from '@kysera/rls'
 
@@ -164,6 +165,7 @@ grep -r "skipTables" --include="*.ts" --include="*.js"
 The `DatabaseDialect` type alias has been removed. Use `Dialect` from `@kysera/core` instead.
 
 **Before (v0.7.x with deprecation notice):**
+<!-- doc-snippet: skip -->
 ```typescript
 import { DatabaseDialect } from '@kysera/dialects'  // ❌ Removed in v0.8
 import { DatabaseDialect } from '@kysera/testing'   // ❌ Removed in v0.8
@@ -174,6 +176,7 @@ function query(dialect: DatabaseDialect) {
 ```
 
 **After (v0.8.0):**
+<!-- doc-snippet: skip -->
 ```typescript
 import { Dialect } from '@kysera/core'  // ✅ Use this instead
 
@@ -261,6 +264,7 @@ pnpm add zod@latest
 Replace all `skipTables` options with `excludeTables`:
 
 **Before (v0.7.x):**
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { rlsPlugin, filter } from '@kysera/rls'
@@ -283,6 +287,7 @@ const executor = await createExecutor(db, [
 ```
 
 **After (v0.8.0):**
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { rlsPlugin, filter } from '@kysera/rls'
@@ -315,6 +320,7 @@ find . -name "*.ts" -exec sed -i '' 's/skipTables:/excludeTables:/g' {} +
 Replace `DatabaseDialect` with `Dialect`:
 
 **Before (v0.7.x):**
+<!-- doc-snippet: skip -->
 ```typescript
 import { DatabaseDialect } from '@kysera/dialects'
 import type { DatabaseDialect as TestDialect } from '@kysera/testing'
@@ -392,6 +398,7 @@ turbo typecheck
 If your tests reference deprecated APIs, update them:
 
 **Before (v0.7.x):**
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { rlsPlugin, filter } from '@kysera/rls'
@@ -463,6 +470,7 @@ If you maintain internal documentation or code examples:
 Here's a full example showing all changes together:
 
 **Before (v0.7.x):**
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
@@ -502,6 +510,7 @@ async function setupDatabase() {
 ```
 
 **After (v0.8.0):**
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
@@ -617,6 +626,7 @@ Did you mean 'excludeTables'?
 
 **Solution:** Replace with `excludeTables`:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Before
 rlsPlugin({ schema, skipTables: ['logs'] })
@@ -636,6 +646,7 @@ Cannot find name 'DatabaseDialect'. Did you mean 'Dialect'?
 
 **Solution:** Import `Dialect` instead:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Before
 import type { DatabaseDialect } from '@kysera/dialects'

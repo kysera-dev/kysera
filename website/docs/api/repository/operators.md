@@ -12,6 +12,7 @@ Kysera Repository provides MongoDB-style query operators for type-safe, expressi
 
 Instead of writing raw SQL conditions, you can use intuitive operators:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Without operators (simple equality only)
 const users = await repo.find({ where: { status: 'active' } })
@@ -718,6 +719,7 @@ validateOperators({ age: { $gte: 18, $invalid: 5 } })  // throws InvalidOperator
 
 ### 1. Use Type-Safe Operators
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Type-safe where clause
 const where: WhereClause<User> = {
@@ -728,6 +730,7 @@ const where: WhereClause<User> = {
 
 ### 2. Prefer Specific Operators Over Raw LIKE
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Good: Clear intent
 const results = await repo.find({
@@ -742,6 +745,7 @@ const results = await repo.find({
 
 ### 3. Use Column Selection for Performance
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Good: Only fetch needed columns
 const ids = await repo.find({

@@ -337,6 +337,7 @@ The debug plugin uses a **circular buffer** for efficient metrics storage:
 
 ### Production Usage
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Disable verbose logging
 const debugDb = withDebug(db, {

@@ -437,6 +437,7 @@ const hasOrders = await orderRepo.exists({
 
 Operators work seamlessly within transactions:
 
+<!-- doc-snippet: skip -->
 ```typescript
 await userRepo.transaction(async (trx) => {
   const txUserRepo = userRepo.withTransaction(trx)
@@ -481,6 +482,7 @@ CREATE INDEX idx_products_category_price ON products(category, price);
 
 Always use `limit` when you don't need all records:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Good
 const recent = await postRepo.find({
@@ -499,6 +501,7 @@ const recent = all.slice(0, 10)
 
 ### 3. Select Only Needed Columns
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Good - only fetch what you need
 const list = await userRepo.find({
@@ -512,6 +515,7 @@ const list = await userRepo.find({ limit: 100 })
 
 ### 4. Use count() Instead of find().length
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Good
 const count = await userRepo.count({

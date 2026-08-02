@@ -40,14 +40,14 @@ import { createQuery } from '@kysera/dal'
 
 const executor = await createExecutor(db, [softDeletePlugin()])
 const getUsers = createQuery(
-  ctx => ctx.db.selectFrom('users').selectAll().execute() // Soft-delete filter applied!
+  (ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute() // Soft-delete filter applied!
 )
 await getUsers(executor)
 
 // DAL: Pure functional queries, no plugins
 import { sql } from 'kysely'
 
-const getAnalytics = createQuery((ctx, userId: number) =>
+const getAnalytics = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db
     .selectFrom('events')
     .select([sql`count(*)`.as('total')])
@@ -66,6 +66,7 @@ You can mix both patterns using the **CQRS-lite** pattern via `orm.transaction()
 
 Repositories should focus on data access only:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Good: Data access only
 const user = await userRepo.findById(userId)
@@ -76,6 +77,7 @@ const user = await userRepo.findByIdWithValidationAndNotifications(userId)
 
 ### Use Factory Pattern
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Good: Factory pattern with DI
 const createRepos = createRepositoriesFactory({
@@ -114,6 +116,7 @@ const schemas = {
 
 ### Always Use Transactions for Related Operations
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Good: Atomic operations
 await db.transaction().execute(async (trx) => {
@@ -165,7 +168,7 @@ app.post('/users', async (req, res) => {
     const user = await userRepo.create(req.body) // Unvalidated!
     res.json(user)
   } catch (error) {
-    res.status(500).json({ error: error.message })
+    res.status(500).json({ error: String(error) })
   }
 })
 ```
@@ -191,6 +194,7 @@ The `KYSERA_VALIDATION_MODE` environment variable (`always` / `never` / `develop
 
 ### Use Typed Errors
 
+<!-- doc-snippet: skip -->
 ```typescript
 import {
   UniqueConstraintError,
@@ -298,6 +302,7 @@ async function createAppExecutor(db: Kysely<Database>) {
 
 ### Use Cursor Pagination for Large Datasets
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Good: Cursor pagination for large datasets
 const result = await paginateCursor(query, {
@@ -421,6 +426,7 @@ const debugDb = withDebug(db, {
 
 ### Select Only Needed Columns
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Good: Select only needed columns
 const users = await db.selectFrom('users').select(['id', 'name']).execute()
@@ -448,6 +454,7 @@ const createUserSchema = z.object({
 
 Kysera (via Kysely) automatically uses parameterized queries to prevent SQL injection:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { sql } from 'kysely'
 
@@ -532,6 +539,7 @@ logger.info('User data', safeData)
 
 ### Use Transaction-Based Tests
 
+<!-- doc-snippet: skip -->
 ```typescript
 it('creates user', async () => {
   await testInTransaction(db, async (trx) => {

@@ -136,6 +136,7 @@ const executor = await createExecutor(db, [
 
 ### 4. Option A: Repository Pattern
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createORM, createRepositoryFactory, zodAdapter } from '@kysera/repository'
 import { z } from 'zod'
@@ -165,19 +166,20 @@ const userRepo = orm.createRepository(exec => {
 
 ### 4. Option B: Functional DAL Pattern
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createQuery, createContext } from '@kysera/dal'
 
 // Define queries with type inference
-const getUser = createQuery((ctx, id: number) =>
+const getUser = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('users').where('id', '=', id).selectAll().executeTakeFirst()
 )
 
-const listUsers = createQuery((ctx, limit = 10) =>
+const listUsers = createQuery((ctx: DbContext<Database>, limit = 10) =>
   ctx.db.selectFrom('users').selectAll().limit(limit).execute()
 )
 
-const createUser = createQuery((ctx, data: { email: string; name: string }) =>
+const createUser = createQuery((ctx: DbContext<Database>, data: { email: string; name: string }) =>
   ctx.db.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
 )
 
@@ -300,6 +302,7 @@ await withTransaction(executor, async (txCtx) => {
 
 Plugins work with both Repository and DAL patterns through the Unified Execution Layer:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -431,6 +434,7 @@ const nextPage = await paginateCursor(db.selectFrom('users').selectAll(), {
 
 Combine both patterns for commands and queries:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createORM } from '@kysera/repository'
 import { createQuery, createContext } from '@kysera/dal'
@@ -445,7 +449,7 @@ const executor = await createExecutor(db, [
 const orm = await createORM(executor, [])
 
 // Define complex read queries with DAL
-const getDashboardStats = createQuery((ctx, userId: number) =>
+const getDashboardStats = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db
     .selectFrom('users')
     .leftJoin('posts', 'users.id', 'posts.user_id')

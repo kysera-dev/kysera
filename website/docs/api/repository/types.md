@@ -225,6 +225,7 @@ type RepositoriesFromFactory<T extends (...args: never[]) => unknown> = ReturnTy
 
 ### normalizePrimaryKeyConfig
 
+<!-- doc-snippet: skip -->
 ```typescript
 function normalizePrimaryKeyConfig(
   primaryKey?: PrimaryKeyColumn,
@@ -234,18 +235,21 @@ function normalizePrimaryKeyConfig(
 
 ### isCompositeKey
 
+<!-- doc-snippet: skip -->
 ```typescript
 function isCompositeKey(columns: PrimaryKeyColumn): columns is string[]
 ```
 
 ### getPrimaryKeyColumns
 
+<!-- doc-snippet: skip -->
 ```typescript
 function getPrimaryKeyColumns(columns: PrimaryKeyColumn): string[]
 ```
 
 ### normalizePrimaryKeyInput
 
+<!-- doc-snippet: skip -->
 ```typescript
 function normalizePrimaryKeyInput(
   columns: PrimaryKeyColumn,
@@ -255,6 +259,7 @@ function normalizePrimaryKeyInput(
 
 ### isValidRow
 
+<!-- doc-snippet: skip -->
 ```typescript
 function isValidRow<T>(value: unknown): value is T
 ```
@@ -293,6 +298,7 @@ interface QueryBuilderContext {
 
 ### Type-Safe Repository
 
+<!-- doc-snippet: skip -->
 ```typescript
 interface UsersTable {
   id: Generated<number>

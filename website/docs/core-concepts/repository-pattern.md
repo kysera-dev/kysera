@@ -15,6 +15,7 @@ Kysera's repository pattern provides a clean abstraction over database operation
 
 The recommended approach - `createORM` internally uses `createExecutor()` for plugin support:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -225,6 +226,7 @@ const result = await userRepo.paginateCursor({
 
 Create multiple repositories with shared plugins:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import type { Transaction } from 'kysely'
 import { createORM } from '@kysera/repository'
@@ -265,6 +267,7 @@ Repositories created with `orm.createRepository()` stay bound to the base execut
 
 For simpler use cases without plugins:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createRepositoriesFactory } from '@kysera/repository'
 
@@ -320,6 +323,7 @@ const accountRepo = factory.create({
 
 Transform database rows to domain entities:
 
+<!-- doc-snippet: skip -->
 ```typescript
 interface UserRow {
   id: Generated<number>
@@ -354,6 +358,7 @@ Repositories work seamlessly with transactions:
 
 ### With createORM (Recommended)
 
+<!-- doc-snippet: skip -->
 ```typescript
 import type { Transaction } from 'kysely'
 import { createORM } from '@kysera/repository'
@@ -387,6 +392,7 @@ await orm.transaction(async (ctx) => {
 
 ### Without createORM (Repository Factory)
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Method 1: Using repository bundles (RECOMMENDED)
 await db.transaction().execute(async (trx) => {
@@ -422,6 +428,7 @@ await userRepo.transaction(async (trx) => {
 
 Repositories should focus on data access only:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Good - data access only
 const user = await userRepo.findById(userId)

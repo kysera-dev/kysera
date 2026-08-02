@@ -45,7 +45,7 @@ import { getAdapter } from '@kysera/dialects'
 import { Kysely, PostgresDialect } from 'kysely'
 import { Pool } from 'pg'
 
-const db = new Kysely({
+const db = new Kysely<Database>({
   dialect: new PostgresDialect({
     pool: new Pool({
       /* ... */
@@ -276,6 +276,7 @@ await adapter.getTables(db, { schema: `tenant_${tenantId}` })
 
 Get a singleton adapter instance for the specified dialect.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function getAdapter(dialect: Dialect): DialectAdapter
 
@@ -291,6 +292,7 @@ console.log(adapter.defaultSchema)      // 'public'
 
 Create a new adapter instance with custom options.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function createDialectAdapter(dialect: Dialect, options?: DialectAdapterOptions): DialectAdapter
 
@@ -303,6 +305,7 @@ console.log(adapter.defaultSchema)  // 'auth'
 
 Register a custom dialect adapter, replacing the default instance.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function registerAdapter(adapter: DialectAdapter): void
 
@@ -333,6 +336,7 @@ const adapter = createDialectAdapter(config.dialect, config.options)
 
 Parse database connection URL into configuration object.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function parseConnectionUrl(url: string): ConnectionConfig
 
@@ -348,6 +352,7 @@ const config2 = parseConnectionUrl('mysql://localhost/testdb')
 
 Build connection URL from configuration object.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function buildConnectionUrl(dialect: Dialect, config: ConnectionConfig): string
 
@@ -383,6 +388,7 @@ Utilities for managing schema-per-tenant multi-tenancy patterns.
 
 Generates a tenant schema name from a tenant ID.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function getTenantSchemaName(tenantId: string, config?: TenantSchemaConfig): string
 
@@ -398,6 +404,7 @@ getTenantSchemaName('corp', { prefix: 'org_' })   // 'org_corp'
 
 Extracts tenant ID from a tenant schema name.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function parseTenantSchemaName(schemaName: string, config?: TenantSchemaConfig): string | null
 
@@ -412,6 +419,7 @@ parseTenantSchemaName('org_corp', { prefix: 'org_' })     // 'corp'
 
 Checks if a schema name matches the tenant schema pattern.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function isTenantSchema(schemaName: string, config?: TenantSchemaConfig): boolean
 
@@ -425,6 +433,7 @@ isTenantSchema('org_corp', { prefix: 'org_' })     // true
 
 Filters an array of schema names to only tenant schemas.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function filterTenantSchemas(schemas: string[], config?: TenantSchemaConfig): string[]
 
@@ -437,6 +446,7 @@ filterTenantSchemas(['public', 'tenant_1', 'tenant_2', 'auth'])
 
 Extracts tenant IDs from an array of schema names.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function extractTenantIds(schemas: string[], config?: TenantSchemaConfig): string[]
 
@@ -464,6 +474,7 @@ Utilities for detecting and handling database constraint errors.
 
 Extracts and normalizes error information from a database error.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function extractErrorInfo(error: unknown): ExtractedErrorInfo
 
@@ -494,6 +505,7 @@ interface ExtractedErrorInfo {
 
 Creates a custom error matcher function.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function createErrorMatcher(config: ErrorMatcherConfig): (error: unknown) => boolean
 
@@ -522,6 +534,7 @@ interface ErrorMatcherConfig {
 
 Pre-built error matchers for all dialects:
 
+<!-- doc-snippet: skip -->
 ```typescript
 const errorMatchers = {
   postgres: {
@@ -570,6 +583,7 @@ try {
 
 Resolves schema name with validation.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function resolveSchema(defaultSchema: string, options?: SchemaOptions): string
 
@@ -585,6 +599,7 @@ resolveSchema('public')                      // 'public'
 
 Creates a qualified table name with schema prefix.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function qualifyTableName(
   schema: string,
@@ -604,6 +619,7 @@ qualifyTableName('app', 'users', (id) => `\`${id}\``)
 
 Validates a SQL identifier (table name, column name, schema name).
 
+<!-- doc-snippet: skip -->
 ```typescript
 function validateIdentifier(name: string): boolean
 
@@ -625,6 +641,7 @@ validateIdentifier('')                // false (empty)
 
 Asserts that an identifier is valid, throwing an error if not.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function assertValidIdentifier(name: string, context?: string): void
 
@@ -647,6 +664,7 @@ interface PostgresAdapterOptions extends DialectAdapterOptions {
 
 ### Creating an Adapter
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createPostgresAdapter } from '@kysera/dialects'
 
@@ -867,6 +885,7 @@ In MySQL, "schema" and "database" are synonymous. The `schema` option maps to th
 
 ### Creating an Adapter
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createMySQLAdapter } from '@kysera/dialects'
 
@@ -945,6 +964,7 @@ Supports SQL Server 2017+, Azure SQL Database, and Azure SQL Edge.
 
 ### Creating an Adapter
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createMSSQLAdapter } from '@kysera/dialects'
 
@@ -1203,6 +1223,7 @@ async function monitorDatabase(db: Kysely<any>) {
 
 1. **Use adapters over helper functions:**
 
+   <!-- doc-snippet: skip -->
    ```typescript
    // ✅ Good - single adapter lookup
    const adapter = getAdapter('postgres')
@@ -1235,6 +1256,7 @@ async function monitorDatabase(db: Kysely<any>) {
 
 4. **Use multi-tenant utilities for schema naming:**
 
+   <!-- doc-snippet: skip -->
    ```typescript
    // ✅ Good - consistent naming
    import { getTenantSchemaName } from '@kysera/dialects'
@@ -1284,6 +1306,7 @@ async function monitorDatabase(db: Kysely<any>) {
 
 Works on Node.js >=22, Bun >=1.0, and Deno (experimental):
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Node.js with pg
 import pg from 'pg'

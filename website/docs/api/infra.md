@@ -165,6 +165,7 @@ monitor.destroy() // Alias for stop() with explicit destruction semantics
 
 `getMetrics` aggregates real query statistics from a database wrapped with `withDebug()` from `@kysera/debug`:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { withDebug } from '@kysera/debug'
 import { getMetrics, hasDatabaseMetrics } from '@kysera/infra'
@@ -260,6 +261,7 @@ transactions deadlock — the database aborts one of them and expects the
 callback in a **fresh transaction** per attempt, so aborted attempts leave no
 partial writes and retries see current data:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { withTransactionRetry } from '@kysera/infra'
 
@@ -465,6 +467,7 @@ therefore comes from the **driver's** destroy, not from Kysera:
 The pattern for a clean drain is: **stop intake → await in-flight work →
 shut down the pool**:
 
+<!-- doc-snippet: skip -->
 ```typescript
 process.on('SIGTERM', async () => {
   server.close() // 1. stop intake (no new HTTP requests / job pulls)

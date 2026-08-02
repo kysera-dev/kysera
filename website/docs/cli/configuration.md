@@ -228,6 +228,7 @@ kysera db tables --schema auth
 
 ### MySQL
 
+<!-- doc-snippet: skip -->
 ```typescript
 database: {
   dialect: 'mysql',
@@ -241,6 +242,7 @@ database: {
 
 ### SQLite
 
+<!-- doc-snippet: skip -->
 ```typescript
 database: {
   dialect: 'sqlite',
@@ -250,6 +252,7 @@ database: {
 
 ## Migrations Configuration
 
+<!-- doc-snippet: skip -->
 ```typescript
 migrations: {
   directory: './migrations',        // Migration file location
@@ -273,6 +276,7 @@ migrations: {
 
 ## Code Generation
 
+<!-- doc-snippet: skip -->
 ```typescript
 generate: {
   repositories: './src/repositories', // Repository output directory
@@ -295,6 +299,7 @@ generate: {
 
 ## Testing Configuration
 
+<!-- doc-snippet: skip -->
 ```typescript
 testing: {
   database: '${TEST_DATABASE_URL}', // Optional dedicated test database
@@ -314,6 +319,7 @@ Plugin keys are `softDelete`, `timestamps`, `audit`, and `rls`.
 
 ### Soft Delete
 
+<!-- doc-snippet: skip -->
 ```typescript
 plugins: {
   softDelete: {
@@ -326,6 +332,7 @@ plugins: {
 
 ### Timestamps
 
+<!-- doc-snippet: skip -->
 ```typescript
 plugins: {
   timestamps: {
@@ -339,6 +346,7 @@ plugins: {
 
 ### Audit
 
+<!-- doc-snippet: skip -->
 ```typescript
 plugins: {
   audit: {
@@ -351,6 +359,7 @@ plugins: {
 
 ### Row-Level Security
 
+<!-- doc-snippet: skip -->
 ```typescript
 plugins: {
   rls: {
@@ -364,6 +373,7 @@ plugins: {
 
 ## Logging Configuration
 
+<!-- doc-snippet: skip -->
 ```typescript
 logging: {
   level: 'info',    // debug | info | warn | error
@@ -382,6 +392,7 @@ logging: {
 
 ## Health Configuration
 
+<!-- doc-snippet: skip -->
 ```typescript
 health: {
   enabled: true,
@@ -396,6 +407,7 @@ health: {
 
 Use environment variables for sensitive data — either via `process.env` in a TypeScript config or `${VAR}` interpolation in connection strings:
 
+<!-- doc-snippet: skip -->
 ```typescript
 database: {
   dialect: 'postgres',
@@ -418,6 +430,7 @@ DATABASE_URL=postgres://app:secret@localhost:5432/myapp
 
 ## Multiple Environments
 
+<!-- doc-snippet: skip -->
 ```typescript
 const env = process.env.NODE_ENV || 'development'
 

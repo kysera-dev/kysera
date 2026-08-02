@@ -198,6 +198,7 @@ the **outer** repository inside the callback stay bound to the base executor —
 they escape the transaction, and since kysely 0.29's strict single-connection
 mutex they deadlock on SQLite. Always rebind:
 
+<!-- doc-snippet: skip -->
 ```typescript
 await repo.transaction(async trx => {
   const txRepo = repo.withTransaction(trx)

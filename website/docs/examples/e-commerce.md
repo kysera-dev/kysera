@@ -109,6 +109,7 @@ export class InvalidStatusTransitionError extends Error {
 
 The most critical operation - must be atomic. This example uses optimistic locking to prevent overselling. Here's the actual implementation from the example:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // From examples/e-commerce/src/index.ts
 
@@ -150,6 +151,7 @@ const order = await db.transaction().execute(async trx => {
 
 For automatic audit logging or soft-delete support:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { auditPlugin } from '@kysera/audit'
@@ -193,6 +195,7 @@ const order = await withTransaction(executor, async ctx => {
 
 The `decreaseStock` method uses optimistic locking to prevent race conditions. This is the actual implementation:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // From examples/e-commerce/src/repositories/product.repository.ts
 // Note: validateDbResults = process.env['NODE_ENV'] === 'development'
@@ -235,6 +238,7 @@ async decreaseStock(productId: number, quantity: number): Promise<Product> {
 
 The order repository provides state machine validation for status transitions:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // From examples/e-commerce/src/repositories/order.repository.ts
 
@@ -295,6 +299,7 @@ The cart repository handles adding, updating, and managing cart items. Here are 
 
 ### Add Item to Cart
 
+<!-- doc-snippet: skip -->
 ```typescript
 // From examples/e-commerce/src/repositories/cart.repository.ts
 // Note: validateDbResults = process.env['NODE_ENV'] === 'development'
@@ -339,6 +344,7 @@ async addItem(input: unknown): Promise<CartItem> {
 
 Note: The cart items don't store price - prices are fetched via JOIN with products table:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // From examples/e-commerce/src/repositories/cart.repository.ts
 

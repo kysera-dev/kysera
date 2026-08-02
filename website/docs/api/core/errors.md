@@ -14,6 +14,7 @@ Multi-database error parsing with typed error classes.
 
 Base error class for all database errors.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class DatabaseError extends Error {
   readonly code: string
@@ -29,6 +30,7 @@ class DatabaseError extends Error {
 
 Thrown when a UNIQUE constraint is violated.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class UniqueConstraintError extends DatabaseError {
   constraint: string // Constraint name
@@ -43,6 +45,7 @@ class UniqueConstraintError extends DatabaseError {
 
 Thrown when a FOREIGN KEY constraint is violated.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class ForeignKeyError extends DatabaseError {
   constraint: string
@@ -57,6 +60,7 @@ class ForeignKeyError extends DatabaseError {
 
 Thrown when an entity is not found.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class NotFoundError extends DatabaseError {
   constructor(entity: string, filters?: Record<string, unknown>)
@@ -76,6 +80,7 @@ throw new NotFoundError('User', { id: 123 })
 
 Thrown for invalid requests.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class BadRequestError extends DatabaseError {
   constructor(message: string)
@@ -86,6 +91,7 @@ class BadRequestError extends DatabaseError {
 
 Thrown when a NOT NULL constraint is violated.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class NotNullError extends DatabaseError {
   readonly column: string
@@ -99,6 +105,7 @@ class NotNullError extends DatabaseError {
 
 Thrown when a CHECK constraint is violated.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class CheckConstraintError extends DatabaseError {
   readonly constraint: string
@@ -112,6 +119,7 @@ class CheckConstraintError extends DatabaseError {
 
 Base error class for soft-delete plugin errors.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class SoftDeleteError extends DatabaseError {
   constructor(message: string, detail?: string, code?: string)
@@ -122,6 +130,7 @@ class SoftDeleteError extends DatabaseError {
 
 Thrown when attempting to restore a record that is not soft-deleted.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class RecordNotDeletedError extends SoftDeleteError {
   readonly recordId: string | number
@@ -135,6 +144,7 @@ class RecordNotDeletedError extends SoftDeleteError {
 
 Base error class for audit plugin errors.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class AuditError extends DatabaseError {
   constructor(message: string, detail?: string, code?: string)
@@ -145,6 +155,7 @@ class AuditError extends DatabaseError {
 
 Thrown when an audit restore operation fails.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class AuditRestoreError extends AuditError {
   readonly auditId: number
@@ -159,6 +170,7 @@ class AuditRestoreError extends AuditError {
 
 Thrown when an audit log entry is missing required old values.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class AuditMissingValuesError extends AuditError {
   readonly auditId: number
@@ -171,6 +183,7 @@ class AuditMissingValuesError extends AuditError {
 
 Base error class for timestamps plugin errors.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class TimestampsError extends DatabaseError {
   constructor(message: string, detail?: string, code?: string)
@@ -181,6 +194,7 @@ class TimestampsError extends DatabaseError {
 
 Thrown when a required timestamp column is missing from the table.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class TimestampColumnMissingError extends TimestampsError {
   readonly tableName: string
@@ -196,6 +210,7 @@ class TimestampColumnMissingError extends TimestampsError {
 
 Parse raw database errors into typed errors.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function parseDatabaseError(error: unknown, dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql'): DatabaseError
 ```

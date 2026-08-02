@@ -393,6 +393,7 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
 
 ### With ORM Pattern (Alternative to Current Implementation)
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createORM } from '@kysera/repository'
 import { rlsPlugin, defineRLSSchema, filter, rlsContext } from '@kysera/rls'
@@ -448,6 +449,7 @@ app.get('/users', async (req, res) => {
 
 ### With DAL Pattern
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createQuery, createContext } from '@kysera/dal'
@@ -469,9 +471,9 @@ const rlsSchema = defineRLSSchema<Database>({
 const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })])
 
 // Define DAL queries (no manual tenant filtering needed)
-const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 
-const createUser = createQuery((ctx, data) =>
+const createUser = createQuery((ctx: DbContext<Database>, data) =>
   ctx.db.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow()
 )
 

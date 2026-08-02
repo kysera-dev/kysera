@@ -149,6 +149,7 @@ const orm = await createORM(db, [softDeletePlugin()])
 ```
 
 **After (v0.7):**
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
@@ -164,6 +165,7 @@ const orm = await createORM(executor, [])
 :::tip Simplified API
 Actually, in v0.7, `createORM()` still accepts plugins for convenience! Both approaches work:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Approach 1: Pass plugins to createORM (backward compatible)
 const orm = await createORM(db, [softDeletePlugin()])
@@ -187,7 +189,7 @@ Use **Approach 2** if you're using both Repository and DAL patterns with shared 
 import { createQuery } from '@kysera/dal'
 
 // Must add soft-delete filter manually
-const getActiveUsers = createQuery(ctx =>
+const getActiveUsers = createQuery((ctx: DbContext<Database>) =>
   ctx.db
     .selectFrom('users')
     .selectAll()
@@ -208,7 +210,7 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Query automatically filters soft-deleted records
-const getUsers = createQuery(ctx =>
+const getUsers = createQuery((ctx: DbContext<Database>) =>
   ctx.db.selectFrom('users').selectAll().execute()
 )
 
@@ -324,6 +326,7 @@ await userRepo.restore(1)
 ```
 
 **After (v0.7) - Option 2 (Recommended for DAL + Repository):**
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
@@ -357,7 +360,7 @@ The DAL pattern now supports plugins via `createExecutor`:
 import { createQuery } from '@kysera/dal'
 
 // Manual soft-delete filtering
-const getUsers = createQuery(ctx =>
+const getUsers = createQuery((ctx: DbContext<Database>) =>
   ctx.db
     .selectFrom('users')
     .selectAll()
@@ -378,7 +381,7 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Query automatically applies soft-delete filter
-const getUsers = createQuery(ctx =>
+const getUsers = createQuery((ctx: DbContext<Database>) =>
   ctx.db.selectFrom('users').selectAll().execute()
 )
 
@@ -461,6 +464,7 @@ describe('User Repository', () => {
 ```
 
 **After (v0.7):**
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor, destroyExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
@@ -493,6 +497,7 @@ Always call `destroyExecutor(executor)` in tests or during application shutdown 
 
 You can now use both Repository and DAL patterns in the same application with **shared plugins**:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
@@ -510,7 +515,7 @@ const orm = await createORM(executor, [])
 const userRepo = orm.createRepository(createUserRepository)
 
 // DAL for complex reads (analytics, reports with same plugin filtering)
-const getAnalytics = createQuery((ctx, userId: number) =>
+const getAnalytics = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db
     .selectFrom('events')
     .select([
@@ -550,6 +555,7 @@ await orm.transaction(async ctx => {
 
 Configure plugin behavior at runtime:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 
@@ -629,6 +635,7 @@ try {
 
 Bypass plugin interceptors when needed:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { getRawDb } from '@kysera/executor'
 
@@ -681,6 +688,7 @@ Still works, but plugins won't intercept queries in DAL.
 **Recommended Approach:**
 Use `createExecutor()` for plugin support:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Deprecated (still works, but no DAL plugin support)
 const orm = await createORM(db, [softDeletePlugin()])
@@ -703,6 +711,7 @@ Helper functions like `tableExists(db, table, dialect)`.
 **Recommended Approach:**
 Use the adapter pattern:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Deprecated (still works)
 import { tableExists } from '@kysera/dialects'
@@ -736,6 +745,7 @@ pnpm add @kysera/executor
 
 **Solution:** Add `.orderBy()` to your query:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Before (fails on MSSQL)
 const result = await paginate(
@@ -758,7 +768,7 @@ const result = await paginate(
 
 ```typescript
 // Before (plugins don't apply)
-const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 await getUsers(db) // No plugins!
 
 // After (plugins apply)
@@ -817,6 +827,7 @@ pnpm typecheck
 
 The executor has **zero overhead** when no plugins are registered or when plugins don't use interceptors:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // No plugins - zero overhead (returns augmented Kysely)
 const executor = await createExecutor(db, [])
@@ -875,6 +886,7 @@ pnpm docker:down  # Stop containers
 
 New testing utilities in v0.7:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor, destroyExecutor } from '@kysera/executor'
 import { testInTransaction } from '@kysera/testing'

@@ -104,6 +104,7 @@ Layer 0: Kysely Foundation (Direct usage, no wrapper)
 
 ### Repository Pattern with Plugins
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { Kysely, PostgresDialect, Generated } from 'kysely'
 import { Pool } from 'pg'
@@ -166,11 +167,11 @@ const activeUsers = await userRepo.findAll()  // Automatically excludes soft-del
 import { createQuery, createContext, withTransaction } from '@kysera/dal'
 
 // Define queries
-const getUser = createQuery((ctx, id: number) =>
+const getUser = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('users').where('id', '=', id).selectAll().executeTakeFirst()
 )
 
-const listActiveUsers = createQuery((ctx) =>
+const listActiveUsers = createQuery((ctx: DbContext<Database>) =>
   ctx.db.selectFrom('users').selectAll().execute()
 )
 

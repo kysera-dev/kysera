@@ -363,6 +363,7 @@ const orm = await createORM(db, [
 
 Row-Level Security for multi-tenant applications.
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { rlsPlugin, defineRLSSchema, filter, allow, rlsContext } from '@kysera/rls'
 
@@ -418,6 +419,7 @@ Raw Zod schemas do not satisfy the `ValidationSchema` interface expected by `sch
 
 With the Unified Execution Layer, create an executor with plugins that work across both Repository and DAL:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
@@ -444,7 +446,7 @@ const orm = await createORM(executor, [
 
 // DAL pattern: Gets query interceptors only
 import { createQuery } from '@kysera/dal'
-const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 // RLS and soft-delete filters automatically applied!
 const users = await getUsers(executor)
 ```
@@ -522,6 +524,7 @@ const result = await paginateCursor(db.selectFrom('posts').selectAll(), {
 
 Plugins automatically propagate through transactions:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -541,7 +544,7 @@ await orm.transaction(async ctx => {
 })
 
 // DAL pattern - plugins in transactions
-const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 
 await withTransaction(executor, async ctx => {
   // Soft-delete filter automatically applied

@@ -140,6 +140,7 @@ export async function up(db: Kysely<any>): Promise<void> {
 
 ### Using API
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createMigrationRunner, runMigrations } from '@kysera/migrations'
 import type { Kysely } from 'kysely'
@@ -268,6 +269,7 @@ await runner.markAsExecuted('001_create_users')
 
 `MigrationRunnerWithPlugins` calls lifecycle hooks (`onInit`, `beforeMigration`, `afterMigration`, `onMigrationError`) around each migration. Two plugins ship with the package:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import {
   createMigrationRunnerWithPlugins,
@@ -279,7 +281,7 @@ const metrics = createMetricsPlugin()
 
 const runner = await createMigrationRunnerWithPlugins(db, migrations, {
   plugins: [
-    createLoggingPlugin(console), // Defaults to silentLogger - pass a logger to see output
+    createLoggingPlugin(consoleLogger), // Defaults to silentLogger - pass a logger to see output
     metrics
   ]
 })
@@ -313,6 +315,7 @@ const slackNotifier: MigrationPlugin = {
 
 Safe to run in production without downtime:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Safe: Add nullable column
 await db.schema
@@ -349,6 +352,7 @@ await db.schema
 
 ### Safe Patterns for Destructive Changes
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Step 1: Add new nullable column
 export async function up(db: Kysely<any>) {
@@ -398,7 +402,7 @@ export async function down(db: Kysely<any>) {
 ```typescript
 const runner = createMigrationRunner(db, migrations, {
   useTransactions: true,
-  logger: console // Optional: enable logging
+  logger: consoleLogger // Optional: enable logging
 })
 ```
 

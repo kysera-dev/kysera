@@ -126,6 +126,7 @@ pnpm add -D @types/better-sqlite3
 
 **In-memory database:**
 
+<!-- doc-snippet: skip -->
 ```typescript
 const db = new Kysely<Database>({
   dialect: new SqliteDialect({
@@ -136,6 +137,7 @@ const db = new Kysely<Database>({
 
 **Connection options:**
 
+<!-- doc-snippet: skip -->
 ```typescript
 const database = new Database('mydb.sqlite', {
   readonly: false,
@@ -147,6 +149,7 @@ const database = new Database('mydb.sqlite', {
 
 ### MSSQL
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { Kysely, MssqlDialect } from 'kysely'
 import * as Tedious from 'tedious'
@@ -199,6 +202,7 @@ pnpm add -D @types/tedious @types/tarn
 
 Different databases handle boolean values differently:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // PostgreSQL & MySQL: Native boolean support
 await db.insertInto('users').values({ is_active: true }).execute()
@@ -329,6 +333,7 @@ CREATE TABLE orders (
 
 ### JSON Support
 
+<!-- doc-snippet: skip -->
 ```typescript
 // PostgreSQL: Native JSON/JSONB support
 await db
@@ -357,6 +362,7 @@ await db
 
 ### Date/Time Handling
 
+<!-- doc-snippet: skip -->
 ```typescript
 // All databases support Date objects
 await db.insertInto('users').values({
@@ -481,6 +487,7 @@ All tenant helpers accept an optional `TenantSchemaConfig` to customize the `ten
 
 Create a flexible database configuration that switches based on environment:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // db.ts
 import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, MssqlDialect } from 'kysely'
@@ -651,6 +658,7 @@ const matches = await userRepo.searchByEmail('example.com')
 
 ### Test Configuration
 
+<!-- doc-snippet: skip -->
 ```typescript
 // test/helpers/db.ts
 import { Kysely } from 'kysely'
@@ -694,6 +702,7 @@ export function describeMultiDb(name: string, tests: (db: Kysely<Database>) => v
 
 ### Test Example
 
+<!-- doc-snippet: skip -->
 ```typescript
 // test/repository.test.ts
 import { describeMultiDb } from './helpers/db'

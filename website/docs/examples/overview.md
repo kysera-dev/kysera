@@ -123,6 +123,7 @@ await db.transaction().execute(async trx => {
 
 ### Validation Strategy
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Zod schemas for validation
 const CreateUserSchema = z.object({

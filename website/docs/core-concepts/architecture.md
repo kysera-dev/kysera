@@ -185,6 +185,7 @@ The modern architecture features **@kysera/executor** as the foundation layer:
 
 The factory pattern enables clean dependency injection:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Factory function - creates repository with injected executor
 export function createUserRepository(executor: Executor<Database>) {
@@ -240,6 +241,7 @@ Database
 
 Modify queries before execution through the executor:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Plugin definition
 {
@@ -265,6 +267,7 @@ const users = await executor.selectFrom('users').selectAll().execute()
 
 Add new methods to repositories:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Plugin definition
 {

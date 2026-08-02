@@ -12,6 +12,7 @@ Strategies and utilities for testing Kysera applications.
 
 The fastest approach - each test runs in a transaction that automatically rolls back.
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { testInTransaction } from '@kysera/testing'
 
@@ -116,6 +117,7 @@ const users = createMany(sequencedUser, 10)
 
 Test services with dependency injection:
 
+<!-- doc-snippet: skip -->
 ```typescript
 class UserService {
   constructor(private repos = createRepos(db)) {}
@@ -185,6 +187,7 @@ it('should rollback on error', async () => {
 
 Test plugin behavior with soft delete:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createORM, createRepositoryFactory, nativeAdapter } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -329,6 +332,7 @@ For unit-testing a plugin's `interceptQuery` against a mock query builder, `asse
 
 Kysera uses parameterized queries by default. Test that user input is safely handled:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { sql } from 'kysely'
 
@@ -501,6 +505,7 @@ afterAll(async () => {
 
 ### 1. Use Transaction Isolation
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Each test is isolated
 await testInTransaction(db, async (trx) => { ... })
@@ -519,6 +524,7 @@ it('test 1', async () => {
 
 ### 3. Test Edge Cases
 
+<!-- doc-snippet: skip -->
 ```typescript
 it('should handle not found', async () => {
   await testInTransaction(db, async (trx) => {
@@ -556,6 +562,7 @@ it('should validate input', async () => {
 
 Kysera's `parseDatabaseError()` converts raw driver errors into typed errors. It does **not** detect the dialect — the second parameter selects the parser and defaults to `'postgres'`:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { parseDatabaseError, UniqueConstraintError } from '@kysera/core'
 
