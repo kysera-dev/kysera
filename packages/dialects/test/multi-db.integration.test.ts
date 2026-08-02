@@ -9,13 +9,34 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { Kysely, PostgresDialect, MysqlDialect, sql } from 'kysely'
 import { createPostgresAdapter, createMySQLAdapter, errorMatchers } from '../src/index.js'
+import {
+  resolveTestDatabases,
+  acquireMultiDbLock,
+  explainAvailability,
+  type MultiDbLockRelease
+} from '../../testing/src/detection.js'
 
-const POSTGRES = process.env['TEST_POSTGRES'] === 'true'
-const MYSQL = process.env['TEST_MYSQL'] === 'true'
+// Server dialects run when TEST_* env forces them on, or when a TCP probe
+// finds the docker stack running (skip reasons appear in the suite titles)
+const dbs = await resolveTestDatabases()
+const POSTGRES = dbs.postgres.available
+const MYSQL = dbs.mysql.available
+
+// Suites touching the shared docker databases serialize across files and
+// packages via a cross-process lock
+let releaseMultiDbLock: MultiDbLockRelease | undefined
+beforeAll(async () => {
+  if (POSTGRES || MYSQL) releaseMultiDbLock = await acquireMultiDbLock()
+}, 660_000)
+afterAll(() => {
+  releaseMultiDbLock?.()
+})
 
 type AnyDB = Record<string, Record<string, unknown>>
 
-describe.skipIf(!POSTGRES)('PostgresAdapter against real PostgreSQL', () => {
+describe.skipIf(!POSTGRES)(
+  `PostgresAdapter against real PostgreSQL (${explainAvailability(dbs.postgres)})`,
+  () => {
   let db: Kysely<AnyDB>
   const adapter = createPostgresAdapter()
 
@@ -96,7 +117,9 @@ describe.skipIf(!POSTGRES)('PostgresAdapter against real PostgreSQL', () => {
   })
 })
 
-describe.skipIf(!MYSQL)('MySQLAdapter against real MySQL', () => {
+describe.skipIf(!MYSQL)(
+  `MySQLAdapter against real MySQL (${explainAvailability(dbs.mysql)})`,
+  () => {
   let db: Kysely<AnyDB>
   const adapter = createMySQLAdapter()
 

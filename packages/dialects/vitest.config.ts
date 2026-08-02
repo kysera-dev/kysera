@@ -22,14 +22,15 @@ export default defineConfig({
         'src/adapters/mssql.ts'
       ],
       thresholds: {
-        // Lower thresholds for dialects package since adapter error parsing
-        // and information_schema queries require real database connections.
-        // The real-database surface is covered by test/multi-db.integration.ts
-        // (pnpm test:multi-db with docker compose containers running).
-        lines: 60,
-        functions: 75,
-        branches: 55,
-        statements: 60
+        // Unit suite covers the full adapter surface via the fake-kysely
+        // driver (test/helpers/fake-kysely.ts); the live-database behavior is
+        // additionally verified by test/multi-db.integration.ts (pnpm
+        // test:multi-db with docker compose containers running).
+        // Current: 100/95.5/100/100 — floors keep a small buffer on branches.
+        lines: 95,
+        functions: 95,
+        branches: 90,
+        statements: 95
       }
     }
   }

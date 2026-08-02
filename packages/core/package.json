@@ -27,6 +27,7 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest watch",
+    "test:types": "vitest run --typecheck.only --typecheck.ignoreSourceErrors",
     "test:coverage": "vitest run --coverage",
     "test:multi-db": "vitest run test/multi-db.test.ts",
     "typecheck": "tsc --noEmit",

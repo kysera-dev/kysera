@@ -10,7 +10,7 @@
   "include": [
     "src/**/*", "test/**/*", "*.config.ts",
     "../executor/src/**/*", "../repository/src/**/*", "../soft-delete/src/**/*",
-    "../core/src/**/*"
+    "../core/src/**/*", "../testing/src/detection.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

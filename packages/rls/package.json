@@ -28,6 +28,7 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest watch",
+    "test:types": "vitest run --typecheck.only --typecheck.ignoreSourceErrors",
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",
@@ -72,7 +73,8 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.10",
     "zod": "^4.4.3",
-    "@kysera/soft-delete": "workspace:*"
+    "@kysera/soft-delete": "workspace:*",
+    "@kysera/audit": "workspace:*"
   },
   "keywords": [
     "kysely",

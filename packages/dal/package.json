@@ -20,6 +20,7 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest watch",
+    "test:types": "vitest run --typecheck.only --typecheck.ignoreSourceErrors",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
