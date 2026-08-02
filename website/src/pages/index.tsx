@@ -155,19 +155,22 @@ const dalCode = `import {
   createQuery, createContext, withTransaction
 } from '@kysera/dal'
 
-const activeUsers = createQuery((ctx: DbContext<DB>) =>
-  ctx.db
-    .selectFrom('users')
-    .selectAll()
-    .execute()
+const userByEmail = createQuery(
+  (ctx: DbContext<DB>, email: string) =>
+    ctx.db
+      .selectFrom('users')
+      .selectAll()
+      .where('email', '=', email)
+      .executeTakeFirst()
 )
 
 const ctx = createContext(executor)
-await activeUsers(ctx) // soft-delete filter applied
+await userByEmail(ctx, 'ada@example.com')
+// soft-delete filter applied automatically
 
 await withTransaction(executor, async tx => {
-  await activeUsers(tx) // plugins survive transactions
-})                      // nested calls → savepoints`
+  await userByEmail(tx, 'ada@example.com')
+}) // plugins survive; nested calls → savepoints`
 
 function Patterns() {
   return (
@@ -183,11 +186,15 @@ function Patterns() {
         <div className={styles.patternGrid}>
           <div className={styles.patternCol}>
             <h3 className={styles.patternLabel}>Repository</h3>
-            <CodeBlock language="typescript">{repositoryCode}</CodeBlock>
+            <CodeBlock language="typescript" title="users.repository.ts">
+              {repositoryCode}
+            </CodeBlock>
           </div>
           <div className={styles.patternCol}>
             <h3 className={styles.patternLabel}>Functional DAL</h3>
-            <CodeBlock language="typescript">{dalCode}</CodeBlock>
+            <CodeBlock language="typescript" title="users.queries.ts">
+              {dalCode}
+            </CodeBlock>
           </div>
         </div>
         <p className={styles.patternFooter}>
