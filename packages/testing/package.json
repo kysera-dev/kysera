@@ -1,6 +1,6 @@
 {
   "name": "@kysera/testing",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Testing utilities for Kysely - transaction isolation, factories, seeding",
   "type": "module",
   "main": "./dist/index.js",

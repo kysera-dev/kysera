@@ -1,6 +1,6 @@
 {
   "name": "@kysera/cli",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Comprehensive CLI for Kysera data access toolkit",
   "type": "module",
   "bin": {

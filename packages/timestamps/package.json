@@ -1,6 +1,6 @@
 {
   "name": "@kysera/timestamps",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Automatic timestamp management plugin for Kysely repositories",
   "type": "module",
   "main": "./dist/index.js",

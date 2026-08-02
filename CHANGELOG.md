@@ -5,6 +5,78 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-08-02
+
+_Packages: audit, cli, core, dal, dialects, executor, infra, migrations, repository, rls, soft-delete, testing · [v0.9.0...v0.10.0](https://github.com/kysera-dev/kysera/compare/v0.9.0...v0.10.0)_
+
+### ⚠️ BREAKING CHANGES
+
+- **cli:** behavior pass — every mock-only surface now works against real databases (ce25056)
+- **cli:** migrate rebuilt on @kysera/migrations — fork engine deleted, CI-grade subcommands (5df394f)
+- **cli:** deterministic core - eager commands, one output/error/config contract (50ad5bc)
+  - usage-stats collection and command preloading are
+- **core,rls,audit,soft-delete:** shared row fetch, bulk-mutation enforcement, count strategies (07ba9ce)
+- **migrations,infra:** MSSQL lock parity, transaction retry, concurrency proofs, honest drain semantics (7ae16c4)
+
+### ✨ Features
+
+- **bench:** measured performance suite — the thin-layer claim now has numbers (3364bad)
+- **ci,testing:** continuous integration + probe-based database detection everywhere (e0d86b2)
+- **cli:** doctor, rls group, audit init — expose the ecosystem the CLI fronts (29219ee)
+- **cli:** generate database — live-DB schema codegen with Generated<> and aggregated Database interface (7889078)
+- **cli:** real eslint gate - lint script live, core change-set lint-clean (4084267)
+- **core,rls,audit,soft-delete:** shared row fetch, bulk-mutation enforcement, count strategies (07ba9ce)
+- **migrations,infra:** MSSQL lock parity, transaction retry, concurrency proofs, honest drain semantics (7ae16c4)
+- **rls,testing:** runtime policy activation + createTestExecutor — no more inert API (157960d)
+- **website:** coherent color system measured from the logo (8a9317f)
+- **website:** typographic identity — Inter Variable + JetBrains Mono Variable (402e928)
+- **website:** rebuild the landing page — honest marketing, code-first, fresh visual (3957a21)
+
+### 🐛 Bug Fixes
+
+- **cli:** behavior-pass tail — seed type matching, real-sqlite integration suite, docs softened (cf7d5ce)
+- **cli:** behavior pass — every mock-only surface now works against real databases (ce25056)
+- **cli:** --help and --version exit 0 (0f3670f)
+- **cli:** honor structured database config, schema-conformant init output, truthful completions (f46d865)
+- **docs:** MDX-legal snippet skip markers — website build restored (7d174e2)
+- **examples:** multi-tenant CRUD demo operates on the row it created; drop dead blog-app seed script (15673a5)
+- **release:** resume mode for interrupted releases + dependency-ordered publish (7dd2153)
+- **repository:** restore runtime exports erased by export-type-star (bba5925)
+- **website:** patterns section — both snippets exactly 20 lines, titled panels (4bffa08)
+- **website:** landing vertical rhythm — no voids, no jumping blocks; drop footer credit (0c68751)
+
+### ⚡ Performance
+
+- **soft-delete:** softDelete returns the post-image atomically on pg/sqlite (7a11673)
+
+### ♻️ Refactoring
+
+- **cli:** type-safety sweep — health/plugin/init/audit zones, 1,091 errors to zero (c4e2a87)
+- **cli:** migrate rebuilt on @kysera/migrations — fork engine deleted, CI-grade subcommands (5df394f)
+- **cli:** type-safety sweep — 2,700+ eslint errors to zero across 10 command zones (250b113)
+- **cli:** deterministic core - eager commands, one output/error/config contract (50ad5bc)
+
+### 📚 Documentation
+
+- **cli:** full refresh against the rebuilt CLI; ship completions; fix rls help example (9456aa1)
+- **infra:** getMetrics JSDoc example no longer awaits a sync function (ea59c6c)
+- **positioning:** README + landing catch up with the hardening wave (49e7660)
+- **quality:** snippet typechecking — 835 doc code blocks now compile against real package types (fb91df5)
+- **readme:** industrial-grade rewrite — honest positioning, verified claims only (af57073)
+- **rls:** full verified-correction pass for both RLS pages (6f6d29f)
+- **website:** full verified-correction sweep — every page checked against 0.9 source (aa2b5ac)
+
+### 🧪 Tests
+
+- **quality:** type-contract suite + dialects coverage 63% -> 100% (2d0ad05)
+
+### 🔧 Maintenance
+
+- **cli:** real eslint profile for apps/cli (package-grade type-safety, CLI-appropriate relaxations) (08cfd00)
+- **repository:** include testing/detection.ts in typecheck project (62041b4)
+- **scripts:** bring operational scripts under typecheck+lint; kill the 0.3.0 foot-gun (09fc3f7)
+- **website:** bump all deps to latest; broken-anchor check now fails the build (5e5c8d3)
+
 ## [0.9.0] - 2026-08-01
 
 _Packages: audit, cli, core, dal, debug, dialects, executor, infra, migrations, repository, rls, soft-delete, testing, timestamps · [v0.8.8...v0.9.0](https://github.com/kysera-dev/kysera/compare/v0.8.8...v0.9.0)_
