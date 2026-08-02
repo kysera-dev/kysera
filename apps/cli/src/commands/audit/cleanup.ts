@@ -1,5 +1,6 @@
 import { Command } from 'commander'
-import { prism, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
+import { guardDestructive } from '../../utils/guard.js'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
@@ -171,22 +172,14 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
       return
     }
 
-    // Confirm deletion
-    if (!options.force) {
-      console.log('')
-      console.log(prism.yellow('⚠️  WARNING: This will permanently delete audit logs!'))
-      console.log(prism.gray('Deleted logs cannot be recovered.'))
-      console.log('')
-
-      const confirmed = await confirm({
-        message: `Delete ${totalToDelete.toLocaleString()} audit logs?`,
-        initialValue: false
-      })
-
-      if (!confirmed) {
-        console.log(prism.gray('Cleanup cancelled'))
-        return
-      }
+    // Confirm deletion: audit logs cannot be recovered once deleted
+    const proceed = await guardDestructive(
+      `Permanently delete ${totalToDelete.toLocaleString()} audit logs? Deleted logs cannot be recovered.`,
+      { force: options.force }
+    )
+    if (!proceed) {
+      console.error(prism.gray('Cleanup cancelled'))
+      return
     }
 
     // Execute cleanup

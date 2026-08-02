@@ -1,4 +1,4 @@
-import { Kysely, sql } from 'kysely'
+import type { Kysely } from 'kysely'
 import { logger } from '../../utils/logger.js'
 import { validateIdentifier } from '../../utils/sql-sanitizer.js'
 import { CLIError, CLIErrorCodes } from '../../utils/errors.js'
@@ -201,6 +201,7 @@ export class DatabaseIntrospector {
 
   // MySQL specific methods
   private async getMysqlTables(): Promise<string[]> {
+    const { sql } = await import('kysely')
     const result = (await this.db
       .selectFrom('information_schema.tables')
       .select('table_name')
@@ -212,6 +213,7 @@ export class DatabaseIntrospector {
   }
 
   private async getMysqlTableInfo(tableName: string): Promise<TableInfo> {
+    const { sql } = await import('kysely')
     // Get columns
     const columns = (await this.db
       .selectFrom('information_schema.columns')
@@ -294,6 +296,7 @@ export class DatabaseIntrospector {
   }
 
   private async getSqliteTableInfo(tableName: string): Promise<TableInfo> {
+    const { sql } = await import('kysely')
     // SQLite's PRAGMA commands aren't directly supported by Kysely
     // We'll use raw SQL for introspection
     // Validate table name to prevent SQL injection

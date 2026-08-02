@@ -1,6 +1,4 @@
-import { Kysely } from 'kysely'
 import { loadConfig } from '../config/loader.js'
-import { getDatabaseConnection, type Database } from './database.js'
 import { CLIError } from './errors.js'
 import type { KyseraConfig, DatabaseConfig } from '../config/schema.js'
 
@@ -73,6 +71,7 @@ export async function withDatabase<T>(
 
   const validatedConfig = config as KyseraConfigWithDatabase
 
+  const { getDatabaseConnection } = await import('./database.js')
   const db = await getDatabaseConnection(validatedConfig.database)
 
   if (!db) {
@@ -129,6 +128,7 @@ export async function withDatabaseOptional<T>(
   }
 
   if (config?.database) {
+    const { getDatabaseConnection } = await import('./database.js')
     db = (await getDatabaseConnection(config.database)) as DatabaseInstance | null
   }
 

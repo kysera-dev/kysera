@@ -1,9 +1,9 @@
 import { Command } from 'commander'
-import { prism, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
+import { guardDestructive } from '../../utils/guard.js'
 import { MigrationRunner } from './runner.js'
-import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
 import { SeedRunner } from '../db/seed-runner.js'
 
@@ -68,44 +68,13 @@ export function freshCommand(): Command {
 }
 
 async function resetMigrations(options: ResetOptions): Promise<void> {
-  if (!options.force && !options.run) {
-    if (process.env.NODE_ENV === 'test' || !process.stdin.isTTY) {
-      throw new CLIError('Reset requires confirmation', 'RESET_REQUIRES_CONFIRMATION', undefined, [
-        'Use --force flag to skip confirmation'
-      ])
-    }
-
-    console.log('')
-    console.log(prism.red('Warning: This will rollback ALL migrations!'))
-    console.log(prism.yellow('All data in migrated tables may be lost.'))
-    console.log('')
-
-    const confirmed = await confirm({
-      message: 'Are you sure you want to continue?',
-      initialValue: false
-    })
-
-    if (!confirmed) {
-      logger.info('Reset cancelled')
-      return
-    }
-  } else if (!options.force && options.run) {
-    if (!(process.env.NODE_ENV === 'test' || !process.stdin.isTTY)) {
-      console.log('')
-      console.log(prism.red('Warning: This will rollback ALL migrations and re-run them!'))
-      console.log(prism.yellow('All data in migrated tables may be lost.'))
-      console.log('')
-
-      const confirmed = await confirm({
-        message: 'Are you sure you want to continue?',
-        initialValue: false
-      })
-
-      if (!confirmed) {
-        logger.info('Reset cancelled')
-        return
-      }
-    }
+  const warning = options.run
+    ? 'This will rollback ALL migrations and re-run them. All data in migrated tables may be lost. Continue?'
+    : 'This will rollback ALL migrations. All data in migrated tables may be lost. Continue?'
+  const proceed = await guardDestructive(warning, { force: options.force })
+  if (!proceed) {
+    logger.info('Reset cancelled')
+    return
   }
 
   const config = await loadConfig(options.config)
@@ -117,6 +86,7 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
     ])
   }
 
+  const { getDatabaseConnection } = await import('../../utils/database.js')
   const db = await getDatabaseConnection(config.database)
 
   if (!db) {
@@ -232,37 +202,13 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
 }
 
 async function freshMigrations(options: ResetOptions): Promise<void> {
-  if (!options.force) {
-    if (process.env.NODE_ENV === 'test' || !process.stdin.isTTY) {
-      throw new CLIError('Fresh requires confirmation', 'FRESH_REQUIRES_CONFIRMATION', undefined, [
-        'Use --force flag to skip confirmation'
-      ])
-    }
-
-    console.log('')
-    console.log(prism.red('WARNING: This will DROP ALL TABLES and re-run migrations!'))
-    console.log(prism.red('ALL DATA WILL BE LOST!'))
-    console.log('')
-
-    const confirmed = await confirm({
-      message: 'Are you absolutely sure you want to continue?',
-      initialValue: false
-    })
-
-    if (!confirmed) {
-      logger.info('Fresh cancelled')
-      return
-    }
-
-    const doubleConfirm = await confirm({
-      message: prism.red('This action cannot be undone. Are you REALLY sure?'),
-      initialValue: false
-    })
-
-    if (!doubleConfirm) {
-      logger.info('Fresh cancelled')
-      return
-    }
+  const proceed = await guardDestructive(
+    'This will DROP ALL TABLES and re-run migrations. ALL DATA WILL BE LOST. Continue?',
+    { force: options.force }
+  )
+  if (!proceed) {
+    logger.info('Fresh cancelled')
+    return
   }
 
   const config = await loadConfig(options.config)
@@ -274,6 +220,7 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
     ])
   }
 
+  const { getDatabaseConnection } = await import('../../utils/database.js')
   const db = await getDatabaseConnection(config.database)
 
   if (!db) {

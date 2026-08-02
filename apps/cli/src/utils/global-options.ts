@@ -1,175 +1,79 @@
 import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
 import { logger } from './logger.js'
+import { configureOutput, diag, diagVerbose, isVerboseMode, isQuietMode } from './output.js'
 
 export interface GlobalOptions {
   verbose?: boolean
   quiet?: boolean
   dryRun?: boolean
   config?: string
-  noColor?: boolean
+  color?: boolean
   json?: boolean
 }
 
+let dryRunEnabled = false
+
+/** True when --dry-run was passed for this invocation. */
+export function isDryRun(): boolean {
+  return dryRunEnabled
+}
+
+/** Reset global option state (used by tests). */
+export function resetGlobalOptions(): void {
+  dryRunEnabled = false
+}
+
 /**
- * Global state for CLI options
+ * Global option keys that are pushed from the root command down into the
+ * invoked subcommand, so `kysera --json migrate status` and
+ * `kysera migrate status --json` behave identically. A flag given on the
+ * subcommand always wins.
  */
-class GlobalOptionsManager {
-  private static instance: GlobalOptionsManager
-  private options: GlobalOptions = {}
-  private originalConsole = {
-    log: console.log,
-    error: console.error,
-    warn: console.warn,
-    info: console.info,
-    debug: console.debug
-  }
+const PROPAGATED_KEYS = ['json', 'verbose', 'quiet', 'config', 'dryRun'] as const
 
-  private constructor() {}
+/**
+ * Apply global options for this invocation: propagate root flags to the
+ * invoked subcommand, configure output mode, and set the logger level.
+ */
+export function applyGlobalOptions(rootCommand: Command, actionCommand: Command): void {
+  const rootOpts = rootCommand.opts<Record<string, unknown>>()
 
-  static getInstance(): GlobalOptionsManager {
-    if (!GlobalOptionsManager.instance) {
-      GlobalOptionsManager.instance = new GlobalOptionsManager()
-    }
-    return GlobalOptionsManager.instance
-  }
-
-  /**
-   * Set global options
-   */
-  setOptions(options: GlobalOptions): void {
-    this.options = { ...this.options, ...options }
-    this.applyOptions()
-  }
-
-  /**
-   * Get global options
-   */
-  getOptions(): GlobalOptions {
-    return { ...this.options }
-  }
-
-  /**
-   * Check if verbose mode is enabled
-   */
-  isVerbose(): boolean {
-    return this.options.verbose || process.env['VERBOSE'] === 'true'
-  }
-
-  /**
-   * Check if quiet mode is enabled
-   */
-  isQuiet(): boolean {
-    return this.options.quiet || process.env['QUIET'] === 'true'
-  }
-
-  /**
-   * Check if dry-run mode is enabled
-   */
-  isDryRun(): boolean {
-    return this.options.dryRun || process.env['DRY_RUN'] === 'true'
-  }
-
-  /**
-   * Check if JSON output is enabled
-   */
-  isJson(): boolean {
-    return this.options.json || process.env['JSON_OUTPUT'] === 'true'
-  }
-
-  /**
-   * Apply global options
-   */
-  private applyOptions(): void {
-    // Set environment variables
-    if (this.options.verbose) {
-      process.env['VERBOSE'] = 'true'
-      logger.setLevel('debug')
-    }
-
-    if (this.options.quiet) {
-      process.env['QUIET'] = 'true'
-      this.enableQuietMode()
-    }
-
-    if (this.options.dryRun) {
-      process.env['DRY_RUN'] = 'true'
-    }
-
-    if (this.options.json) {
-      process.env['JSON_OUTPUT'] = 'true'
-      // Quiet mode for JSON output
-      this.enableQuietMode()
-    }
-
-    if (this.options.noColor) {
-      process.env['NO_COLOR'] = 'true'
-      // Disable colors in prism/chalk
-      ;(prism as any).level = 0
-    }
-
-    if (this.options.config) {
-      process.env['KYSERA_CONFIG'] = this.options.config
-    }
-  }
-
-  /**
-   * Enable quiet mode
-   */
-  private enableQuietMode(): void {
-    // Suppress non-essential console output
-    console.log = (...args: any[]) => {
-      // Only allow JSON output in quiet mode
-      if (this.isJson() && args.length === 1 && typeof args[0] === 'string') {
-        try {
-          JSON.parse(args[0])
-          this.originalConsole.log(...args)
-        } catch {
-          // Not JSON, suppress
-        }
+  if (actionCommand !== rootCommand) {
+    for (const key of PROPAGATED_KEYS) {
+      const rootValue = rootOpts[key]
+      if (rootValue === undefined) continue
+      const source = actionCommand.getOptionValueSource(key)
+      if (source === undefined || source === 'default') {
+        actionCommand.setOptionValue(key, rootValue)
       }
     }
-
-    console.info = () => {}
-    console.debug = () => {}
-    console.warn = () => {}
-
-    // Keep error output
-    console.error = this.originalConsole.error
   }
 
-  /**
-   * Restore console methods
-   */
-  restoreConsole(): void {
-    console.log = this.originalConsole.log
-    console.error = this.originalConsole.error
-    console.warn = this.originalConsole.warn
-    console.info = this.originalConsole.info
-    console.debug = this.originalConsole.debug
+  const leafOpts = actionCommand.opts<Record<string, unknown>>()
+  const pick = (key: string): unknown => (leafOpts[key] !== undefined ? leafOpts[key] : rootOpts[key])
+
+  const json = pick('json') === true
+  const quiet = pick('quiet') === true
+  const verbose = pick('verbose') === true
+  dryRunEnabled = pick('dryRun') === true
+
+  configureOutput({ json, quiet, verbose })
+  logger.setLevel(verbose ? 'debug' : quiet ? 'error' : 'info')
+
+  if (rootOpts['color'] === false || leafOpts['color'] === false) {
+    // Standard mechanism understood by color libraries (prism/chalk/etc.)
+    process.env['NO_COLOR'] = '1'
+    logger.setColors(false)
   }
 
-  /**
-   * Output based on mode
-   */
-  output(data: any, options: { format?: 'json' | 'text' | 'table' } = {}): void {
-    if (this.isJson() || options.format === 'json') {
-      this.originalConsole.log(JSON.stringify(data, null, 2))
-    } else if (options.format === 'table' && Array.isArray(data)) {
-      console.table(data)
-    } else if (typeof data === 'string') {
-      this.originalConsole.log(data)
-    } else {
-      this.originalConsole.log(data)
-    }
+  if (dryRunEnabled && !json) {
+    diag(prism.yellow('DRY RUN MODE - No changes will be made'))
   }
 }
 
-// Export singleton instance
-export const globalOptions = GlobalOptionsManager.getInstance()
-
 /**
- * Add global options to a command
+ * Add the global options to the root command.
  */
 export function addGlobalOptions(command: Command): Command {
   return command
@@ -179,242 +83,30 @@ export function addGlobalOptions(command: Command): Command {
     .option('--config <path>', 'Path to configuration file')
     .option('--no-color', 'Disable colored output')
     .option('--json', 'Output results as JSON')
-    .hook('preAction', thisCommand => {
-      const opts = thisCommand.opts() as GlobalOptions
-      globalOptions.setOptions(opts)
-
-      // Log command execution in verbose mode
-      if (globalOptions.isVerbose() && !globalOptions.isJson()) {
-        const commandPath = thisCommand.parent?.name
-          ? `${thisCommand.parent.name} ${thisCommand.name()}`
-          : thisCommand.name()
-        logger.debug(`Executing command: ${commandPath}`)
-        logger.debug(`Options: ${JSON.stringify(opts, null, 2)}`)
-      }
-
-      // Show dry-run warning
-      if (globalOptions.isDryRun() && !globalOptions.isJson()) {
-        console.log(prism.yellow('⚠️  DRY RUN MODE - No changes will be made'))
-        console.log('')
-      }
+    .hook('preAction', (thisCommand, actionCommand) => {
+      applyGlobalOptions(thisCommand, actionCommand)
     })
 }
 
 /**
- * Wrapper for dry-run operations
+ * Log verbose diagnostic message (stderr, only with --verbose).
  */
-export async function withDryRun<T>(
-  operation: () => Promise<T>,
-  preview: () => void | Promise<void>,
-  options: { message?: string } = {}
-): Promise<T | undefined> {
-  if (globalOptions.isDryRun()) {
-    const message = options.message || 'Would execute'
-
-    if (!globalOptions.isJson()) {
-      console.log(prism.cyan(`[DRY RUN] ${message}:`))
-      console.log('')
-    }
-
-    await preview()
-
-    if (!globalOptions.isJson()) {
-      console.log('')
-      console.log(prism.gray('(No changes made in dry-run mode)'))
-    }
-
-    return undefined
-  }
-
-  return operation()
-}
-
-/**
- * Log verbose message
- */
-export function verbose(message: string, data?: any): void {
-  if (globalOptions.isVerbose() && !globalOptions.isQuiet() && !globalOptions.isJson()) {
-    if (data !== undefined) {
-      logger.debug(`${message}:`, data)
-    } else {
-      logger.debug(message)
-    }
-  }
-}
-
-/**
- * Log debug information
- */
-export function debug(message: string, data?: any): void {
-  if (globalOptions.isVerbose() && !globalOptions.isQuiet() && !globalOptions.isJson()) {
-    if (data !== undefined) {
-      console.log(prism.gray(`[DEBUG] ${message}:`), data)
-    } else {
-      console.log(prism.gray(`[DEBUG] ${message}`))
-    }
-  }
-}
-
-/**
- * Conditionally execute based on options
- */
-export function when(
-  condition: 'verbose' | 'quiet' | 'dryRun' | 'json',
-  callback: () => void
-): void {
-  const shouldExecute = {
-    verbose: globalOptions.isVerbose(),
-    quiet: globalOptions.isQuiet(),
-    dryRun: globalOptions.isDryRun(),
-    json: globalOptions.isJson()
-  }[condition]
-
-  if (shouldExecute) {
-    callback()
-  }
-}
-
-/**
- * Format output based on global options
- */
-export function formatOutput<T>(
-  data: T,
-  options: {
-    json?: (data: T) => any
-    text?: (data: T) => string
-    table?: (data: T) => any[]
-  }
-): void {
-  if (globalOptions.isJson() && options.json) {
-    globalOptions.output(options.json(data), { format: 'json' })
-  } else if (options.table && !globalOptions.isJson()) {
-    globalOptions.output(options.table(data), { format: 'table' })
-  } else if (options.text && !globalOptions.isJson()) {
-    globalOptions.output(options.text(data))
+export function verbose(message: string, data?: unknown): void {
+  if (!isVerboseMode() || isQuietMode()) return
+  if (data !== undefined) {
+    logger.debug(`${message}:`, data)
   } else {
-    globalOptions.output(data)
+    logger.debug(message)
   }
 }
 
 /**
- * Confirmation with dry-run support
+ * Log debug information (stderr, only with --verbose).
  */
-export async function confirmWithDryRun(message: string, defaultValue = false): Promise<boolean> {
-  if (globalOptions.isDryRun()) {
-    if (!globalOptions.isJson()) {
-      console.log(prism.cyan(`[DRY RUN] Would prompt: ${message}`))
-      console.log(prism.gray(`(Would use default: ${defaultValue})`))
-    }
-    return defaultValue
-  }
-
-  if (globalOptions.isQuiet() || globalOptions.isJson()) {
-    return defaultValue
-  }
-
-  const { confirm } = await import('@xec-sh/kit')
-  const result = await confirm({ message, initialValue: defaultValue })
-  return result === true
-}
-
-/**
- * Command execution summary
- */
-export class ExecutionSummary {
-  private steps: Array<{
-    name: string
-    status: 'pending' | 'success' | 'skipped' | 'failed'
-    message?: string
-    duration?: number
-  }> = []
-  private startTime = Date.now()
-
-  /**
-   * Add a step
-   */
-  addStep(
-    name: string,
-    status: 'pending' | 'success' | 'skipped' | 'failed' = 'pending',
-    message?: string
-  ): void {
-    this.steps.push({ name, status, message })
-  }
-
-  /**
-   * Update step status
-   */
-  updateStep(name: string, status: 'success' | 'skipped' | 'failed', message?: string): void {
-    const step = this.steps.find(s => s.name === name)
-    if (step) {
-      step.status = status
-      if (message) step.message = message
-      step.duration = Date.now() - this.startTime
-    }
-  }
-
-  /**
-   * Display summary
-   */
-  display(): void {
-    if (globalOptions.isQuiet() || globalOptions.isJson()) {
-      if (globalOptions.isJson()) {
-        globalOptions.output({
-          steps: this.steps,
-          duration: Date.now() - this.startTime,
-          success: this.steps.every(s => s.status !== 'failed')
-        })
-      }
-      return
-    }
-
-    console.log('')
-    console.log(prism.bold('Execution Summary:'))
-    console.log(prism.gray('─'.repeat(60)))
-
-    this.steps.forEach(step => {
-      const icon = {
-        success: prism.green('✓'),
-        failed: prism.red('✗'),
-        skipped: prism.yellow('○'),
-        pending: prism.gray('◌')
-      }[step.status]
-
-      const name =
-        step.status === 'failed'
-          ? prism.red(step.name)
-          : step.status === 'skipped'
-            ? prism.yellow(step.name)
-            : step.name
-
-      console.log(`  ${icon} ${name}`)
-
-      if (step.message && (globalOptions.isVerbose() || step.status === 'failed')) {
-        console.log(`    ${prism.gray(step.message)}`)
-      }
-    })
-
-    console.log(prism.gray('─'.repeat(60)))
-
-    const totalDuration = Date.now() - this.startTime
-    const failed = this.steps.filter(s => s.status === 'failed').length
-    const success = this.steps.filter(s => s.status === 'success').length
-    const skipped = this.steps.filter(s => s.status === 'skipped').length
-
-    console.log(`Total: ${this.steps.length} steps`)
-    if (success > 0) console.log(prism.green(`  ✓ ${success} succeeded`))
-    if (skipped > 0) console.log(prism.yellow(`  ○ ${skipped} skipped`))
-    if (failed > 0) console.log(prism.red(`  ✗ ${failed} failed`))
-    console.log(prism.gray(`Duration: ${this.formatDuration(totalDuration)}`))
-    console.log('')
-  }
-
-  /**
-   * Format duration
-   */
-  private formatDuration(ms: number): string {
-    const seconds = Math.floor(ms / 1000)
-    if (seconds < 60) return `${seconds}s`
-    const minutes = Math.floor(seconds / 60)
-    return `${minutes}m ${seconds % 60}s`
+export function debug(message: string, data?: unknown): void {
+  if (data !== undefined) {
+    diagVerbose(`[DEBUG] ${message}: ${JSON.stringify(data)}`)
+  } else {
+    diagVerbose(`[DEBUG] ${message}`)
   }
 }

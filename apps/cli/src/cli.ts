@@ -1,36 +1,47 @@
+import { readFileSync } from 'node:fs'
 import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
-import { loadConfig } from './config/loader.js'
-import { logger } from './utils/logger.js'
-import { ErrorHandler } from './utils/error-handler.js'
-import { addGlobalOptions, globalOptions } from './utils/global-options.js'
-import {
-  createCommandLoaders,
-  CommandOptimizer,
-  CommandCache,
-  LoadMetrics
-} from './utils/lazy-loader.js'
-import { CacheManager } from './utils/cache.js'
+import { addGlobalOptions } from './utils/global-options.js'
+import { initCommand } from './commands/init/index.js'
+import { migrateCommand } from './commands/migrate/index.js'
+import { generateCommand } from './commands/generate/index.js'
+import { dbCommand } from './commands/db/index.js'
+import { healthCommand } from './commands/health/index.js'
+import { auditCommand } from './commands/audit/index.js'
+import { debugCommand } from './commands/debug/index.js'
+import { queryCommand } from './commands/query/index.js'
+import { repositoryCommand } from './commands/repository/index.js'
+import { testCommand } from './commands/test/index.js'
+import { pluginCommand } from './commands/plugin/index.js'
+import { schemaCommand } from './commands/schema/index.js'
 
 /**
- * Optimized CLI with lazy loading and caching
+ * Read the CLI version from package.json (dist/index.js sits one level
+ * below the package root, src/cli.ts likewise).
  */
-export async function cli(argv: string[]): Promise<void> {
-  const startTime = Date.now()
+function cliVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      version?: string
+    }
+    return pkg.version ?? '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+}
 
-  // Setup cache cleanup handlers
-  CacheManager.setupCleanup()
-
-  // Load usage statistics for optimization
-  await CommandOptimizer.loadStats()
-
+/**
+ * Build the full command tree. All command groups are registered eagerly
+ * so --help is complete everywhere; heavy dependencies (database drivers,
+ * template engines, generators) are only imported when an action runs.
+ */
+export function buildProgram(): Command {
   const program = new Command()
 
-  // Configure CLI
   program
     .name('kysera')
     .description('Comprehensive command-line interface for Kysera toolkit')
-    .version(process.env['KYSERA_CLI_VERSION'] || '0.5.1', '-v, --version', 'Show CLI version')
+    .version(cliVersion(), '-v, --version', 'Show CLI version')
     .helpCommand('help [command]', 'Display help for command')
     .helpOption('-h, --help', 'Display help')
     .addHelpText(
@@ -48,159 +59,49 @@ ${prism.gray('GitHub:')} ${prism.underline(prism.blue('https://github.com/kysera
 `
     )
 
-  // Global options
-  addGlobalOptions(program)
-    .option('--env <environment>', 'Environment (development/production/test)', 'development')
-    .option('--stats', 'Show performance statistics', false)
+  addGlobalOptions(program).option(
+    '--env <environment>',
+    'Environment (development/production/test)',
+    'development'
+  )
 
-  // Global hooks
-  program.hook('preAction', async (_thisCommand, actionCommand) => {
-    // Track command usage
-    CommandOptimizer.trackUsage(actionCommand.name())
-
-    // Get global options from the parent command
-    const opts = program.opts()
-
-    // Set up environment
-    process.env['NODE_ENV'] = opts['env'] || process.env['NODE_ENV'] || 'development'
-
-    // Load configuration (if not init or help command)
-    if (!['init', 'help', 'stats'].includes(actionCommand.name())) {
-      try {
-        const configPath = globalOptions.getOptions().config || opts['config']
-        const config = await loadConfig(configPath)
-        actionCommand.setOptionValue('_config', config)
-      } catch (error) {
-        // Config is optional for some commands
-        if (globalOptions.isVerbose()) {
-          logger.debug('Configuration not found, using defaults')
-        }
-      }
+  program.hook('preAction', thisCommand => {
+    const envOption = thisCommand.opts<{ env?: string }>().env
+    if (thisCommand.getOptionValueSource('env') === 'cli' && envOption) {
+      process.env['NODE_ENV'] = envOption
+    } else if (!process.env['NODE_ENV'] && envOption) {
+      process.env['NODE_ENV'] = envOption
     }
   })
 
-  // Lazy load commands
-  const commandLoaders = createCommandLoaders()
+  program.addCommand(initCommand())
+  program.addCommand(migrateCommand())
+  program.addCommand(generateCommand())
+  program.addCommand(dbCommand())
+  program.addCommand(healthCommand())
+  program.addCommand(auditCommand())
+  program.addCommand(debugCommand())
+  program.addCommand(queryCommand())
+  program.addCommand(repositoryCommand())
+  program.addCommand(testCommand())
+  program.addCommand(pluginCommand())
+  program.addCommand(schemaCommand())
 
-  // Get frequently used commands to preload
-  const frequentCommands = CommandOptimizer.getFrequentCommands()
-  const commandsToPreload = frequentCommands.filter(name => commandLoaders.has(name)).slice(0, 3) // Preload top 3
-
-  // Preload frequent commands in parallel
-  if (commandsToPreload.length > 0 && !globalOptions.isQuiet()) {
-    const preloadPromises = commandsToPreload.map(async name => {
-      const loader = commandLoaders.get(name)!
-      try {
-        const command = await CommandCache.getOrLoad(name, loader.loader)
-        program.addCommand(command)
-        commandLoaders.delete(name) // Remove from lazy loaders
-      } catch (error) {
-        // Preload failed, will lazy load on demand
-      }
-    })
-
-    await Promise.all(preloadPromises)
-  }
-
-  // Add remaining commands as lazy-loaded
-  for (const [name, loader] of commandLoaders) {
-    const placeholderCommand = new Command(name)
-      .description(loader.description)
-      .allowUnknownOption(true)
-      .allowExcessArguments(true)
-      .action(async function (this: Command, ...args: any[]) {
-        const loadStart = Date.now()
-
-        // Load the actual command
-        const actualCommand = await CommandCache.getOrLoad(name, loader.loader)
-        LoadMetrics.recordLoad(name, Date.now() - loadStart)
-
-        // Replace placeholder with actual command
-        const parent = this.parent
-        if (parent) {
-          const index = parent.commands.findIndex(cmd => cmd.name() === name)
-          if (index >= 0) {
-            // Create a new array with the replacement
-            const newCommands = [...parent.commands]
-            newCommands[index] = actualCommand
-            // @ts-ignore - We need to replace the commands array
-            parent.commands = newCommands
-          }
-        }
-
-        // Find where this command starts in argv
-        const cmdIndex = process.argv.indexOf(name)
-        if (cmdIndex >= 0) {
-          // Get the arguments after the command name
-          const subArgs = process.argv.slice(cmdIndex + 1)
-          // Parse with the actual command, passing only the subcommand arguments
-          await actualCommand.parseAsync(subArgs, { from: 'user' })
-        } else {
-          // Fallback: parse with all remaining args
-          await actualCommand.parseAsync(args, { from: 'user' })
-        }
-      })
-
-    program.addCommand(placeholderCommand)
-  }
-
-  // Test command (always available for quick checks)
-  program
-    .command('hello')
-    .description('Test command to verify CLI setup')
-    .option('-n, --name <name>', 'Name to greet', 'World')
-    .action(options => {
-      logger.info(prism.green(`Hello, ${options.name}! 👋`))
-      logger.debug('CLI is working correctly!')
-    })
-
-  // Performance stats command
-  program
-    .command('stats')
-    .description('Show CLI performance statistics')
-    .action(() => {
-      console.log(prism.bold('CLI Performance Statistics'))
-      console.log(prism.gray('─'.repeat(60)))
-
-      // Load metrics
-      const loadMetrics = LoadMetrics.getAllMetrics()
-      if (loadMetrics.length > 0) {
-        console.log(prism.cyan('Command Load Times:'))
-        loadMetrics.forEach(m => {
-          console.log(`  ${m.name}: ${m.loadTime}ms (used ${m.executionCount} times)`)
-        })
-        console.log()
-      }
-
-      // Cache statistics
-      CacheManager.printStats()
-
-      // Usage statistics
-      const frequent = CommandOptimizer.getFrequentCommands()
-      if (frequent.length > 0) {
-        console.log(prism.cyan('Most Used Commands:'))
-        frequent.forEach((cmd, i) => {
-          console.log(`  ${i + 1}. ${cmd}`)
-        })
-      }
-
-      console.log(prism.gray('─'.repeat(60)))
-      const totalTime = Date.now() - startTime
-      console.log(`Startup time: ${totalTime}ms`)
-    })
-
-  // Install global error handlers
-  ErrorHandler.install(program)
   program.showSuggestionAfterError(true)
 
-  // Parse and execute command
-  await program.parseAsync(argv)
+  return program
+}
 
-  // Show stats if requested
-  if (program.opts()['stats']) {
-    console.log()
-    console.log(prism.gray('─'.repeat(60)))
-    console.log(`Command completed in ${Date.now() - startTime}ms`)
-    LoadMetrics.report()
-  }
+/**
+ * Run the CLI.
+ */
+export async function cli(argv: string[]): Promise<void> {
+  // Load .env from the working directory first so configuration can rely
+  // on it (real environment variables are never overridden). Non-fatal
+  // when absent.
+  const { config: loadDotenv } = await import('dotenv')
+  loadDotenv({ quiet: true })
+
+  const program = buildProgram()
+  await program.parseAsync(argv)
 }

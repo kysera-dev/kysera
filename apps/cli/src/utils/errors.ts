@@ -8,8 +8,10 @@ import {
   NetworkErrorCodes,
   MigrationErrorCodes,
   PluginErrorCodes,
+  parseDatabaseError,
   type ErrorCode as UnifiedErrorCode
 } from '@kysera/core'
+import { isJsonMode, isVerboseMode } from './output.js'
 
 /**
  * CLI Error Codes mapping to unified @kysera/core ErrorCodes
@@ -195,7 +197,16 @@ export function getUnifiedErrorCode(legacyCode: string): string {
   return errorInfo?.code || legacyCode
 }
 
-export function handleError(error: unknown): void {
+/**
+ * Single error surface for the CLI. Formats the error for humans (or as
+ * JSON on stderr in --json mode) and exits with code 1.
+ */
+export function handleError(error: unknown): never {
+  if (isJsonMode()) {
+    process.stderr.write(`${JSON.stringify({ error: serializeError(error) }, null, 2)}\n`)
+    process.exit(1)
+  }
+
   if (error instanceof CLIError) {
     handleCLIError(error)
   } else if (error instanceof Error) {
@@ -204,6 +215,31 @@ export function handleError(error: unknown): void {
     handleUnknownError(error)
   }
   process.exit(1)
+}
+
+/**
+ * Serialize any error into a stable JSON payload.
+ */
+export function serializeError(error: unknown): Record<string, unknown> {
+  if (error instanceof CLIError) {
+    const payload: Record<string, unknown> = {
+      name: error.name,
+      message: error.message,
+      code: error.code
+    }
+    if (error.details !== undefined) payload['details'] = error.details
+    if (error.suggestions.length > 0) payload['suggestions'] = error.suggestions
+    if (isVerboseMode() && error.stack) payload['stack'] = error.stack
+    return payload
+  }
+  if (error instanceof Error) {
+    const payload: Record<string, unknown> = { name: error.name, message: error.message }
+    const hints = databaseHints(error)
+    if (hints.length > 0) payload['suggestions'] = hints
+    if (isVerboseMode() && error.stack) payload['stack'] = error.stack
+    return payload
+  }
+  return { name: 'UnknownError', message: String(error) }
 }
 
 function handleCLIError(error: CLIError): void {
@@ -232,8 +268,7 @@ function handleCLIError(error: CLIError): void {
     }
   }
 
-  // Check for verbose mode using environment variable
-  const isVerbose = process.env.VERBOSE === 'true'
+  const isVerbose = isVerboseMode()
   if (isVerbose && error.details) {
     output.push('')
     output.push('Details:')
@@ -247,13 +282,7 @@ function handleCLIError(error: CLIError): void {
   }
 
   output.push('')
-
-  // Add help message for specific error codes
-  if (error.code === 'CONFIG_NOT_FOUND') {
-    output.push(prism.gray(`Need help? Run 'kysera help' or visit https://kysera.dev/docs`))
-  } else {
-    output.push(prism.gray(`Need help? Run 'kysera help' or visit https://kysera.dev/docs`))
-  }
+  output.push(prism.gray(`Need help? Run 'kysera help' or visit https://kysera.dev/docs`))
 
   const errorMessage = output.join('\n')
   console.error(errorMessage)
@@ -265,7 +294,7 @@ function handleGenericError(error: Error): void {
   output.push(prism.red(`✗ ${error.message}`))
 
   // Try to provide helpful suggestions based on error message
-  const suggestions = getSuggestionsFromError(error)
+  const suggestions = [...databaseHints(error), ...getSuggestionsFromError(error)]
   if (suggestions.length > 0) {
     output.push('')
     output.push('Suggestions:')
@@ -274,7 +303,7 @@ function handleGenericError(error: Error): void {
     }
   }
 
-  const isVerbose = process.env.VERBOSE === 'true'
+  const isVerbose = isVerboseMode()
   if (isVerbose && error.stack) {
     output.push('')
     output.push(prism.gray('Stack trace:'))
@@ -325,6 +354,53 @@ function getSuggestionsFromError(error: Error): string[] {
   }
 
   return suggestions
+}
+
+/**
+ * Best-effort dialect detection from a raw driver error, used to run it
+ * through @kysera/core's parseDatabaseError for a human-readable hint.
+ */
+function guessErrorDialect(error: Error): 'postgres' | 'mysql' | 'sqlite' | null {
+  const raw = error as Error & {
+    code?: unknown
+    errno?: unknown
+    sqlState?: unknown
+    severity?: unknown
+  }
+  if (typeof raw.message === 'string' && raw.message.includes('SQLITE_')) {
+    return 'sqlite'
+  }
+  if (raw.sqlState !== undefined || typeof raw.errno === 'number') {
+    return 'mysql'
+  }
+  if (
+    typeof raw.severity === 'string' ||
+    (typeof raw.code === 'string' && /^[0-9A-Z]{5}$/.test(raw.code))
+  ) {
+    return 'postgres'
+  }
+  return null
+}
+
+/**
+ * Dialect-aware hints for raw database driver errors.
+ */
+function databaseHints(error: Error): string[] {
+  const dialect = guessErrorDialect(error)
+  if (!dialect) return []
+  try {
+    const parsed = parseDatabaseError(error, dialect)
+    if (
+      parsed.code !== ErrorCodes.DB_UNKNOWN &&
+      parsed.message &&
+      parsed.message !== error.message
+    ) {
+      return [parsed.message]
+    }
+  } catch {
+    // Hints are best-effort only
+  }
+  return []
 }
 
 /**

@@ -1,6 +1,7 @@
 import { resolve, dirname, isAbsolute } from 'node:path'
 import { existsSync } from 'node:fs'
 import type { KyseraConfig } from './schema.js'
+import { logger } from '../utils/logger.js'
 
 /**
  * Resolve environment variables in a string
@@ -172,10 +173,10 @@ export function validatePaths(config: KyseraConfig): string[] {
     return errors
   }
 
-  // Check if migration directory exists (warning only)
+  // Missing migration directory is a normal state for fresh projects;
+  // only surface it as a verbose diagnostic, never as a warning.
   if (config.migrations?.directory && !existsSync(config.migrations.directory)) {
-    // This is just a warning, not an error
-    console.warn(`Warning: Migration directory does not exist: ${config.migrations.directory}`)
+    logger.debug(`Migration directory does not exist: ${config.migrations.directory}`)
   }
 
   // Check template files if specified

@@ -1,10 +1,11 @@
 import { Command } from 'commander'
+import { DatabaseIntrospector } from '../generate/introspector.js'
 import { prism, table } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
-import { DatabaseIntrospector } from '../generate/introspector.js'
+
 import { validateIdentifier } from '../../utils/sql-sanitizer.js'
 import { formatBytes, formatNumber } from '../../utils/formatting.js'
 import { getTableStatistics, getDatabaseStatistics } from '../../utils/table-stats.js'

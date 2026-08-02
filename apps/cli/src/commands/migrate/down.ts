@@ -1,7 +1,9 @@
 import { Command } from 'commander'
-import { prism, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
+import { guardDestructive } from '../../utils/guard.js'
+import { isJsonMode, output } from '../../utils/output.js'
 import { MigrationRunner } from './runner.js'
 import { withDatabase } from '../../utils/with-database.js'
 
@@ -14,6 +16,7 @@ export interface DownOptions {
   verbose?: boolean
   config?: string
   force?: boolean
+  json?: boolean
   schema?: string
 }
 
@@ -28,6 +31,7 @@ export function downCommand(): Command {
     .option('-v, --verbose', 'Show detailed output')
     .option('-c, --config <path>', 'Path to configuration file')
     .option('--force', 'Skip confirmation prompt')
+    .option('--json', 'Output results as JSON')
     .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: DownOptions) => {
       try {
@@ -47,21 +51,15 @@ export function downCommand(): Command {
 }
 
 async function rollbackMigrations(options: DownOptions): Promise<void> {
-  // Warn if rolling back all
-  if (options.all && !options.force && !options.dryRun) {
-    // In test environment or when stdin is not available, auto-confirm
-    if (process.env.NODE_ENV === 'test' || !process.stdin.isTTY) {
-      logger.debug('Auto-confirming rollback all in test/non-TTY environment')
-    } else {
-      const confirmed = await confirm({
-        message: '[WARN] WARNING: This will rollback ALL migrations! Are you sure?',
-        initialValue: false
-      })
-
-      if (!confirmed) {
-        logger.info('Rollback cancelled')
-        return
-      }
+  // Rolling back everything destroys schema and data: require explicit
+  // confirmation (--force in non-interactive environments).
+  if (options.all && !options.dryRun) {
+    const proceed = await guardDestructive('This will rollback ALL migrations. Are you sure?', {
+      force: options.force
+    })
+    if (!proceed) {
+      logger.info('Rollback cancelled')
+      return
     }
   }
 
@@ -113,7 +111,6 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
       }
 
       // Rollback migrations
-      const startTime = Date.now()
       const { rolledBack, duration } = await runner.down({
         to: options.to,
         steps: options.steps || options.count, // Use count as alias for steps
@@ -121,6 +118,16 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
         dryRun: options.dryRun,
         verbose: options.verbose
       })
+
+      if (isJsonMode()) {
+        output({
+          rolledBack,
+          count: rolledBack.length,
+          duration,
+          dryRun: options.dryRun === true
+        })
+        return
+      }
 
       // Show summary
       if (rolledBack.length > 0) {

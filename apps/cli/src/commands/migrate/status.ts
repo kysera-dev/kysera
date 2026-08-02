@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { prism, table } from '@xec-sh/kit'
 import { CLIError } from '../../utils/errors.js'
+import { isJsonMode, output, redactConnection, toDate, toIsoDate } from '../../utils/output.js'
 import { MigrationRunner } from './runner.js'
 import { withDatabase } from '../../utils/with-database.js'
 
@@ -48,24 +49,26 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
     const executed = status.filter((m: any) => m.status === 'executed')
     const pending = status.filter((m: any) => m.status === 'pending')
 
-    if (options.json) {
-      // Output as JSON
-      const output = {
-        total: status.length,
-        executed: executed.length,
-        pending: pending.length,
-        migrations: status.map((m: any) => ({
-          name: m.name,
-          timestamp: m.timestamp,
-          status: m.status,
-          executedAt: m.executedAt?.toISOString() || null
-        })),
-        database: {
-          dialect: config.database!.dialect,
-          connection: options.verbose ? config.database!.connection : undefined
-        }
-      }
-      console.log(JSON.stringify(output, null, 2))
+    if (options.json || isJsonMode()) {
+      // Connection strings may embed credentials: always redact.
+      output(
+        {
+          total: status.length,
+          executed: executed.length,
+          pending: pending.length,
+          migrations: status.map((m: any) => ({
+            name: m.name,
+            timestamp: m.timestamp,
+            status: m.status,
+            executedAt: toIsoDate(m.executedAt)
+          })),
+          database: {
+            dialect: config.database!.dialect,
+            connection: options.verbose ? redactConnection(config.database!.connection) : undefined
+          }
+        },
+        { format: 'json' }
+      )
       return
     }
 
@@ -142,7 +145,10 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
   })
 }
 
-function formatDate(date: Date): string {
+function formatDate(value: Date | string | number): string {
+  // SQLite returns strings where PostgreSQL returns Date objects
+  const date = toDate(value)
+  if (!date) return String(value)
   return date.toLocaleString('en-US', {
     year: 'numeric',
     month: '2-digit',

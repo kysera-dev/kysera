@@ -1,10 +1,11 @@
 import { Command } from 'commander'
+import { DatabaseIntrospector } from '../generate/introspector.js'
 import { prism } from '@xec-sh/kit'
 import { displayTable as table } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
-import { DatabaseIntrospector } from '../generate/introspector.js'
+
 import { logger } from '../../utils/logger.js'
 import type { DatabaseInstance, TableInfo, ColumnInfo } from '../../types/index.js'
 import { toCamelCase, toPascalCase } from '../../utils/templates.js'

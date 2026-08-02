@@ -13,7 +13,7 @@ const DOCKER_PATH = '/usr/local/bin/docker'
 /**
  * Run tests with Docker databases
  */
-async function runTests() {
+async function runTests(): Promise<void> {
   const docker = new DockerCompose({
     dockerPath: DOCKER_PATH,
     configFile: join(__dirname, '../docker-compose.test.yml'),
@@ -36,18 +36,18 @@ async function runTests() {
     console.log('✅ Docker containers started')
 
     // Set environment variables for database connections
-    process.env.TEST_POSTGRES = 'true'
-    process.env.TEST_MYSQL = 'true'
-    process.env.POSTGRES_HOST = 'localhost'
-    process.env.POSTGRES_PORT = '5432'
-    process.env.POSTGRES_USER = 'test'
-    process.env.POSTGRES_PASSWORD = 'test'
-    process.env.POSTGRES_DATABASE = 'kysera_test'
-    process.env.MYSQL_HOST = 'localhost'
-    process.env.MYSQL_PORT = '3306'
-    process.env.MYSQL_USER = 'test'
-    process.env.MYSQL_PASSWORD = 'test'
-    process.env.MYSQL_DATABASE = 'kysera_test'
+    process.env['TEST_POSTGRES'] = 'true'
+    process.env['TEST_MYSQL'] = 'true'
+    process.env['POSTGRES_HOST'] = 'localhost'
+    process.env['POSTGRES_PORT'] = '5432'
+    process.env['POSTGRES_USER'] = 'test'
+    process.env['POSTGRES_PASSWORD'] = 'test'
+    process.env['POSTGRES_DATABASE'] = 'kysera_test'
+    process.env['MYSQL_HOST'] = 'localhost'
+    process.env['MYSQL_PORT'] = '3306'
+    process.env['MYSQL_USER'] = 'test'
+    process.env['MYSQL_PASSWORD'] = 'test'
+    process.env['MYSQL_DATABASE'] = 'kysera_test'
 
     // Run tests
     console.log('🧪 Running tests...')
@@ -65,19 +65,18 @@ async function runTests() {
 }
 
 // Handle SIGINT (Ctrl+C) gracefully
-process.on('SIGINT', async () => {
+process.on('SIGINT', () => {
   console.log('\n🛑 Received interrupt signal, cleaning up...')
   const docker = new DockerCompose({
     dockerPath: DOCKER_PATH,
     configFile: join(__dirname, '../docker-compose.test.yml'),
     projectName: 'kysera-test'
   })
-  await docker.down()
-  process.exit(0)
+  void docker.down().finally(() => process.exit(0))
 })
 
 // Run the tests
-runTests().catch(error => {
+runTests().catch((error: unknown) => {
   console.error('Fatal error:', error)
   process.exit(1)
 })

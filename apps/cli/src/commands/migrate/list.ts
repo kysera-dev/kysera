@@ -1,12 +1,11 @@
 import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
 import { displayTable as table } from '../../utils/table-helper.js'
-import { readdirSync, existsSync } from 'node:fs'
-import { join, basename } from 'node:path'
+import { existsSync } from 'node:fs'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
+import { isJsonMode, output, toDate, toIsoDate } from '../../utils/output.js'
 import { MigrationRunner } from './runner.js'
-import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
 
 export interface ListOptions {
@@ -57,8 +56,8 @@ async function listMigrations(options: ListOptions): Promise<void> {
 
   // Check if migrations directory exists
   if (!existsSync(migrationsDir)) {
-    if (options.json) {
-      console.log(JSON.stringify({ migrations: [] }, null, 2))
+    if (options.json || isJsonMode()) {
+      output({ migrations: [] }, { format: 'json' })
     } else {
       logger.info('No migrations directory found')
       logger.info(`  Expected location: ${migrationsDir}`)
@@ -71,6 +70,7 @@ async function listMigrations(options: ListOptions): Promise<void> {
   }
 
   // Get database connection
+  const { getDatabaseConnection } = await import('../../utils/database.js')
   const db = await getDatabaseConnection(config.database)
 
   if (!db) {
@@ -108,15 +108,16 @@ async function listMigrations(options: ListOptions): Promise<void> {
       migrations = migrations.filter(m => m.status === 'executed')
     }
 
-    if (options.json) {
-      // Output as JSON
-      const output = migrations.map(m => ({
-        name: m.name,
-        timestamp: m.timestamp,
-        status: m.status,
-        executedAt: m.executedAt?.toISOString() || null
-      }))
-      console.log(JSON.stringify(output, null, 2))
+    if (options.json || isJsonMode()) {
+      output(
+        migrations.map(m => ({
+          name: m.name,
+          timestamp: m.timestamp,
+          status: m.status,
+          executedAt: toIsoDate(m.executedAt)
+        })),
+        { format: 'json' }
+      )
       return
     }
 
@@ -215,7 +216,10 @@ async function listMigrations(options: ListOptions): Promise<void> {
   }
 }
 
-function formatDate(date: Date): string {
+function formatDate(value: Date | string | number): string {
+  // SQLite returns strings where PostgreSQL returns Date objects
+  const date = toDate(value)
+  if (!date) return String(value)
   return date.toLocaleString('en-US', {
     year: 'numeric',
     month: '2-digit',

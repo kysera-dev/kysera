@@ -1,6 +1,7 @@
 import { Command } from 'commander'
-import { prism, spinner, confirm } from '@xec-sh/kit'
-import { sql } from 'kysely'
+import { prism } from '@xec-sh/kit'
+import { spinner } from '../../utils/spinner.js'
+import { guardDestructive } from '../../utils/guard.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError, CLIDatabaseError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
@@ -90,22 +91,22 @@ async function teardownTestEnvironment(options: TestTeardownOptions): Promise<vo
         `Found ${testDatabases.length} test database${testDatabases.length !== 1 ? 's' : ''}`
       )
 
-      if (!options.force && !options.json) {
-        console.log('')
-        console.log(prism.yellow('Test databases to clean:'))
+      if (!options.force) {
+        console.error('')
+        console.error(prism.yellow('Test databases to clean:'))
         for (const dbName of testDatabases) {
-          console.log(`  - ${dbName}`)
+          console.error(`  - ${dbName}`)
         }
+      }
 
-        const action = options.keepData ? 'truncate' : 'drop'
-        const shouldContinue = await confirm({
-          message: `${action.charAt(0).toUpperCase() + action.slice(1)} ${testDatabases.length} test database${testDatabases.length !== 1 ? 's' : ''}?`
-        })
-
-        if (!shouldContinue) {
-          console.log(prism.gray('Teardown cancelled'))
-          return
-        }
+      const action = options.keepData ? 'truncate' : 'drop'
+      const proceed = await guardDestructive(
+        `${action.charAt(0).toUpperCase() + action.slice(1)} ${testDatabases.length} test database${testDatabases.length !== 1 ? 's' : ''}?`,
+        { force: options.force }
+      )
+      if (!proceed) {
+        console.error(prism.gray('Teardown cancelled'))
+        return
       }
 
       const cleanupSpinner = spinner()
@@ -212,6 +213,7 @@ async function findTestDatabases(config: any, options: TestTeardownOptions): Pro
 }
 
 async function truncateDatabase(config: any, dbName: string, preserveLogs: boolean): Promise<void> {
+  const { sql } = await import('kysely')
   validateIdentifier(dbName, 'database')
 
   const testConfig = { ...config, database: dbName }
@@ -268,6 +270,7 @@ async function truncateDatabase(config: any, dbName: string, preserveLogs: boole
 }
 
 async function dropTestDatabase(config: any, dbName: string): Promise<void> {
+  const { sql } = await import('kysely')
   const dialect = config.dialect || 'postgresql'
   const validDbName = validateIdentifier(dbName, 'database')
 

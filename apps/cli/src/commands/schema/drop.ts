@@ -1,5 +1,6 @@
 import { Command } from 'commander'
-import { prism, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
+import { guardDestructive } from '../../utils/guard.js'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
@@ -75,38 +76,27 @@ async function dropSchema(name: string, options: DropOptions): Promise<void> {
 
     // Confirm deletion
     if (!options.force) {
-      if (process.env.NODE_ENV === 'test' || !process.stdin.isTTY) {
-        throw new CLIError(
-          'Schema drop requires confirmation',
-          'DROP_REQUIRES_CONFIRMATION',
-          undefined,
-          ['Use --force flag to skip confirmation']
-        )
-      }
-
-      console.log('')
-      console.log(prism.red(`Warning: You are about to drop schema '${name}'`))
-      console.log(prism.yellow(`  Tables: ${info.tableCount}`))
-      console.log(prism.yellow(`  Size: ${formatBytes(info.sizeBytes)}`))
+      console.error('')
+      console.error(prism.red(`Warning: You are about to drop schema '${name}'`))
+      console.error(prism.yellow(`  Tables: ${info.tableCount}`))
+      console.error(prism.yellow(`  Size: ${formatBytes(info.sizeBytes)}`))
       if (options.cascade) {
-        console.log(prism.red('  CASCADE: All objects in the schema will be dropped!'))
+        console.error(prism.red('  CASCADE: All objects in the schema will be dropped!'))
       }
-      console.log('')
+      console.error('')
+    }
 
-      const confirmed = await confirm({
-        message: `Are you sure you want to drop schema '${name}'?`,
-        initialValue: false
-      })
+    const proceed = await guardDestructive(`Are you sure you want to drop schema '${name}'?`, {
+      force: options.force
+    })
+    if (!proceed) {
+      console.error(prism.gray('Schema drop cancelled'))
+      return
+    }
 
-      if (!confirmed) {
-        console.log(prism.gray('Schema drop cancelled'))
-        return
-      }
-
-      if (info.tableCount > 0 && !options.cascade) {
-        console.log(prism.red('Schema contains tables. Use --cascade to drop all objects.'))
-        return
-      }
+    if (!options.force && info.tableCount > 0 && !options.cascade) {
+      console.error(prism.red('Schema contains tables. Use --cascade to drop all objects.'))
+      return
     }
 
     const dropSpinner = spinner()

@@ -1,5 +1,5 @@
-import { Kysely, sql } from 'kysely'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import type { Kysely } from 'kysely'
+import { existsSync, readdirSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { prism } from '@xec-sh/kit'
@@ -50,6 +50,7 @@ export class MigrationRunner {
    * Initialize migration table
    */
   async init(): Promise<void> {
+    const { sql } = await import('kysely')
     // Create schema if it doesn't exist (PostgreSQL only)
     if (this.schema !== 'public') {
       try {
@@ -89,7 +90,7 @@ export class MigrationRunner {
    */
   async getMigrationFiles(): Promise<MigrationFile[]> {
     if (!existsSync(this.migrationsDir)) {
-      logger.warn(`Migration directory does not exist: ${this.migrationsDir}`)
+      logger.debug(`Migration directory does not exist: ${this.migrationsDir}`)
       return []
     }
 
@@ -339,9 +340,23 @@ export class MigrationRunner {
       } catch (error: any) {
         const duration = Date.now() - migrationStart
         logger.error(`${prism.red('↑')} ${migration.name}... ${prism.red('✗')} (${duration}ms)`)
+        const remaining = pending
+          .slice(pending.indexOf(migrationStatus) + 1)
+          .map(m => m.name)
         throw new CLIError(
           `Migration ${migration.name} failed: ${error.message}`,
-          'MIGRATION_FAILED'
+          'MIGRATION_FAILED',
+          { migration: migration.name, file: file.path, applied: executed, remaining },
+          [
+            `Failed migration file: ${file.path}`,
+            executed.length > 0
+              ? `${executed.length} migration(s) were applied before the failure: ${executed.join(', ')}`
+              : 'No migrations were applied before the failure',
+            remaining.length > 0
+              ? `${remaining.length} migration(s) were not run: ${remaining.join(', ')}`
+              : 'No further migrations were pending',
+            `Fix the migration and re-run 'kysera migrate up'`
+          ]
         )
       }
     }
@@ -444,9 +459,22 @@ export class MigrationRunner {
       } catch (error: any) {
         const duration = Date.now() - migrationStart
         logger.error(`${prism.red('↓')} ${migration.name}... ${prism.red('✗')} (${duration}ms)`)
+        const remaining = toRollback
+          .slice(toRollback.indexOf(executedMigration) + 1)
+          .map(m => m.name)
         throw new CLIError(
           `Rollback of ${migration.name} failed: ${error.message}`,
-          'ROLLBACK_FAILED'
+          'ROLLBACK_FAILED',
+          { migration: migration.name, file: file.path, rolledBack, remaining },
+          [
+            `Failed migration file: ${file.path}`,
+            rolledBack.length > 0
+              ? `${rolledBack.length} migration(s) were rolled back before the failure: ${rolledBack.join(', ')}`
+              : 'No migrations were rolled back before the failure',
+            remaining.length > 0
+              ? `${remaining.length} migration(s) remain applied: ${remaining.join(', ')}`
+              : 'No further migrations were selected for rollback'
+          ]
         )
       }
     }

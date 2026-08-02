@@ -1,10 +1,10 @@
 import { Command } from 'commander'
-import { prism, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
+import { guardDestructive } from '../../utils/guard.js'
 import { withDatabase } from '../../utils/with-database.js'
 import { MigrationRunner } from '../migrate/runner.js'
-import { execa } from 'execa'
 import { logger } from '../../utils/logger.js'
 
 export interface ResetOptions {
@@ -41,22 +41,13 @@ export function resetCommand(): Command {
 }
 
 async function resetDatabase(options: ResetOptions): Promise<void> {
-  // Confirm dangerous operation
-  if (!options.force) {
-    console.log('')
-    console.log(prism.red('⚠️  WARNING: This will DROP ALL TABLES and destroy all data!'))
-    console.log(prism.red('This action cannot be undone.'))
-    console.log('')
-
-    const confirmed = await confirm({
-      message: 'Are you absolutely sure you want to continue?',
-      initialValue: false
-    })
-
-    if (!confirmed) {
-      console.log('Reset cancelled')
-      return
-    }
+  const proceed = await guardDestructive(
+    'This will DROP ALL TABLES and destroy all data. This action cannot be undone. Continue?',
+    { force: options.force }
+  )
+  if (!proceed) {
+    logger.info('Reset cancelled')
+    return
   }
 
   await withDatabase({ config: options.config, verbose: options.verbose, schema: options.schema }, async (db, config, schema) => {
@@ -132,6 +123,7 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
       resetSpinner.start('Running seeds...')
 
       try {
+        const { execa } = await import('execa')
         await execa('npx', ['kysera', 'db', 'seed'], {
           stdio: options.verbose ? 'inherit' : 'ignore'
         })

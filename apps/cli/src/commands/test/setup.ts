@@ -1,11 +1,11 @@
 import { Command } from 'commander'
-import { prism, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
+import { guardDestructive } from '../../utils/guard.js'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
-import { sql } from 'kysely'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
@@ -13,6 +13,7 @@ export interface TestSetupOptions {
   environment?: 'test' | 'ci' | 'local'
   database?: string
   clean?: boolean
+  force?: boolean
   migrate?: boolean
   seed?: boolean
   fixtures?: string[]
@@ -38,6 +39,7 @@ export function testSetupCommand(): Command {
     .option('-e, --environment <env>', 'Test environment', 'test')
     .option('-d, --database <name>', 'Test database name')
     .option('--clean', 'Clean existing test database', false)
+    .option('-f, --force', 'Skip confirmation when dropping an existing database', false)
     .option('--migrate', 'Run migrations', true)
     .option('--seed', 'Run seeders', false)
     .option('--fixtures <files...>', 'Load specific fixtures')
@@ -101,9 +103,10 @@ async function setupTestEnvironment(options: TestSetupOptions): Promise<void> {
     if (dbExists && options.clean) {
       setupSpinner.text = `Dropping existing database '${testDbName}'...`
 
-      const shouldDrop =
-        options.json ||
-        (await confirm({ message: `Database '${testDbName}' exists. Drop and recreate?` }))
+      const shouldDrop = await guardDestructive(
+        `Database '${testDbName}' exists. Drop and recreate?`,
+        { force: options.force }
+      )
 
       if (shouldDrop) {
         await dropDatabase(testConfig.database)
@@ -198,6 +201,7 @@ async function checkDatabaseExists(config: any): Promise<boolean> {
 }
 
 async function createDatabase(config: any): Promise<void> {
+  const { sql } = await import('kysely')
   const dialect = config.dialect || 'postgresql'
   const dbName = config.database
 
@@ -216,6 +220,7 @@ async function createDatabase(config: any): Promise<void> {
 }
 
 async function dropDatabase(config: any): Promise<void> {
+  const { sql } = await import('kysely')
   const dialect = config.dialect || 'postgresql'
   const dbName = config.database
 

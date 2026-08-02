@@ -1,33 +1,18 @@
-import {
-  Kysely,
-  PostgresDialect,
-  MysqlDialect,
-  SqliteDialect,
-  sql,
-  DefaultQueryCompiler
-} from 'kysely'
 import type {
+  Kysely,
   RootOperationNode,
   PluginTransformQueryArgs,
   PluginTransformResultArgs,
   QueryResult,
   UnknownRow
 } from 'kysely'
-import type { Pool as PgPool } from 'pg'
-import { Pool } from 'pg'
-import type { Pool as MysqlPool } from 'mysql2'
-import { createPool } from 'mysql2'
-import Database from 'better-sqlite3'
 import type { DatabaseConfig } from '../config/schema.js'
 import { CLIDatabaseError, ValidationError } from './errors.js'
 import { logger } from './logger.js'
-import { checkDatabaseHealth } from '@kysera/infra'
 
 export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite'
 
 // Generic database type - can be extended with specific table schemas
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface Database {
   [key: string]: Record<string, unknown>
 }
@@ -80,6 +65,9 @@ export interface DatabaseConnection {
 /**
  * Create a database connection
  * This function is overloaded to support both test format and full format
+ *
+ * Database drivers (pg/mysql2/better-sqlite3) and kysely itself are
+ * imported on demand so that building the command tree stays cheap.
  */
 export async function createDatabaseConnection(
   configOrOptions: DatabaseConfig | ConnectionOptions
@@ -88,12 +76,14 @@ export async function createDatabaseConnection(
   if ('dialect' in configOrOptions && !('config' in configOrOptions)) {
     // This is the format expected by tests - return Kysely instance directly
     const config = configOrOptions as DatabaseConfig
-    const connection = (config as any).connectionString || config.connection
+    const connection = (config as { connectionString?: string }).connectionString || config.connection
+
+    const { Kysely, PostgresDialect, MysqlDialect, SqliteDialect } = await import('kysely')
 
     let db: Kysely<Database>
 
     switch (config.dialect) {
-      case 'postgres':
+      case 'postgres': {
         const pgConfig = connection
           ? typeof connection === 'string'
             ? { connectionString: connection }
@@ -105,13 +95,15 @@ export async function createDatabaseConnection(
               user: config.user,
               password: config.password
             }
+        const { Pool } = await import('pg')
         const pgPool = new Pool({ ...pgConfig, ...config.pool })
         db = new Kysely<Database>({
           dialect: new PostgresDialect({ pool: pgPool })
         })
         break
+      }
 
-      case 'mysql':
+      case 'mysql': {
         const mysqlConfig = connection
           ? typeof connection === 'string'
             ? parseMysqlConnection(connection)
@@ -123,21 +115,25 @@ export async function createDatabaseConnection(
               user: config.user,
               password: config.password
             }
+        const { createPool } = await import('mysql2')
         const mysqlPool = createPool({ ...mysqlConfig, ...config.pool })
         db = new Kysely<Database>({
           dialect: new MysqlDialect({ pool: mysqlPool })
         })
         break
+      }
 
-      case 'sqlite':
-        const database = new Database(config.database || ':memory:')
+      case 'sqlite': {
+        const { default: SqliteDatabase } = await import('better-sqlite3')
+        const database = new SqliteDatabase(config.database || ':memory:')
         db = new Kysely<Database>({
           dialect: new SqliteDialect({ database })
         })
         break
+      }
 
       default:
-        throw new CLIDatabaseError(`Unsupported dialect: ${config.dialect}`)
+        throw new CLIDatabaseError(`Unsupported dialect: ${String(config.dialect)}`)
     }
 
     return db
@@ -168,23 +164,26 @@ export async function createDatabaseConnection(
 
   try {
     switch (dialect) {
-      case 'postgres':
+      case 'postgres': {
         const pgConnection = await createPostgresConnection(config, readonly)
         db = pgConnection.db
         closeFunction = pgConnection.close
         break
+      }
 
-      case 'mysql':
+      case 'mysql': {
         const mysqlConnection = await createMysqlConnection(config, readonly)
         db = mysqlConnection.db
         closeFunction = mysqlConnection.close
         break
+      }
 
-      case 'sqlite':
+      case 'sqlite': {
         const sqliteConnection = await createSqliteConnection(config, readonly)
         db = sqliteConnection.db
         closeFunction = sqliteConnection.close
         break
+      }
 
       default:
         throw new CLIDatabaseError(`Unsupported database dialect: ${dialect}`)
@@ -210,6 +209,7 @@ export async function createDatabaseConnection(
 
   // Enable debug mode
   if (debug || config.debug) {
+    const { DefaultQueryCompiler } = await import('kysely')
     db = db.withPlugin({
       transformQuery(args: PluginTransformQueryArgs): RootOperationNode {
         const compiler = new DefaultQueryCompiler()
@@ -232,7 +232,10 @@ export async function createDatabaseConnection(
     dialect,
     close: closeFunction,
     test: async () => testConnection(db),
-    getHealth: async () => checkDatabaseHealth(db)
+    getHealth: async () => {
+      const { checkDatabaseHealth } = await import('@kysera/infra')
+      return checkDatabaseHealth(db)
+    }
   }
 }
 
@@ -255,6 +258,11 @@ async function createPostgresConnection(
         password: config.password,
         ssl: config.ssl
       }
+
+  const [{ Kysely, PostgresDialect }, { Pool }] = await Promise.all([
+    import('kysely'),
+    import('pg')
+  ])
 
   const pool = new Pool({
     ...connectionConfig,
@@ -292,6 +300,11 @@ async function createMysqlConnection(
         password: config.password
       }
 
+  const [{ Kysely, MysqlDialect }, { createPool }] = await Promise.all([
+    import('kysely'),
+    import('mysql2')
+  ])
+
   const pool = createPool({
     ...connectionConfig,
     ...config.pool,
@@ -325,7 +338,12 @@ async function createSqliteConnection(
   const connectionString =
     typeof config.connection === 'string' ? config.connection.replace('sqlite://', '') : ':memory:'
 
-  const database = new Database(connectionString, {
+  const [{ Kysely, SqliteDialect }, { default: SqliteDatabase }] = await Promise.all([
+    import('kysely'),
+    import('better-sqlite3')
+  ])
+
+  const database = new SqliteDatabase(connectionString, {
     readonly,
     fileMustExist: readonly
   })
@@ -435,7 +453,7 @@ function detectDialect(connection: string | Record<string, unknown>): DatabaseDi
 async function testConnection(db: Kysely<Database>): Promise<boolean> {
   try {
     // Simple query to test connection
-    const result = await db
+    await db
       .selectFrom('information_schema.tables')
       .select('table_name')
       .limit(1)
@@ -454,9 +472,6 @@ async function testConnection(db: Kysely<Database>): Promise<boolean> {
 }
 
 /**
- * Get database version
- */
-/**
  * Get a database connection from config
  */
 export async function getDatabaseConnection(
@@ -467,7 +482,7 @@ export async function getDatabaseConnection(
     // Check if we got a DatabaseConnection object or a Kysely instance directly
     if ('db' in connection && connection.db) {
       return connection.db
-    } else if (connection && typeof (connection as any).destroy === 'function') {
+    } else if (connection && typeof (connection as Kysely<Database>).destroy === 'function') {
       // We got a Kysely instance directly
       return connection as Kysely<Database>
     } else {
@@ -483,6 +498,7 @@ export async function getDatabaseConnection(
 }
 
 export async function getDatabaseVersion(db: Kysely<Database>): Promise<string> {
+  const { sql } = await import('kysely')
   try {
     // PostgreSQL
     const pgResult = await db
@@ -529,6 +545,7 @@ export async function getDatabaseVersion(db: Kysely<Database>): Promise<string> 
  * For PostgreSQL, we use current_database() instead of interpolating the database name.
  */
 export async function getDatabaseSize(db: Kysely<Database>, databaseName: string): Promise<string> {
+  const { sql } = await import('kysely')
   try {
     // SECURITY: Validate database name to prevent SQL injection
     // Database names should only contain alphanumeric characters, underscores, and hyphens
@@ -594,74 +611,23 @@ export async function listTables(db: Kysely<Database>): Promise<string[]> {
 }
 
 /**
- * Connection pool for reuse
- */
-class ConnectionPool {
-  private connections: Map<string, DatabaseConnection> = new Map()
-
-  async get(options: ConnectionOptions): Promise<DatabaseConnection> {
-    const key = this.getKey(options.config)
-
-    if (this.connections.has(key)) {
-      const conn = this.connections.get(key)!
-      // Test if connection is still alive
-      if (await conn.test()) {
-        return conn
-      }
-      // Remove dead connection
-      this.connections.delete(key)
-    }
-
-    const connection = await createDatabaseConnection(options)
-    // Type guard to ensure we have DatabaseConnection
-    if (!('db' in connection)) {
-      throw new CLIDatabaseError('Expected DatabaseConnection but got Kysely instance')
-    }
-    this.connections.set(key, connection)
-    return connection
-  }
-
-  async closeAll(): Promise<void> {
-    const promises = Array.from(this.connections.values()).map(conn => conn.close())
-    await Promise.all(promises)
-    this.connections.clear()
-  }
-
-  private getKey(config: DatabaseConfig): string {
-    if (typeof config.connection === 'string') {
-      return config.connection
-    }
-    if (config.connection) {
-      return `${config.connection.host}:${config.connection.port}/${config.connection.database}`
-    }
-    return config.database ?? 'default'
-  }
-}
-
-export const connectionPool = new ConnectionPool()
-
-// Clean up on exit
-process.on('beforeExit', async () => {
-  await connectionPool.closeAll()
-})
-
-/**
  * Test database connection
  * Exported function for tests
  */
 export async function testDatabaseConnection(db: Kysely<Database>): Promise<boolean> {
+  const { sql } = await import('kysely')
+  const destroy = async (): Promise<void> => {
+    if (typeof (db as { destroy?: unknown }).destroy === 'function') {
+      await db.destroy().catch(() => {})
+    }
+  }
   try {
     // Simple SELECT 1 query that works across all databases
     await sql`SELECT 1 as test`.execute(db)
-
-    if ((db as any).destroy) {
-      await (db as any).destroy()
-    }
+    await destroy()
     return true
-  } catch (error) {
-    if ((db as any).destroy) {
-      await (db as any).destroy()
-    }
+  } catch {
+    await destroy()
     return false
   }
 }
@@ -696,18 +662,14 @@ export async function introspectDatabase(
 }
 
 /**
- * Run a raw SQL query
- * Exported function for tests
+ * Run a raw SQL query, binding parameters when provided.
  */
 export async function runQuery(
   db: Kysely<Database>,
   query: string,
   params?: unknown[]
 ): Promise<unknown> {
-  // Use raw SQL execution for flexibility with any query type
-  // Note: This bypasses type safety intentionally for raw query execution
-  // If parameters are provided, use sql template literal
-  const rawQuery = params && params.length > 0 ? sql.raw(query) : sql.raw(query)
-  const result = await rawQuery.execute(db)
+  const { CompiledQuery } = await import('kysely')
+  const result = await db.executeQuery(CompiledQuery.raw(query, params ?? []))
   return result.rows
 }

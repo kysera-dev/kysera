@@ -77,12 +77,14 @@ function exec(cmd: string, options: { cwd?: string; silent?: boolean } = {}): st
   const { cwd = ROOT_DIR, silent = false } = options
 
   try {
+    // Typed as string (encoding set), but with stdio 'inherit' Node actually
+    // returns null — the annotation reflects the runtime, not the lib types.
     const result = execSync(cmd, {
       cwd,
       encoding: 'utf-8',
       stdio: silent ? 'pipe' : 'inherit'
-    })
-    return result?.trim() || ''
+    }) as string | null
+    return result?.trim() ?? ''
   } catch (error) {
     if (!silent) {
       console.error(prism.red(`❌ Command failed: ${cmd}`))
@@ -268,7 +270,7 @@ const KNOWN_TYPES = new Set([
   'revert'
 ])
 
-const COMMIT_SECTIONS: ReadonlyArray<{ types: readonly string[]; title: string }> = [
+const COMMIT_SECTIONS: readonly { types: readonly string[]; title: string }[] = [
   { types: ['feat'], title: '### ✨ Features' },
   { types: ['fix'], title: '### 🐛 Bug Fixes' },
   { types: ['perf'], title: '### ⚡ Performance' },
@@ -341,12 +343,16 @@ function readCommitsSince(baseTag: string | null): ParsedCommit[] {
       if (KNOWN_TYPES.has(parsedType)) {
         type = parsedType
       }
-      scope = match[2]?.trim() || null
-      subject = match[4]?.trim() || rawSubject
+      // Empty-after-trim intentionally collapses to the fallback
+      const trimmedScope = match[2]?.trim() ?? ''
+      scope = trimmedScope === '' ? null : trimmedScope
+      const trimmedSubject = match[4]?.trim() ?? ''
+      subject = trimmedSubject === '' ? rawSubject : trimmedSubject
     }
 
     const bodyBreak = /^BREAKING[ -]CHANGES?:?[ \t]*(.*)$/m.exec(bodyField)
-    const breakingNote = bodyBreak?.[1]?.trim() || null
+    const trimmedNote = bodyBreak?.[1]?.trim() ?? ''
+    const breakingNote = trimmedNote === '' ? null : trimmedNote
 
     commits.push({
       hash,
@@ -528,9 +534,13 @@ async function promptVersion(currentVersion: string): Promise<string> {
         { label: 'RC', value: 'rc' }
       ]
     })
-    newVersion = semver.inc(currentVersion, 'prerelease', prereleaseId) || currentVersion
+    // select() may resolve to a cancel symbol — accept only the known ids
+    if (typeof prereleaseId !== 'string') {
+      throw new Error('Release cancelled')
+    }
+    newVersion = semver.inc(currentVersion, 'prerelease', prereleaseId) ?? currentVersion
   } else {
-    newVersion = semver.inc(currentVersion, versionType as semver.ReleaseType) || currentVersion
+    newVersion = semver.inc(currentVersion, versionType as semver.ReleaseType) ?? currentVersion
   }
 
   return newVersion
@@ -539,7 +549,7 @@ async function promptVersion(currentVersion: string): Promise<string> {
 /**
  * Build all packages
  */
-async function buildPackages(): Promise<void> {
+function buildPackages(): void {
   console.log(prism.cyan('🔨 Building packages...'))
   exec('pnpm build')
   console.log(prism.green('✅ Build completed'))
@@ -548,7 +558,7 @@ async function buildPackages(): Promise<void> {
 /**
  * Run tests
  */
-async function runTests(): Promise<void> {
+function runTests(): void {
   console.log(prism.cyan('🧪 Running tests...'))
   exec('pnpm test')
   console.log(prism.green('✅ Tests passed'))
@@ -702,7 +712,7 @@ async function pushRelease(options: ReleaseOptions): Promise<void> {
 
   const shouldPush = await confirm({
     message: 'Push to remote?',
-    initial: true
+    initialValue: true
   })
 
   if (shouldPush) {
@@ -726,12 +736,13 @@ function parseArgs(args: string[]): ReleaseOptions {
   }
 
   const versionFlagIndex = args.indexOf('--version')
-  if (versionFlagIndex !== -1 && args[versionFlagIndex + 1]) {
-    options.version = args[versionFlagIndex + 1]
+  const flagValue = versionFlagIndex !== -1 ? args[versionFlagIndex + 1] : undefined
+  if (flagValue) {
+    options.version = flagValue
   }
-  const versionEq = args.find(arg => arg.startsWith('--version='))
-  if (versionEq) {
-    options.version = versionEq.split('=')[1]
+  const eqValue = args.find(arg => arg.startsWith('--version='))?.split('=')[1]
+  if (eqValue) {
+    options.version = eqValue
   }
 
   return options
@@ -740,7 +751,7 @@ function parseArgs(args: string[]): ReleaseOptions {
 /**
  * Main release flow
  */
-async function main() {
+async function main(): Promise<void> {
   console.log(prism.bold(prism.cyan('\n🚀 Kysera Monorepo Release\n')))
 
   const options = parseArgs(process.argv.slice(2))
@@ -799,7 +810,7 @@ async function main() {
     if (!options.dryRun && !options.version && changelogEntry) {
       const proceed = await confirm({
         message: `Release v${newVersion} with the changelog above?`,
-        initial: true
+        initialValue: true
       })
       if (!proceed) {
         console.log(prism.yellow('Release cancelled'))
@@ -828,12 +839,12 @@ async function main() {
 
     // 6. Build packages
     if (!options.skipBuild) {
-      await buildPackages()
+      buildPackages()
     }
 
     // 7. Run tests
     if (!options.skipTests) {
-      await runTests()
+      runTests()
     }
 
     // 8. Commit + tag first — npm must never be ahead of git

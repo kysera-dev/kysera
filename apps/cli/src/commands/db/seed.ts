@@ -8,7 +8,6 @@ import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
 import { logger } from '../../utils/logger.js'
 import { SeedRunner, type SeedRunnerOptions, type SeedHooks } from './seed-runner.js'
-import { sql } from 'kysely'
 
 export interface SeedOptions {
   file?: string
@@ -122,6 +121,7 @@ async function runSeeds(options: SeedOptions): Promise<void> {
           if (config.database.dialect === 'sqlite') {
             await db.deleteFrom(table).execute()
           } else {
+            const { sql } = await import('kysely')
             await sql`TRUNCATE TABLE ${sql.id(table)} CASCADE`.execute(db)
           }
         }

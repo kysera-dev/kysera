@@ -1,8 +1,5 @@
-import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { resolve, join } from 'node:path'
 import * as fs from 'node:fs/promises'
-import { cosmiconfig } from 'cosmiconfig'
-import { TypeScriptLoader } from 'cosmiconfig-typescript-loader'
 import { KyseraConfigSchema, type KyseraConfig } from './schema.js'
 import { mergeConfig, defaultConfig } from './defaults.js'
 import { resolveConfigPaths, findConfigFile, validatePaths } from './resolver.js'
@@ -10,34 +7,100 @@ import { logger } from '../utils/logger.js'
 import { ConfigurationError, FileSystemError } from '../utils/errors.js'
 
 /**
- * Load and validate Kysera configuration
+ * Configuration cache: a CLI invocation loads its configuration exactly
+ * once per resolved location (root --config is propagated into
+ * subcommand options, so all loads in one invocation share a key).
+ */
+const configCache = new Map<string, KyseraConfig>()
+
+/** Clear the config cache (used by tests). */
+export function clearConfigCache(): void {
+  configCache.clear()
+}
+
+/**
+ * Detect a database dialect from a connection URL.
+ */
+function dialectFromConnectionUrl(url: string): 'postgres' | 'mysql' | 'sqlite' | undefined {
+  if (url.startsWith('postgres://') || url.startsWith('postgresql://')) return 'postgres'
+  if (url.startsWith('mysql://') || url.startsWith('mysql2://')) return 'mysql'
+  if (url.startsWith('sqlite://') || url.endsWith('.db') || url.endsWith('.sqlite')) return 'sqlite'
+  return undefined
+}
+
+/**
+ * Apply environment overrides. Precedence contract:
+ * flags > environment > .env (loaded into env, never overriding) >
+ * config file > defaults.
+ *
+ * DATABASE_URL overrides the connection from the config file.
+ */
+function applyEnvOverrides(config: KyseraConfig): KyseraConfig {
+  const databaseUrl = process.env['DATABASE_URL']
+  if (!databaseUrl) return config
+
+  const dialect = config.database?.dialect ?? dialectFromConnectionUrl(databaseUrl)
+  if (!dialect) {
+    throw new ConfigurationError(`Could not detect database dialect from DATABASE_URL`, [
+      'Use a connection string with a protocol (postgres://, mysql://, sqlite://)',
+      'Or set database.dialect in your configuration file'
+    ])
+  }
+
+  return {
+    ...config,
+    database: { ...(config.database ?? {}), connection: databaseUrl, dialect }
+  }
+}
+
+/**
+ * Load and validate Kysera configuration.
+ *
+ * Resolution order for the file: explicit path (subcommand -c/--config or
+ * root --config, which is propagated) > KYSERA_CONFIG env > search from
+ * the working directory upward > built-in defaults.
  */
 export async function loadConfig(configPath?: string): Promise<KyseraConfig> {
+  const requestedPath = configPath ?? process.env['KYSERA_CONFIG']
+
   let config: Partial<KyseraConfig> = {}
   let resolvedConfigPath: string
+  let cacheKey: string
 
-  if (configPath) {
+  if (requestedPath) {
     // Use specified config file
-    resolvedConfigPath = resolve(process.cwd(), configPath)
-    config = await loadConfigFile(resolvedConfigPath)
+    resolvedConfigPath = resolve(process.cwd(), requestedPath)
+    cacheKey = resolvedConfigPath
   } else {
-    // Search for config file
     const foundPath = findConfigFile()
     if (foundPath) {
       resolvedConfigPath = foundPath
-      config = await loadConfigFile(foundPath)
+      cacheKey = foundPath
     } else {
-      // No config file found, use defaults
+      // No config file found: use defaults, anchored at the working
+      // directory (paths resolve relative to dirname of this value).
       logger.debug('No configuration file found, using defaults')
-      resolvedConfigPath = process.cwd()
+      resolvedConfigPath = join(process.cwd(), 'kysera.config.json')
+      cacheKey = `defaults:${process.cwd()}`
     }
+  }
+
+  const cached = configCache.get(cacheKey)
+  if (cached) {
+    return cached
+  }
+
+  if (requestedPath) {
+    config = await loadConfigFile(resolvedConfigPath)
+  } else if (!cacheKey.startsWith('defaults:')) {
+    config = await loadConfigFile(resolvedConfigPath)
   }
 
   // Merge with defaults
   const merged = mergeConfig(config, defaultConfig)
 
   // Resolve paths and environment variables
-  const resolved = resolveConfigPaths(merged, resolvedConfigPath)
+  const resolved = applyEnvOverrides(resolveConfigPaths(merged, resolvedConfigPath))
 
   // Validate configuration
   const validation = KyseraConfigSchema.safeParse(resolved)
@@ -64,6 +127,7 @@ export async function loadConfig(configPath?: string): Promise<KyseraConfig> {
     )
   }
 
+  configCache.set(cacheKey, resolved)
   return resolved
 }
 
@@ -83,6 +147,11 @@ async function loadConfigFile(filePath: string): Promise<Partial<KyseraConfig>> 
       )
     }
   }
+
+  const [{ cosmiconfig }, { TypeScriptLoader }] = await Promise.all([
+    import('cosmiconfig'),
+    import('cosmiconfig-typescript-loader')
+  ])
 
   const explorer = cosmiconfig('kysera', {
     searchPlaces: [filePath],

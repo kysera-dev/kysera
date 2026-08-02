@@ -25,7 +25,7 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        project: ['./tsconfig.json', './packages/*/tsconfig.json', './apps/*/tsconfig.json', './examples/*/tsconfig.json'],
+        project: ['./tsconfig.json', './packages/*/tsconfig.json', './apps/*/tsconfig.json', './examples/*/tsconfig.json', './scripts/tsconfig.json'],
         tsconfigRootDir: import.meta.dirname
       }
     },
@@ -327,6 +327,43 @@ export default tseslint.config(
       'max-lines-per-function': 'off',
       'max-depth': 'off',
       complexity: 'off'
+    }
+  },
+  {
+    // Operational tooling: terminal output IS the interface, orchestration
+    // functions are long by nature, and ESM __dirname shims are idiomatic.
+    // Type-safety rules (no-unsafe-*, no-explicit-any, catch unknown) stay ON.
+    files: ['scripts/**/*.ts', 'scripts/**/*.js', 'scripts/**/*.cjs'],
+    rules: {
+      'no-console': 'off',
+      complexity: 'off',
+      'max-depth': 'off',
+      'max-lines-per-function': 'off',
+      'no-useless-assignment': 'off',
+      '@typescript-eslint/naming-convention': 'off',
+      '@typescript-eslint/restrict-template-expressions': [
+        'error',
+        { allowNumber: true }
+      ]
+    }
+  },
+  {
+    // Plain-JS build helpers (CJS): no type information available — drop
+    // type-aware rules and give them Node globals; correctness rules stay.
+    files: ['scripts/**/*.js', 'scripts/**/*.cjs'],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      globals: {
+        require: 'readonly',
+        module: 'writable',
+        process: 'readonly',
+        console: 'readonly',
+        __dirname: 'readonly'
+      }
+    },
+    rules: {
+      ...tseslint.configs.disableTypeChecked.rules,
+      '@typescript-eslint/no-require-imports': 'off'
     }
   }
 )

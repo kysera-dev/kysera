@@ -1,4 +1,4 @@
-import { log, prism, strip } from '@xec-sh/kit'
+import { prism, strip } from '@xec-sh/kit'
 import { format } from 'node:util'
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
@@ -10,6 +10,11 @@ export interface LoggerOptions {
   json?: boolean
 }
 
+/**
+ * Diagnostic logger. All leveled output (debug/info/warn/error/success)
+ * goes to stderr so stdout stays reserved for command data; `log()` and
+ * `table()` write data to stdout.
+ */
 class Logger {
   public level: LogLevel = 'info'
   public colors: boolean = true
@@ -30,7 +35,7 @@ class Logger {
     this.json = options.json || false
 
     // Disable colors if not in TTY or if NO_COLOR is set
-    if (!process.stdout.isTTY || process.env.NO_COLOR) {
+    if (!process.stderr.isTTY || process.env.NO_COLOR) {
       this.colors = false
     }
   }
@@ -40,35 +45,30 @@ class Logger {
   }
 
   private formatTimestamp(): string {
-    const now = new Date()
-    return now.toISOString()
+    return new Date().toISOString()
   }
 
-  private formatMessage(level: LogLevel, message: string, ...args: any[]): string {
-    const formattedMessage = format(message, ...args)
+  private write(level: LogLevel | 'success', message: string, ...args: any[]): void {
+    const formatted = format(message, ...args)
 
     if (this.json) {
-      const entry = {
-        level,
-        message: strip(formattedMessage),
-        timestamp: this.formatTimestamp()
-      }
-      return JSON.stringify(entry)
+      console.error(
+        JSON.stringify({ level, message: strip(formatted), timestamp: this.formatTimestamp() })
+      )
+      return
     }
 
     let output = ''
-
     if (this.timestamps) {
-      output += prism.gray(`[${this.formatTimestamp()}] `)
+      output += this.colors
+        ? prism.gray(`[${this.formatTimestamp()}] `)
+        : `[${this.formatTimestamp()}] `
     }
-
-    const levelTag = this.getLevelTag(level)
-    output += `${levelTag} ${formattedMessage}`
-
-    return output
+    output += `${this.getLevelTag(level)} ${formatted}`
+    console.error(output)
   }
 
-  private getLevelTag(level: LogLevel): string {
+  private getLevelTag(level: LogLevel | 'success'): string {
     if (!this.colors) {
       return `[${level.toUpperCase()}]`
     }
@@ -82,73 +82,35 @@ class Logger {
         return prism.yellow('[WARN]')
       case 'error':
         return prism.red('[ERROR]')
+      case 'success':
+        return prism.green('[OK]')
     }
   }
 
   public debug(message: string, ...args: any[]): void {
     if (this.shouldLog('debug')) {
-      const formatted = format(message, ...args)
-      if (this.json || this.timestamps) {
-        console.log(this.formatMessage('debug', message, ...args))
-      } else {
-        // Use console.log with gray color for debug messages
-        console.log(prism.gray(`[DEBUG] ${formatted}`))
-      }
+      this.write('debug', message, ...args)
     }
   }
 
   public info(message: string, ...args: any[]): void {
     if (this.shouldLog('info')) {
-      const formatted = format(message, ...args)
-      if (this.json) {
-        console.log(this.formatMessage('info', message, ...args))
-      } else if (this.timestamps) {
-        console.log(this.formatMessage('info', message, ...args))
-      } else {
-        log.info(formatted)
-      }
+      this.write('info', message, ...args)
     }
   }
 
   public warn(message: string, ...args: any[]): void {
     if (this.shouldLog('warn')) {
-      const formatted = format(message, ...args)
-      if (this.json) {
-        console.warn(this.formatMessage('warn', message, ...args))
-      } else if (this.timestamps) {
-        console.warn(this.formatMessage('warn', message, ...args))
-      } else {
-        log.warn(formatted)
-      }
+      this.write('warn', message, ...args)
     }
   }
 
   public error(message: string | Error, ...args: any[]): void {
     if (this.shouldLog('error')) {
-      if (message instanceof Error) {
-        const formatted = format(message.message, ...args)
-        if (this.json) {
-          console.error(this.formatMessage('error', message.message, ...args))
-        } else if (this.timestamps) {
-          console.error(this.formatMessage('error', message.message, ...args))
-          if (this.level === 'debug' && message.stack) {
-            console.error(prism.gray(message.stack))
-          }
-        } else {
-          log.error(formatted)
-          if (this.level === 'debug' && message.stack) {
-            console.error(prism.gray(message.stack))
-          }
-        }
-      } else {
-        const formatted = format(message, ...args)
-        if (this.json) {
-          console.error(this.formatMessage('error', message, ...args))
-        } else if (this.timestamps) {
-          console.error(this.formatMessage('error', message, ...args))
-        } else {
-          log.error(formatted)
-        }
+      const text = message instanceof Error ? message.message : message
+      this.write('error', text, ...args)
+      if (message instanceof Error && this.level === 'debug' && message.stack) {
+        console.error(this.colors ? prism.gray(message.stack) : message.stack)
       }
     }
   }
@@ -156,31 +118,17 @@ class Logger {
   public success(message: string, ...args: any[]): void {
     // Success is always shown (like info level)
     if (this.shouldLog('info')) {
-      const formattedMessage = format(message, ...args)
-      if (this.json) {
-        const entry = {
-          level: 'success',
-          message: strip(formattedMessage),
-          timestamp: this.formatTimestamp()
-        }
-        console.log(JSON.stringify(entry))
-      } else if (this.timestamps) {
-        let output = prism.gray(`[${this.formatTimestamp()}] `)
-        output += prism.green('✔') + ' ' + formattedMessage
-        console.log(output)
-      } else {
-        log.success(formattedMessage)
-      }
+      this.write('success', message, ...args)
     }
   }
 
   public log(message: string, ...args: any[]): void {
-    // Raw log without level prefix
+    // Raw data output without level prefix (stdout)
     console.log(format(message, ...args))
   }
 
   public newline(): void {
-    console.log('')
+    console.error('')
   }
 
   public clear(): void {

@@ -1,7 +1,8 @@
 import { Command } from 'commander'
-import { prism, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { displayTable } from '../../utils/table-helper.js'
 import { CLIError } from '../../utils/errors.js'
+import { guardDestructive } from '../../utils/guard.js'
 import { withDatabase } from '../../utils/with-database.js'
 import { DatabaseIntrospector } from '../generate/introspector.js'
 import { createInterface } from 'node:readline/promises'
@@ -9,14 +10,17 @@ import { stdin, stdout } from 'node:process'
 import type { DatabaseInstance } from '../../types/index.js'
 
 export interface ConsoleOptions {
-  query?: string
+  execute?: string
   config?: string
+  force?: boolean
 }
 
 export function consoleCommand(): Command {
   const cmd = new Command('console')
     .description('Open interactive database console')
-    .option('-q, --query <sql>', 'Execute SQL query and exit')
+    // -e (not -q) so it never collides with the global -q/--quiet flag
+    .option('-e, --execute <sql>', 'Execute SQL query and exit')
+    .option('--force', 'Skip confirmation for destructive queries')
     .option('-c, --config <path>', 'Path to configuration file')
     .action(async (options: ConsoleOptions) => {
       try {
@@ -38,8 +42,8 @@ export function consoleCommand(): Command {
 async function databaseConsole(options: ConsoleOptions): Promise<void> {
   await withDatabase({ config: options.config }, async (db, config) => {
     // If query provided, execute and exit
-    if (options.query) {
-      await executeQuery(db, options.query)
+    if (options.execute) {
+      await executeQuery(db, options.execute, { force: options.force })
       return
     }
 
@@ -241,24 +245,22 @@ function analyzeDestructiveQuery(query: string): DestructiveQueryResult {
   return { destructive: false }
 }
 
-async function executeQuery(db: DatabaseInstance, query: string): Promise<void> {
+async function executeQuery(
+  db: DatabaseInstance,
+  query: string,
+  options: { force?: boolean } = {}
+): Promise<void> {
   const startTime = Date.now()
 
   const cleanQuery = query.trim().replace(/;$/, '')
 
   if (isDestructiveQuery(cleanQuery)) {
-    console.log('')
-    console.log(prism.yellow('WARNING: This is a destructive operation!'))
-    console.log(prism.yellow(`Query: ${cleanQuery}`))
-    console.log('')
-
-    const confirmed = await confirm({
-      message: 'Are you sure you want to execute this query?',
-      initialValue: false
-    })
-
-    if (!confirmed) {
-      console.log(prism.gray('Query cancelled'))
+    const proceed = await guardDestructive(
+      `This is a destructive operation: ${cleanQuery}\nAre you sure you want to execute it?`,
+      { force: options.force }
+    )
+    if (!proceed) {
+      console.error(prism.gray('Query cancelled'))
       return
     }
   }

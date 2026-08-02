@@ -1,9 +1,10 @@
 import { Command } from 'commander'
+import { DatabaseIntrospector } from '../generate/introspector.js'
 import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
-import { DatabaseIntrospector } from '../generate/introspector.js'
+
 import { safePath, isPathSafe } from '../../utils/fs.js'
 import { formatBytes } from '../../utils/formatting.js'
 import { writeFileSync } from 'fs'

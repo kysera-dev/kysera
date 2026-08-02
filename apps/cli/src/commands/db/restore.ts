@@ -1,5 +1,7 @@
 import { Command } from 'commander'
-import { prism, spinner, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
+import { spinner } from '../../utils/spinner.js'
+import { guardDestructive } from '../../utils/guard.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 import { safePath, isPathSafe } from '../../utils/fs.js'
@@ -53,21 +55,13 @@ async function restoreDatabase(dumpFile: string, options: RestoreOptions): Promi
     throw new CLIError(`Dump file not found: ${dumpPath}`, 'FILE_NOT_FOUND')
   }
 
-  if (!options.force) {
-    console.log('')
-    console.log(prism.yellow('WARNING: This will restore the database from the dump file!'))
-    console.log(prism.gray('This may overwrite existing data.'))
-    console.log('')
-
-    const confirmed = await confirm({
-      message: 'Are you sure you want to continue?',
-      initialValue: false
-    })
-
-    if (!confirmed) {
-      console.log(prism.gray('Restore cancelled'))
-      return
-    }
+  const proceed = await guardDestructive(
+    'This will restore the database from the dump file and may overwrite existing data. Continue?',
+    { force: options.force }
+  )
+  if (!proceed) {
+    console.error(prism.gray('Restore cancelled'))
+    return
   }
 
   await withDatabase({ config: options.config }, async (db, config) => {

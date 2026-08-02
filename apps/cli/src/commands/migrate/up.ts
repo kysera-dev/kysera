@@ -2,6 +2,7 @@ import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
+import { isJsonMode, output } from '../../utils/output.js'
 import { MigrationRunner } from './runner.js'
 import { withDatabase } from '../../utils/with-database.js'
 
@@ -13,6 +14,7 @@ export interface UpOptions {
   force?: boolean
   verbose?: boolean
   config?: string
+  json?: boolean
   schema?: string
 }
 
@@ -26,6 +28,7 @@ export function upCommand(): Command {
     .option('--force', 'Force migration even if already executed')
     .option('-v, --verbose', 'Show detailed output')
     .option('-c, --config <path>', 'Path to configuration file')
+    .option('--json', 'Output results as JSON')
     .option('-s, --schema <name>', 'PostgreSQL schema name (default: public)')
     .action(async (options: UpOptions) => {
       try {
@@ -114,7 +117,11 @@ async function runMigrationsUp(options: UpOptions): Promise<void> {
       const pendingCount = statusBefore.filter((m: any) => m.status === 'pending').length
 
       if (pendingCount === 0 && !options.force) {
-        logger.info('No pending migrations to run')
+        if (isJsonMode()) {
+          output({ executed: [], count: 0, duration: 0, dryRun: options.dryRun === true })
+        } else {
+          logger.info('No pending migrations to run')
+        }
         return
       }
 
@@ -125,7 +132,6 @@ async function runMigrationsUp(options: UpOptions): Promise<void> {
       }
 
       // Run migrations
-      const startTime = Date.now()
       const { executed, duration } = await runner.up({
         to: options.to,
         steps: options.steps || options.count, // Use count as alias for steps
@@ -133,6 +139,11 @@ async function runMigrationsUp(options: UpOptions): Promise<void> {
         force: options.force,
         verbose: options.verbose
       })
+
+      if (isJsonMode()) {
+        output({ executed, count: executed.length, duration, dryRun: options.dryRun === true })
+        return
+      }
 
       // Show summary
       if (executed.length > 0) {

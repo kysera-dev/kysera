@@ -1,4 +1,4 @@
-import { Kysely } from 'kysely'
+import type { Kysely } from 'kysely'
 import { existsSync, readdirSync } from 'node:fs'
 import { join, basename, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
