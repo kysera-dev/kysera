@@ -107,8 +107,8 @@ export function hasDatabaseMetrics<DB>(db: Kysely<DB>): db is Kysely<DB> & Datab
  * // Perform some queries...
  * await debugDb.selectFrom('users').selectAll().execute();
  *
- * // Get real metrics
- * const metrics = await getMetrics(debugDb, {
+ * // Get real metrics (synchronous — reads already-collected data)
+ * const metrics = getMetrics(debugDb, {
  *   slowQueryThreshold: 100,
  *   pool: metricsPool,
  * });
