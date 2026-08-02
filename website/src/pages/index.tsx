@@ -234,7 +234,7 @@ const plugins = [
     name: 'Row-Level Security',
     size: '~53 KB',
     to: '/docs/plugins/rls',
-    body: 'Declarative policies enforced in SQL for reads and mutations — plus native PostgreSQL RLS generation.'
+    body: 'Declarative policies enforced in SQL for reads, mutations, and bulk operations — plus native PostgreSQL RLS generation.'
   }
 ]
 
@@ -273,7 +273,7 @@ const toolkit = [
   {
     title: 'Migrations',
     to: '/docs/api/migrations',
-    body: 'Advisory-locked runs (PostgreSQL/MySQL), sha256 drift detection, dry-run plans, baselining.'
+    body: 'Advisory-locked runs on PostgreSQL, MySQL, and MSSQL; sha256 drift detection, dry-run plans, baselining.'
   },
   {
     title: 'CLI',
@@ -283,7 +283,7 @@ const toolkit = [
   {
     title: 'Production infra',
     to: '/docs/guides/production',
-    body: 'Health checks and monitoring, retry with backoff, circuit breaker, graceful shutdown.'
+    body: 'Health checks, retry with backoff, whole-transaction retry on deadlocks, circuit breaker, graceful shutdown.'
   },
   {
     title: 'Debugging',
@@ -349,8 +349,10 @@ function Stats() {
           ))}
         </div>
         <p className={styles.statsFootnote}>
-          Tested against live PostgreSQL and MySQL on every multi-database run. The executor core is
-          ~9 KB; the functional DAL is ~4 KB.
+          Tested in CI against live PostgreSQL and MySQL on every push; concurrency claims are
+          proven by racing tests, and a benchmark suite tracks overhead each release — the
+          measured cost of the executor without plugins is within noise of raw Kysely on the
+          execute path.
         </p>
       </div>
     </section>

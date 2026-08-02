@@ -191,8 +191,10 @@ await withTransaction(executor, async ctx => {
   version drift — one shot); `kysera generate database` (live-DB → typed `Database`
   interface with `Generated<>` columns); shell completions for bash/zsh/fish.
 - **Runtime infra**: health checks with latency tiers, `HealthMonitor` (`using`-compatible),
-  retry with exponential backoff and transient-error detection, circuit breaker, graceful
-  shutdown, pool metrics.
+  retry with exponential backoff and transient-error detection, `withTransactionRetry`
+  (re-runs whole transactions on serialization failures and deadlocks — proven against
+  real PostgreSQL 40001/40P01), circuit breaker, graceful shutdown with pinned drain
+  semantics, pool metrics that admit when they can't measure (`detected` flag).
 - **Debugging**: query logging with parameter redaction, slow-query alerts, percentile
   profiling — wraps any Kysely instance.
 
@@ -212,9 +214,20 @@ await withTransaction(executor, async ctx => {
 **Runtimes**: the full test suite runs on Node.js ≥ 22; Bun ≥ 1.0 and Deno ≥ 1.40 are
 exercised by cross-runtime smoke tests that import every package. ESM-only.
 
-**Testing discipline**: strict per-package coverage thresholds (95% lines/functions on the
-standard profile), plus multi-database suites executed against live PostgreSQL and MySQL
-containers.
+**Testing discipline**: CI runs lint, strict typecheck, the full suite on Node 22/24,
+multi-database suites against live PostgreSQL and MySQL services (MSSQL experimental),
+Bun/Deno smoke, the documentation build with hard broken-link gates, and a typecheck of
+every code snippet in the docs (835 blocks compile against the real package types).
+Per-package coverage floors sit at 95% lines/functions on the standard profile.
+Concurrency claims are proven by tests, not asserted: two migration runners racing on a
+live database apply exactly once; twenty parallel status transitions produce exactly one
+winner.
+
+**Performance discipline**: a benchmark suite (`pnpm bench`) tracks the overhead every
+release. Current numbers (in-memory SQLite, so they measure Kysera, not the network): the
+0-plugin executor costs noise-to-13% on the execute path; a full soft-delete + timestamps
++ RLS stack costs ~15–20% — and the plugins share one row fetch per operation, so a
+guarded `update` issues a single pre-image SELECT instead of one per plugin.
 
 ## When *not* to use Kysera
 
@@ -223,8 +236,8 @@ Honesty is part of the contract:
 - A small CRUD app with one developer — raw Kysely, or an ORM you already know, is simpler.
 - You want schema-first modelling with generated entities and relations — that's an ORM's
   job; Kysera deliberately keeps your interfaces as the source of truth.
-- Your primary database is MSSQL and you need locked migrations or the CLI today — that
-  support is still partial (see the matrix above).
+- Your primary database is MSSQL and you need the CLI today — the data layer and locked
+  migrations are covered, but CLI targeting is still pending (see the matrix above).
 
 ## Development
 
