@@ -483,7 +483,8 @@ async function generateRecord(
   const record: Record<string, unknown> = {}
 
   for (const column of schema.columns) {
-    if (column.primaryKey && column.type.includes('int')) {
+    // SQLite PRAGMA reports uppercase types (INTEGER); compare case-blind
+    if (column.primaryKey && column.type.toLowerCase().includes('int')) {
       continue
     }
 
@@ -514,7 +515,9 @@ async function generateRecord(
 }
 
 function generateColumnValue(column: TableSchema['columns'][0], strategy: string): unknown {
-  const { name, type } = column
+  const { name } = column
+  // Dialects report types in different cases (SQLite PRAGMA: INTEGER/TEXT)
+  const type = column.type.toLowerCase()
 
   if (name === 'email' || name.includes('email')) {
     return faker.internet.email().toLowerCase()

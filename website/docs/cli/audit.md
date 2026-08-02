@@ -485,7 +485,7 @@ kysera audit diff users user-123 100 123 --json
 
 ## Requirements
 
-The query commands (`logs`, `history`, `restore`, `stats`, `cleanup`, `compare`, `diff`) require an `audit_logs` table and look it up via `information_schema`, so they target **PostgreSQL and MySQL**. If the table is missing you'll see a short setup hint instead of an error.
+The query commands (`logs`, `history`, `restore`, `stats`, `cleanup`, `compare`, `diff`) work against the table `@kysera/audit` writes — columns `operation`, `changed_by`, and `changed_at`, with JSON payloads stored as text — on **PostgreSQL, MySQL, and SQLite** (existence is checked via database introspection, not `information_schema`). The table name follows `plugins.audit.auditTable` from your configuration (default `audit_logs`). If the table is missing you'll see a short setup hint instead of an error.
 
 To set the table up, generate and run the migration:
 
@@ -494,8 +494,8 @@ kysera audit init
 kysera migrate up
 ```
 
-:::warning Column-name mismatch with @kysera/audit v0.9
-The query commands in this CLI version filter and sort on the columns `action`, `user_id`, and `created_at` — the audit-table shape used by earlier Kysera versions. The `@kysera/audit` v0.9 plugin (and the table `kysera audit init` generates) writes `operation`, `changed_by`, and `changed_at` instead. Against a plugin-shaped table, `audit logs` filters like `--action`, `--user`, `--since`/`--until` and the default ordering will fail with an unknown-column error. Until the query commands catch up, query plugin-shaped tables directly (e.g. `kysera db console -e "SELECT * FROM audit_logs ORDER BY changed_at DESC LIMIT 20"`).
+:::note Audit tables from Kysera versions before 0.9
+Very old audit tables used the columns `action`, `user_id`, and `created_at`. The query commands now speak the current plugin schema (`operation` / `changed_by` / `changed_at`); against a pre-0.9 legacy table they will fail with unknown-column errors. Migrate such tables by renaming the columns (e.g. `ALTER TABLE audit_logs RENAME COLUMN action TO operation`, and likewise `user_id` → `changed_by`, `created_at` → `changed_at`).
 :::
 
 ## See Also

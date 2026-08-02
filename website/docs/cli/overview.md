@@ -50,9 +50,9 @@ kysera health check
 ## Global Options
 
 ```
--v, --version          Show CLI version
+--version              Show CLI version
 --verbose              Detailed output
--q, --quiet            Minimal output
+--quiet                Minimal output
 --dry-run              Preview without executing
 --config <path>        Custom configuration file
 --json                 Output as JSON
@@ -63,9 +63,7 @@ kysera health check
 
 Global flags are recognized **both before and after** the subcommand — `kysera --json migrate status` and `kysera migrate status --json` behave identically. When a subcommand defines the same flag itself, the value given on the subcommand wins.
 
-:::warning Short flags `-v` and `-q` always mean version and quiet
-Because global flags are recognized in any position, the root's `-v` (version) and `-q` (quiet) shadow same-letter short aliases on subcommands: `kysera migrate status -v` prints the CLI version instead of enabling verbose output, and `kysera query analyze -q "SELECT 1"` reads `-q` as quiet. Use the long forms — `--verbose`, `--query` — with subcommands. Other short flags (`-c`, `-s`, `-f`, `-h`, ...) are unaffected.
-:::
+The root command deliberately registers `--version` and `--quiet` as long-only flags, so single-letter shorts like `-v` and `-q` always belong to the subcommand you invoke: `kysera migrate status -v` enables verbose output, and `kysera query analyze -q "SELECT 1"` passes the query.
 
 ## CLI Contracts
 

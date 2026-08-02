@@ -127,7 +127,7 @@ Analyze query performance and identify optimization opportunities.
 kysera query analyze [options]
 ```
 
-The query is passed via `--query` or read from a file with `-f/--file` — there is no positional argument. Use the long form `--query`: the short `-q` is consumed by the global quiet flag and the SQL string would be treated as an unexpected positional argument.
+The query is passed via `-q/--query` or read from a file with `-f/--file` — there is no positional argument.
 
 ### Options
 
@@ -147,19 +147,19 @@ The query is passed via `--query` or read from a file with `-f/--file` — there
 
 ```bash
 # Analyze a SELECT query
-kysera query analyze --query "SELECT * FROM users WHERE status = 'active'"
+kysera query analyze -q "SELECT * FROM users WHERE status = 'active'"
 
 # Analyze a query stored in a file
 kysera query analyze -f ./queries/dashboard.sql
 
 # Detailed report with index usage and statistics
-kysera query analyze --query "SELECT * FROM orders" --format detailed -i -s
+kysera query analyze -q "SELECT * FROM orders" --format detailed -i -s
 
 # Benchmark the query 10 times
-kysera query analyze --query "SELECT * FROM users" -b 10
+kysera query analyze -q "SELECT * FROM users" -b 10
 
 # Machine-readable output
-kysera query analyze --query "SELECT * FROM users" --format json
+kysera query analyze -q "SELECT * FROM users" --format json
 ```
 
 ### Output
@@ -180,7 +180,7 @@ Show query execution plan from the database.
 kysera query explain [options]
 ```
 
-Like `analyze`, the query comes from `--query` (long form — see above) or `-f/--file` — there is no positional argument.
+Like `analyze`, the query comes from `-q/--query` or `-f/--file` — there is no positional argument.
 
 ### Options
 
