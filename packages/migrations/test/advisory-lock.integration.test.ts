@@ -4,11 +4,30 @@
  * Two concurrent runners sharing one database must execute each migration
  * exactly once — without the lock both would see the same pending list.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import { Kysely, PostgresDialect, sql } from 'kysely'
-import { createMigrationRunner, type Migration } from '../src/index.js'
+import { createMigrationRunner, MigrationLockError, type Migration } from '../src/index.js'
+import {
+  resolveTestDatabases,
+  acquireMultiDbLock,
+  explainAvailability,
+  type MultiDbLockRelease
+} from '../../testing/src/detection.js'
 
-const POSTGRES = process.env['TEST_POSTGRES'] === 'true'
+// Runs when TEST_POSTGRES forces it on, or when a TCP probe finds the docker
+// stack running (skip reason appears in the suite title)
+const dbs = await resolveTestDatabases()
+const POSTGRES = dbs.postgres.available
+
+// Suites touching the shared docker databases serialize across files and
+// packages via a cross-process lock
+let releaseMultiDbLock: MultiDbLockRelease | undefined
+beforeAll(async () => {
+  if (POSTGRES) releaseMultiDbLock = await acquireMultiDbLock()
+}, 660_000)
+afterAll(() => {
+  releaseMultiDbLock?.()
+})
 
 type DB = Record<string, Record<string, unknown>>
 
@@ -28,7 +47,9 @@ const connect = async (): Promise<Kysely<DB>> => {
   })
 }
 
-describe.skipIf(!POSTGRES)('advisory lock on real PostgreSQL', () => {
+describe.skipIf(!POSTGRES)(
+  `advisory lock on real PostgreSQL (${explainAvailability(dbs.postgres)})`,
+  () => {
   let dbA: Kysely<DB>
   let dbB: Kysely<DB>
   let insertCount = 0
@@ -75,6 +96,43 @@ describe.skipIf(!POSTGRES)('advisory lock on real PostgreSQL', () => {
 
     const rows = await sql<{ count: string }>`SELECT count(*)::text as count FROM lock_probe`.execute(dbA)
     expect(rows.rows[0]?.count).toBe('1')
+    expect(insertCount).toBe(1)
+  })
+
+  it('times out cleanly with MigrationLockError while another session holds the lock', async () => {
+    // Shared app-wide key used by every Kysera migration runner
+    const MIGRATION_LOCK_KEY = 8982422971203
+
+    let openGate!: () => void
+    const gate = new Promise<void>(resolve => {
+      openGate = resolve
+    })
+    let signalReady!: () => void
+    const ready = new Promise<void>(resolve => {
+      signalReady = resolve
+    })
+
+    // Foreign lock holder pinned to one session on dbB
+    const holder = dbB.connection().execute(async conn => {
+      await sql`select pg_advisory_lock(${sql.lit(MIGRATION_LOCK_KEY)})`.execute(conn)
+      signalReady()
+      await gate
+      await sql`select pg_advisory_unlock(${sql.lit(MIGRATION_LOCK_KEY)})`.execute(conn)
+    })
+    await ready
+
+    const runner = createMigrationRunner(dbA, migrations(), { lockTimeoutMs: 800 })
+    const failure = await runner.up().catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(MigrationLockError)
+    // The lock is acquired before any bookkeeping — nothing ran, nothing written
+    expect(insertCount).toBe(0)
+
+    openGate()
+    await holder
+
+    // Once the lock is free the same migrations apply cleanly
+    const retry = await createMigrationRunner(dbA, migrations()).up()
+    expect(retry.executed).toEqual(['001_lock_probe'])
     expect(insertCount).toBe(1)
   })
 

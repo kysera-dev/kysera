@@ -27,7 +27,7 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test:multi-db": "TEST_POSTGRES=true vitest run test/advisory-lock.integration.test.ts"
+    "test:multi-db": "TEST_POSTGRES=true vitest run test/advisory-lock.integration.test.ts test/advisory-lock.mssql.integration.test.ts"
   },
   "keywords": [
     "kysely",
@@ -45,15 +45,17 @@
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.1.2",
+    "@types/pg": "^8.20.3",
     "@vitest/coverage-v8": "^4.1.10",
     "better-sqlite3": "^13.0.2",
     "kysely": "^0.29.4",
+    "pg": "^8.22.0",
+    "tarn": "^3.1.2",
+    "tedious": "^20.0.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10",
-    "zod": "^4.4.3",
-    "pg": "^8.22.0",
-    "@types/pg": "^8.20.3"
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "kysely": ">=0.29.0",

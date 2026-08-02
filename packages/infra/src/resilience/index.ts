@@ -7,6 +7,14 @@
 // Retry
 export { type RetryOptions, isTransientError, withRetry, createRetryWrapper } from './retry.js'
 
+// Transaction retry
+export {
+  type TransactionRetryOptions,
+  type RetryableTransactionSource,
+  isSerializationError,
+  withTransactionRetry
+} from './transaction-retry.js'
+
 // Circuit Breaker
 export {
   type CircuitState,

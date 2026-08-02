@@ -65,6 +65,11 @@ export {
   isTransientError,
   withRetry,
   createRetryWrapper,
+  // Transaction retry
+  type TransactionRetryOptions,
+  type RetryableTransactionSource,
+  isSerializationError,
+  withTransactionRetry,
   // Circuit Breaker
   type CircuitState,
   type CircuitBreakerState,

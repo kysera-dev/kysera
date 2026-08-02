@@ -116,8 +116,8 @@ export interface MigrationRunnerOptions {
    *
    * Two application instances migrating at once would otherwise both see the
    * same pending list and run every migration twice. PostgreSQL uses
-   * `pg_try_advisory_lock`, MySQL uses `GET_LOCK`; SQLite is single-writer by
-   * nature (no-op), MSSQL is currently a no-op.
+   * `pg_try_advisory_lock`, MySQL uses `GET_LOCK`, MSSQL uses `sp_getapplock`
+   * with a session-owned lock; SQLite is single-writer by nature (no-op).
    */
   advisoryLock?: boolean
   /** Max time to wait for the advisory lock before failing (default: 60000) */
@@ -214,12 +214,27 @@ export class MigrationError extends DatabaseError {
  * Uses Kysely<unknown> as migrations work with any database schema
  */
 export async function setupMigrations(db: Kysely<unknown>): Promise<void> {
-  await db.schema
-    .createTable('migrations')
-    .ifNotExists()
-    .addColumn('name', 'varchar(255)', col => col.primaryKey())
-    .addColumn('executed_at', 'timestamp', col => col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`))
-    .execute()
+  if (detectDialect(db) === 'mssql') {
+    // SQL Server: no CREATE TABLE IF NOT EXISTS (guard via object_id), and
+    // `timestamp` is the deprecated rowversion type (no DEFAULT allowed) —
+    // the bookkeeping column must be datetime2 there.
+    await sql`
+      if object_id(N'migrations', N'U') is null
+        create table migrations (
+          name varchar(255) not null primary key,
+          executed_at datetime2 not null default CURRENT_TIMESTAMP
+        )
+    `.execute(db)
+  } else {
+    await db.schema
+      .createTable('migrations')
+      .ifNotExists()
+      .addColumn('name', 'varchar(255)', col => col.primaryKey())
+      .addColumn('executed_at', 'timestamp', col =>
+        col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`)
+      )
+      .execute()
+  }
 
   // Create index on name column for faster lookups
   // Using IF NOT EXISTS equivalent: ignore errors if index already exists
@@ -406,7 +421,46 @@ export class MigrationRunner<DB = unknown> {
       )
     }
 
-    // sqlite: single-writer by design; mssql: not supported yet
+    if (dialect === 'mssql') {
+      const timeoutMs = this.runnerOptions.lockTimeoutMs
+      return await this.withConnectionLock(
+        fn,
+        async conn => {
+          // @LockOwner = 'Session': the lock belongs to the pinned connection
+          // (not a transaction), so it survives across the individual
+          // statements/transactions the runner executes on other connections.
+          // sp_getapplock return codes: 0 granted, 1 granted after waiting,
+          // -1 timeout, -2 canceled, -3 deadlock victim, -999 invalid call.
+          const result = await sql<{ result: number }>`
+            declare @kysera_lock_result int;
+            exec @kysera_lock_result = sp_getapplock
+              @Resource = ${MIGRATION_LOCK_NAME},
+              @LockMode = 'Exclusive',
+              @LockOwner = 'Session',
+              @LockTimeout = ${sql.lit(timeoutMs)};
+            select @kysera_lock_result as result;
+          `.execute(conn)
+          const code = result.rows[0]?.result ?? -999
+          if (code < 0) {
+            if (code === -1) {
+              throw new MigrationLockError(timeoutMs)
+            }
+            throw new DatabaseError(
+              `sp_getapplock failed with result code ${String(code)} ` +
+                `(-2 = canceled, -3 = deadlock victim, -999 = invalid call)`,
+              ErrorCodes.MIGRATION_UP_FAILED
+            )
+          }
+        },
+        async conn => {
+          await sql`
+            exec sp_releaseapplock @Resource = ${MIGRATION_LOCK_NAME}, @LockOwner = 'Session'
+          `.execute(conn)
+        }
+      )
+    }
+
+    // sqlite: single-writer by design — no advisory lock needed
     return await fn()
   }
 

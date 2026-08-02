@@ -57,8 +57,12 @@ services:
       retries: 5
 
   mssql:
-    # Azure SQL Edge - ARM64 compatible SQL Server for Apple Silicon
-    image: mcr.microsoft.com/azure-sql-edge:latest
+    # SQL Server 2022. The image is amd64-only; on Apple Silicon it runs via
+    # Rosetta/QEMU emulation (hence the explicit platform + generous start_period).
+    # Replaces azure-sql-edge (retired, and its /opt/mssql-tools sqlcmd was
+    # dropped from current images, which left the healthcheck permanently failing).
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
     container_name: kysera_test_mssql
     ports:
       - "1433:1433"
@@ -66,17 +70,19 @@ services:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: "Test@12345"
       MSSQL_PID: "Developer"
-    cap_add:
-      - SYS_PTRACE
+      # Cap SQL Server memory so the test container behaves on dev machines
+      MSSQL_MEMORY_LIMIT_MB: "2048"
     healthcheck:
+      # 2022 images ship sqlcmd 18 under /opt/mssql-tools18; -C trusts the
+      # server's self-signed TLS cert, -b makes SQL errors exit non-zero.
       test: [
         "CMD-SHELL",
-        "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'Test@12345' -Q 'SELECT 1' || exit 1"
+        "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -l 5 || exit 1"
       ]
       interval: 10s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
+      timeout: 15s
+      retries: 12
+      start_period: 90s
 
 volumes:
   postgres_data:

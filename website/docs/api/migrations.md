@@ -34,6 +34,7 @@ for tooling that validates migration configuration.
 
 Create a simple migration.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function createMigration(
   name: string,
@@ -79,6 +80,7 @@ const migrations = [
 
 Create a migration with metadata.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function createMigrationWithMeta(
   name: string,
@@ -97,6 +99,7 @@ function createMigrationWithMeta(
 
 Define multiple migrations concisely.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function defineMigrations(definitions: MigrationDefinitions): MigrationWithMeta[]
 
@@ -105,6 +108,7 @@ type MigrationDefinitions = Record<string, MigrationDefinition>
 
 ### Example
 
+<!-- doc-snippet: skip -->
 ```typescript
 const migrations = defineMigrations({
   '001_create_users': {
@@ -134,6 +138,7 @@ Idempotent — safe to run multiple times. The migration runner calls it
 automatically before its first database access, so calling it yourself is only
 needed for custom tooling.
 
+<!-- doc-snippet: skip -->
 ```typescript
 async function setupMigrations(db: Kysely<unknown>): Promise<void>
 ```
@@ -144,6 +149,7 @@ async function setupMigrations(db: Kysely<unknown>): Promise<void>
 
 Create a migration runner.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function createMigrationRunner(
   db: Kysely<any>,
@@ -169,13 +175,21 @@ application instances are serialized through a database advisory lock; a
 runner that cannot acquire the lock within `lockTimeoutMs` throws
 `MigrationLockError`. The lock is skipped for dry runs.
 
-Advisory locking is implemented for **PostgreSQL** (`pg_try_advisory_lock`) and
-**MySQL** (`GET_LOCK`) only. On SQLite (single-writer by design) and MSSQL (not
-yet supported) the option is a no-op — concurrent runners are **not**
-serialized there.
+Advisory locking is implemented for **PostgreSQL** (`pg_try_advisory_lock`),
+**MySQL** (`GET_LOCK`), and **MSSQL** (`sp_getapplock` with
+`@LockOwner = 'Session'`, so the lock survives across the runner's individual
+statements and is released with `sp_releaseapplock`). Acquire and release are
+pinned to a single pooled connection on every dialect — advisory locks are
+session-scoped. On SQLite the option is a no-op (single-writer by design).
+
+MSSQL maps `sp_getapplock` result codes as follows: `0`/`1` (granted, granted
+after waiting) succeed; `-1` (timeout after `lockTimeoutMs`) throws
+`MigrationLockError`; `-2` (canceled), `-3` (deadlock victim), and `-999`
+(invalid call) throw `DatabaseError` naming the code.
 
 ### Runner Methods
 
+<!-- doc-snippet: skip -->
 ```typescript
 class MigrationRunner {
   // Run all pending migrations
@@ -252,6 +266,7 @@ await runner.reset()
 
 ### runMigrations
 
+<!-- doc-snippet: skip -->
 ```typescript
 async function runMigrations(
   db: Kysely<any>,
@@ -262,6 +277,7 @@ async function runMigrations(
 
 ### rollbackMigrations
 
+<!-- doc-snippet: skip -->
 ```typescript
 async function rollbackMigrations(
   db: Kysely<any>,
@@ -273,6 +289,7 @@ async function rollbackMigrations(
 
 ### getMigrationStatus
 
+<!-- doc-snippet: skip -->
 ```typescript
 async function getMigrationStatus(
   db: Kysely<any>,
@@ -337,6 +354,7 @@ const metricsPlugin = createMetricsPlugin()
 Async factory that awaits each plugin's `onInit` hook and returns a
 `MigrationRunnerWithPlugins` instance.
 
+<!-- doc-snippet: skip -->
 ```typescript
 async function createMigrationRunnerWithPlugins<DB = unknown>(
   db: Kysely<DB>,
@@ -357,6 +375,7 @@ plugin lifecycle hooks (`beforeMigration`, `afterMigration`,
 `onMigrationError`) around each migration. All other runner methods are
 inherited unchanged.
 
+<!-- doc-snippet: skip -->
 ```typescript
 class MigrationRunnerWithPlugins<DB = unknown> extends MigrationRunner<DB> {
   constructor(db: Kysely<DB>, migrations: Migration<DB>[], options?: MigrationRunnerWithPluginsOptions<DB>)

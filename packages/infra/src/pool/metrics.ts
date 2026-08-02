@@ -18,6 +18,18 @@ export interface PoolMetrics {
   active: number
   /** Number of requests waiting for a connection */
   waiting: number
+  /**
+   * Whether the numbers came from a recognized pool implementation.
+   *
+   * `createMetricsPool` always sets this: `true` for recognized pools
+   * (pg, mysql2, better-sqlite3, tarn), `false` when the pool type is
+   * unknown and the values are static placeholders. Dashboards should
+   * treat `detected: false` as "unknown", not as real utilization.
+   *
+   * Optional so that pre-0.9.x consumers constructing `PoolMetrics`
+   * literals keep compiling.
+   */
+  detected?: boolean
 }
 
 /**
@@ -96,6 +108,19 @@ interface SQLiteDatabase {
 }
 
 /**
+ * Type definitions for a tarn.js Pool (used by kysely's MssqlDialect for
+ * tedious connections, and by knex). Counters are public API.
+ * @internal
+ */
+interface TarnPoolInternals {
+  numUsed(): number
+  numFree(): number
+  numPendingAcquires(): number
+  /** Pool capacity — tarn exposes the configured max on the instance */
+  max?: number
+}
+
+/**
  * Create pool with metrics capabilities for any database type.
  *
  * Automatically detects the pool type and extracts metrics accordingly.
@@ -104,8 +129,14 @@ interface SQLiteDatabase {
  * - **PostgreSQL** (pg.Pool) - Uses totalCount, idleCount, waitingCount
  * - **MySQL** (mysql2.Pool) - Uses _allConnections, _freeConnections
  * - **SQLite** (better-sqlite3.Database) - No pooling, returns static metrics
+ * - **tarn.js** (kysely MssqlDialect / knex pool) - Uses numUsed, numFree,
+ *   numPendingAcquires (tarn has `destroy()` instead of `end()` — cast to
+ *   `DatabasePool` when passing it in)
  *
- * @param pool - Database connection pool (PostgreSQL, MySQL, or SQLite)
+ * Unrecognized pools return placeholder numbers marked `detected: false`;
+ * recognized pools set `detected: true`.
+ *
+ * @param pool - Database connection pool (PostgreSQL, MySQL, SQLite, or tarn)
  * @returns Pool with getMetrics() method
  *
  * @example PostgreSQL
@@ -153,7 +184,8 @@ function getPostgreSQLMetrics(pool: PostgreSQLPoolInternals): PoolMetrics {
     total: total > 0 ? total : (pool.options?.max ?? 10),
     idle,
     waiting,
-    active: total - idle
+    active: total - idle,
+    detected: true
   }
 }
 
@@ -169,7 +201,8 @@ function getMySQLMetrics(pool: MySQLPoolInternals): PoolMetrics {
     total: connectionLimit,
     idle: freeConnections,
     waiting: 0, // MySQL doesn't expose waiting connections count
-    active: allConnections - freeConnections
+    active: allConnections - freeConnections,
+    detected: true
   }
 }
 
@@ -182,12 +215,31 @@ function getSQLiteMetrics(db: SQLiteDatabase): PoolMetrics {
     total: 1, // SQLite is single-connection
     idle: 0,
     waiting: 0,
-    active: db.open ? 1 : 0
+    active: db.open ? 1 : 0,
+    detected: true
   }
 }
 
 /**
- * Default metrics for unknown pool types.
+ * Extract tarn.js pool metrics (kysely MssqlDialect / knex).
+ * @internal
+ */
+function getTarnMetrics(pool: TarnPoolInternals): PoolMetrics {
+  const active = pool.numUsed()
+  const idle = pool.numFree()
+  const max = typeof pool.max === 'number' && pool.max > 0 ? pool.max : active + idle
+  return {
+    total: max,
+    idle,
+    waiting: pool.numPendingAcquires(),
+    active,
+    detected: true
+  }
+}
+
+/**
+ * Static placeholder for unknown pool types — `detected: false` marks the
+ * numbers as stubs so dashboards can tell truth from filler.
  * @internal
  */
 function getDefaultMetrics(): PoolMetrics {
@@ -195,8 +247,22 @@ function getDefaultMetrics(): PoolMetrics {
     total: 10,
     idle: 0,
     waiting: 0,
-    active: 0
+    active: 0,
+    detected: false
   }
+}
+
+/**
+ * Structural check for a tarn.js pool (counter methods are public API).
+ * @internal
+ */
+function isTarnPool(p: object): boolean {
+  const tarnPool = p as Partial<Record<'numUsed' | 'numFree' | 'numPendingAcquires', unknown>>
+  return (
+    typeof tarnPool.numUsed === 'function' &&
+    typeof tarnPool.numFree === 'function' &&
+    typeof tarnPool.numPendingAcquires === 'function'
+  )
 }
 
 /**
@@ -205,23 +271,28 @@ function getDefaultMetrics(): PoolMetrics {
  */
 function detectPoolMetrics(pool: DatabasePool): () => PoolMetrics {
   const p = pool as unknown
+  if (typeof p !== 'object' || p === null) {
+    return getDefaultMetrics
+  }
 
   // PostgreSQL (pg) Pool
-  if (typeof p === 'object' && p !== null && 'totalCount' in p && 'idleCount' in p) {
+  if ('totalCount' in p && 'idleCount' in p) {
     return () => getPostgreSQLMetrics(pool as unknown as PostgreSQLPoolInternals)
   }
 
   // MySQL (mysql2) Pool
-  if (typeof p === 'object' && p !== null && 'pool' in p) {
-    const mysqlPool = p as MySQLPoolInternals
-    if (mysqlPool.pool?._allConnections) {
-      return () => getMySQLMetrics(pool as unknown as MySQLPoolInternals)
-    }
+  if ('pool' in p && (p as MySQLPoolInternals).pool?._allConnections) {
+    return () => getMySQLMetrics(pool as unknown as MySQLPoolInternals)
   }
 
   // SQLite (better-sqlite3) Database
-  if (typeof p === 'object' && p !== null && 'open' in p && 'memory' in p) {
+  if ('open' in p && 'memory' in p) {
     return () => getSQLiteMetrics(pool as unknown as SQLiteDatabase)
+  }
+
+  // tarn.js Pool (kysely MssqlDialect connection pool / knex)
+  if (isTarnPool(p)) {
+    return () => getTarnMetrics(pool as unknown as TarnPoolInternals)
   }
 
   return getDefaultMetrics

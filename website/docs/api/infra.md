@@ -42,9 +42,10 @@ import { registerShutdownHandlers } from '@kysera/infra/shutdown' // Graceful sh
 
 - **Health Monitoring** - Database connectivity checks with latency tracking
 - **Retry Logic** - Automatic retries with exponential backoff
+- **Transaction Retry** - Re-run whole transactions on serialization failures and deadlocks
 - **Circuit Breaker** - Prevent cascading failures
 - **Graceful Shutdown** - Clean database connection termination
-- **Pool Metrics** - Connection pool monitoring (`pg`, `mysql2`, `better-sqlite3`; other pools report static placeholders)
+- **Pool Metrics** - Connection pool monitoring (`pg`, `mysql2`, `better-sqlite3`, tarn; other pools report static placeholders flagged `detected: false`)
 
 ## Quick Start
 
@@ -243,12 +244,74 @@ const fetchUsersWithRetry = createRetryWrapper(fetchUsers, { maxAttempts: 3 })
 const users = await fetchUsersWithRetry() // Retries automatically
 ```
 
+<!-- doc-snippet: skip -->
 ```typescript
 function createRetryWrapper<TArgs extends unknown[], TResult>(
   fn: (...args: TArgs) => Promise<TResult>,
   options?: RetryOptions
 ): (...args: TArgs) => Promise<TResult>
 ```
+
+### Transaction Retry (Serialization Failures & Deadlocks)
+
+Under `SERIALIZABLE`/`REPEATABLE READ` isolation — or whenever two
+transactions deadlock — the database aborts one of them and expects the
+**application** to re-run it. `withTransactionRetry` re-runs the whole
+callback in a **fresh transaction** per attempt, so aborted attempts leave no
+partial writes and retries see current data:
+
+```typescript
+import { withTransactionRetry } from '@kysera/infra'
+
+const receipt = await withTransactionRetry(
+  db, // Kysely instance or KyseraExecutor — plugins stay active
+  async trx => {
+    const from = await trx
+      .selectFrom('accounts')
+      .where('id', '=', fromId)
+      .select('balance')
+      .executeTakeFirstOrThrow()
+    if (from.balance < amount) throw new Error('insufficient funds')
+    await trx.updateTable('accounts').where('id', '=', fromId)
+      .set(eb => ({ balance: eb('balance', '-', amount) })).execute()
+    await trx.updateTable('accounts').where('id', '=', toId)
+      .set(eb => ({ balance: eb('balance', '+', amount) })).execute()
+    return { fromId, toId, amount }
+  },
+  { maxAttempts: 5, onRetry: attempt => metrics.increment('txn_retry') }
+)
+```
+
+**Retried error codes** (via the default `shouldRetry: isSerializationError`):
+
+| Dialect | Codes |
+|---|---|
+| PostgreSQL | `40001` (serialization_failure), `40P01` (deadlock_detected) |
+| MySQL | `ER_LOCK_DEADLOCK`/1213, `ER_LOCK_WAIT_TIMEOUT`/1205 |
+| MSSQL | error number 1205 (deadlock victim) |
+| SQLite | `SQLITE_BUSY` (including `SQLITE_BUSY_*` variants) |
+
+The `cause` chain of wrapped errors is followed (up to 5 levels).
+`isSerializationError` is deliberately **narrower** than `isTransientError`:
+connection drops are excluded because a transaction interrupted mid-commit
+may already have committed — re-running it is not automatically safe.
+
+Defaults differ from `withRetry` where it matters for conflicts:
+`delayMs: 100`, `maxDelayMs: 2000` (still exponential backoff + jitter),
+`maxAttempts: 3`.
+
+Two rules for the callback:
+
+1. **It must be safe to re-run.** Keep external side effects (queue
+   publishes, HTTP calls) outside the callback, or make them idempotent.
+2. **Set isolation inside the callback if you need it** — issue
+   `SET TRANSACTION ISOLATION LEVEL SERIALIZABLE` (or `REPEATABLE READ`) as
+   the first statement; each retry re-applies it because each attempt is a
+   brand-new transaction.
+
+Works with both `Kysely<DB>` and `KyseraExecutor<DB>` — it only calls
+`db.transaction().execute(fn)`, so a plugin-wrapped executor keeps its
+plugins active inside every attempt.
 
 ### Circuit Breaker
 
@@ -326,7 +389,14 @@ if (isMetricsPool(pool)) {
 }
 ```
 
-Pool type is detected once at creation. Recognized pools: `pg` (PostgreSQL), `mysql2`, and `better-sqlite3`. Any other pool type - including MSSQL/tedious - reports static placeholder metrics: `{ total: 10, idle: 0, active: 0, waiting: 0 }`.
+Pool type is detected once at creation. Recognized pools: `pg` (PostgreSQL), `mysql2`, `better-sqlite3`, and **tarn.js** (the pool kysely's `MssqlDialect` and knex use — detected via its public `numUsed()`/`numFree()`/`numPendingAcquires()` counters; tarn has `destroy()` instead of `end()`, so cast it to `DatabasePool` when passing it in).
+
+Every result carries a `detected` flag so dashboards can tell truth from stub:
+
+- Recognized pools → real counters with `detected: true`
+- Any other pool type → static placeholders `{ total: 10, idle: 0, active: 0, waiting: 0, detected: false }` — treat these as "unknown", not as real utilization
+
+Note for MSSQL: kysely's `MssqlDialect` constructs its tarn pool internally and does not expose it, so in a typical kysely MSSQL setup there is no pool object to hand to `createMetricsPool` — you get tarn metrics only when you construct or otherwise hold the tarn pool yourself.
 
 ## Graceful Shutdown
 
@@ -373,6 +443,37 @@ if (!shutdown.isShuttingDown()) {
 }
 ```
 
+### Drain Semantics
+
+What `gracefulShutdown` actually does: run your `onShutdown` hook, then call
+`db.destroy()`, racing the whole thing against `timeout`. Draining behavior
+therefore comes from the **driver's** destroy, not from Kysera:
+
+- **In-flight queries: drained, not killed.** With the `pg` driver,
+  `destroy()` is `pool.end()`, which waits for checked-out connections to be
+  returned — a query already running completes normally and shutdown resolves
+  after it finishes (pinned by an integration test against live PostgreSQL).
+  `mysql2`'s `pool.end()` behaves the same way.
+- **New work: NOT gated.** Nothing stops other code from issuing queries
+  while shutdown is in progress; queries that miss the window fail with
+  "driver has already been destroyed". `isShuttingDown()` on the controller
+  is a flag you can check, not a gate.
+- **On timeout: rejected, not cancelled.** If draining takes longer than
+  `timeout`, `gracefulShutdown` rejects — but `db.destroy()` keeps running in
+  the background (a promise race cannot cancel it).
+
+The pattern for a clean drain is: **stop intake → await in-flight work →
+shut down the pool**:
+
+```typescript
+process.on('SIGTERM', async () => {
+  server.close() // 1. stop intake (no new HTTP requests / job pulls)
+  await jobQueue.onIdle() // 2. let in-flight application work finish
+  await gracefulShutdown(db, { timeout: 30000 }) // 3. drain & close the pool
+  process.exit(0)
+})
+```
+
 ## API Reference
 
 ### Health Types
@@ -405,6 +506,7 @@ See [Database Metrics](#database-metrics) for `GetMetricsOptions`, `MetricsResul
 
 ### Resilience Types
 
+<!-- doc-snippet: skip -->
 ```typescript
 interface RetryOptions {
   maxAttempts?: number // Default: 3
@@ -415,6 +517,29 @@ interface RetryOptions {
   shouldRetry?: (error: unknown) => boolean
   onRetry?: (attempt: number, error: unknown) => void
 }
+
+// Same shape as RetryOptions; withTransactionRetry defaults differ:
+// shouldRetry → isSerializationError, delayMs → 100, maxDelayMs → 2000
+type TransactionRetryOptions = RetryOptions
+
+// Anything that can start transactions: Kysely<DB>, KyseraExecutor<DB>,
+// or a structural test double. TRX is what the callback receives
+// (Transaction<DB> for both Kysely and KyseraExecutor).
+interface RetryableTransactionSource<TRX> {
+  transaction(): {
+    execute<T>(callback: (trx: TRX) => Promise<T>): Promise<T>
+  }
+}
+
+function withTransactionRetry<TRX, T>(
+  db: RetryableTransactionSource<TRX>,
+  fn: (trx: TRX) => Promise<T>,
+  options?: TransactionRetryOptions
+): Promise<T>
+
+// True for pg 40001/40P01, mysql 1213/1205, mssql 1205, SQLITE_BUSY*
+// (follows the error `cause` chain up to 5 levels)
+function isSerializationError(error: unknown): boolean
 
 type CircuitState = 'closed' | 'open' | 'half-open'
 
@@ -434,6 +559,7 @@ interface CircuitBreakerState {
 
 ### CircuitBreaker Class
 
+<!-- doc-snippet: skip -->
 ```typescript
 class CircuitBreaker {
   // Constructor signatures
@@ -468,6 +594,10 @@ interface PoolMetrics {
   idle: number
   active: number
   waiting: number
+  // Always set by createMetricsPool: true for recognized pools
+  // (pg, mysql2, better-sqlite3, tarn), false for placeholder numbers.
+  // Optional only for backward compatibility with pre-0.9.x literals.
+  detected?: boolean
 }
 
 interface MetricsPool extends DatabasePool {

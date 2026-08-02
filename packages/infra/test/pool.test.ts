@@ -118,6 +118,73 @@ describe('createMetricsPool', () => {
     })
   })
 
+  describe('tarn pool detection (kysely MssqlDialect / knex)', () => {
+    it('should detect a tarn pool via its counter methods', () => {
+      // Mock tarn.Pool structure (numUsed/numFree/numPendingAcquires are public API)
+      const tarnPool = {
+        numUsed: () => 3,
+        numFree: () => 2,
+        numPendingAcquires: () => 1,
+        max: 10,
+        destroy: async () => {}
+      }
+
+      const metricsPool = createMetricsPool(tarnPool as unknown as DatabasePool)
+      const metrics = metricsPool.getMetrics()
+
+      expect(metrics.total).toBe(10)
+      expect(metrics.active).toBe(3)
+      expect(metrics.idle).toBe(2)
+      expect(metrics.waiting).toBe(1)
+      expect(metrics.detected).toBe(true)
+    })
+
+    it('should fall back to used+free when max is not exposed', () => {
+      const tarnPool = {
+        numUsed: () => 4,
+        numFree: () => 1,
+        numPendingAcquires: () => 0,
+        destroy: async () => {}
+      }
+
+      const metricsPool = createMetricsPool(tarnPool as unknown as DatabasePool)
+      const metrics = metricsPool.getMetrics()
+
+      expect(metrics.total).toBe(5)
+      expect(metrics.detected).toBe(true)
+    })
+  })
+
+  describe('detected flag', () => {
+    it('should mark recognized pools with detected: true', () => {
+      const pgPool = {
+        totalCount: 2,
+        idleCount: 1,
+        waitingCount: 0,
+        end: async () => {}
+      }
+      const mysqlPool = {
+        pool: {
+          _allConnections: { length: 1 },
+          _freeConnections: { length: 1 }
+        },
+        config: { connectionLimit: 4 },
+        end: async () => {}
+      }
+      const sqliteDb = {
+        open: true,
+        memory: true,
+        name: ':memory:',
+        end: () => {}
+      }
+
+      for (const pool of [pgPool, mysqlPool, sqliteDb]) {
+        const metrics = createMetricsPool(pool as unknown as DatabasePool).getMetrics()
+        expect(metrics.detected).toBe(true)
+      }
+    })
+  })
+
   describe('Unknown pool fallback', () => {
     it('should return default metrics for unknown pool types', () => {
       const unknownPool = {
@@ -131,6 +198,15 @@ describe('createMetricsPool', () => {
       expect(metrics.idle).toBe(0)
       expect(metrics.active).toBe(0)
       expect(metrics.waiting).toBe(0)
+    })
+
+    it('should mark placeholder numbers with detected: false', () => {
+      const unknownPool = {
+        end: async () => {}
+      }
+
+      const metrics = createMetricsPool(unknownPool as unknown as DatabasePool).getMetrics()
+      expect(metrics.detected).toBe(false)
     })
   })
 })

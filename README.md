@@ -183,9 +183,10 @@ await withTransaction(executor, async ctx => {
 
 ## Operations
 
-- **Migrations**: DB advisory locks (PostgreSQL `pg_try_advisory_lock`, MySQL `GET_LOCK`)
-  serialize concurrent runners; sha256 checksums detect drift (`migrate verify`); dry-run
-  plans and `migrate baseline` for adopting existing schemas; CI-stable `--json` shapes.
+- **Migrations**: DB advisory locks (PostgreSQL `pg_try_advisory_lock`, MySQL `GET_LOCK`,
+  MSSQL `sp_getapplock`) serialize concurrent runners; sha256 checksums detect drift
+  (`migrate verify`); dry-run plans and `migrate baseline` for adopting existing schemas;
+  CI-stable `--json` shapes.
 - **CLI**: `kysera doctor` (runtime, config, drivers, connectivity, migration state,
   version drift — one shot); `kysera generate database` (live-DB → typed `Database`
   interface with `Generated<>` columns); shell completions for bash/zsh/fish.
@@ -204,7 +205,7 @@ await withTransaction(executor, async ctx => {
 | Queries, repositories, DAL, plugins | ✅ | ✅ | ✅ | ✅ |
 | Dialect-aware pagination | ✅ | ✅ | ✅ | ✅ (`OFFSET…FETCH` / `TOP`) |
 | Error parsing (`parseDatabaseError`) | ✅ | ✅ | ✅ | ✅ |
-| Migration advisory locks | ✅ | ✅ | single-writer | ⚠️ not yet (no-op) |
+| Migration advisory locks | ✅ | ✅ | single-writer | ✅ (`sp_getapplock`) |
 | Native RLS DDL generation | ✅ | — | — | — |
 | CLI target | ✅ | ✅ | ✅ | ⚠️ not yet |
 

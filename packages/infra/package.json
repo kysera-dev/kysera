@@ -38,7 +38,8 @@
     "test:watch": "vitest watch",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:multi-db": "TEST_POSTGRES=true vitest run test/transaction-retry.integration.test.ts test/shutdown-drain.integration.test.ts"
   },
   "peerDependencies": {
     "kysely": ">=0.29.0"

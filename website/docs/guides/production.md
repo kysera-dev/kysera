@@ -105,7 +105,10 @@ Driver detection happens once, at creation time:
 - **`pg`** (PostgreSQL) — real metrics from `totalCount` / `idleCount` / `waitingCount`
 - **`mysql2`** — real metrics from the internal connection lists; `waiting` is always `0` (mysql2 does not expose it)
 - **`better-sqlite3`** — SQLite has no pooling; reports a static single connection (`total: 1`)
-- **Anything else** — static placeholder values (`{ total: 10, idle: 0, active: 0, waiting: 0 }`), so treat metrics from unrecognized pools as decorative
+- **tarn.js** (the pool behind kysely's `MssqlDialect` and knex) — real metrics from `numUsed()` / `numFree()` / `numPendingAcquires()`, if you hold the pool object yourself (kysely's `MssqlDialect` builds its tarn pool internally and doesn't expose it)
+- **Anything else** — static placeholder values (`{ total: 10, idle: 0, active: 0, waiting: 0 }`)
+
+Every result includes `detected: boolean` — `true` when the numbers came from a recognized pool, `false` for the placeholder values. Alert on real saturation, never on `detected: false` numbers.
 
 ## Continuous Monitoring
 
@@ -196,6 +199,44 @@ const fetchUserWithRetry = createRetryWrapper(fetchUser, { maxAttempts: 3 })
 const user = await fetchUserWithRetry(42)
 ```
 
+### Retrying Whole Transactions
+
+`withRetry` re-runs a *function*; that is wrong for transactions that lose a
+serialization race — the failed transaction is rolled back, and the retry
+must be a **new transaction** that re-reads current data. Use
+`withTransactionRetry` for that:
+
+```typescript
+import { withTransactionRetry } from '@kysera/infra/resilience'
+
+await withTransactionRetry(
+  db, // Kysely or KyseraExecutor — plugins stay active inside attempts
+  async trx => {
+    // Optional: escalate isolation — re-applied on every attempt because
+    // each attempt is a brand-new transaction
+    // await sql`SET TRANSACTION ISOLATION LEVEL SERIALIZABLE`.execute(trx)
+
+    const seat = await trx
+      .selectFrom('seats')
+      .where('id', '=', seatId)
+      .where('status', '=', 'free')
+      .selectAll()
+      .executeTakeFirst()
+    if (!seat) throw new SeatTakenError(seatId)
+    await trx.updateTable('seats').where('id', '=', seatId)
+      .set({ status: 'held', held_by: userId }).execute()
+  },
+  { maxAttempts: 5, onRetry: attempt => metrics.increment('txn_retry') }
+)
+```
+
+It retries only genuine "re-run me" errors (`isSerializationError`): PostgreSQL
+`40001`/`40P01`, MySQL 1213/1205, MSSQL 1205 (deadlock victim), SQLite
+`SQLITE_BUSY*`. Connection errors are deliberately **not** retried — a
+transaction that died mid-commit may have committed, so blindly re-running it
+could double-apply. Keep external side effects (emails, queue publishes)
+out of the callback: every attempt re-executes it from the top.
+
 ## Circuit Breaker
 
 `CircuitBreaker` fails fast once a failure threshold is reached, instead of hammering a database that is already down. States: `closed` (normal), `open` (rejecting immediately), `half-open` (after `resetTimeMs`, one probe request is allowed through; success closes the circuit, failure reopens it). A success while closed resets the consecutive-failure counter.
@@ -275,6 +316,25 @@ shutdown.isShuttingDown()    // boolean
 ```
 
 `shutdownDatabase(db)` is a plain `db.destroy()` wrapper for symmetry.
+
+### What Actually Drains (and What Doesn't)
+
+`gracefulShutdown` adds a timeout and a hook around `db.destroy()` — the
+draining itself is the driver's behavior:
+
+- **In-flight queries finish.** The `pg` driver's `destroy()` is
+  `pool.end()`, which waits for checked-out connections instead of killing
+  them (verified by an integration test against live PostgreSQL); `mysql2`
+  behaves the same.
+- **New queries are not blocked.** Anything issued after destroy begins
+  fails with "driver has already been destroyed". Shutdown is not a request
+  gate.
+- **The `timeout` rejects, it does not cancel.** After a timeout rejection,
+  the underlying `destroy()` continues in the background.
+
+So the drain order is on you: **stop intake first** (close the HTTP server,
+stop pulling jobs), **await your in-flight work**, and only then call
+`gracefulShutdown` — exactly what the `onShutdown` hook is for.
 
 ## Query Metrics
 
