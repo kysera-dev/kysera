@@ -1,8 +1,13 @@
 import { themes as prismThemes } from 'prism-react-renderer'
 import type { Config } from '@docusaurus/types'
 import type * as Preset from '@docusaurus/preset-classic'
+// Single source of truth for the version shown on the landing page
+import rootPackage from '../package.json'
 
 const config: Config = {
+  customFields: {
+    kyseraVersion: rootPackage.version
+  },
   title: 'Kysera',
   tagline: 'Type-safe data access toolkit for TypeScript built on Kysely',
   favicon: 'img/favicon.ico',

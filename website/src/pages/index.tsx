@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import clsx from 'clsx'
 import Link from '@docusaurus/Link'
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext'
 import Layout from '@theme/Layout'
 import Heading from '@theme/Heading'
 import CodeBlock from '@theme/CodeBlock'
@@ -20,17 +20,19 @@ const heroCode = `const executor = await createExecutor(db, [
 const orm = await createORM(executor, [])   // Repository
 const ctx = createContext(executor)         // Functional DAL
 
-// Filters, security, and audit apply everywhere —
+// Filters and policies apply to every query —
 // including inside transactions`
 
 function Hero() {
+  const { siteConfig } = useDocusaurusContext()
+  const version = String(siteConfig.customFields?.kyseraVersion ?? '')
   return (
     <header className={styles.hero}>
       <div className="container">
         <div className={styles.heroInner}>
           <div className={styles.heroCopy}>
             <div className={styles.badges}>
-              <span className={styles.badge}>v0.9</span>
+              {version && <span className={styles.badge}>v{version}</span>}
               <span className={styles.badge}>ESM-only</span>
               <span className={styles.badge}>TypeScript strict</span>
               <span className={styles.badge}>Node 22+ · Bun · Deno</span>
@@ -89,8 +91,8 @@ const positions = [
     body: (
       <>
         Plugins intercept queries at the executor, so the Repository pattern and the functional DAL
-        share the same soft-delete filters, RLS policies, and audit trail — in and out of
-        transactions. Mix both styles in one codebase (CQRS-lite).
+        share the same soft-delete filters and RLS policies — in and out of transactions.
+        Repositories add an atomic audit trail on top. Mix both styles in one codebase (CQRS-lite).
       </>
     )
   },
@@ -134,6 +136,7 @@ const repositoryCode = `import {
   createORM, createRepositoryFactory, zodAdapter
 } from '@kysera/repository'
 
+
 const orm = await createORM(executor, [])
 
 const users = orm.createRepository(exec =>
@@ -152,7 +155,8 @@ await users.softDelete(user.id) // added by the plugin
 await users.findAll()           // deleted rows filtered`
 
 const dalCode = `import {
-  createQuery, createContext, withTransaction
+  createQuery, createContext, withTransaction,
+  type DbContext
 } from '@kysera/dal'
 
 const userByEmail = createQuery(
@@ -232,7 +236,7 @@ const plugins = [
   },
   {
     name: 'Row-Level Security',
-    size: '~53 KB',
+    size: '~57 KB',
     to: '/docs/plugins/rls',
     body: 'Declarative policies enforced in SQL for reads, mutations, and bulk operations — plus native PostgreSQL RLS generation.'
   }
@@ -246,8 +250,8 @@ function Plugins() {
           Four plugins. No magic.
         </Heading>
         <p className={styles.sectionLead}>
-          Each plugin declares a priority tier and intercepts queries in a fixed, inspectable order:
-          security → filters → transforms → audit.
+          Each plugin declares a priority tier and runs in a fixed, inspectable order — security →
+          filters → transforms → audit — no matter how you register them.
         </p>
         <div className={styles.pluginGrid}>
           {plugins.map(p => (
@@ -293,7 +297,7 @@ const toolkit = [
   {
     title: 'Testing',
     to: '/docs/api/testing',
-    body: 'Transaction-rollback isolation, data factories, plugin mocks and spies, cleanup helpers.'
+    body: 'Transaction-rollback isolation, data factories, plugin mocks and spies, live-database auto-detection.'
   },
   {
     title: 'Dialects',
@@ -350,9 +354,9 @@ function Stats() {
         </div>
         <p className={styles.statsFootnote}>
           Tested in CI against live PostgreSQL and MySQL on every push; concurrency claims are
-          proven by racing tests, and a benchmark suite tracks overhead each release — the
-          measured cost of the executor without plugins is within noise of raw Kysely on the
-          execute path.
+          proven by racing tests. A benchmark suite tracks overhead each release: the executor
+          without plugins measures within noise-to-13% of raw Kysely on the execute path, and a
+          full three-plugin stack costs ~15–20%.
         </p>
       </div>
     </section>
