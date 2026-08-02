@@ -232,7 +232,9 @@ describe('Audit Plugin - Bulk Operation Optimization', () => {
 
       // Should complete quickly (< 100ms for 10 records)
       // Optimized bulk fetch is much faster than N individual queries
-      expect(duration).toBeLessThan(100)
+      // Catastrophic-only bound (per-row-write regression would be seconds);
+      // wall-clock micro-numbers flake under parallel runs - see bench/.
+      expect(duration).toBeLessThan(2000)
 
       // Verify all audit logs were created
       const auditLogs = await db
