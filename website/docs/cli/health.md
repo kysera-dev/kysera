@@ -93,7 +93,8 @@ kysera health metrics
 
 ```
 --json                    Output as JSON
---period <duration>       Time period (1h, 24h, 7d)
+--period <duration>       Time period (1h, 24h, 7d; default: 1h)
+-c, --config <path>       Path to configuration file
 ```
 
 **Output:**
@@ -142,27 +143,19 @@ kysera health check --json
   "status": "healthy",
   "checks": [
     {
-      "name": "database",
+      "name": "Database Connection",
       "status": "healthy",
-      "details": {
-        "latency": 23,
-        "version": "PostgreSQL 14.5"
-      }
-    },
-    {
-      "name": "pool",
-      "status": "healthy",
-      "details": {
-        "total": 10,
-        "active": 2,
-        "idle": 8,
-        "waiting": 0
-      }
+      "message": "Connected successfully (4ms)"
     }
   ],
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "metrics": {
+    "checkLatency": 4
+  },
+  "timestamp": "2026-08-02T11:07:35.927Z"
 }
 ```
+
+Each `checks` entry carries `name`, `status`, and `message`. The `metrics` object gains `databaseVersion`, `poolMetrics`, and `queryMetrics` when the dialect and configuration expose them.
 
 ## Use in CI/CD
 

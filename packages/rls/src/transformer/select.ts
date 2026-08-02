@@ -9,6 +9,7 @@ import type { PolicyEvaluationContext } from '../policy/types.js'
 import type { RLSContext } from '../context/types.js'
 import { rlsContext } from '../context/manager.js'
 import { RLSError, RLSErrorCodes } from '../errors.js'
+import { resolveActivationContext, type RLSActivationOptions } from '../policy/activation.js'
 import {
   createQualifiedColumn,
   applyWhereCondition,
@@ -20,7 +21,10 @@ import {
  * Applies filter policies to SELECT queries by adding WHERE conditions
  */
 export class SelectTransformer<DB = unknown> {
-  constructor(private registry: PolicyRegistry<DB>) {}
+  constructor(
+    private registry: PolicyRegistry<DB>,
+    private activationOptions?: RLSActivationOptions
+  ) {}
 
   /**
    * Transform a SELECT query by applying filter policies
@@ -63,8 +67,10 @@ export class SelectTransformer<DB = unknown> {
       return qb
     }
 
-    // Get filter policies for this table
-    const filters = this.registry.getFilters(table)
+    // Get filter policies for this table (inactive conditional filters are
+    // treated as absent for this call)
+    const activation = resolveActivationContext(this.activationOptions, ctx)
+    const filters = this.registry.getFilters(table, activation)
     if (filters.length === 0) {
       return qb
     }
@@ -115,7 +121,8 @@ export class SelectTransformer<DB = unknown> {
       return qb
     }
 
-    const filters = this.registry.getFilters(table)
+    const activation = resolveActivationContext(this.activationOptions, ctx)
+    const filters = this.registry.getFilters(table, activation)
     if (filters.length === 0) {
       return qb
     }

@@ -41,12 +41,18 @@ Minimal setup with core packages:
 ```
 my-app/
 ├── src/
-│   └── index.ts
+│   ├── index.ts
+│   ├── database.ts
+│   └── repositories/
 ├── migrations/
+├── tests/
 ├── package.json
 ├── tsconfig.json
 ├── kysera.config.ts
-└── .env.example
+├── .env.example
+├── .gitignore
+├── README.md
+└── SECURITY.md
 ```
 
 ### api
@@ -159,9 +165,16 @@ Migration state is tracked in the default `migrations` table; set `migrations.ta
 ### .env.example
 
 ```
+# Database Configuration
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=myapp
 DB_USER=postgres
 DB_PASSWORD=
+
+# Application
+NODE_ENV=development
+PORT=3000
 ```
+
+Copy it to `.env` and fill in `DB_PASSWORD` — the CLI loads `.env` from the working directory automatically (without overriding variables already set in the environment).

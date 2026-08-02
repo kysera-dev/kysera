@@ -678,6 +678,13 @@ export interface CompiledPolicy<TCtx = PolicyEvaluationContext> {
    * Priority for evaluation order
    */
   priority: number
+
+  /**
+   * Activation condition carried over from the policy definition.
+   * When present, the policy only participates in enforcement for calls
+   * whose activation context satisfies it.
+   */
+  activationCondition?: PolicyActivationCondition
 }
 
 /**
@@ -703,6 +710,13 @@ export interface CompiledFilterPolicy<TCtx = PolicyEvaluationContext> {
    * Policy name for debugging
    */
   name: string
+
+  /**
+   * Activation condition carried over from the policy definition.
+   * When present, the filter is only applied for calls whose activation
+   * context satisfies it.
+   */
+  activationCondition?: PolicyActivationCondition
 }
 
 // ============================================================================
@@ -806,7 +820,7 @@ export interface PolicyActivationContext {
    * Authentication context for auth-based policy activation
    */
   auth?: {
-    userId?: string
+    userId?: string | number
     roles?: string[]
     isSystem?: boolean
     [key: string]: unknown

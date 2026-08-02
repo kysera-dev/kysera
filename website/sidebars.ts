@@ -192,12 +192,14 @@ const sidebars: SidebarsConfig = {
         'cli/db',
         'cli/schema',
         'cli/health',
+        'cli/doctor',
         'cli/test',
         'cli/debug',
         'cli/query',
         'cli/repository',
         'cli/plugin',
-        'cli/audit'
+        'cli/audit',
+        'cli/rls'
       ]
     },
     {

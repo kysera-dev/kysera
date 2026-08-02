@@ -8,6 +8,7 @@ import type { PolicyEvaluationContext, Operation } from '../policy/types.js'
 import type { RLSContext } from '../context/types.js'
 import { rlsContext } from '../context/manager.js'
 import { RLSPolicyViolation, RLSPolicyEvaluationError } from '../errors.js'
+import { resolveActivationContext, type RLSActivationOptions } from '../policy/activation.js'
 
 /**
  * Default chunk size for parallel row filtering
@@ -19,7 +20,10 @@ const DEFAULT_CHUNK_SIZE = 100
  * Validates mutations (CREATE, UPDATE, DELETE) against allow/deny/validate policies
  */
 export class MutationGuard<DB = unknown> {
-  constructor(private registry: PolicyRegistry<DB>) {}
+  constructor(
+    private registry: PolicyRegistry<DB>,
+    private activationOptions?: RLSActivationOptions
+  ) {}
 
   /**
    * Check if CREATE operation is allowed
@@ -199,8 +203,10 @@ export class MutationGuard<DB = unknown> {
       return true
     }
 
-    // Get validate policies for this operation
-    const validates = this.registry.getValidates(table, operation)
+    // Get validate policies for this operation (inactive conditional
+    // policies are treated as absent for this call)
+    const activation = resolveActivationContext(this.activationOptions, ctx)
+    const validates = this.registry.getValidates(table, operation, activation)
     if (validates.length === 0) {
       return true
     }
@@ -260,8 +266,12 @@ export class MutationGuard<DB = unknown> {
     // Create evaluation context once and reuse for all policies
     const evalCtx = this.createEvalContext(ctx, table, operation, row, data)
 
+    // Resolve activation once per call: inactive conditional policies are
+    // treated as absent below (an absent allow under defaultDeny still denies)
+    const activation = resolveActivationContext(this.activationOptions, ctx)
+
     // Evaluate deny policies first (they override allows)
-    const denies = this.registry.getDenies(table, operation)
+    const denies = this.registry.getDenies(table, operation, activation)
     for (const deny of denies) {
       const result = await this.evaluatePolicy(deny.evaluate, evalCtx, deny.name)
 
@@ -272,7 +282,7 @@ export class MutationGuard<DB = unknown> {
 
     // Evaluate validate policies (for CREATE/UPDATE)
     if ((operation === 'create' || operation === 'update') && data) {
-      const validates = this.registry.getValidates(table, operation)
+      const validates = this.registry.getValidates(table, operation, activation)
       for (const validate of validates) {
         const result = await this.evaluatePolicy(validate.evaluate, evalCtx, validate.name)
 
@@ -283,7 +293,7 @@ export class MutationGuard<DB = unknown> {
     }
 
     // Evaluate allow policies
-    const allows = this.registry.getAllows(table, operation)
+    const allows = this.registry.getAllows(table, operation, activation)
     const defaultDeny = this.registry.hasDefaultDeny(table)
 
     if (defaultDeny && allows.length === 0) {

@@ -32,7 +32,18 @@ export const RLSPluginOptionsSchema = z.object({
   requireContext: z.boolean().optional(),
   allowUnfilteredQueries: z.boolean().optional(),
   auditDecisions: z.boolean().optional(),
-  primaryKeyColumn: z.string().optional()
+  primaryKeyColumn: z.string().optional(),
+  activation: z
+    .object({
+      environment: z.string().optional(),
+      // Set must precede record: a Set has no enumerable own keys, so a
+      // record schema would silently accept it as {}
+      features: z
+        .union([z.instanceof(Set), z.array(z.string()), z.record(z.string(), z.unknown())])
+        .optional(),
+      meta: z.record(z.string(), z.unknown()).optional()
+    })
+    .optional()
 })
 
 export type RLSPluginOptionsInput = z.input<typeof RLSPluginOptionsSchema>

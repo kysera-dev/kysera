@@ -10,12 +10,15 @@
 import type {
   Operation,
   PolicyDefinition,
+  ConditionalPolicyDefinition,
   FilterCondition,
   RLSSchema,
   TableRLSConfig,
   CompiledPolicy,
   CompiledFilterPolicy,
-  PolicyEvaluationContext
+  PolicyEvaluationContext,
+  PolicyActivationContext,
+  PolicyActivationCondition
 } from './types.js'
 import { RLSSchemaError } from '../errors.js'
 import { silentLogger, type KyseraLogger } from '@kysera/core'
@@ -29,6 +32,7 @@ interface InternalCompiledPolicy {
   type: 'allow' | 'deny' | 'validate'
   evaluate: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>
   priority: number
+  activationCondition?: PolicyActivationCondition
 }
 
 /**
@@ -207,13 +211,44 @@ export class PolicyRegistry<DB = unknown> {
       op === 'all' ? (['read', 'create', 'update', 'delete'] as const) : [op]
     ) as Operation[]
 
+    const activationCondition = this.compileActivationCondition(policy)
+
     return {
       name,
       operations: new Set(expandedOps),
       type: policy.type as 'allow' | 'deny' | 'validate',
       evaluate: policy.condition as (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>,
-      priority: policy.priority ?? (policy.type === 'deny' ? 100 : 0)
+      priority: policy.priority ?? (policy.type === 'deny' ? 100 : 0),
+      ...(activationCondition !== undefined && { activationCondition })
     }
+  }
+
+  /**
+   * Extract and validate a policy's activation condition.
+   *
+   * Activation conditions run inside synchronous enforcement paths (query
+   * transformation), so async functions are rejected at compile time. A
+   * non-async function that still returns a Promise is caught on first
+   * evaluation in {@link isPolicyActive}.
+   */
+  private compileActivationCondition(
+    policy: PolicyDefinition
+  ): PolicyActivationCondition | undefined {
+    const activationCondition = (policy as ConditionalPolicyDefinition).activationCondition
+    if (activationCondition === undefined) {
+      return undefined
+    }
+
+    // Constructor-name check only: unlike utils' isAsyncFunction, this must
+    // not probe-call user conditions with an empty context at compile time
+    if (activationCondition.constructor.name === 'AsyncFunction') {
+      throw new Error(
+        'activation condition must be synchronous (async function detected). ' +
+          'Resolve async inputs before defining the policy and close over the result.'
+      )
+    }
+
+    return activationCondition
   }
 
   /**
@@ -225,11 +260,13 @@ export class PolicyRegistry<DB = unknown> {
    */
   private compileFilterPolicy(policy: PolicyDefinition, name: string): CompiledFilterPolicy {
     const condition = policy.condition as unknown as FilterCondition
+    const activationCondition = this.compileActivationCondition(policy)
 
     return {
       operation: 'read',
       getConditions: condition as (ctx: PolicyEvaluationContext) => Record<string, unknown>,
-      name
+      name,
+      ...(activationCondition !== undefined && { activationCondition })
     }
   }
 
@@ -242,48 +279,145 @@ export class PolicyRegistry<DB = unknown> {
       type: internal.type,
       operation: Array.from(internal.operations),
       evaluate: internal.evaluate,
-      priority: internal.priority
+      priority: internal.priority,
+      ...(internal.activationCondition !== undefined && {
+        activationCondition: internal.activationCondition
+      })
     }
   }
 
   /**
-   * Get allow policies for a table and operation
+   * Evaluate a policy's activation condition against an activation context.
+   *
+   * Semantics:
+   * - No condition, or no activation context provided: the policy is active.
+   * - Condition returns false: the policy is INACTIVE and treated as absent.
+   * - Condition throws: FAIL CLOSED — the policy stays ACTIVE (the most
+   *   restrictive interpretation: deny/filter/validate keep constraining,
+   *   and a broken gate never silently widens access). The error is logged.
+   * - Condition returns a Promise: RLSSchemaError. Activation conditions run
+   *   inside synchronous query transformation and cannot be awaited; a
+   *   Promise is always truthy, which would silently invert gating.
    */
-  getAllows(table: string, operation: Operation): CompiledPolicy[] {
+  private isPolicyActive(
+    name: string,
+    condition: PolicyActivationCondition | undefined,
+    activation: PolicyActivationContext | undefined
+  ): boolean {
+    if (condition === undefined || activation === undefined) {
+      return true
+    }
+
+    // Widened: the declared return type is boolean, but untyped JS callers
+    // can hand back anything — including a Promise, which must be rejected
+    let result: unknown
+    try {
+      result = condition(activation)
+    } catch (error) {
+      this.logger.warn?.(
+        `[RLS] Activation condition for policy "${name}" threw ` +
+          `(${error instanceof Error ? error.message : String(error)}). ` +
+          `Failing closed: policy treated as ACTIVE.`
+      )
+      return true
+    }
+
+    if (result instanceof Promise) {
+      // Prevent an unhandled rejection from the abandoned promise
+      void result.catch(() => undefined)
+      throw new RLSSchemaError(
+        `Activation condition for policy "${name}" returned a Promise. ` +
+          `Activation conditions must be synchronous; resolve async inputs ` +
+          `before defining the policy and close over the result.`,
+        { policy: name }
+      )
+    }
+
+    return Boolean(result)
+  }
+
+  /**
+   * Get allow policies for a table and operation
+   *
+   * @param activation - When provided, policies whose activation condition
+   *   rejects this context are omitted (treated as absent)
+   */
+  getAllows(
+    table: string,
+    operation: Operation,
+    activation?: PolicyActivationContext
+  ): CompiledPolicy[] {
     const config = this.tables.get(table)
     if (!config) return []
 
-    return config.allows.filter(p => p.operations.has(operation)).map(p => this.toCompiledPolicy(p))
+    return config.allows
+      .filter(
+        p =>
+          p.operations.has(operation) &&
+          this.isPolicyActive(p.name, p.activationCondition, activation)
+      )
+      .map(p => this.toCompiledPolicy(p))
   }
 
   /**
    * Get deny policies for a table and operation
+   *
+   * @param activation - When provided, policies whose activation condition
+   *   rejects this context are omitted (treated as absent)
    */
-  getDenies(table: string, operation: Operation): CompiledPolicy[] {
+  getDenies(
+    table: string,
+    operation: Operation,
+    activation?: PolicyActivationContext
+  ): CompiledPolicy[] {
     const config = this.tables.get(table)
     if (!config) return []
 
-    return config.denies.filter(p => p.operations.has(operation)).map(p => this.toCompiledPolicy(p))
+    return config.denies
+      .filter(
+        p =>
+          p.operations.has(operation) &&
+          this.isPolicyActive(p.name, p.activationCondition, activation)
+      )
+      .map(p => this.toCompiledPolicy(p))
   }
 
   /**
    * Get validate policies for a table and operation
+   *
+   * @param activation - When provided, policies whose activation condition
+   *   rejects this context are omitted (treated as absent)
    */
-  getValidates(table: string, operation: Operation): CompiledPolicy[] {
+  getValidates(
+    table: string,
+    operation: Operation,
+    activation?: PolicyActivationContext
+  ): CompiledPolicy[] {
     const config = this.tables.get(table)
     if (!config) return []
 
     return config.validates
-      .filter(p => p.operations.has(operation))
+      .filter(
+        p =>
+          p.operations.has(operation) &&
+          this.isPolicyActive(p.name, p.activationCondition, activation)
+      )
       .map(p => this.toCompiledPolicy(p))
   }
 
   /**
    * Get filter policies for a table
+   *
+   * @param activation - When provided, filters whose activation condition
+   *   rejects this context are omitted (treated as absent)
    */
-  getFilters(table: string): CompiledFilterPolicy[] {
+  getFilters(table: string, activation?: PolicyActivationContext): CompiledFilterPolicy[] {
     const config = this.tables.get(table)
-    return config?.filters ?? []
+    if (!config) return []
+
+    return config.filters.filter(f =>
+      this.isPolicyActive(f.name, f.activationCondition, activation)
+    )
   }
 
   /**

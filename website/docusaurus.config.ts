@@ -249,7 +249,9 @@ const config: Config = {
     },
     prism: {
       theme: prismThemes.github,
-      darkTheme: prismThemes.dracula,
+      // oceanicNext: teal-family dark theme — coherent with the mint brand
+      // (dracula's blue-violet background + purple tokens fought it)
+      darkTheme: prismThemes.oceanicNext,
       additionalLanguages: ['bash', 'typescript', 'json', 'sql']
     }
   } satisfies Preset.ThemeConfig

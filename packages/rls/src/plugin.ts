@@ -14,6 +14,7 @@ import type { Plugin, QueryBuilderContext, BaseRepositoryLike } from '@kysera/ex
 import { getRawDb, isRepositoryLike } from '@kysera/executor'
 import type { Kysely } from 'kysely'
 import type { RLSSchema, Operation } from './policy/types.js'
+import type { RLSActivationOptions } from './policy/activation.js'
 import { PolicyRegistry } from './policy/registry.js'
 import { SelectTransformer } from './transformer/select.js'
 import { MutationGuard } from './transformer/mutation.js'
@@ -100,6 +101,24 @@ export interface RLSPluginOptions<DB = unknown> {
    * @default 'id'
    */
   primaryKeyColumn?: string
+
+  /**
+   * Static inputs for conditional policy activation
+   * (`whenEnvironment` / `whenFeature` / `whenTimeRange` / `whenCondition`
+   * and `PolicyOptions.condition`).
+   *
+   * Per call, the activation context is resolved as:
+   * - `environment`: `activation.environment`, falling back to `NODE_ENV`
+   * - `features`: `activation.features` (feature flags have no env fallback)
+   * - `timestamp`: the current time
+   * - `auth` / `meta`: taken from the active RLS context
+   *
+   * A policy whose activation condition returns `false` is treated as absent
+   * for that call. A condition that throws fails closed (the policy stays
+   * active) and the error is logged. Activation conditions must be
+   * synchronous; async conditions are rejected with `RLSSchemaError`.
+   */
+  activation?: RLSActivationOptions
 }
 
 /**
@@ -168,7 +187,8 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     allowUnfilteredQueries = false, // SECURITY: Explicit opt-in for unfiltered queries
     auditDecisions = false,
     onViolation,
-    primaryKeyColumn = 'id'
+    primaryKeyColumn = 'id',
+    activation
   } = options
 
   // Registry and transformers (initialized in onInit; undefined until then —
@@ -266,12 +286,12 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
       // Create and compile registry
       // Type assertion: The plugin is configured with a specific DB schema,
       // but onInit receives a generic TDB. We use the schema's DB type.
-      registry = new PolicyRegistry<DB>(schema)
+      registry = new PolicyRegistry<DB>(schema, { logger })
       registry.validate()
 
       // Create transformers
-      selectTransformer = new SelectTransformer<DB>(registry)
-      mutationGuard = new MutationGuard<DB>(registry)
+      selectTransformer = new SelectTransformer<DB>(registry, activation)
+      mutationGuard = new MutationGuard<DB>(registry, activation)
 
       logger.info?.('[RLS] RLS plugin initialized successfully')
     },

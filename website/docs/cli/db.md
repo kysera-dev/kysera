@@ -37,6 +37,7 @@ kysera db seed
 --dry-run                 Show what would execute
 --transaction             Run in single transaction
 -v, --verbose             Detailed output
+--json                    Output results as JSON
 -c, --config <path>       Path to configuration file
 -s, --schema <name>       PostgreSQL schema name (default: public)
 ```
@@ -129,11 +130,12 @@ kysera db dump
 **Options:**
 
 ```
--o, --output <path>       Output file path
---schema-only             Export schema only
---data-only               Export data only
---format <type>           Format: sql, json
---tables <list>           Specific tables
+-o, --output <file>       Output file path
+-t, --tables <list>       Comma-separated table names
+--data-only               Export data only (no schema)
+--schema-only             Export schema only (no data)
+-f, --format <type>       Format: sql, json (default: sql)
+--json                    Output dump summary as JSON
 -c, --config <path>       Path to configuration file
 -s, --schema <name>       PostgreSQL schema name (default: public)
 ```
@@ -226,9 +228,12 @@ kysera db console
 **Options:**
 
 ```
--q, --query <sql>         Execute SQL query and exit
+-e, --execute <sql>       Execute SQL query and exit
+--force                   Skip confirmation for destructive queries
 -c, --config <path>       Path to configuration file
 ```
+
+Destructive statements (DROP, DELETE, TRUNCATE, ...) prompt for confirmation before running — `--force` skips the prompt, which is what you need when piping a statement through `-e` in a script.
 
 **Console Commands:**
 
@@ -249,7 +254,7 @@ kysera db console
 kysera db console
 
 # Execute single query
-kysera db console -q "SELECT * FROM users LIMIT 5"
+kysera db console -e "SELECT * FROM users LIMIT 5"
 ```
 
 ## Seed File Structure

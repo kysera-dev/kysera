@@ -30,6 +30,9 @@ export {
 // Policy registry (for advanced use cases)
 export { PolicyRegistry } from './policy/registry.js'
 
+// Activation context resolution (conditional policies)
+export { resolveActivationContext, type RLSActivationOptions } from './policy/activation.js'
+
 // ============================================================================
 // Plugin
 // ============================================================================

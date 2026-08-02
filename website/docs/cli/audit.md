@@ -10,15 +10,58 @@ Audit logging and history tracking commands for viewing, managing, and analyzing
 
 ## Commands
 
-| Command   | Description                       |
-| --------- | --------------------------------- |
-| `logs`    | Query audit logs with filters     |
-| `history` | Show entity history timeline      |
-| `restore` | Restore entity from audit log     |
-| `stats`   | Audit log statistics              |
-| `cleanup` | Clean up old audit logs           |
-| `compare` | Compare entity versions           |
-| `diff`    | Show differences between versions |
+| Command   | Description                                        |
+| --------- | -------------------------------------------------- |
+| `init`    | Generate a migration that creates the audit table  |
+| `logs`    | Query audit logs with filters                      |
+| `history` | Show entity history timeline                       |
+| `restore` | Restore entity from audit log                      |
+| `stats`   | Audit log statistics                               |
+| `cleanup` | Clean up old audit logs                            |
+| `compare` | Compare entity versions                            |
+| `diff`    | Show differences between versions                  |
+
+## init
+
+Generate a migration that creates the audit log table — the schema-managed alternative to letting [@kysera/audit](/docs/plugins/audit) auto-create the table on first use.
+
+```bash
+kysera audit init
+```
+
+### Options
+
+| Option                | Description                                                  |
+| --------------------- | ------------------------------------------------------------ |
+| `--table <name>`      | Audit table name (default: from config or `audit_logs`)       |
+| `--dialect-ddl`       | Emit dialect-tuned DDL instead of the plugin's portable schema |
+| `-d, --dir <path>`    | Migrations directory (default: from configuration)             |
+| `-c, --config <path>` | Path to configuration file                                     |
+
+### Portable vs Dialect-Tuned DDL
+
+By default the migration matches the **portable** schema the plugin auto-creates: `TEXT` columns everywhere, JSON payloads stored as serialized text, `changed_at` as an ISO-8601 string. That works identically on PostgreSQL, MySQL, and SQLite.
+
+`--dialect-ddl` trades portability for queryability on the configured dialect:
+
+| Dialect    | Tuned types                                             | Extras                                                        |
+| ---------- | -------------------------------------------------------- | ------------------------------------------------------------- |
+| PostgreSQL | `JSONB` payloads, `TIMESTAMPTZ`, `IDENTITY` primary key   | Indexes on `(table_name, entity_id)` and `changed_at`          |
+| MySQL      | `JSON` payloads, `DATETIME(3)`, `AUTO_INCREMENT`          | Same indexes                                                   |
+| SQLite     | Portable types (TEXT is native anyway)                    | Same indexes                                                   |
+
+The plugin writes the same values either way (JSON strings and ISO timestamps are coerced by the database) — but a dialect-tuned migration is tied to that dialect. `--dialect-ddl` requires `database.dialect` in your configuration.
+
+### Example
+
+```bash
+$ kysera audit init
+Migration created: 20260802140538_create_audit_logs.ts
+  /work/my-app/migrations/20260802140538_create_audit_logs.ts
+Run 'kysera migrate up' to create the 'audit_logs' table
+```
+
+The command respects global `--dry-run` (reports without writing) and global `--json` (emits `{ file, table, mode, dialect }`, where `mode` is `"portable"` or `"dialect"`). It refuses to overwrite an existing migration file of the same name.
 
 ## logs
 
@@ -442,35 +485,18 @@ kysera audit diff users user-123 100 123 --json
 
 ## Requirements
 
-Audit commands require the `audit_logs` table. If not present, you'll see:
+The query commands (`logs`, `history`, `restore`, `stats`, `cleanup`, `compare`, `diff`) require an `audit_logs` table and look it up via `information_schema`, so they target **PostgreSQL and MySQL**. If the table is missing you'll see a short setup hint instead of an error.
 
+To set the table up, generate and run the migration:
+
+```bash
+kysera audit init
+kysera migrate up
 ```
-The audit_logs table does not exist.
-To enable audit logging:
-  1. Install @kysera/audit package
-  2. Run: kysera migrate create create_audit_logs
-  3. Add audit plugin to your repositories
-```
 
-### Audit Table Schema
-
-```sql
-CREATE TABLE audit_logs (
-  id SERIAL PRIMARY KEY,
-  table_name VARCHAR(255) NOT NULL,
-  entity_id VARCHAR(255) NOT NULL,
-  action VARCHAR(10) NOT NULL,
-  user_id VARCHAR(255),
-  old_values JSONB,
-  new_values JSONB,
-  metadata JSONB,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_audit_logs_table ON audit_logs(table_name);
-CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_id);
-CREATE INDEX idx_audit_logs_created ON audit_logs(created_at);
-```
+:::warning Column-name mismatch with @kysera/audit v0.9
+The query commands in this CLI version filter and sort on the columns `action`, `user_id`, and `created_at` — the audit-table shape used by earlier Kysera versions. The `@kysera/audit` v0.9 plugin (and the table `kysera audit init` generates) writes `operation`, `changed_by`, and `changed_at` instead. Against a plugin-shaped table, `audit logs` filters like `--action`, `--user`, `--since`/`--until` and the default ordering will fail with an unknown-column error. Until the query commands catch up, query plugin-shaped tables directly (e.g. `kysera db console -e "SELECT * FROM audit_logs ORDER BY changed_at DESC LIMIT 20"`).
+:::
 
 ## See Also
 

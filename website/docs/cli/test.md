@@ -24,6 +24,7 @@ kysera test setup
 -e, --environment <env>   Environment (test/ci/local, default: test)
 -d, --database <name>     Test database name
 --clean                   Drop existing test database
+-f, --force               Skip confirmation when dropping an existing database
 --migrate                 Run migrations (default: true)
 --seed                    Run seeders
 --fixtures <files...>     Load specific fixtures

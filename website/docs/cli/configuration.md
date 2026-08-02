@@ -8,6 +8,21 @@ description: CLI configuration reference
 
 Kysera CLI configuration file reference.
 
+## Precedence
+
+Settings resolve in this order — earlier sources win:
+
+1. **Command-line flags** (`--config`, `-s/--schema`, ...)
+2. **Environment variables** (`DATABASE_URL`, `KYSERA_CONFIG`)
+3. **`.env` file** in the working directory — loaded automatically into the environment, but it **never overrides** variables that are already set
+4. **Configuration file** (`kysera.config.ts` and friends)
+5. **Built-in defaults**
+
+Two environment variables get special treatment:
+
+- **`DATABASE_URL`** overrides the connection from the config file. The dialect is taken from `database.dialect` when configured, otherwise detected from the URL (`postgres://`/`postgresql://`, `mysql://`/`mysql2://`, `sqlite://` or a `.db`/`.sqlite` suffix); if neither yields a dialect, the command fails with a configuration error.
+- **`KYSERA_CONFIG`** names the configuration file to load when `--config` is not given.
+
 ## Configuration File
 
 The CLI searches the current directory and then each parent directory for the first matching file:
@@ -21,7 +36,7 @@ The CLI searches the current directory and then each parent directory for the fi
 7. `.kyserarc.js`
 8. `.kyserarc.json`
 
-Pass `--config <path>` to use a specific file instead.
+Pass `--config <path>` (or set `KYSERA_CONFIG`) to use a specific file instead. Relative paths inside the file (`migrations.directory`, `generate.*`, `testing.*`) resolve relative to the config file's directory, not the working directory.
 
 Create `kysera.config.ts` in your project root with a plain default export:
 
@@ -241,10 +256,13 @@ migrations: {
   pattern: '{timestamp}_{name}.ts', // Filename pattern
   tableName: 'migrations',          // Tracking table (default: 'migrations')
   schema: 'public',                 // PostgreSQL schema for the tracking table
-  lockTable: true,                  // Serialize runs via the kysera_migration_lock table
-  lockTimeout: 10000,               // Lock timeout in ms
+  lockTable: true,                  // Serialize concurrent runs via a database
+                                    // advisory lock (postgres/mysql; sqlite is
+                                    // single-writer anyway). false = unsafe
+  lockTimeout: 10000,               // Max wait for the advisory lock, in ms
   templates: {
-    create: './templates/migration.ts' // Optional custom template
+    create: './templates/migration.ts', // Optional custom templates
+    table: './templates/table.ts'
   }
 }
 ```
@@ -385,9 +403,18 @@ database: {
 }
 ```
 
-:::caution No .env loading
-The CLI does not load `.env` files. Export the variables in your shell, set them via your process manager or CI environment, or preload dotenv yourself (e.g. `node --env-file=.env` or `dotenv -- kysera migrate up`).
+:::tip .env is loaded automatically
+On startup the CLI loads a `.env` file from the current working directory (if present), so `${VAR}` interpolation and `process.env` in a TypeScript config both see its values. Variables already set in the real environment are **never overridden** by `.env` — CI-provided values always win.
 :::
+
+The quickest zero-config setup is often no `connection` in the file at all:
+
+```bash
+# .env (gitignored)
+DATABASE_URL=postgres://app:secret@localhost:5432/myapp
+```
+
+`DATABASE_URL` overrides whatever connection the config file specifies (see [Precedence](#precedence)).
 
 ## Multiple Environments
 

@@ -8,6 +8,10 @@ description: Debug and performance analysis tools
 
 Debug and performance analysis tools for SQL queries and database operations.
 
+:::warning Pass queries with `--query`, not `-q`
+The short `-q` is consumed by the global quiet flag, so `kysera debug profile -q "SELECT 1"` fails with "too many arguments". Always use the long form `--query` (the examples below do).
+:::
+
 ## Commands
 
 | Command           | Description                                  |

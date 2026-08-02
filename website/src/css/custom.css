@@ -9,15 +9,26 @@
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/jetbrains-mono';
 
-/* Light theme colors - Teal/Cyan accent */
+/* Brand color system.
+ *
+ * The primary hue is MEASURED from the logo (mint-glass K): dominant hue
+ * 165° (dark edge 162°). The previous palette sat at ~175° — a stock teal,
+ * visibly more cyan than the mark. Shade ladder keeps the old
+ * lightness/saturation rhythm, re-hued to 165°. Dark surfaces carry a
+ * subtle 166–168° cast (the old #1a1a2e/#16162a were blue-violet, hue 240°
+ * — chromatically foreign to the brand); light surfaces get a barely-there
+ * mint tint. Light-theme links use primary-dark: 4.78:1 on white (WCAG AA;
+ * bare primary is 3.82:1, reserved for large/accent use). */
 :root {
-  --ifm-color-primary: #0d9488;
-  --ifm-color-primary-dark: #0b8278;
-  --ifm-color-primary-darker: #0a7a71;
-  --ifm-color-primary-darkest: #08655d;
-  --ifm-color-primary-light: #0fa698;
-  --ifm-color-primary-lighter: #10ae9f;
-  --ifm-color-primary-lightest: #14c9b8;
+  --ifm-color-primary: #0d9472;
+  --ifm-color-primary-dark: #0b8264;
+  --ifm-color-primary-darker: #0a7a5e;
+  --ifm-color-primary-darkest: #08654e;
+  --ifm-color-primary-light: #0fa680;
+  --ifm-color-primary-lighter: #10ae86;
+  --ifm-color-primary-lightest: #14c99c;
+  --ifm-link-color: var(--ifm-color-primary-dark);
+  --ifm-background-surface-color: #f7fbfa;
   --ifm-code-font-size: 95%;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
   --ifm-font-family-base:
@@ -35,18 +46,20 @@ h2 {
   letter-spacing: -0.02em;
 }
 
-/* Dark theme colors */
+/* Dark theme colors — same 165° hue; brand-cast near-neutral surfaces
+ * (9.5:1 primary-on-background, 14:1 body text) */
 [data-theme='dark'] {
-  --ifm-color-primary: #2dd4bf;
-  --ifm-color-primary-dark: #1fc9b4;
-  --ifm-color-primary-darker: #1dbfab;
-  --ifm-color-primary-darkest: #189e8d;
-  --ifm-color-primary-light: #4bdcc8;
-  --ifm-color-primary-lighter: #55deca;
-  --ifm-color-primary-lightest: #7ae5d6;
+  --ifm-color-primary: #2dd4aa;
+  --ifm-color-primary-dark: #1fc99e;
+  --ifm-color-primary-darker: #1dbf96;
+  --ifm-color-primary-darkest: #189e7d;
+  --ifm-color-primary-light: #4bdcb8;
+  --ifm-color-primary-lighter: #55debc;
+  --ifm-color-primary-lightest: #7ae5ca;
+  --ifm-link-color: var(--ifm-color-primary);
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
-  --ifm-background-color: #1a1a2e;
-  --ifm-background-surface-color: #16162a;
+  --ifm-background-color: #101917;
+  --ifm-background-surface-color: #182320;
 }
 
 /* Code blocks */
@@ -103,14 +116,14 @@ th {
 
 /* Light theme footer */
 :root {
-  --ifm-footer-background-color: #f8f9fa;
+  --ifm-footer-background-color: var(--ifm-background-surface-color);
   --ifm-footer-link-color: #444950;
   --ifm-footer-title-color: var(--ifm-color-primary);
 }
 
 /* Dark theme footer */
 [data-theme='dark'] {
-  --ifm-footer-background-color: #1a1a2e;
+  --ifm-footer-background-color: var(--ifm-background-surface-color);
   --ifm-footer-link-color: #dadde1;
   --ifm-footer-title-color: var(--ifm-color-primary);
 }
