@@ -31,7 +31,12 @@
       "cache": false
     },
     "lint": {
-      "dependsOn": [],
+      // Type-aware eslint rules resolve workspace deps through their
+      // dist/*.d.ts — without ^build the types collapse to `any` and
+      // rules like no-unnecessary-type-assertion flip verdicts (this
+      // exact divergence broke CI while local lint, with stale dists
+      // present, stayed green).
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "typecheck": {
