@@ -1,8 +1,8 @@
 import type { Kysely } from 'kysely'
 import type { Plugin, BaseRepositoryLike } from '@kysera/executor'
-import { isRepositoryLike, isKyseraExecutor, getPlugins, withPluginMetadata } from '@kysera/executor'
-import { NotFoundError, AuditError, AuditRestoreError, AuditMissingValuesError, shouldApplyToTable, type KyseraLogger, silentLogger, formatTimestampForDb, detectDialect } from '@kysera/core'
-import type { Dialect } from '@kysera/core'
+import { isRepositoryLike, isKyseraExecutor, getPlugins, getRawDb, withPluginMetadata } from '@kysera/executor'
+import { NotFoundError, AuditError, AuditRestoreError, AuditMissingValuesError, shouldApplyToTable, type KyseraLogger, silentLogger, formatTimestampForDb, detectDialect, fetchRowShared, fetchRowsSharedByIds, withRowCacheScope, ROW_VISIBILITY_RAW, ROW_VISIBILITY_WITH_DELETED } from '@kysera/core'
+import type { Dialect, RowCacheVisibility, RowFetchExecutor } from '@kysera/core'
 import { VERSION } from './version.js'
 
 // ============================================================================
@@ -609,6 +609,40 @@ async function fetchEntityById(
 }
 
 /**
+ * Variant of fetchEntityById routed through the per-operation row cache
+ * (see @kysera/core row-cache): when another plugin wrapper of the SAME
+ * logical operation already fetched this row under the same visibility, the
+ * cached row is reused instead of issuing a second identical SELECT.
+ * Preserves fetchEntityById's error semantics (failures degrade to null).
+ */
+async function fetchEntityByIdShared(
+  executor: Kysely<unknown>,
+  tableName: string,
+  id: number | string,
+  primaryKeyColumn: string,
+  visibility: RowCacheVisibility
+): Promise<unknown> {
+  try {
+    const row = await fetchRowShared(
+      executor as unknown as RowFetchExecutor,
+      tableName,
+      primaryKeyColumn,
+      id,
+      visibility
+    )
+    return row ?? null
+  } catch (error) {
+    // Entity not found or query failed - expected when capturing old values for audit
+    silentLogger.debug('Failed to fetch entity for audit', {
+      tableName,
+      id,
+      error: error instanceof Error ? error.message : String(error)
+    })
+    return null
+  }
+}
+
+/**
  * Helper function to fetch multiple entities by IDs in a single query.
  * This is optimized for bulk operations and avoids N+1 query problems.
  *
@@ -956,29 +990,45 @@ function wrapUpdateMethod<T = unknown>(
       if (atomic) return await atomic
     }
 
-    // Fetch old values if needed
-    let oldValues: unknown = null
-    if (captureOldValues) {
-      oldValues = await fetchEntityById(executor, tableName, id, primaryKeyColumn)
-    }
+    // Row-cache scope: this wrapper is the outermost fetcher of the
+    // operation, so the old-values SELECT below is reused by inner plugin
+    // wrappers (the RLS plugin's policy fetch) instead of being re-issued.
+    return await withRowCacheScope(async () => {
+      // Fetch old values if needed. Fetched RAW (all plugin interception
+      // bypassed) so it is shareable with RLS's policy fetch: an audit entry
+      // is only written when the mutation succeeded, i.e. the row matched
+      // every SQL-level narrowing (RLS filters, soft-delete) anyway — the
+      // visibility delta vs the previous filtered fetch can only surface in
+      // TOCTOU races, where the raw row is the more truthful pre-image.
+      let oldValues: unknown = null
+      if (captureOldValues) {
+        oldValues = await fetchEntityByIdShared(
+          getRawDb(executor),
+          tableName,
+          id,
+          primaryKeyColumn,
+          ROW_VISIBILITY_RAW
+        )
+      }
 
-    const result = await originalUpdate(id, input)
+      const result = await originalUpdate(id, input)
 
-    if (!skipSystemOperations) {
-      await createAuditLogEntry(
-        executor,
-        auditTable,
-        tableName,
-        id,
-        'UPDATE',
-        oldValues,
-        captureNewValues ? result : null,
-        options,
-        dialect
-      )
-    }
+      if (!skipSystemOperations) {
+        await createAuditLogEntry(
+          executor,
+          auditTable,
+          tableName,
+          id,
+          'UPDATE',
+          oldValues,
+          captureNewValues ? result : null,
+          options,
+          dialect
+        )
+      }
 
-    return result
+      return result
+    })
   }
 }
 
@@ -1007,29 +1057,41 @@ function wrapDeleteMethod<T = unknown>(
       if (atomic) return await atomic
     }
 
-    // Fetch old values before deletion
-    let oldValues: unknown = null
-    if (captureOldValues) {
-      oldValues = await fetchEntityById(executor, tableName, id, primaryKeyColumn)
-    }
+    // Row-cache scope + raw fetch: shared with RLS's policy fetch. The
+    // DELETE entry is gated on the delete having removed a row, so the
+    // raw-vs-filtered visibility delta cannot fabricate entries (same
+    // reasoning as wrapUpdateMethod).
+    return await withRowCacheScope(async () => {
+      // Fetch old values before deletion
+      let oldValues: unknown = null
+      if (captureOldValues) {
+        oldValues = await fetchEntityByIdShared(
+          getRawDb(executor),
+          tableName,
+          id,
+          primaryKeyColumn,
+          ROW_VISIBILITY_RAW
+        )
+      }
 
-    const result = await originalDelete(id)
+      const result = await originalDelete(id)
 
-    if (!skipSystemOperations && result) {
-      await createAuditLogEntry(
-        executor,
-        auditTable,
-        tableName,
-        id,
-        'DELETE',
-        oldValues,
-        null,
-        options,
-        dialect
-      )
-    }
+      if (!skipSystemOperations && result) {
+        await createAuditLogEntry(
+          executor,
+          auditTable,
+          tableName,
+          id,
+          'DELETE',
+          oldValues,
+          null,
+          options,
+          dialect
+        )
+      }
 
-    return result
+      return result
+    })
   }
 }
 
@@ -1119,40 +1181,68 @@ function wrapBulkUpdateMethod<T = unknown>(
       if (atomic) return await atomic
     }
 
-    // Fetch old values before update if needed
-    // Use bulk fetch to avoid N+1 queries (performance optimization)
-    const oldValuesMap = new Map<number | string, unknown>()
-    if (captureOldValues) {
-      const ids = updates.map(u => u.id)
-      const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids, primaryKeyColumn)
-      // Copy to our map
-      for (const [id, entity] of fetchedOldValues) {
-        oldValuesMap.set(id, entity)
+    // Row-cache scope: the raw batched fetch below primes the per-operation
+    // cache, so the RLS plugin's bulk per-row policy checks (when its schema
+    // has value-based policies) reuse these rows instead of re-fetching.
+    // Entries are prepared per RETURNED (i.e. actually updated) row, so the
+    // raw-vs-filtered visibility delta cannot fabricate entries (same
+    // reasoning as wrapUpdateMethod).
+    return await withRowCacheScope(async () => {
+      // Fetch old values before update if needed
+      // Use bulk fetch to avoid N+1 queries (performance optimization)
+      const oldValuesMap = new Map<number | string, unknown>()
+      if (captureOldValues) {
+        const ids = updates.map(u => u.id)
+        try {
+          const fetched = await fetchRowsSharedByIds(
+            getRawDb(executor) as unknown as RowFetchExecutor,
+            tableName,
+            primaryKeyColumn,
+            ids,
+            ROW_VISIBILITY_RAW
+          )
+          // Key by the entity's own pk value (like fetchEntitiesByIds) so the
+          // post-update lookup by result pk matches regardless of id typing
+          for (const row of fetched.values()) {
+            if (!row) continue
+            const pkValue = row[primaryKeyColumn]
+            if (pkValue !== undefined) {
+              oldValuesMap.set(pkValue as number | string, row)
+            }
+          }
+        } catch (error) {
+          // Mirror fetchEntitiesByIds: fetch failure degrades to null old values
+          silentLogger.warn('Failed to bulk fetch entities for audit', {
+            tableName,
+            count: ids.length,
+            error: error instanceof Error ? error.message : String(error)
+          })
+        }
       }
-    }
 
-    const results = await originalBulkUpdate(updates)
+      const results = await originalBulkUpdate(updates)
 
-    if (!skipSystemOperations && Array.isArray(results) && results.length > 0) {
-      // Prepare all audit entries in memory
-      const auditEntries = results.map(result => {
-        const pkValue = extractPrimaryKey(result, primaryKeyColumn)
-        return prepareAuditEntry(
-          tableName,
-          pkValue,
-          'UPDATE',
-          oldValuesMap.get(pkValue) ?? null,
-          captureNewValues ? result : null,
-          options,
-          dialect
-        )
-      })
+      if (!skipSystemOperations && Array.isArray(results) && results.length > 0) {
+        // Prepare all audit entries in memory
+        const auditEntries = results.map(result => {
+          const pkValue = extractPrimaryKey(result, primaryKeyColumn)
+          return prepareAuditEntry(
+            tableName,
+            pkValue,
+            'UPDATE',
+            oldValuesMap.get(pkValue) ?? null,
+            captureNewValues ? result : null,
+            options,
+            dialect
+          )
+        })
 
-      // Batch insert all audit entries in one query
-      await createBulkAuditLogEntries(executor, auditTable, auditEntries)
-    }
+        // Batch insert all audit entries in one query
+        await createBulkAuditLogEntries(executor, auditTable, auditEntries)
+      }
 
-    return results
+      return results
+    })
   }
 }
 
@@ -1266,28 +1356,39 @@ function wrapSoftDeleteLikeMethod<T = unknown>(
       if (atomic) return await atomic
     }
 
-    let oldValues: unknown = null
-    if (captureOldValues) {
-      oldValues = await fetchEntityById(includeDeletedExecutor, tableName, id, primaryKeyColumn)
-    }
+    // Row-cache scope: soft-delete's restore() probes the same row with the
+    // exact same visibility (executor + includeDeleted metadata), so under
+    // this wrapper the probe reuses the old-values fetch below.
+    return await withRowCacheScope(async () => {
+      let oldValues: unknown = null
+      if (captureOldValues) {
+        oldValues = await fetchEntityByIdShared(
+          includeDeletedExecutor,
+          tableName,
+          id,
+          primaryKeyColumn,
+          ROW_VISIBILITY_WITH_DELETED
+        )
+      }
 
-    const result = await original(id)
+      const result = await original(id)
 
-    if (!skipSystemOperations) {
-      await createAuditLogEntry(
-        executor,
-        auditTable,
-        tableName,
-        id,
-        'UPDATE',
-        oldValues,
-        captureNewValues ? result : null,
-        options,
-        dialect
-      )
-    }
+      if (!skipSystemOperations) {
+        await createAuditLogEntry(
+          executor,
+          auditTable,
+          tableName,
+          id,
+          'UPDATE',
+          oldValues,
+          captureNewValues ? result : null,
+          options,
+          dialect
+        )
+      }
 
-    return result
+      return result
+    })
   }
 }
 

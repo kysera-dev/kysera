@@ -45,6 +45,7 @@ npm install @kysera/rls
 
 ## Basic Usage
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createORM } from '@kysera/repository'
 import { rlsPlugin, defineRLSSchema, allow, filter, rlsContext } from '@kysera/rls'
@@ -103,6 +104,7 @@ interface RLSPluginOptions<DB = unknown> {
 
   // Configuration
   primaryKeyColumn?: string  // Primary key column name (default: 'id')
+  maxBulkRowChecks?: number  // Per-row policy evaluation bound for bulk mutations (default: 1000)
 
   // Conditional policy activation (see "Conditional Policy Activation")
   activation?: {
@@ -316,6 +318,7 @@ You rarely write these by hand — the [policy builders](#policy-builders) below
 - Set in the table's schema definition
 - Useful for table-specific admin access
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Example: Using both levels
 const orm = await createORM(db, [
@@ -355,6 +358,7 @@ interface PolicyOptions {
 
 Grant permission based on condition. Returns `true` to allow access, `false` to deny.
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Authors can update their own posts
 allow('update', ctx => ctx.auth.userId === ctx.row?.author_id)
@@ -375,6 +379,7 @@ allow(['update', 'delete'], ctx => ctx.auth.userId === ctx.row?.author_id, {
 
 Explicitly deny access. Takes precedence over allow policies. Returns `true` to deny access.
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Never allow deleting system users
 deny('delete', ctx => ctx.row?.is_system === true)
@@ -429,6 +434,7 @@ filter('read', ctx => ({ organization_id: ctx.auth.organizationIds ?? [] }))
 
 Validate input data before create/update operations. Returns `true` if data is valid, `false` otherwise.
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Users can only create posts for themselves
 validate('create', ctx => ctx.data?.author_id === ctx.auth.userId)
@@ -448,6 +454,7 @@ validate('update', ctx => {
 
 ## Schema Definition
 
+<!-- doc-snippet: skip -->
 ```typescript
 const rlsSchema = defineRLSSchema<Database>({
   // Table-specific policies
@@ -556,6 +563,7 @@ interface RLSAuthContext<TUser = unknown> {
 
 ### Context Helper Methods
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Get current context (throws if not set)
 const ctx = rlsContext.getContext()
@@ -724,10 +732,53 @@ const canRead = await postRepo.canAccess('read', post)
 
 **Returns:** `true` if access is allowed, `false` otherwise. Never throws.
 
+### Bulk Mutations
+
+`bulkCreate` / `bulkUpdate` / `bulkDelete` enforce the same value-based
+policies as N single-row calls — a bulk mutation is never a policy bypass:
+
+- **bulkCreate** evaluates `validate('create')` / `allow('create')` per input
+  (no row fetch involved, so it is unbounded).
+- **bulkUpdate / bulkDelete** fetch the affected rows in ONE batched SELECT
+  (through the shared per-operation row cache, so rows the audit plugin
+  already fetched for old-values capture are reused) and evaluate
+  `allow`/`deny`/`validate` per row. Ids that match no row are left to the
+  base method's not-found handling, exactly like single-row calls.
+- Tables whose policies for the operation are **filter-only** (and not
+  default-deny) skip the fetch entirely — `filter()` policies are already
+  enforced in SQL for `SELECT`, `UPDATE` and `DELETE` statements.
+
+Per-row evaluation is bounded by `maxBulkRowChecks` (default `1000`). A
+larger batch throws `RLSPolicyEvaluationError` instead of silently degrading:
+
+<!-- doc-snippet: skip -->
+```typescript
+// RLSPolicyEvaluationError: bulk mutation targets 5000 rows, but value-based
+// policies (...) require per-row evaluation, bounded at maxBulkRowChecks=1000.
+// Split the call into smaller batches, raise 'maxBulkRowChecks', or express
+// the policy as filter() so it is enforced in SQL without row fetches.
+await repo.bulkUpdate(fiveThousandUpdates)
+```
+
+:::caution Soft-delete bulk methods
+The soft-delete plugin's own methods (`softDelete`, `restore`,
+`softDeleteMany`, `restoreMany`, `hardDelete`, `hardDeleteMany`) are scoped
+by `filter()` policies at the SQL level, but value-based `allow`/`deny`
+policies do NOT run for them (the soft-delete plugin extends repositories
+after RLS, so RLS cannot wrap methods that do not exist yet). Express
+soft-delete access rules as `filter()` policies, or gate those calls with
+`canAccess()`.
+:::
+
+Like the single-row wrappers, bulk checks are check-then-act: run them inside
+a transaction when concurrent writers could change row ownership between the
+check and the mutation (TOCTOU).
+
 ## Multi-Tenant Patterns
 
 ### Discriminator Column
 
+<!-- doc-snippet: skip -->
 ```typescript
 const tenantSchema = defineRLSSchema<Database>({
   users: {
@@ -749,7 +800,7 @@ const tenantSchema = defineRLSSchema<Database>({
 const tenantId = extractTenantFromSubdomain(req.hostname)
 // 'acme.app.com' → 'acme'
 
-await rlsContext.runAsync({ auth: { userId: user.id, tenantId } }, async () => {
+await rlsContext.runAsync({ auth: { userId: user.id, tenantId, roles: user.roles } }, async () => {
   // All queries scoped to tenant
 })
 ```
@@ -808,6 +859,7 @@ All RLS errors extend `RLSError`, which itself extends `DatabaseError` from `@ky
 
 **Example:**
 
+<!-- doc-snippet: skip -->
 ```typescript
 // A policy with a bug
 allow('read', ctx => {
@@ -851,9 +903,9 @@ const rlsSchema = defineRLSSchema<Database>({
 const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })])
 
 // Define DAL queries
-const getAllPosts = createQuery(ctx => ctx.db.selectFrom('posts').selectAll().execute())
+const getAllPosts = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('posts').selectAll().execute())
 
-const getPostById = createQuery((ctx, id: number) =>
+const getPostById = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('posts').where('id', '=', id).executeTakeFirst()
 )
 
@@ -921,6 +973,7 @@ The RLS plugin implements row-level security at the **application layer** using 
 
 ### Query Interception
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Plugin implementation (simplified)
 interceptQuery(qb, context) {
@@ -958,6 +1011,7 @@ interceptQuery(qb, context) {
 
 When implementing RLS policies that need to fetch existing rows (e.g., for update/delete validation), the plugin uses `getRawDb()` from `@kysera/executor` to bypass RLS filtering and prevent infinite recursion:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { getRawDb } from '@kysera/executor'
 
@@ -1039,7 +1093,7 @@ try {
   // Context is valid, timestamp added automatically
 } catch (error) {
   // Will throw RLSContextValidationError if invalid
-  console.error('Invalid RLS context:', error.message)
+  console.error('Invalid RLS context:', error)
 }
 ```
 
@@ -1091,6 +1145,7 @@ describe('Post RLS Policies', () => {
 
 ### 5. Use Named Policies for Debugging
 
+<!-- doc-snippet: skip -->
 ```typescript
 const rlsSchema = defineRLSSchema<Database>({
   posts: {
@@ -1117,6 +1172,7 @@ Named policies provide better error messages and audit logs.
 
 ### Multi-Tenant SaaS Application
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createORM } from '@kysera/repository'
 import { rlsPlugin, defineRLSSchema, filter, allow, deny, validate, rlsContext } from '@kysera/rls'
@@ -1229,6 +1285,7 @@ app.put('/api/posts/:id', async (req, res) => {
 
 ### Role-Based Access Control (RBAC)
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { defineRLSSchema, allow, deny, filter } from '@kysera/rls'
 
@@ -1269,11 +1326,11 @@ import { rlsPlugin, rlsContext } from '@kysera/rls'
 const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })])
 
 // Define DAL queries
-const getUserPosts = createQuery((ctx, userId: number) =>
+const getUserPosts = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db.selectFrom('posts').where('user_id', '=', userId).selectAll().execute()
 )
 
-const getDashboardStats = createQuery(async (ctx, userId: number) => {
+const getDashboardStats = createQuery(async (ctx: DbContext<Database>, userId: number) => {
   // All queries automatically get RLS filtering
   const posts = await ctx.db.selectFrom('posts').selectAll().execute()
   const resources = await ctx.db.selectFrom('resources').selectAll().execute()
@@ -1323,7 +1380,7 @@ import { rlsPlugin, rlsContext } from '@kysera/rls'
 const orm = await createORM(db, [rlsPlugin({ schema: rlsSchema })])
 
 // DAL for complex reads
-const getPostAnalytics = createQuery(async (ctx, postId: number) => {
+const getPostAnalytics = createQuery(async (ctx: DbContext<Database>, postId: number) => {
   const post = await ctx.db
     .selectFrom('posts')
     .where('id', '=', postId)
@@ -1474,6 +1531,7 @@ const orm = await createORM(db, [
 
 **Migration:**
 
+<!-- doc-snippet: skip -->
 ```typescript
 // ❌ No longer supported (removed in v0.8.0)
 rlsPlugin({
@@ -1598,6 +1656,7 @@ mask columns automatically. Create the registry and processor yourself and call
 `maskRows()` on query results manually.
 :::
 
+<!-- doc-snippet: skip -->
 ```typescript
 import {
   createFieldAccessRegistry,
@@ -1810,6 +1869,7 @@ it('should apply tenant filter', () => {
 
 Attach activation conditions to policies for environment-, feature-flag-, or time-gated behavior.
 
+<!-- doc-snippet: skip -->
 ```typescript
 import {
   whenEnvironment,
@@ -1902,6 +1962,7 @@ The `@kysera/rls/native` subpath generates PostgreSQL-native RLS from the same s
 - `syncContextToPostgres(db, { userId, tenantId?, roles?, permissions?, isSystem? })` — sets `app.user_id`, `app.tenant_id`, `app.roles`, `app.permissions`, and `app.is_system` via `set_config(..., true)` (transaction-scoped), so native policies can read them with `current_setting()`.
 - `clearPostgresContext(db)` — resets those settings.
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { PostgresRLSGenerator, syncContextToPostgres } from '@kysera/rls/native'
 

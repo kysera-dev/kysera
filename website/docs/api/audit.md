@@ -24,6 +24,7 @@ npm install @kysera/audit
 
 ## Exports
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Main plugin
 export { auditPlugin } from './index'
@@ -51,6 +52,7 @@ export { AuditOptionsSchema, type AuditOptionsSchemaType } from './schema'
 
 Creates an audit logging plugin instance.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function auditPlugin(options?: AuditOptions): Plugin
 ```
@@ -73,6 +75,10 @@ interface AuditOptions {
 
   /**
    * Capture old values on UPDATE/DELETE
+   * The pre-mutation fetch reads the row via the raw db (v0.10+) and goes
+   * through @kysera/core's per-operation row cache, so it is shared with
+   * other plugins guarding the same call (e.g. RLS's policy fetch) — one
+   * SELECT per operation instead of one per plugin
    * @default true
    */
   captureOldValues?: boolean
@@ -127,6 +133,7 @@ interface AuditOptions {
 
 ### Configuration Examples
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { auditPlugin } from '@kysera/audit'
 
@@ -224,6 +231,7 @@ interface AuditRepositoryExtensions<T> {
 
 Get the change history for a specific entity.
 
+<!-- doc-snippet: skip -->
 ```typescript
 async getAuditHistory(
   entityId: string | number,
@@ -241,6 +249,7 @@ async getAuditHistory(
 
 **Example:**
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Get full history
 const history = await userRepo.getAuditHistory(userId)
@@ -267,6 +276,7 @@ history.forEach(entry => {
 
 Alias for `getAuditHistory`.
 
+<!-- doc-snippet: skip -->
 ```typescript
 async getAuditLogs(
   entityId: string | number,
@@ -278,6 +288,7 @@ async getAuditLogs(
 
 Get a specific audit log entry.
 
+<!-- doc-snippet: skip -->
 ```typescript
 async getAuditLog(auditId: number): Promise<AuditLogEntry | null>
 ```
@@ -302,6 +313,7 @@ if (entry) {
 
 Get all audit logs for the table with optional filters.
 
+<!-- doc-snippet: skip -->
 ```typescript
 async getTableAuditLogs(filters?: AuditFilters): Promise<ParsedAuditLogEntry[]>
 ```
@@ -347,6 +359,7 @@ const filteredLogs = await userRepo.getTableAuditLogs({
 
 Get all changes made by a specific user across this table.
 
+<!-- doc-snippet: skip -->
 ```typescript
 async getUserChanges(
   userId: string,
@@ -385,6 +398,7 @@ userChanges.forEach(entry => {
 
 Restore an entity to a previous state from an audit log entry.
 
+<!-- doc-snippet: skip -->
 ```typescript
 async restoreFromAudit(auditId: number): Promise<T>
 ```
@@ -478,6 +492,7 @@ interface ParsedAuditLogEntry {
 }
 ```
 
+<!-- doc-snippet: skip -->
 ```typescript
 const history = await userRepo.getAuditHistory(userId)
 
@@ -548,6 +563,7 @@ await userRepo.delete(userId)
 
 The plugin has **no query interceptor** — it works entirely through the `extendRepository()` hook. When a repository is created, the plugin wraps its mutation methods (`create`, `update`, `delete`, their bulk variants, and the soft-delete methods when present) so each call captures old/new values and writes an audit entry:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Plugin implementation (simplified)
 extendRepository(repo) {
@@ -574,6 +590,7 @@ Because the plugin wraps repository methods rather than intercepting queries, mu
 
 ## Usage with Plugin Container
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createORM, createRepositoryFactory } from '@kysera/repository'
 import { auditPlugin } from '@kysera/audit'
@@ -693,6 +710,7 @@ CREATE TABLE audit_logs (
 
 Audit logs are transaction-aware:
 
+<!-- doc-snippet: skip -->
 ```typescript
 await db.transaction().execute(async (trx) => {
   const repos = createRepos(trx)
@@ -732,6 +750,7 @@ await userRepo.bulkUpdate([
 
 The package does not export an `AuditRepository` type — compose the `AuditRepositoryExtensions<T>` interface with your repository type instead:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import type { AuditRepositoryExtensions } from '@kysera/audit'
 

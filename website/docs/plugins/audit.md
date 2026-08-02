@@ -18,6 +18,7 @@ npm install @kysera/audit
 
 ### With Repository Pattern
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createORM } from '@kysera/repository'
 import { auditPlugin } from '@kysera/audit'
@@ -90,6 +91,7 @@ interface AuditOptions {
 
 ### Configuration Examples
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Basic setup
 auditPlugin({
@@ -149,6 +151,7 @@ Most query methods return `ParsedAuditLogEntry[]` where `old_values`, `new_value
 
 ## Querying Audit Logs
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Get history for specific entity
 const history = await userRepo.getAuditHistory(userId)
@@ -269,6 +272,7 @@ CREATE INDEX idx_audit_logs_changed_at ON audit_logs(changed_at);
 
 Audit logs are transaction-aware:
 
+<!-- doc-snippet: skip -->
 ```typescript
 await db.transaction().execute(async (trx) => {
   const repos = createRepos(trx)
@@ -327,6 +331,23 @@ The audit plugin wraps the base repository's bulk methods with batch audit loggi
 `createMany()` and `updateMany()` are added by the **timestamps plugin** and write through the executor directly — they never pass through the audit wrappers, so they produce no audit entries. For audited bulk writes, use `bulkCreate()` / `bulkUpdate()` / `bulkDelete()`.
 :::
 
+### Shared Row Fetch with Other Plugins (v0.10+)
+
+The old-values fetch for `update()`, `delete()` and `bulkUpdate()` runs
+through the **per-operation row cache** in `@kysera/core` and reads the row
+via the raw db (plugin interception bypassed). Stacked with `@kysera/rls`,
+one guarded mutation now issues a single shared pre-fetch SELECT — audit's
+old-values capture and RLS's value-policy check reuse the same row — instead
+of one SELECT per plugin. The cache is scoped to exactly one repository call
+and is never reused across calls.
+
+Because audit entries are only written when the mutation actually succeeded
+(a row that succeeded matched every SQL-level narrowing — RLS filters,
+soft-delete predicate — at mutation time), switching the fetch to the raw db
+does not change which entries are written. In check-then-act race windows the
+captured `old_values` are now the row's true pre-image rather than
+`null`-when-filtered.
+
 ### Soft-Delete Operation Coverage
 
 When the soft-delete plugin extends the same repository (it runs first — higher priority), the audit plugin wraps its methods too:
@@ -337,7 +358,7 @@ When the soft-delete plugin extends the same repository (it runs first — highe
 | `restore(id)` / `restoreMany(ids)`       | `UPDATE`   |
 | `hardDelete(id)` / `hardDeleteMany(ids)` | `DELETE`   |
 
-Old values for these entries are captured through an `includeDeleted`-scoped executor, so rows hidden by the soft-delete filter (a restore or hard-delete target) can still be read for the audit entry — every other plugin (RLS, ...) stays active.
+Old values for these entries are captured through an `includeDeleted`-scoped executor, so rows hidden by the soft-delete filter (a restore or hard-delete target) can still be read for the audit entry — every other plugin (RLS, ...) stays active. For `softDelete(id)` and `restore(id)` this fetch also goes through the per-operation row cache: soft-delete's own `restore()` existence probe has identical visibility and reuses it (one shared SELECT instead of two).
 
 ## Database-Specific Plugins
 

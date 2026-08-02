@@ -44,5 +44,8 @@ export * from './logger.js'
 // Plugin Base Utilities
 export * from './plugin-base.js'
 
+// Shared per-operation row-fetch cache (used by rls/audit/soft-delete)
+export * from './row-cache.js'
+
 // Version
 export * from './version.js'

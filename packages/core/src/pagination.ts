@@ -1,4 +1,10 @@
-import type { SelectQueryBuilder, ExpressionBuilder } from 'kysely'
+import type {
+  AliasNode,
+  ExpressionBuilder,
+  OperationNode,
+  SelectQueryBuilder,
+  TableNode
+} from 'kysely'
 import { sql } from 'kysely'
 import { BadRequestError } from './errors.js'
 import type { Dialect } from './types.js'
@@ -198,6 +204,27 @@ async function decodeCursor(cursor: string, security?: CursorSecurityOptions): P
   throw new BadRequestError('Invalid cursor format: unable to decode')
 }
 
+/**
+ * Strategy for computing the total row count in {@link paginate}:
+ *
+ * - `'exact'` (default): run a `COUNT(*)` query. Accurate, but on large
+ *   tables the COUNT can cost more than the page fetch itself.
+ * - `'none'`: skip counting entirely. `total`/`totalPages` are omitted and
+ *   `hasNext` is derived by fetching `limit + 1` rows.
+ * - `'estimated'`: PostgreSQL only — read the planner statistics
+ *   (`pg_class.reltuples`) for the query's base table instead of counting.
+ *   The estimate reflects the WHOLE table (WHERE/JOINs are ignored) and its
+ *   freshness depends on autovacuum/ANALYZE. Falls back to `'exact'` on any
+ *   other dialect, when the FROM clause is not a single plain table, when the
+ *   table has never been analyzed (`reltuples = -1`), or when the estimate
+ *   query fails. `hasNext` is derived from a `limit + 1` fetch, not from the
+ *   estimate.
+ *
+ * The effective mode is reported in `pagination.countMode` whenever the
+ * `count` option was provided.
+ */
+export type PaginationCountMode = 'exact' | 'none' | 'estimated'
+
 export interface PaginationOptions {
   page?: number | undefined
   limit?: number | undefined
@@ -207,6 +234,11 @@ export interface PaginationOptions {
    * Required for MSSQL which uses different OFFSET/FETCH syntax
    */
   dialect?: Dialect | undefined
+  /**
+   * Total-count strategy. Defaults to `'exact'` (unchanged legacy behavior).
+   * @see PaginationCountMode
+   */
+  count?: PaginationCountMode | undefined
 }
 
 export interface PaginatedResult<T> {
@@ -220,6 +252,98 @@ export interface PaginatedResult<T> {
     hasPrev?: boolean
     nextCursor?: string
     prevCursor?: string
+    /**
+     * The count strategy that actually produced this result (an `'estimated'`
+     * request may fall back to `'exact'`). Only present when the `count`
+     * option was passed to {@link paginate}.
+     */
+    countMode?: PaginationCountMode
+  }
+}
+
+/**
+ * Build the PostgreSQL planner-statistics estimate query used by
+ * `count: 'estimated'`.
+ *
+ * The query reads `pg_class.reltuples` for the base table of `query` as a
+ * scalar subquery, executed through the original builder (its FROM is kept,
+ * every other clause is cleared, `LIMIT 1`) so it runs on the same
+ * connection/transaction as the query itself:
+ *
+ * ```sql
+ * select (select reltuples::bigint from pg_class
+ *          where oid = to_regclass($1)) as estimate
+ * from "users" limit 1
+ * ```
+ *
+ * Returns `null` when the FROM clause is not exactly one plain table
+ * (subquery, multiple tables) — callers fall back to an exact COUNT. An empty
+ * base table also yields no row (exact-count fallback; counting an empty
+ * table is cheap). `reltuples` is `-1` for never-analyzed tables and
+ * `to_regclass` returns NULL for unknown ones; {@link paginate} treats both
+ * as "no usable estimate".
+ *
+ * @internal Exported for tests; not part of the stable public API.
+ */
+export function estimatedCountQuery<DB, TB extends keyof DB, O>(
+  query: SelectQueryBuilder<DB, TB, O>
+): SelectQueryBuilder<DB, TB, { estimate: string | number | null }> | null {
+  const froms = query.toOperationNode().from?.froms
+  if (froms?.length !== 1) return null
+
+  let node: OperationNode | undefined = froms[0]
+  if (node?.kind === 'AliasNode') {
+    node = (node as AliasNode).node
+  }
+  if (node?.kind !== 'TableNode') return null
+
+  const table = (node as TableNode).table
+  const quote = (part: string): string => `"${part.replaceAll('"', '""')}"`
+  const regclass = table.schema
+    ? `${quote(table.schema.name)}.${quote(table.identifier.name)}`
+    : quote(table.identifier.name)
+
+  // Cast: kysely types the selection as Selection<...> of the aliased raw
+  // builder; the runtime row shape is exactly { estimate: string|number|null }
+  // (same pattern as the countQuery cast in paginate below).
+  return query
+    .clearSelect()
+    .clearOrderBy()
+    .clearGroupBy()
+    .clearWhere()
+    .clearLimit()
+    .clearOffset()
+    .select(
+      sql<
+        string | number | null
+      >`(select reltuples::bigint from pg_class where oid = to_regclass(${regclass}))`.as(
+        'estimate'
+      )
+    )
+    .limit(1) as unknown as SelectQueryBuilder<DB, TB, { estimate: string | number | null }>
+}
+
+/**
+ * Execute the reltuples estimate for `query`, returning undefined whenever no
+ * usable estimate exists (unsupported query shape, statement failure, missing
+ * table, never-analyzed table). Callers fall back to an exact COUNT.
+ */
+async function tryEstimatedTotal<DB, TB extends keyof DB, O>(
+  query: SelectQueryBuilder<DB, TB, O>
+): Promise<number | undefined> {
+  const estimateQuery = estimatedCountQuery(query)
+  if (!estimateQuery) return undefined
+  try {
+    const row = await estimateQuery.executeTakeFirst()
+    const estimate =
+      row?.estimate === null || row?.estimate === undefined ? Number.NaN : Number(row.estimate)
+    // reltuples is -1 for never-analyzed tables; NULL means to_regclass could
+    // not resolve the table. Neither is a usable estimate.
+    return Number.isFinite(estimate) && estimate >= 0 ? estimate : undefined
+  } catch {
+    // Statement failed (exotic query shape, restricted catalog access):
+    // fall back to the always-correct exact COUNT.
+    return undefined
   }
 }
 
@@ -243,6 +367,14 @@ export interface PaginatedResult<T> {
  * - Page numbers are clamped between 1 and 1,000,000
  * - Limit is clamped between 1 and 10,000
  * - Overflow protection ensures (page - 1) * limit stays within safe integer range
+ *
+ * Count strategies (see {@link PaginationCountMode}):
+ * - `count: 'exact'` (default) runs a COUNT(*) query — unchanged legacy behavior
+ * - `count: 'none'` skips the COUNT; `total`/`totalPages` are omitted and
+ *   `hasNext` comes from fetching `limit + 1` rows
+ * - `count: 'estimated'` (PostgreSQL) reads `pg_class.reltuples` for the base
+ *   table instead of counting; falls back to `'exact'` elsewhere. The
+ *   effective strategy is reported as `pagination.countMode`
  *
  * @example
  * ```ts
@@ -269,6 +401,7 @@ export async function paginate<DB, TB extends keyof DB, O>(
   const page = Math.min(MAX_PAGE, Math.max(1, options.page || 1))
   const limit = options.limit === 0 ? 0 : Math.min(MAX_LIMIT, Math.max(1, options.limit || 20))
   const dialect = options.dialect
+  const requestedCount: PaginationCountMode = options.count ?? 'exact'
 
   // Check for potential overflow
   const offset = (page - 1) * limit
@@ -276,44 +409,82 @@ export async function paginate<DB, TB extends keyof DB, O>(
     throw new BadRequestError(`Page ${page} with limit ${limit} exceeds safe integer range`)
   }
 
-  // Get total count - clear select, order, and group to get accurate count
-  const countQuery = query.clearSelect().clearOrderBy().clearGroupBy() as SelectQueryBuilder<
-    DB,
-    TB,
-    { count: string }
-  >
-  const { count } = await countQuery
-    .select((eb: ExpressionBuilder<DB, TB>) => eb.fn.countAll().as('count'))
-    .executeTakeFirstOrThrow()
+  // Resolve the count strategy. 'estimated' is PostgreSQL-only and needs a
+  // resolvable single-table FROM plus usable planner statistics; every other
+  // situation falls back to an exact COUNT (documented on PaginationCountMode).
+  let effectiveCount: PaginationCountMode = requestedCount
+  let total: number | undefined
 
-  const total = Number(count)
-  const totalPages = limit === 0 ? 0 : Math.ceil(total / limit)
+  if (requestedCount === 'estimated') {
+    if (dialect === 'postgres') {
+      total = await tryEstimatedTotal(query)
+    }
+    if (total === undefined) {
+      effectiveCount = 'exact'
+    }
+  }
+
+  if (effectiveCount === 'exact') {
+    // Get total count - clear select, order, and group to get accurate count
+    const countQuery = query.clearSelect().clearOrderBy().clearGroupBy() as SelectQueryBuilder<
+      DB,
+      TB,
+      { count: string }
+    >
+    const { count } = await countQuery
+      .select((eb: ExpressionBuilder<DB, TB>) => eb.fn.countAll().as('count'))
+      .executeTakeFirstOrThrow()
+
+    total = Number(count)
+  }
+
+  const totalPages =
+    total === undefined ? undefined : limit === 0 ? 0 : Math.ceil(total / limit)
+
+  // For 'none' and 'estimated', hasNext comes from fetching one extra row —
+  // there is no exact total ('none') or it may be stale ('estimated').
+  const fetchLimit = effectiveCount === 'exact' ? limit : limit + 1
 
   // Get paginated data with dialect-specific handling
-  let data: O[]
+  let rows: O[]
   if (dialect === 'mssql') {
     // MSSQL uses OFFSET/FETCH syntax which requires ORDER BY
     // Use modifyEnd to add MSSQL-compatible pagination
     // Use sql.val() instead of sql.literal() for MSSQL compatibility
-    data = await query
-      .modifyEnd(sql`offset ${sql.val(offset)} rows fetch next ${sql.val(limit)} rows only`)
+    rows = await query
+      .modifyEnd(sql`offset ${sql.val(offset)} rows fetch next ${sql.val(fetchLimit)} rows only`)
       .execute()
   } else {
     // Standard LIMIT/OFFSET for PostgreSQL, MySQL, SQLite
-    data = await query.limit(limit).offset(offset).execute()
+    rows = await query.limit(fetchLimit).offset(offset).execute()
   }
 
-  return {
-    data,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages,
-      hasNext: page < totalPages,
-      hasPrev: page > 1
+  let data = rows
+  let hasNext: boolean
+  if (effectiveCount === 'exact') {
+    hasNext = totalPages !== undefined && page < totalPages
+  } else {
+    hasNext = rows.length > limit
+    if (hasNext) {
+      data = rows.slice(0, limit)
     }
   }
+
+  const pagination: PaginatedResult<O>['pagination'] = {
+    page,
+    limit,
+    hasNext,
+    hasPrev: page > 1
+  }
+  if (total !== undefined && totalPages !== undefined) {
+    pagination.total = total
+    pagination.totalPages = totalPages
+  }
+  if (options.count !== undefined) {
+    pagination.countMode = effectiveCount
+  }
+
+  return { data, pagination }
 }
 
 /**

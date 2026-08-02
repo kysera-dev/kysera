@@ -44,6 +44,7 @@ await userRepo.hardDelete(userId)
 
 ### DAL Pattern
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createQuery, createContext } from '@kysera/dal'
 import { createExecutor, withPluginMetadata } from '@kysera/executor'
@@ -53,14 +54,14 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 const executor = await createExecutor(db, [softDeletePlugin({ deletedAtColumn: 'deleted_at' })])
 
 // DAL queries automatically filter soft-deleted records
-const getActiveUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getActiveUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 
 const ctx = createContext(executor)
 const activeUsers = await getActiveUsers(ctx) // Excludes soft-deleted
 
 // Per-query opt-out: derive an executor whose queries include deleted rows
 const withDeleted = withPluginMetadata(executor, { includeDeleted: true })
-const getAllUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getAllUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 const allUsers = await getAllUsers(createContext(withDeleted)) // Includes soft-deleted
 ```
 
@@ -191,13 +192,14 @@ interface SoftDeleteMethods<T> {
 
 SELECT queries automatically exclude soft-deleted records in both Repository and DAL patterns:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Repository pattern - automatic filtering
 const users = await userRepo.findAll()
 // SQL: SELECT * FROM users WHERE deleted_at IS NULL
 
 // DAL pattern - automatic filtering
-const getUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 const users = await getUsers(ctx)
 // SQL: SELECT * FROM users WHERE deleted_at IS NULL
 ```
@@ -268,6 +270,7 @@ const user = await userRepo.findWithDeleted(id) // Find by ID including deleted
 
 ### DAL Pattern Examples
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createQuery, createContext, withTransaction } from '@kysera/dal'
 import { createExecutor, withPluginMetadata } from '@kysera/executor'
@@ -276,24 +279,24 @@ import { softDeletePlugin } from '@kysera/soft-delete'
 const executor = await createExecutor(db, [softDeletePlugin()])
 
 // Automatic filtering
-const getActiveUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getActiveUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 const users = await getActiveUsers(executor) // Filtered automatically
 
 // Include deleted: scoped opt-out that keeps every other plugin active
 const withDeleted = withPluginMetadata(executor, { includeDeleted: true })
-const getAllUsers = createQuery(ctx => ctx.db.selectFrom('users').selectAll().execute())
+const getAllUsers = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('users').selectAll().execute())
 const allUsers = await getAllUsers(withDeleted) // Soft-delete filter off
 
 // Manual soft delete in DAL (the target row is still active, so UPDATE
 // narrowing does not get in the way)
-const softDeleteUser = createQuery((ctx, userId: number) =>
+const softDeleteUser = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db.updateTable('users').set({ deleted_at: new Date() }).where('id', '=', userId).execute()
 )
 
 // Restore in DAL: the target row IS soft-deleted, and UPDATE statements are
 // narrowed with `deleted_at IS NULL` — through the plain executor this UPDATE
 // matches zero rows. Run it through the metadata-scoped executor instead:
-const restoreUser = createQuery((ctx, userId: number) =>
+const restoreUser = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db.updateTable('users').set({ deleted_at: null }).where('id', '=', userId).execute()
 )
 await restoreUser(withDeleted, userId)
@@ -312,7 +315,7 @@ const orm = await createORM(db, [softDeletePlugin()])
 const userRepo = orm.createRepository(createUserRepository)
 
 // DAL for reads
-const getUserStats = createQuery((ctx, userId: number) =>
+const getUserStats = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db
     .selectFrom('users')
     .leftJoin('posts', 'posts.user_id', 'users.id')
@@ -410,6 +413,7 @@ await withTransaction(executor, async txCtx => {
 
 For related entities, manually implement cascade soft delete:
 
+<!-- doc-snippet: skip -->
 ```typescript
 await orm.transaction(async ctx => {
   const userRepo = orm.createRepository(createUserRepository)
@@ -437,13 +441,14 @@ plugin by deriving a metadata-scoped executor.
 
 ### Using withPluginMetadata (Recommended)
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { withPluginMetadata } from '@kysera/executor'
 import { createQuery } from '@kysera/dal'
 
 const withDeleted = withPluginMetadata(executor, { includeDeleted: true })
 
-const getAllUsers = createQuery(ctx =>
+const getAllUsers = createQuery((ctx: DbContext<Database>) =>
   ctx.db.selectFrom('users').selectAll().execute()
 )
 
@@ -502,11 +507,12 @@ CREATE INDEX idx_users_deleted_at ON users(deleted_at);
 
 Hard delete old soft-deleted records to prevent table bloat:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createQuery } from '@kysera/dal'
 import { withPluginMetadata } from '@kysera/executor'
 
-const cleanupOldDeleted = createQuery(async (ctx, daysOld: number) => {
+const cleanupOldDeleted = createQuery(async (ctx: DbContext<Database>, daysOld: number) => {
   const cutoffDate = new Date()
   cutoffDate.setDate(cutoffDate.getDate() - daysOld)
 
@@ -528,6 +534,7 @@ await cleanupOldDeleted(withDeleted, 90)
 
 Implement cascade soft delete for related entities:
 
+<!-- doc-snippet: skip -->
 ```typescript
 await orm.transaction(async ctx => {
   const userRepo = orm.createRepository(createUserRepository)
@@ -603,6 +610,8 @@ interface Plugin {
 2. **Repository Extensions**: The `extendRepository()` hook adds soft-delete methods (softDelete, restore, etc.)
 3. **Scoped Opt-Out**: Extension methods that must reach soft-deleted rows (`restore()`, `findDeleted()`, ...) use the `withPluginMetadata` channel internally instead of bypassing all plugins
 4. **Cross-Pattern Support**: Works with both Repository and DAL patterns
+
+`restore()`'s existence probe additionally reads through `@kysera/core`'s per-operation row cache (v0.10+): when the audit plugin wraps the same call, its old-values fetch has identical visibility and the probe reuses that SELECT instead of issuing a second one. Behavior is unchanged when the plugin runs alone.
 
 ### Method Override Pattern
 

@@ -24,6 +24,7 @@ npm install @kysera/rls
 
 ## Exports
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Main plugin
 export { rlsPlugin } from './plugin'
@@ -61,6 +62,7 @@ export type {
 
 Creates a Row-Level Security plugin instance.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function rlsPlugin<DB = unknown>(options: RLSPluginOptions<DB>): Plugin
 ```
@@ -128,6 +130,19 @@ interface RLSPluginOptions<DB = unknown> {
   primaryKeyColumn?: string
 
   /**
+   * Per-row policy evaluation bound for bulk mutations
+   * (bulkUpdate/bulkDelete). When a table has value-based policies for the
+   * operation (allow/deny/validate or default-deny), bulk mutations fetch
+   * the affected rows in one batched SELECT and evaluate policies per row,
+   * exactly like N single-row calls. Batches larger than this bound throw
+   * RLSPolicyEvaluationError (never a silent bypass); express the policy as
+   * filter() to enforce it in SQL without row fetches. bulkCreate checks
+   * are unbounded (no row fetch — they evaluate caller-supplied inputs).
+   * @default 1000
+   */
+  maxBulkRowChecks?: number
+
+  /**
    * Static inputs for conditional policy activation
    * (whenEnvironment / whenFeature / whenTimeRange / whenCondition
    * and PolicyOptions.condition)
@@ -145,6 +160,7 @@ interface RLSActivationOptions {
 
 ### Configuration Examples
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { rlsPlugin, defineRLSSchema, filter, allow } from '@kysera/rls'
 
@@ -176,6 +192,7 @@ const plugin = rlsPlugin({
 
 Define RLS policies for your tables.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function defineRLSSchema<DB>(schema: RLSSchema<DB>): RLSSchema<DB>
 ```
@@ -206,6 +223,7 @@ interface TableRLSConfig {
 
 ### Schema Example
 
+<!-- doc-snippet: skip -->
 ```typescript
 const rlsSchema = defineRLSSchema<Database>({
   users: {
@@ -250,6 +268,7 @@ const rlsSchema = defineRLSSchema<Database>({
 
 Combine multiple schemas into one.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function mergeRLSSchemas<DB>(...schemas: RLSSchema<DB>[]): RLSSchema<DB>
 ```
@@ -287,6 +306,7 @@ interface PolicyOptions {
 
 Grant permission based on a condition.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function allow(
   operation: Operation | Operation[],
@@ -299,6 +319,7 @@ function allow(
 
 **Examples:**
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Authors can update their own posts
 allow('update', ctx => ctx.auth.userId === ctx.row?.author_id)
@@ -314,6 +335,7 @@ allow('read', ctx => ctx.auth.roles?.includes('member'))
 
 Explicitly deny access based on a condition.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function deny(
   operation: Operation | Operation[],
@@ -326,6 +348,7 @@ Deny policies default to priority `100`, so they run before allow policies. `den
 
 **Examples:**
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Never allow deleting system users
 deny('delete', ctx => ctx.row?.is_system === true)
@@ -342,6 +365,7 @@ Add WHERE conditions to queries automatically. Filter predicates apply to SELECT
 **Filter conditions must be synchronous functions.** Async filter policies are not currently supported and will result in runtime errors. Use `allow()` or `validate()` for policies that require async operations.
 :::
 
+<!-- doc-snippet: skip -->
 ```typescript
 function filter(
   operation: 'read' | 'all', // 'all' normalizes to 'read'
@@ -375,6 +399,7 @@ filter('read', ctx => ({
 
 Validate input data before operations.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function validate(
   operation: 'create' | 'update' | 'all', // 'all' expands to both create and update
@@ -385,6 +410,7 @@ function validate(
 
 **Examples:**
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Users can only create posts for themselves
 validate('create', ctx => ctx.data?.author_id === ctx.auth.userId)
@@ -402,6 +428,7 @@ validate(
 
 AsyncLocalStorage-based context manager for RLS authentication.
 
+<!-- doc-snippet: skip -->
 ```typescript
 const rlsContext: {
   // Set and run within context
@@ -541,6 +568,7 @@ app.use(async (req, res, next) => {
 
 Helper functions for wrapping operations.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function withRLSContext<T>(context: RLSContext, fn: () => T): T
 async function withRLSContextAsync<T>(context: RLSContext, fn: () => Promise<T>): Promise<T>
@@ -564,6 +592,7 @@ const result = await withRLSContextAsync(
 
 Build and validate a context object without entering a scope.
 
+<!-- doc-snippet: skip -->
 ```typescript
 function createRLSContext<TUser = unknown, TMeta = unknown>(
   options: CreateRLSContextOptions<TUser, TMeta>
@@ -669,6 +698,22 @@ At initialization the schema is compiled into a `PolicyRegistry` (also exported 
 3. **`allow`** policies - evaluated last; at least ONE must return `true`
 4. **`defaultDeny`** - if `true` and no allow policies exist, access is denied
 
+**Bulk mutations (`bulkCreate`/`bulkUpdate`/`bulkDelete`, v0.10+)** run the
+same evaluation per input/per affected row, so a bulk call is never a policy
+bypass. `bulkUpdate`/`bulkDelete` fetch the affected rows in one batched
+SELECT (shared with the audit plugin's old-values fetch via the
+per-operation row cache in `@kysera/core`) and are bounded by
+`maxBulkRowChecks` — larger batches throw `RLSPolicyEvaluationError`.
+Filter-only tables with `defaultDeny: false` skip the fetch (the SQL WHERE
+narrowing already enforces them).
+
+The row fetched for single-row `update()`/`delete()` checks also goes
+through that per-operation row cache: stacked with `@kysera/audit`, one
+guarded mutation issues a single shared pre-fetch SELECT instead of one per
+plugin. The cache lives for exactly one repository call and is never shared
+across calls.
+
+<!-- doc-snippet: skip -->
 ```typescript
 const rlsSchema = defineRLSSchema({
   posts: {
@@ -709,6 +754,7 @@ rlsPlugin({
 
 Applied per-table in schema definition:
 
+<!-- doc-snippet: skip -->
 ```typescript
 const rlsSchema = defineRLSSchema({
   users: {
@@ -726,6 +772,7 @@ const rlsSchema = defineRLSSchema({
 
 ### Error Types
 
+<!-- doc-snippet: skip -->
 ```typescript
 import {
   RLSError,
@@ -828,6 +875,7 @@ Thrown when a policy condition throws an error during evaluation. This is distin
 
 **Example:**
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Policy with a bug
 allow('read', ctx => {
@@ -865,6 +913,7 @@ try {
 
 **Example of fixing a policy:**
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Before (buggy):
 allow('read', ctx => {
@@ -983,6 +1032,7 @@ const posts = await postRepo.findAll()
 
 ### Query Interception
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Plugin implementation (simplified)
 interceptQuery(qb, context) {
@@ -1034,6 +1084,7 @@ database-native RLS as a backstop.
 
 When implementing RLS policies that need to fetch existing rows (e.g., for update/delete validation), the plugin uses `getRawDb()` from `@kysera/executor` to bypass RLS filtering and prevent infinite recursion:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { getRawDb } from '@kysera/executor'
 
@@ -1054,6 +1105,7 @@ This ensures that internal queries used for policy evaluation don't trigger RLS 
 
 ### Discriminator Column
 
+<!-- doc-snippet: skip -->
 ```typescript
 const tenantSchema = defineRLSSchema<Database>({
   users: {
@@ -1104,6 +1156,7 @@ filter('read', ctx => ({
 
 ## Usage with Repository Pattern
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { createORM, createRepositoryFactory } from '@kysera/repository'
 import { rlsPlugin, defineRLSSchema, filter, allow, rlsContext } from '@kysera/rls'
@@ -1187,9 +1240,9 @@ const rlsSchema = defineRLSSchema<Database>({
 const executor = await createExecutor(db, [rlsPlugin({ schema: rlsSchema })])
 
 // Define DAL queries
-const getAllPosts = createQuery(ctx => ctx.db.selectFrom('posts').selectAll().execute())
+const getAllPosts = createQuery((ctx: DbContext<Database>) => ctx.db.selectFrom('posts').selectAll().execute())
 
-const getPostById = createQuery((ctx, id: number) =>
+const getPostById = createQuery((ctx: DbContext<Database>, id: number) =>
   ctx.db.selectFrom('posts').where('id', '=', id).executeTakeFirst()
 )
 
@@ -1226,7 +1279,7 @@ import { rlsPlugin, rlsContext } from '@kysera/rls'
 const orm = await createORM(db, [rlsPlugin({ schema: rlsSchema })])
 
 // Complex read query (DAL)
-const getDashboardStats = createQuery((ctx, userId: number) =>
+const getDashboardStats = createQuery((ctx: DbContext<Database>, userId: number) =>
   ctx.db
     .selectFrom('posts')
     .select(eb => [eb.fn.count('id').as('total'), eb.fn.avg('views').as('avgViews')])
@@ -1323,6 +1376,7 @@ describe('Post RLS Policies', () => {
 
 For maximum security, combine application-level RLS with PostgreSQL native RLS. You don't need to hand-write `CREATE POLICY` SQL — the [`@kysera/rls/native` subpath](#native-postgresql-rls-kyserarlsnative) generates the statements from your schema and syncs the RLS context to `current_setting()` values:
 
+<!-- doc-snippet: skip -->
 ```typescript
 import { RLSMigrationGenerator, syncContextToPostgres } from '@kysera/rls/native'
 
@@ -1369,6 +1423,7 @@ Pre-fetch and cache async data before policy evaluation.
 
 ### ResolverManager
 
+<!-- doc-snippet: skip -->
 ```typescript
 class ResolverManager<TResolved extends ResolvedData = ResolvedData> {
   constructor(options?: ResolverManagerOptions)
@@ -1391,6 +1446,7 @@ class ResolverManager<TResolved extends ResolvedData = ResolvedData> {
 
 ### createResolver
 
+<!-- doc-snippet: skip -->
 ```typescript
 function createResolver<TResolved extends ResolvedData>(
   config: ContextResolver<TResolved>
@@ -1423,6 +1479,7 @@ interface ResolverManagerOptions {
 
 ### FieldAccessRegistry
 
+<!-- doc-snippet: skip -->
 ```typescript
 class FieldAccessRegistry<DB = unknown> {
   constructor(schema?: FieldAccessSchema<DB>, options?: { logger?: KyseraLogger })
@@ -1447,6 +1504,7 @@ class FieldAccessRegistry<DB = unknown> {
 
 ### FieldAccessProcessor
 
+<!-- doc-snippet: skip -->
 ```typescript
 class FieldAccessProcessor<DB = unknown> {
   constructor(registry: FieldAccessRegistry<DB>, defaultMaskValue?: unknown) // default: null
@@ -1499,6 +1557,7 @@ interface FieldAccessOptions {
 
 ### Predefined Access Patterns
 
+<!-- doc-snippet: skip -->
 ```typescript
 type FieldAccessCondition = (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>
 
@@ -1531,6 +1590,7 @@ function ownerOrRoles(roles: string[], ownerField?: string): FieldAccessConfig
 
 ### ReBAcRegistry
 
+<!-- doc-snippet: skip -->
 ```typescript
 class ReBAcRegistry<DB = unknown> {
   constructor(schema?: ReBAcSchema<DB>, options?: { logger?: KyseraLogger })
@@ -1550,6 +1610,7 @@ class ReBAcRegistry<DB = unknown> {
 
 ### ReBAcTransformer
 
+<!-- doc-snippet: skip -->
 ```typescript
 class ReBAcTransformer<DB = unknown> {
   constructor(registry: ReBAcRegistry<DB>, options?: ReBAcQueryOptions)
@@ -1581,6 +1642,7 @@ interface ReBAcQueryOptions {
 
 ### Predefined Relationship Paths
 
+<!-- doc-snippet: skip -->
 ```typescript
 // table -> organizations -> org_members
 function orgMembershipPath(
@@ -1603,6 +1665,7 @@ function teamHierarchyPath(
 
 ### Policy Builders
 
+<!-- doc-snippet: skip -->
 ```typescript
 // The end condition is a plain object or a context function —
 // there is no dedicated end-condition type
@@ -1626,6 +1689,7 @@ function denyRelation(
 
 ### Predefined Policy Templates
 
+<!-- doc-snippet: skip -->
 ```typescript
 function createTenantIsolationPolicy(config?: TenantIsolationConfig): ReusablePolicy
 function createOwnershipPolicy(config?: OwnershipConfig): ReusablePolicy
@@ -1666,6 +1730,7 @@ interface StatusAccessConfig {
 
 ### Composition Functions
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Concatenates the policies of several templates under a new name
 function composePolicies(name: string, policies: ReusablePolicy[]): ReusablePolicy
@@ -1682,6 +1747,7 @@ function overridePolicy(
 
 ### Policy Definition Builders
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Wrap raw policy definitions into a named ReusablePolicy
 function definePolicy(
@@ -1736,6 +1802,7 @@ function defineCombinedPolicy(
 
 ### AuditLogger
 
+<!-- doc-snippet: skip -->
 ```typescript
 class AuditLogger {
   constructor(config: AuditConfig)
@@ -1807,6 +1874,7 @@ interface AuditConfig {
 
 ### Built-in Adapters
 
+<!-- doc-snippet: skip -->
 ```typescript
 class ConsoleAuditAdapter implements RLSAuditAdapter {
   constructor(options?: {
@@ -1853,6 +1921,7 @@ interface RLSAuditEvent {
 
 ### PolicyTester
 
+<!-- doc-snippet: skip -->
 ```typescript
 class PolicyTester<DB = unknown> {
   constructor(schema: RLSSchema<DB>)
@@ -1913,6 +1982,7 @@ interface FilterEvaluationResult {
 
 ### Test Helpers
 
+<!-- doc-snippet: skip -->
 ```typescript
 function createTestAuthContext(
   overrides: Partial<RLSAuthContext> & { userId: string | number }
@@ -1932,6 +2002,7 @@ const policyAssertions: {
 
 ### Activation Wrappers
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Takes an ARRAY of environment names
 function whenEnvironment(
@@ -1982,6 +2053,7 @@ interface PolicyActivationContext {
 
 Builds the per-call activation context the plugin uses internally — exported for advanced/manual use:
 
+<!-- doc-snippet: skip -->
 ```typescript
 function resolveActivationContext(
   options: RLSActivationOptions | undefined,
@@ -1995,6 +2067,7 @@ Resolution: `environment` from `options.environment` falling back to `NODE_ENV`;
 
 Generates database-native RLS from the same schema, for defense in depth or connections that bypass the executor.
 
+<!-- doc-snippet: skip -->
 ```typescript
 import {
   PostgresRLSGenerator,

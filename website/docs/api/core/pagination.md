@@ -12,6 +12,7 @@ Offset-based and cursor-based pagination utilities.
 
 Offset-based pagination for queries.
 
+<!-- doc-snippet: skip -->
 ```typescript
 async function paginate<DB, TB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -27,7 +28,47 @@ interface PaginationOptions {
   limit?: number // Items per page (default: 20, max: 10,000)
   cursor?: string // Cursor string for cursor-based pagination
   dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql' // Database dialect (optional)
+  count?: 'exact' | 'none' | 'estimated' // Total-count strategy (default: 'exact')
 }
+```
+
+### Count strategies
+
+On large tables the `COUNT(*)` behind `total` can cost more than the page
+fetch itself. The `count` option picks the strategy:
+
+| Mode | Behavior |
+| --- | --- |
+| `'exact'` (default) | Runs `COUNT(*)`. Unchanged legacy behavior. |
+| `'none'` | Skips counting entirely. `total`/`totalPages` are omitted; `hasNext` is derived by fetching `limit + 1` rows. |
+| `'estimated'` | PostgreSQL only: reads the planner statistics (`pg_class.reltuples`) for the query's base table instead of counting. Falls back to `'exact'` on other dialects, for non-single-table FROMs, for never-analyzed tables (`reltuples = -1`), or if the estimate query fails. `hasNext` still comes from a `limit + 1` probe. |
+
+When `count` is passed, the strategy that actually produced the result is
+reported as `pagination.countMode` (an `'estimated'` request that fell back
+reports `'exact'`).
+
+:::caution Estimated counts are whole-table statistics
+`'estimated'` reflects the base table's row count as last seen by
+ANALYZE/autovacuum — it ignores your `WHERE`/`JOIN` clauses and can be stale.
+Use it for UI hints ("~12,400 results"), never for correctness-sensitive
+logic. Note the statistics are table-wide, so under row-level security the
+estimate is not scoped to the caller's visible rows.
+:::
+
+```typescript
+// Skip the COUNT on an infinite-scroll feed
+const feed = await paginate(query, { page: 1, limit: 50, count: 'none' })
+feed.pagination.hasNext // derived from limit + 1 probe
+feed.pagination.total // undefined
+
+// Planner-statistics estimate on PostgreSQL
+const approx = await paginate(query, {
+  page: 1,
+  limit: 50,
+  dialect: 'postgres',
+  count: 'estimated'
+})
+approx.pagination.countMode // 'estimated' (or 'exact' if it fell back)
 ```
 
 ### PaginatedResult
@@ -44,6 +85,7 @@ interface PaginatedResult<T> {
     hasPrev?: boolean
     nextCursor?: string
     prevCursor?: string
+    countMode?: 'exact' | 'none' | 'estimated' // Present when `count` was passed
   }
 }
 ```
@@ -76,6 +118,7 @@ console.log(result)
 
 Cursor-based pagination for efficient large dataset handling.
 
+<!-- doc-snippet: skip -->
 ```typescript
 async function paginateCursor<DB, TB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -129,6 +172,7 @@ const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
 
 ### Result
 
+<!-- doc-snippet: skip -->
 ```typescript
 {
   data: [...],
@@ -199,6 +243,7 @@ CREATE INDEX idx_posts_cursor ON posts (created_at DESC, id DESC);
 
 Simplified cursor pagination that uses `id` column in ascending order. A convenience wrapper around `paginateCursor`.
 
+<!-- doc-snippet: skip -->
 ```typescript
 async function paginateCursorSimple<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -347,6 +392,7 @@ const result = await paginate(
 
 The dialect parameter is optional. Kysera typically auto-detects the database type from the Kysely instance, but you can override it:
 
+<!-- doc-snippet: skip -->
 ```typescript
 // Auto-detected (recommended)
 const result = await paginate(query, { page: 1, limit: 20 })

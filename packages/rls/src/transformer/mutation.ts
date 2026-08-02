@@ -173,6 +173,41 @@ export class MutationGuard<DB = unknown> {
   }
 
   /**
+   * Whether checkMutation() could evaluate (or deny) anything for this table
+   * and operation under the CURRENT context — i.e. whether per-row value
+   * checks are required at all.
+   *
+   * Mirrors checkMutation's early exits exactly: false for system users and
+   * skipFor roles; true when any deny/validate/allow policy is active for the
+   * operation, or when the table is default-deny (an absent allow then denies
+   * regardless of row content). Missing context returns true — checkMutation
+   * throws in that case, and callers must not skip it.
+   *
+   * Used by the bulk-mutation guards to avoid fetching rows for tables whose
+   * policies are filter-only (already enforced in SQL by interceptQuery).
+   */
+  requiresRowChecks(table: string, operation: Operation): boolean {
+    const ctx = rlsContext.getContextOrNull()
+    if (!ctx) return true
+    if (ctx.auth.isSystem) return false
+
+    const skipFor = this.registry.getSkipFor(table)
+    if (skipFor.some(role => ctx.auth.roles.includes(role))) return false
+
+    const activation = resolveActivationContext(this.activationOptions, ctx)
+    if (this.registry.getDenies(table, operation, activation).length > 0) return true
+    if (
+      (operation === 'create' || operation === 'update') &&
+      this.registry.getValidates(table, operation, activation).length > 0
+    ) {
+      return true
+    }
+    if (this.registry.getAllows(table, operation, activation).length > 0) return true
+
+    return this.registry.hasDefaultDeny(table)
+  }
+
+  /**
    * Validate mutation data (for validate policies)
    *
    * @param operation - Operation type

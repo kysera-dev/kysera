@@ -1,8 +1,8 @@
 import type { Plugin, QueryBuilderContext, BaseRepositoryLike } from '@kysera/executor'
 import { getRawDb, isRepositoryLike, withPluginMetadata } from '@kysera/executor'
 import type { SelectQueryBuilder } from 'kysely'
-import { NotFoundError, SoftDeleteError, RecordNotDeletedError, silentLogger, formatTimestampForDb, detectDialect, shouldApplyToTable } from '@kysera/core'
-import type { KyseraLogger, Dialect } from '@kysera/core'
+import { NotFoundError, SoftDeleteError, RecordNotDeletedError, silentLogger, formatTimestampForDb, detectDialect, shouldApplyToTable, fetchRowShared, ROW_VISIBILITY_WITH_DELETED } from '@kysera/core'
+import type { KyseraLogger, Dialect, RowFetchExecutor } from '@kysera/core'
 import { VERSION } from './version.js'
 
 /**
@@ -385,12 +385,19 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         async restore(id: number | string): Promise<unknown> {
           logger.info(`Restoring soft-deleted record ${id} from ${baseRepo.tableName}`)
 
-          // Existence probe must see deleted records — scoped opt-out, RLS on
-          const existing = await withDeletedDb
-            .selectFrom(baseRepo.tableName)
-            .selectAll()
-            .where(primaryKeyColumn as never, '=', id as never)
-            .executeTakeFirst() as Record<string, unknown> | undefined
+          // Existence probe must see deleted records — scoped opt-out, RLS on.
+          // Routed through the per-operation row cache: under the audit
+          // plugin's restore wrapper the same row was just fetched for
+          // old-values capture with identical visibility (executor +
+          // includeDeleted metadata), so the probe reuses that SELECT
+          // (see @kysera/core row-cache).
+          const existing = await fetchRowShared(
+            withDeletedDb as unknown as RowFetchExecutor,
+            baseRepo.tableName,
+            primaryKeyColumn,
+            id,
+            ROW_VISIBILITY_WITH_DELETED
+          )
 
           if (!existing) {
             throw new NotFoundError('Record', { id })

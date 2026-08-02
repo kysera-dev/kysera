@@ -20,12 +20,24 @@ import { SelectTransformer } from './transformer/select.js'
 import { MutationGuard } from './transformer/mutation.js'
 import { rlsContext } from './context/manager.js'
 import { VERSION } from './version.js'
-import { RLSContextError, RLSPolicyViolation, RLSError, RLSErrorCodes } from './errors.js'
-import { silentLogger, shouldApplyToTable, type KyseraLogger } from '@kysera/core'
+import {
+  RLSContextError,
+  RLSPolicyViolation,
+  RLSPolicyEvaluationError,
+  RLSError,
+  RLSErrorCodes
+} from './errors.js'
+import {
+  silentLogger,
+  shouldApplyToTable,
+  fetchRowShared,
+  fetchRowsSharedByIds,
+  ROW_VISIBILITY_RAW,
+  type KyseraLogger,
+  type RowFetchExecutor
+} from '@kysera/core'
 import {
   transformQueryBuilder,
-  selectFromDynamicTable,
-  whereIdEquals,
   hasRawDb as hasRawDbUtil,
   applyImpossibleCondition
 } from './utils/type-utils.js'
@@ -103,6 +115,24 @@ export interface RLSPluginOptions<DB = unknown> {
   primaryKeyColumn?: string
 
   /**
+   * Upper bound on per-row policy evaluations for one bulk repository
+   * mutation (`bulkUpdate`/`bulkDelete`).
+   *
+   * When a table has value-based policies for the operation (allow/deny/
+   * validate, or default-deny), bulk mutations fetch the affected rows and
+   * evaluate the policies per row — exactly like N single-row calls. A batch
+   * larger than this bound throws {@link RLSPolicyEvaluationError} instead of
+   * evaluating unboundedly: split the batch, raise the bound, or express the
+   * policy as `filter()` so it is enforced in SQL without row fetches.
+   *
+   * `bulkCreate` checks are not bounded (they evaluate caller-supplied inputs
+   * without any row fetch, matching N single `create()` calls).
+   *
+   * @default 1000
+   */
+  maxBulkRowChecks?: number
+
+  /**
    * Static inputs for conditional policy activation
    * (`whenEnvironment` / `whenFeature` / `whenTimeRange` / `whenCondition`
    * and `PolicyOptions.condition`).
@@ -127,6 +157,265 @@ export interface RLSPluginOptions<DB = unknown> {
  * @internal
  */
 type BaseRepository = BaseRepositoryLike<Record<string, unknown>>
+
+/**
+ * Bulk mutation surface of @kysera/repository repositories.
+ * BaseRepositoryLike does not declare these, hence the local view.
+ * @internal
+ */
+interface BulkCapableRepository {
+  bulkCreate?: (inputs: unknown[]) => Promise<unknown>
+  bulkUpdate?: (updates: { id: unknown; data: unknown }[]) => Promise<unknown>
+  bulkDelete?: (ids: unknown[]) => Promise<unknown>
+}
+
+/** Dependencies of the bulk-mutation guards. @internal */
+interface BulkGuardDeps<DB> {
+  repo: BulkCapableRepository
+  bindTarget: object
+  table: string
+  guard: MutationGuard<DB>
+  logger: KyseraLogger
+  auditDecisions: boolean
+  bypassRoles: string[]
+  onViolation: ((violation: RLSPolicyViolation) => void) | undefined
+  maxBulkRowChecks: number
+  primaryKeyColumn: string
+  hasRawDbInstance: boolean
+  rawDb: unknown
+  originalFindById: ((id: unknown) => Promise<unknown>) | undefined
+}
+
+/**
+ * P1.4 — bulk mutations must not bypass value-based policies.
+ *
+ * The single-row create/update/delete wrappers evaluate allow/deny/validate
+ * per row. Without these guards, bulk repository mutations would only get the
+ * SQL-level filter() narrowing (applied in interceptQuery): a bulkUpdate
+ * could silently skip the very allow() check that denies the equivalent
+ * single update. Each guarded bulk method mirrors N single calls exactly:
+ *
+ * - bulkCreate: checkCreate per input (no row fetch involved)
+ * - bulkUpdate/bulkDelete: one raw batched row fetch (through the
+ *   per-operation row cache, reusing rows the audit plugin already fetched),
+ *   then checkUpdate/checkDelete per row. Rows that do not exist are left to
+ *   the original method's not-found handling, like the single-row wrappers.
+ *
+ * Per-row evaluation is bounded by maxBulkRowChecks; larger batches throw
+ * RLSPolicyEvaluationError instead of degrading silently. Tables whose
+ * policies for the operation are filter-only (and not default-deny) skip the
+ * fetch entirely — SQL narrowing already enforces them.
+ *
+ * TOCTOU: same caveat as the single-row wrappers — run inside a transaction
+ * for check-then-act consistency.
+ *
+ * Returns an object of guarded methods to spread over the extended
+ * repository (empty for methods the repository does not have).
+ *
+ * @internal
+ */
+function buildBulkMutationGuards<DB>(deps: BulkGuardDeps<DB>): object {
+  const {
+    repo,
+    bindTarget,
+    table,
+    guard,
+    logger,
+    auditDecisions,
+    bypassRoles,
+    onViolation,
+    maxBulkRowChecks,
+    primaryKeyColumn,
+    hasRawDbInstance,
+    rawDb,
+    originalFindById
+  } = deps
+
+  const originalBulkCreate = repo.bulkCreate?.bind(bindTarget)
+  const originalBulkUpdate = repo.bulkUpdate?.bind(bindTarget)
+  const originalBulkDelete = repo.bulkDelete?.bind(bindTarget)
+
+  /** Mirrors the context gate of the single-row wrappers. */
+  const needsPolicyChecks = (ctx: ReturnType<typeof rlsContext.getContextOrNull>): boolean =>
+    ctx !== null &&
+    !ctx.auth.isSystem &&
+    !bypassRoles.some(role => ctx.auth.roles.includes(role))
+
+  /** Shared onViolation/audit-logging for denied operations. */
+  const reportViolation = (error: unknown, operation: string, userId: unknown): void => {
+    if (error instanceof RLSPolicyViolation) {
+      onViolation?.(error)
+      if (auditDecisions) {
+        logger.warn?.(`[RLS] ${operation} denied`, { table, userId, reason: error.reason })
+      }
+    }
+  }
+
+  /**
+   * Enforce the per-row evaluation bound. Value-based policies cannot be
+   * expressed in SQL, so each affected row must be fetched and checked; an
+   * unbounded batch would turn one repository call into an arbitrarily large
+   * policy-evaluation run.
+   */
+  const assertBulkBound = (operation: 'update' | 'delete', affected: number): void => {
+    if (affected > maxBulkRowChecks) {
+      throw new RLSPolicyEvaluationError(
+        operation,
+        table,
+        `bulk mutation targets ${affected} rows, but value-based policies ` +
+          `(allow/deny/validate or default-deny) require per-row evaluation, ` +
+          `bounded at maxBulkRowChecks=${maxBulkRowChecks}. Split the call into ` +
+          `smaller batches, raise 'maxBulkRowChecks', or express the policy as ` +
+          `filter() so it is enforced in SQL without row fetches.`
+      )
+    }
+  }
+
+  /**
+   * Fetch the target rows of a bulk mutation for per-row policy checks.
+   * One raw batched SELECT through the per-operation row cache (rows primed
+   * by the audit plugin's old-values fetch are reused); falls back to
+   * originalFindById for tests/mocks, mirroring the single-row wrappers.
+   */
+  const fetchRowsForBulkCheck = async (
+    operation: 'update' | 'delete',
+    ids: readonly (number | string)[]
+  ): Promise<Map<number | string, Record<string, unknown> | undefined>> => {
+    if (hasRawDbInstance) {
+      return await fetchRowsSharedByIds(
+        rawDb as RowFetchExecutor,
+        table,
+        primaryKeyColumn,
+        ids,
+        ROW_VISIBILITY_RAW
+      )
+    }
+    if (originalFindById) {
+      const rows = new Map<number | string, Record<string, unknown> | undefined>()
+      for (const id of ids) {
+        const row = await originalFindById(id)
+        rows.set(id, (row ?? undefined) as Record<string, unknown> | undefined)
+      }
+      return rows
+    }
+    throw new RLSError(
+      `Repository does not support bulk ${operation} operation`,
+      RLSErrorCodes.RLS_POLICY_INVALID
+    )
+  }
+
+  return {
+    ...(originalBulkCreate
+      ? {
+          async bulkCreate(inputs: unknown[]): Promise<unknown> {
+            const ctx = rlsContext.getContextOrNull()
+
+            if (needsPolicyChecks(ctx) && inputs.length > 0) {
+              try {
+                for (const input of inputs) {
+                  await guard.checkCreate(table, input as Record<string, unknown>)
+                }
+
+                if (auditDecisions) {
+                  logger.info?.('[RLS] Bulk create allowed', {
+                    table,
+                    rows: inputs.length,
+                    userId: ctx?.auth.userId
+                  })
+                }
+              } catch (error) {
+                reportViolation(error, 'Bulk create', ctx?.auth.userId)
+                throw error
+              }
+            }
+
+            return await originalBulkCreate(inputs)
+          }
+        }
+      : {}),
+
+    ...(originalBulkUpdate
+      ? {
+          async bulkUpdate(updates: { id: unknown; data: unknown }[]): Promise<unknown> {
+            const ctx = rlsContext.getContextOrNull()
+
+            if (
+              needsPolicyChecks(ctx) &&
+              updates.length > 0 &&
+              guard.requiresRowChecks(table, 'update')
+            ) {
+              assertBulkBound('update', updates.length)
+
+              const ids = updates.map(u => u.id as number | string)
+              const rows = await fetchRowsForBulkCheck('update', ids)
+
+              try {
+                for (const { id, data } of updates) {
+                  const existingRow = rows.get(id as number | string)
+                  if (existingRow) {
+                    await guard.checkUpdate(table, existingRow, data as Record<string, unknown>)
+                  }
+                }
+
+                if (auditDecisions) {
+                  logger.info?.('[RLS] Bulk update allowed', {
+                    table,
+                    rows: updates.length,
+                    userId: ctx?.auth.userId
+                  })
+                }
+              } catch (error) {
+                reportViolation(error, 'Bulk update', ctx?.auth.userId)
+                throw error
+              }
+            }
+
+            return await originalBulkUpdate(updates)
+          }
+        }
+      : {}),
+
+    ...(originalBulkDelete
+      ? {
+          async bulkDelete(ids: unknown[]): Promise<unknown> {
+            const ctx = rlsContext.getContextOrNull()
+
+            if (
+              needsPolicyChecks(ctx) &&
+              ids.length > 0 &&
+              guard.requiresRowChecks(table, 'delete')
+            ) {
+              assertBulkBound('delete', ids.length)
+
+              const rows = await fetchRowsForBulkCheck('delete', ids as (number | string)[])
+
+              try {
+                for (const id of ids) {
+                  const existingRow = rows.get(id as number | string)
+                  if (existingRow) {
+                    await guard.checkDelete(table, existingRow)
+                  }
+                }
+
+                if (auditDecisions) {
+                  logger.info?.('[RLS] Bulk delete allowed', {
+                    table,
+                    rows: ids.length,
+                    userId: ctx?.auth.userId
+                  })
+                }
+              } catch (error) {
+                reportViolation(error, 'Bulk delete', ctx?.auth.userId)
+                throw error
+              }
+            }
+
+            return await originalBulkDelete(ids)
+          }
+        }
+      : {})
+  }
+}
 
 /**
  * Create RLS plugin for Kysera
@@ -188,6 +477,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
     auditDecisions = false,
     onViolation,
     primaryKeyColumn = 'id',
+    maxBulkRowChecks = 1000,
     activation
   } = options
 
@@ -452,6 +742,23 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
       const rawDb = getRawDb(baseRepo.executor)
       const hasRawDbInstance = hasRawDbUtil(baseRepo.executor)
 
+      // Guarded bulk mutations (P1.4) — see buildBulkMutationGuards
+      const bulkGuards = buildBulkMutationGuards({
+        repo: repo as BulkCapableRepository,
+        bindTarget: baseRepo,
+        table,
+        guard,
+        logger,
+        auditDecisions,
+        bypassRoles,
+        onViolation,
+        maxBulkRowChecks,
+        primaryKeyColumn,
+        hasRawDbInstance,
+        rawDb,
+        originalFindById
+      })
+
       const extendedRepo = {
         ...baseRepo,
 
@@ -526,9 +833,17 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
             let existingRow: unknown
 
             if (hasRawDbInstance) {
-              // Use raw db to bypass RLS filtering
-              const query = selectFromDynamicTable(rawDb, table)
-              existingRow = await whereIdEquals(query, id, primaryKeyColumn).executeTakeFirst()
+              // Raw fetch through the per-operation row cache: when the audit
+              // plugin (outermost wrapper) already fetched this row for
+              // old-values capture, the cached row is reused instead of
+              // issuing a second identical SELECT (see @kysera/core row-cache)
+              existingRow = await fetchRowShared(
+                rawDb as unknown as RowFetchExecutor,
+                table,
+                primaryKeyColumn,
+                id,
+                ROW_VISIBILITY_RAW
+              )
             } else if (originalFindById) {
               // Fallback to originalFindById for tests/mocks
               existingRow = await originalFindById(id)
@@ -601,9 +916,15 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
             let existingRow: unknown
 
             if (hasRawDbInstance) {
-              // Use raw db to bypass RLS filtering
-              const query = selectFromDynamicTable(rawDb, table)
-              existingRow = await whereIdEquals(query, id, primaryKeyColumn).executeTakeFirst()
+              // Raw fetch through the per-operation row cache (shared with
+              // the audit plugin's old-values fetch, see update() above)
+              existingRow = await fetchRowShared(
+                rawDb as unknown as RowFetchExecutor,
+                table,
+                primaryKeyColumn,
+                id,
+                ROW_VISIBILITY_RAW
+              )
             } else if (originalFindById) {
               // Fallback to originalFindById for tests/mocks
               existingRow = await originalFindById(id)
@@ -643,6 +964,10 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
 
           return await originalDelete(id)
         },
+
+        // Guarded bulk mutations (P1.4): per-row value-policy enforcement,
+        // matching N single-row calls — see buildBulkMutationGuards
+        ...bulkGuards,
 
         /**
          * Bypass RLS for specific operation
