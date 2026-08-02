@@ -8,19 +8,30 @@
 _kysera_migrate() {
     local -a subcmds
     subcmds=(
+        'baseline:Mark migrations as executed without running them (adopt an existing schema)'
         'create:Create a new migration file'
         'down:Rollback migrations'
         'list:List all migrations'
-        'reset:Reset all migrations (dangerous!)'
+        'reset:Rollback all migrations (dangerous!)'
         'fresh:Drop all tables and re-run migrations'
         'status:Show migration status'
         'up:Run pending migrations'
+        'verify:Verify executed migrations match the files on disk (checksum drift check)'
     )
     if (( CURRENT == 2 )); then
         _describe -t commands 'migrate subcommand' subcmds
         return
     fi
     case $words[2] in
+        baseline)
+            _arguments \
+                '--all[Baseline every pending migration]' \
+                '(-v --verbose)'{-v,--verbose}'[Show detailed output]' \
+                '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
+                '--json[Output results as JSON]' \
+                '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
+                '(-h --help)'{-h,--help}'[Display help]'
+            ;;
         create)
             _arguments \
                 '(-d --dir)'{-d,--dir}'[Migration directory]:path:_files -/' \
@@ -30,15 +41,15 @@ _kysera_migrate() {
                 '--no-ts[Generate JavaScript file]' \
                 '--table[Table name for table-based templates]:name:' \
                 '--columns[Comma-separated column definitions (name:type:nullable:default)]:list:' \
+                '--json[Output results as JSON]' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
         down)
             _arguments \
                 '--steps[Number of migrations to rollback]:number:' \
-                '--count[Number of migrations to rollback (alias for --steps)]:number:' \
-                '(-t --to)'{-t,--to}'[Rollback to specific migration]:migration:' \
+                '(-t --to)'{-t,--to}'[Rollback everything after the given migration]:migration:' \
                 '--all[Rollback all migrations]' \
-                '--dry-run[Preview rollback without executing]' \
+                '--dry-run[Show the rollback plan without touching the database]' \
                 '(-v --verbose)'{-v,--verbose}'[Show detailed output]' \
                 '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                 '--force[Skip confirmation prompt]' \
@@ -62,6 +73,7 @@ _kysera_migrate() {
                 '--seed[Run seeds after reset]' \
                 '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                 '(-v --verbose)'{-v,--verbose}'[Show detailed output]' \
+                '--json[Output results as JSON]' \
                 '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
@@ -71,6 +83,7 @@ _kysera_migrate() {
                 '--force[Skip confirmation prompt]' \
                 '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                 '(-v --verbose)'{-v,--verbose}'[Show detailed output]' \
+                '--json[Output results as JSON]' \
                 '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
@@ -84,11 +97,19 @@ _kysera_migrate() {
             ;;
         up)
             _arguments \
-                '(-t --to)'{-t,--to}'[Migrate up to specific migration]:migration:' \
+                '(-t --to)'{-t,--to}'[Migrate up to a specific migration (inclusive)]:migration:' \
                 '--steps[Number of migrations to run]:number:' \
                 '--count[Number of migrations to run (alias for --steps)]:number:' \
-                '--dry-run[Preview migrations without executing]' \
-                '--force[Force migration even if already executed]' \
+                '--dry-run[Show the execution plan without touching the database]' \
+                '(-v --verbose)'{-v,--verbose}'[Show detailed output]' \
+                '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
+                '--json[Output results as JSON]' \
+                '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
+                '(-h --help)'{-h,--help}'[Display help]'
+            ;;
+        verify)
+            _arguments \
+                '--update[Store current file checksums for executed records that have none]' \
                 '(-v --verbose)'{-v,--verbose}'[Show detailed output]' \
                 '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                 '--json[Output results as JSON]' \
@@ -102,6 +123,7 @@ _kysera_generate() {
     local -a subcmds
     subcmds=(
         'crud:Generate complete CRUD stack (model, repository, schema) for a table'
+        'database:'
         'model:Generate TypeScript model from database table'
         'repository:Generate repository from database table'
         'schema:Generate Zod schema from database table'
@@ -127,6 +149,16 @@ _kysera_generate() {
                 '--no-format[Skip formatting]' \
                 '--json[Output results as JSON]' \
                 '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
+                '(-h --help)'{-h,--help}'[Display help]'
+            ;;
+        database)
+            _arguments \
+                '(-o --output)'{-o,--output}'[Output file]:path:_files' \
+                '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
+                '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
+                '--exclude[Comma-separated table globs to exclude (wins over include)]:patterns:' \
+                '--with-helpers[Emit Selectable/Insertable/Updateable aliases per table]' \
+                '--json[Output a {file, tables, written} summary as JSON (one line per --watch run)]' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
         model)
@@ -301,6 +333,7 @@ _kysera_audit() {
         'compare:Compare two audit log entries'
         'diff:Show entity diff between audit entries'
         'history:Show entity history timeline'
+        'init:Generate a migration that creates the audit log table'
         'logs:Query audit logs with filters'
         'restore:Restore entity from audit log'
         'stats:Show audit statistics'
@@ -343,6 +376,14 @@ _kysera_audit() {
                 '--reverse[Show oldest first (default: newest first)]' \
                 '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                 '(-s --schema)'{-s,--schema}'[PostgreSQL schema name (default: public)]:name:' \
+                '(-h --help)'{-h,--help}'[Display help]'
+            ;;
+        init)
+            _arguments \
+                '--table[]:name:' \
+                '--dialect-ddl[]' \
+                '(-d --dir)'{-d,--dir}'[Migrations directory (default: from configuration)]:path:_files -/' \
+                '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                 '(-h --help)'{-h,--help}'[Display help]'
             ;;
         logs)
@@ -801,10 +842,50 @@ _kysera_schema() {
     esac
 }
 
+_kysera_rls() {
+    local -a subcmds
+    subcmds=(
+        'generate:Generate native PostgreSQL RLS statements from an RLS schema module'
+        'migration:Generate a Kysely migration file applying native PostgreSQL RLS policies'
+    )
+    if (( CURRENT == 2 )); then
+        _describe -t commands 'rls subcommand' subcmds
+        return
+    fi
+    case $words[2] in
+        generate)
+            _arguments \
+                '1:schema module:_files' \
+                '(-o --output)'{-o,--output}'[Write SQL to a file instead of stdout]:file:_files' \
+                '--drop[Generate DROP/DISABLE statements instead of CREATE/ENABLE]' \
+                '--functions[Prepend the RLS context helper functions (rls_current_user_id, ...)]' \
+                '(-s --schema)'{-s,--schema}'[PostgreSQL schema name]:name:' \
+                '--policy-prefix[Prefix for generated policy names]:prefix:' \
+                '--no-force[Skip FORCE ROW LEVEL SECURITY (table owners bypass RLS)]' \
+                '--json[Output as JSON]' \
+                '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
+                '(-h --help)'{-h,--help}'[Display help]'
+            ;;
+        migration)
+            _arguments \
+                '1:schema module:_files' \
+                '(-d --dir)'{-d,--dir}'[Migrations directory (default: from configuration)]:path:_files -/' \
+                '(-n --name)'{-n,--name}'[Migration name]:name:' \
+                '(-s --schema)'{-s,--schema}'[PostgreSQL schema name]:name:' \
+                '--policy-prefix[Prefix for generated policy names]:prefix:' \
+                '--no-force[Skip FORCE ROW LEVEL SECURITY (table owners bypass RLS)]' \
+                '--no-functions[Omit the RLS context helper functions from the migration]' \
+                '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
+                '(-h --help)'{-h,--help}'[Display help]'
+            ;;
+    esac
+}
+
 _kysera() {
     local -a commands
     commands=(
         'init:Initialize a new Kysera project'
+        'doctor:Diagnose environment, configuration and database health'
         'migrate:Database migration management'
         'generate:Code generation utilities'
         'db:Database management utilities'
@@ -816,6 +897,7 @@ _kysera() {
         'test:Test environment management'
         'plugin:Plugin management'
         'schema:PostgreSQL schema management'
+        'rls:Row-Level Security utilities'
         'help:Display help for command'
     )
 
@@ -876,6 +958,9 @@ _kysera() {
                 schema)
                     _kysera_schema
                     ;;
+                rls)
+                    _kysera_rls
+                    ;;
                 init)
                     _arguments \
                         '1:project name:' \
@@ -889,6 +974,12 @@ _kysera() {
                         '--no-git[Skip git initialization]' \
                         '--install[Install dependencies]' \
                         '--no-install[Skip dependency installation]' \
+                        '(-h --help)'{-h,--help}'[Display help]'
+                    ;;
+                doctor)
+                    _arguments \
+                        '--json[Output as JSON]' \
+                        '(-c --config)'{-c,--config}'[Path to configuration file]:config file:_files -g "*.{ts,mts,cts,js,mjs,cjs,json}"' \
                         '(-h --help)'{-h,--help}'[Display help]'
                     ;;
                 help)

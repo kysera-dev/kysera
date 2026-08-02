@@ -20,6 +20,7 @@ complete -c kysera -n "__fish_use_subcommand" -s h -l help -d "Display help"
 
 # Main commands
 complete -c kysera -f -n "__fish_use_subcommand" -a init -d "Initialize a new Kysera project"
+complete -c kysera -f -n "__fish_use_subcommand" -a doctor -d "Diagnose environment, configuration and database health"
 complete -c kysera -f -n "__fish_use_subcommand" -a migrate -d "Database migration management"
 complete -c kysera -f -n "__fish_use_subcommand" -a generate -d "Code generation utilities"
 complete -c kysera -f -n "__fish_use_subcommand" -a db -d "Database management utilities"
@@ -31,17 +32,27 @@ complete -c kysera -f -n "__fish_use_subcommand" -a repository -d "Repository pa
 complete -c kysera -f -n "__fish_use_subcommand" -a test -d "Test environment management"
 complete -c kysera -f -n "__fish_use_subcommand" -a plugin -d "Plugin management"
 complete -c kysera -f -n "__fish_use_subcommand" -a schema -d "PostgreSQL schema management"
+complete -c kysera -f -n "__fish_use_subcommand" -a rls -d "Row-Level Security utilities"
 complete -c kysera -f -n "__fish_use_subcommand" -a help -d "Display help for command"
 complete -c kysera -f -n "__fish_use_subcommand" -a g -d "Code generation utilities (alias for generate)"
 
 # migrate subcommands
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create down list reset fresh status up" -a create -d "Create a new migration file"
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create down list reset fresh status up" -a down -d "Rollback migrations"
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create down list reset fresh status up" -a list -d "List all migrations"
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create down list reset fresh status up" -a reset -d "Reset all migrations (dangerous!)"
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create down list reset fresh status up" -a fresh -d "Drop all tables and re-run migrations"
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create down list reset fresh status up" -a status -d "Show migration status"
-complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from create down list reset fresh status up" -a up -d "Run pending migrations"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from baseline create down list reset fresh status up verify" -a baseline -d "Mark migrations as executed without running them (adopt an existing schema)"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from baseline create down list reset fresh status up verify" -a create -d "Create a new migration file"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from baseline create down list reset fresh status up verify" -a down -d "Rollback migrations"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from baseline create down list reset fresh status up verify" -a list -d "List all migrations"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from baseline create down list reset fresh status up verify" -a reset -d "Rollback all migrations (dangerous!)"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from baseline create down list reset fresh status up verify" -a fresh -d "Drop all tables and re-run migrations"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from baseline create down list reset fresh status up verify" -a status -d "Show migration status"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from baseline create down list reset fresh status up verify" -a up -d "Run pending migrations"
+complete -c kysera -f -n "__fish_seen_subcommand_from migrate; and not __fish_seen_subcommand_from baseline create down list reset fresh status up verify" -a verify -d "Verify executed migrations match the files on disk (checksum drift check)"
+
+# migrate baseline options
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from baseline" -l all -d "Baseline every pending migration"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from baseline" -s v -l verbose -d "Show detailed output"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from baseline" -s c -l config -r -F -d "Path to configuration file"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from baseline" -l json -d "Output results as JSON"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from baseline" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
 # migrate create options
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from create" -s d -l dir -r -F -d "Migration directory"
@@ -51,13 +62,13 @@ complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subc
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from create" -l no-ts -d "Generate JavaScript file"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from create" -l table -x -d "Table name for table-based templates"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from create" -l columns -x -d "Comma-separated column definitions (name:type:nullable:default)"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from create" -l json -d "Output results as JSON"
 
 # migrate down options
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -l steps -x -d "Number of migrations to rollback"
-complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -l count -x -d "Number of migrations to rollback (alias for --steps)"
-complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -s t -l to -x -d "Rollback to specific migration"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -s t -l to -x -d "Rollback everything after the given migration"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -l all -d "Rollback all migrations"
-complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -l dry-run -d "Preview rollback without executing"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -l dry-run -d "Show the rollback plan without touching the database"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -s v -l verbose -d "Show detailed output"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -s c -l config -r -F -d "Path to configuration file"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from down" -l force -d "Skip confirmation prompt"
@@ -77,6 +88,7 @@ complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subc
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from reset" -l seed -d "Run seeds after reset"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from reset" -s c -l config -r -F -d "Path to configuration file"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from reset" -s v -l verbose -d "Show detailed output"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from reset" -l json -d "Output results as JSON"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from reset" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
 # migrate fresh options
@@ -84,6 +96,7 @@ complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subc
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from fresh" -l force -d "Skip confirmation prompt"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from fresh" -s c -l config -r -F -d "Path to configuration file"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from fresh" -s v -l verbose -d "Show detailed output"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from fresh" -l json -d "Output results as JSON"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from fresh" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
 # migrate status options
@@ -93,21 +106,28 @@ complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subc
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from status" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
 # migrate up options
-complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -s t -l to -x -d "Migrate up to specific migration"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -s t -l to -x -d "Migrate up to a specific migration (inclusive)"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -l steps -x -d "Number of migrations to run"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -l count -x -d "Number of migrations to run (alias for --steps)"
-complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -l dry-run -d "Preview migrations without executing"
-complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -l force -d "Force migration even if already executed"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -l dry-run -d "Show the execution plan without touching the database"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -s v -l verbose -d "Show detailed output"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -s c -l config -r -F -d "Path to configuration file"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -l json -d "Output results as JSON"
 complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from up" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
 
+# migrate verify options
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from verify" -l update -d "Store current file checksums for executed records that have none"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from verify" -s v -l verbose -d "Show detailed output"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from verify" -s c -l config -r -F -d "Path to configuration file"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from verify" -l json -d "Output results as JSON"
+complete -c kysera -n "__fish_seen_subcommand_from migrate; and __fish_seen_subcommand_from verify" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
+
 # generate subcommands
-complete -c kysera -f -n "__fish_seen_subcommand_from generate g; and not __fish_seen_subcommand_from crud model repository schema" -a crud -d "Generate complete CRUD stack (model, repository, schema) for a table"
-complete -c kysera -f -n "__fish_seen_subcommand_from generate g; and not __fish_seen_subcommand_from crud model repository schema" -a model -d "Generate TypeScript model from database table"
-complete -c kysera -f -n "__fish_seen_subcommand_from generate g; and not __fish_seen_subcommand_from crud model repository schema" -a repository -d "Generate repository from database table"
-complete -c kysera -f -n "__fish_seen_subcommand_from generate g; and not __fish_seen_subcommand_from crud model repository schema" -a schema -d "Generate Zod schema from database table"
+complete -c kysera -f -n "__fish_seen_subcommand_from generate g; and not __fish_seen_subcommand_from crud database model repository schema" -a crud -d "Generate complete CRUD stack (model, repository, schema) for a table"
+complete -c kysera -f -n "__fish_seen_subcommand_from generate g; and not __fish_seen_subcommand_from crud database model repository schema" -a database -d ""
+complete -c kysera -f -n "__fish_seen_subcommand_from generate g; and not __fish_seen_subcommand_from crud database model repository schema" -a model -d "Generate TypeScript model from database table"
+complete -c kysera -f -n "__fish_seen_subcommand_from generate g; and not __fish_seen_subcommand_from crud database model repository schema" -a repository -d "Generate repository from database table"
+complete -c kysera -f -n "__fish_seen_subcommand_from generate g; and not __fish_seen_subcommand_from crud database model repository schema" -a schema -d "Generate Zod schema from database table"
 
 # generate crud options
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from crud" -s o -l output-dir -r -F -d "Base output directory"
@@ -124,6 +144,14 @@ complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_s
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from crud" -l no-format -d "Skip formatting"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from crud" -l json -d "Output results as JSON"
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from crud" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
+
+# generate database options
+complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from database" -s o -l output -r -F -d "Output file"
+complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from database" -s c -l config -r -F -d "Path to configuration file"
+complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from database" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
+complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from database" -l exclude -x -d "Comma-separated table globs to exclude (wins over include)"
+complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from database" -l with-helpers -d "Emit Selectable/Insertable/Updateable aliases per table"
+complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from database" -l json -d "Output a {file, tables, written} summary as JSON (one line per --watch run)"
 
 # generate model options
 complete -c kysera -n "__fish_seen_subcommand_from generate g; and __fish_seen_subcommand_from model" -s o -l output -r -F -d "Output directory"
@@ -241,13 +269,14 @@ complete -c kysera -n "__fish_seen_subcommand_from health; and __fish_seen_subco
 complete -c kysera -n "__fish_seen_subcommand_from health; and __fish_seen_subcommand_from watch" -s v -l verbose -d "Show detailed metrics"
 
 # audit subcommands
-complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history logs restore stats" -a cleanup -d "Clean up old audit logs"
-complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history logs restore stats" -a compare -d "Compare two audit log entries"
-complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history logs restore stats" -a diff -d "Show entity diff between audit entries"
-complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history logs restore stats" -a history -d "Show entity history timeline"
-complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history logs restore stats" -a logs -d "Query audit logs with filters"
-complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history logs restore stats" -a restore -d "Restore entity from audit log"
-complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history logs restore stats" -a stats -d "Show audit statistics"
+complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history init logs restore stats" -a cleanup -d "Clean up old audit logs"
+complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history init logs restore stats" -a compare -d "Compare two audit log entries"
+complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history init logs restore stats" -a diff -d "Show entity diff between audit entries"
+complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history init logs restore stats" -a history -d "Show entity history timeline"
+complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history init logs restore stats" -a init -d "Generate a migration that creates the audit log table"
+complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history init logs restore stats" -a logs -d "Query audit logs with filters"
+complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history init logs restore stats" -a restore -d "Restore entity from audit log"
+complete -c kysera -f -n "__fish_seen_subcommand_from audit; and not __fish_seen_subcommand_from cleanup compare diff history init logs restore stats" -a stats -d "Show audit statistics"
 
 # audit cleanup options
 complete -c kysera -n "__fish_seen_subcommand_from audit; and __fish_seen_subcommand_from cleanup" -l older-than -x -d "Delete logs older than duration (30d, 3m, 1y)"
@@ -275,6 +304,12 @@ complete -c kysera -n "__fish_seen_subcommand_from audit; and __fish_seen_subcom
 complete -c kysera -n "__fish_seen_subcommand_from audit; and __fish_seen_subcommand_from history" -l reverse -d "Show oldest first (default: newest first)"
 complete -c kysera -n "__fish_seen_subcommand_from audit; and __fish_seen_subcommand_from history" -s c -l config -r -F -d "Path to configuration file"
 complete -c kysera -n "__fish_seen_subcommand_from audit; and __fish_seen_subcommand_from history" -s s -l schema -x -d "PostgreSQL schema name (default: public)"
+
+# audit init options
+complete -c kysera -n "__fish_seen_subcommand_from audit; and __fish_seen_subcommand_from init" -l table -x -d ""
+complete -c kysera -n "__fish_seen_subcommand_from audit; and __fish_seen_subcommand_from init" -l dialect-ddl -d ""
+complete -c kysera -n "__fish_seen_subcommand_from audit; and __fish_seen_subcommand_from init" -s d -l dir -r -F -d "Migrations directory (default: from configuration)"
+complete -c kysera -n "__fish_seen_subcommand_from audit; and __fish_seen_subcommand_from init" -s c -l config -r -F -d "Path to configuration file"
 
 # audit logs options
 complete -c kysera -n "__fish_seen_subcommand_from audit; and __fish_seen_subcommand_from logs" -s t -l table -x -d "Filter by table name"
@@ -609,6 +644,29 @@ complete -c kysera -n "__fish_seen_subcommand_from schema; and __fish_seen_subco
 complete -c kysera -n "__fish_seen_subcommand_from schema; and __fish_seen_subcommand_from list" -s v -l verbose -d "Show detailed information"
 complete -c kysera -n "__fish_seen_subcommand_from schema; and __fish_seen_subcommand_from list" -s c -l config -r -F -d "Path to configuration file"
 
+# rls subcommands
+complete -c kysera -f -n "__fish_seen_subcommand_from rls; and not __fish_seen_subcommand_from generate migration" -a generate -d "Generate native PostgreSQL RLS statements from an RLS schema module"
+complete -c kysera -f -n "__fish_seen_subcommand_from rls; and not __fish_seen_subcommand_from generate migration" -a migration -d "Generate a Kysely migration file applying native PostgreSQL RLS policies"
+
+# rls generate options
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from generate" -s o -l output -r -F -d "Write SQL to a file instead of stdout"
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from generate" -l drop -d "Generate DROP/DISABLE statements instead of CREATE/ENABLE"
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from generate" -l functions -d "Prepend the RLS context helper functions (rls_current_user_id, ...)"
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from generate" -s s -l schema -x -d "PostgreSQL schema name"
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from generate" -l policy-prefix -x -d "Prefix for generated policy names"
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from generate" -l no-force -d "Skip FORCE ROW LEVEL SECURITY (table owners bypass RLS)"
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from generate" -l json -d "Output as JSON"
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from generate" -s c -l config -r -F -d "Path to configuration file"
+
+# rls migration options
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from migration" -s d -l dir -r -F -d "Migrations directory (default: from configuration)"
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from migration" -s n -l name -x -d "Migration name"
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from migration" -s s -l schema -x -d "PostgreSQL schema name"
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from migration" -l policy-prefix -x -d "Prefix for generated policy names"
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from migration" -l no-force -d "Skip FORCE ROW LEVEL SECURITY (table owners bypass RLS)"
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from migration" -l no-functions -d "Omit the RLS context helper functions from the migration"
+complete -c kysera -n "__fish_seen_subcommand_from rls; and __fish_seen_subcommand_from migration" -s c -l config -r -F -d "Path to configuration file"
+
 # init options
 complete -c kysera -n "__fish_seen_subcommand_from init" -s t -l template -x -a "basic api graphql monorepo" -d "Project template (basic/api/graphql/monorepo)"
 complete -c kysera -n "__fish_seen_subcommand_from init" -s d -l database -x -a "postgres mysql sqlite" -d "Database dialect (postgres/mysql/sqlite)"
@@ -621,8 +679,13 @@ complete -c kysera -n "__fish_seen_subcommand_from init" -l no-git -d "Skip git 
 complete -c kysera -n "__fish_seen_subcommand_from init" -l install -d "Install dependencies"
 complete -c kysera -n "__fish_seen_subcommand_from init" -l no-install -d "Skip dependency installation"
 
+# doctor options
+complete -c kysera -n "__fish_seen_subcommand_from doctor" -l json -d "Output as JSON"
+complete -c kysera -n "__fish_seen_subcommand_from doctor" -s c -l config -r -F -d "Path to configuration file"
+
 # help completes command names
 complete -c kysera -f -n "__fish_seen_subcommand_from help" -a init -d "Initialize a new Kysera project"
+complete -c kysera -f -n "__fish_seen_subcommand_from help" -a doctor -d "Diagnose environment, configuration and database health"
 complete -c kysera -f -n "__fish_seen_subcommand_from help" -a migrate -d "Database migration management"
 complete -c kysera -f -n "__fish_seen_subcommand_from help" -a generate -d "Code generation utilities"
 complete -c kysera -f -n "__fish_seen_subcommand_from help" -a db -d "Database management utilities"
@@ -634,3 +697,4 @@ complete -c kysera -f -n "__fish_seen_subcommand_from help" -a repository -d "Re
 complete -c kysera -f -n "__fish_seen_subcommand_from help" -a test -d "Test environment management"
 complete -c kysera -f -n "__fish_seen_subcommand_from help" -a plugin -d "Plugin management"
 complete -c kysera -f -n "__fish_seen_subcommand_from help" -a schema -d "PostgreSQL schema management"
+complete -c kysera -f -n "__fish_seen_subcommand_from help" -a rls -d "Row-Level Security utilities"

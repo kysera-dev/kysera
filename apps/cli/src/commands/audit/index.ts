@@ -1,4 +1,5 @@
 import { Command } from 'commander'
+import { initCommand } from './init.js'
 import { logsCommand } from './logs.js'
 import { historyCommand } from './history.js'
 import { restoreCommand } from './restore.js'
@@ -11,6 +12,7 @@ export function auditCommand(): Command {
   const cmd = new Command('audit').description('Audit logging and history tracking')
 
   // Add subcommands
+  cmd.addCommand(initCommand())
   cmd.addCommand(logsCommand())
   cmd.addCommand(historyCommand())
   cmd.addCommand(restoreCommand())

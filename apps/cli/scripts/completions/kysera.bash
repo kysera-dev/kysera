@@ -9,7 +9,7 @@ _kysera_completions() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="init migrate generate db health audit debug query repository test plugin schema help"
+    local commands="init doctor migrate generate db health audit debug query repository test plugin schema rls help"
     local global_opts="--verbose --quiet --dry-run --config --no-color --json --env --version --help"
 
     local cmd="" sub=""
@@ -55,17 +55,18 @@ _kysera_completions() {
     # Subcommands per command group
     local subcommands=""
     case "${cmd}" in
-        migrate) subcommands="create down list reset fresh status up" ;;
-        generate) subcommands="crud model repository schema" ;;
+        migrate) subcommands="baseline create down list reset fresh status up verify" ;;
+        generate) subcommands="crud database model repository schema" ;;
         db) subcommands="console dump introspect reset restore seed tables" ;;
         health) subcommands="check metrics watch" ;;
-        audit) subcommands="cleanup compare diff history logs restore stats" ;;
+        audit) subcommands="cleanup compare diff history init logs restore stats" ;;
         debug) subcommands="analyzer circuit-breaker errors profile sql" ;;
         query) subcommands="analyze by-timestamp explain soft-deleted" ;;
         repository) subcommands="inspect list methods validate" ;;
         test) subcommands="fixtures seed setup teardown" ;;
         plugin) subcommands="config disable enable list" ;;
         schema) subcommands="clone compare create drop info list" ;;
+        rls) subcommands="generate migration" ;;
         help)
             COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
             return 0
@@ -81,16 +82,20 @@ _kysera_completions() {
     local opts=""
     case "${cmd}" in
         init) opts="--template --database --plugins --package-manager --typescript --no-typescript --git --no-git --install --no-install" ;;
+        doctor) opts="--json --config" ;;
     esac
     case "${cmd} ${sub}" in
-        "migrate create") opts="--dir --directory --template --ts --no-ts --table --columns" ;;
-        "migrate down") opts="--steps --count --to --all --dry-run --verbose --config --force --json --schema" ;;
+        "migrate baseline") opts="--all --verbose --config --json --schema" ;;
+        "migrate create") opts="--dir --directory --template --ts --no-ts --table --columns --json" ;;
+        "migrate down") opts="--steps --to --all --dry-run --verbose --config --force --json --schema" ;;
         "migrate list") opts="--pending --executed --json --config --schema" ;;
-        "migrate reset") opts="--force --run --seed --config --verbose --schema" ;;
-        "migrate fresh") opts="--seed --force --config --verbose --schema" ;;
+        "migrate reset") opts="--force --run --seed --config --verbose --json --schema" ;;
+        "migrate fresh") opts="--seed --force --config --verbose --json --schema" ;;
         "migrate status") opts="--json --verbose --config --schema" ;;
-        "migrate up") opts="--to --steps --count --dry-run --force --verbose --config --json --schema" ;;
+        "migrate up") opts="--to --steps --count --dry-run --verbose --config --json --schema" ;;
+        "migrate verify") opts="--update --verbose --config --json --schema" ;;
         "generate crud") opts="--output-dir --overwrite --config --with-validation --no-with-validation --with-pagination --no-with-pagination --with-soft-delete --with-timestamps --no-with-timestamps --format --no-format --json --schema" ;;
+        "generate database") opts="--output --config --schema --exclude --with-helpers --json" ;;
         "generate model") opts="--output --overwrite --config --timestamps --no-timestamps --soft-delete --json --schema" ;;
         "generate repository") opts="--output --overwrite --config --with-validation --no-with-validation --with-pagination --no-with-pagination --with-soft-delete --with-timestamps --no-with-timestamps --json --schema" ;;
         "generate schema") opts="--output --overwrite --config --strict --no-strict --json --schema" ;;
@@ -108,6 +113,7 @@ _kysera_completions() {
         "audit compare") opts="--json --show-values --config" ;;
         "audit diff") opts="--json --unified --no-color --config" ;;
         "audit history") opts="--limit --show-values --json --reverse --config --schema" ;;
+        "audit init") opts="--table --dialect-ddl --dir --config" ;;
         "audit logs") opts="--table --user --action --limit --since --until --entity-id --json --verbose --config --schema" ;;
         "audit restore") opts="--dry-run --force --json --config" ;;
         "audit stats") opts="--table --user --period --format --config" ;;
@@ -138,6 +144,8 @@ _kysera_completions() {
         "schema drop") opts="--cascade --if-exists --force --verbose --config" ;;
         "schema info") opts="--json --indexes --foreign-keys --verbose --config" ;;
         "schema list") opts="--json --tenant --verbose --config" ;;
+        "rls generate") opts="--output --drop --functions --schema --policy-prefix --no-force --json --config" ;;
+        "rls migration") opts="--dir --name --schema --policy-prefix --no-force --no-functions --config" ;;
     esac
 
     COMPREPLY=( $(compgen -W "${opts} --help" -- "${cur}") )

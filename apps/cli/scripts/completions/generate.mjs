@@ -33,7 +33,8 @@ const GROUPS = [
   { name: 'repository', desc: 'Repository pattern utilities' },
   { name: 'test', desc: 'Test environment management' },
   { name: 'plugin', desc: 'Plugin management' },
-  { name: 'schema', desc: 'PostgreSQL schema management' }
+  { name: 'schema', desc: 'PostgreSQL schema management' },
+  { name: 'rls', desc: 'Row-Level Security utilities' }
 ]
 
 // Program-level options (src/cli.ts + src/utils/global-options.ts)
@@ -108,11 +109,18 @@ const tree = GROUPS.map(g => ({ ...g, subs: parseGroup(g.name) }))
 
 // Leaf commands (no subcommands)
 const initCmd = parseCommandFile(join(COMMANDS_DIR, 'init', 'index.ts'))[0]
+const doctorCmd = parseCommandFile(join(COMMANDS_DIR, 'doctor', 'index.ts'))[0]
 const LEAVES = [
-  { name: 'init', desc: 'Initialize a new Kysera project', args: initCmd.args, opts: initCmd.opts }
+  { name: 'init', desc: 'Initialize a new Kysera project', args: initCmd.args, opts: initCmd.opts },
+  {
+    name: 'doctor',
+    desc: 'Diagnose environment, configuration and database health',
+    args: doctorCmd.args,
+    opts: doctorCmd.opts
+  }
 ]
 
-const ALL_TOP = [LEAVES[0], ...tree, { name: 'help', desc: 'Display help for command' }]
+const ALL_TOP = [...LEAVES, ...tree, { name: 'help', desc: 'Display help for command' }]
 
 const topNames = ALL_TOP.map(c => c.name).join(' ')
 
@@ -272,6 +280,7 @@ ${g.subs.map(s => `        ${zshDescribeEntry(s.name, s.desc)}`).join('\n')}
   for (const s of g.subs) {
     const extra = []
     if (g.name === 'db' && s.name === 'restore') extra.push(`'1:dump file:_files'`)
+    if (g.name === 'rls') extra.push(`'1:schema module:_files'`)
     zsh += `        ${s.name})\n${zshArguments(s.opts, '            ', extra)}\n            ;;\n`
   }
   zsh += `    esac
@@ -309,10 +318,13 @@ for (const g of tree) {
                     _kysera_${g.name.replace(/-/g, '_')}
                     ;;\n`
 }
-zsh += `                init)
-${zshArguments(LEAVES[0].opts, '                    ', [`'1:project name:'`])}
-                    ;;
-                help)
+for (const leaf of LEAVES) {
+  const extra = leaf.name === 'init' ? [`'1:project name:'`] : []
+  zsh += `                ${leaf.name})
+${zshArguments(leaf.opts, '                    ', extra)}
+                    ;;\n`
+}
+zsh += `                help)
                     _describe -t commands 'kysera commands' commands
                     ;;
             esac

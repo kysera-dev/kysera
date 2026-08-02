@@ -7,6 +7,8 @@ import { migrateCommand } from './commands/migrate/index.js'
 import { generateCommand } from './commands/generate/index.js'
 import { dbCommand } from './commands/db/index.js'
 import { healthCommand } from './commands/health/index.js'
+import { doctorCommand } from './commands/doctor/index.js'
+import { rlsCommand } from './commands/rls/index.js'
 import { auditCommand } from './commands/audit/index.js'
 import { debugCommand } from './commands/debug/index.js'
 import { queryCommand } from './commands/query/index.js'
@@ -79,6 +81,7 @@ ${prism.gray('GitHub:')} ${prism.underline(prism.blue('https://github.com/kysera
   program.addCommand(generateCommand())
   program.addCommand(dbCommand())
   program.addCommand(healthCommand())
+  program.addCommand(doctorCommand())
   program.addCommand(auditCommand())
   program.addCommand(debugCommand())
   program.addCommand(queryCommand())
@@ -86,6 +89,7 @@ ${prism.gray('GitHub:')} ${prism.underline(prism.blue('https://github.com/kysera
   program.addCommand(testCommand())
   program.addCommand(pluginCommand())
   program.addCommand(schemaCommand())
+  program.addCommand(rlsCommand())
 
   program.showSuggestionAfterError(true)
 
