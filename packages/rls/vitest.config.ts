@@ -5,13 +5,11 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['test/**/*.test.ts'],
-    exclude: [
-      // Integration tests require real databases (TEST_POSTGRES, TEST_MYSQL env vars)
-      // Run with: TEST_POSTGRES=true TEST_MYSQL=true pnpm test
-      ...(process.env['TEST_POSTGRES'] || process.env['TEST_MYSQL']
-        ? []
-        : ['test/integration/postgres-rls.test.ts', 'test/integration/mysql-rls.test.ts', 'test/integration/postgres-new-features.test.ts'])
-    ],
+    // Real-database integration files gate themselves: TEST_POSTGRES/TEST_MYSQL
+    // force them on/off, otherwise a TCP probe of the rls docker stack decides
+    // (see test/integration/*.test.ts and @kysera/testing detection.ts) — so
+    // skipped dialects show up in the report with the reason instead of being
+    // silently excluded here.
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

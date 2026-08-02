@@ -32,10 +32,33 @@ import { MutationGuard } from '../../src/transformer/mutation.js'
 import { PostgresRLSGenerator } from '../../src/native/postgres.js'
 import { RLSMigrationGenerator } from '../../src/native/migration.js'
 
-// Skip tests if PostgreSQL is not available
-const isPostgresAvailable = process.env['TEST_POSTGRES'] === 'true' || process.env['CI'] === 'true'
+import {
+  detectTestDatabase,
+  acquireMultiDbLock,
+  explainAvailability,
+  type MultiDbLockRelease
+} from '../../../testing/src/detection.js'
 
-describe.skipIf(!isPostgresAvailable)('PostgreSQL Integration Tests', () => {
+// Runs when TEST_POSTGRES forces it on, or when a TCP probe finds the rls
+// docker stack (test/docker/docker-compose.test.yml — host port 5433 by
+// default, POSTGRES_* env wins). The old `CI === 'true'` shortcut is gone:
+// CI sets TEST_POSTGRES explicitly where a database service exists, and the
+// probe keeps service-less CI jobs from dialing a database that is not there.
+const postgresDb = await detectTestDatabase('postgres', { port: 5433 })
+const isPostgresAvailable = postgresDb.available
+
+// Suites talking to a real database serialize across files and packages
+let releaseMultiDbLock: MultiDbLockRelease | undefined
+beforeAll(async () => {
+  if (isPostgresAvailable) releaseMultiDbLock = await acquireMultiDbLock()
+}, 660_000)
+afterAll(() => {
+  releaseMultiDbLock?.()
+})
+
+describe.skipIf(!isPostgresAvailable)(
+  `PostgreSQL Integration Tests (${explainAvailability(postgresDb)})`,
+  () => {
   let db: Kysely<RLSTestDatabase>
   let postgresAvailable = false
 

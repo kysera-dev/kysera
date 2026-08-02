@@ -1,0 +1,24 @@
+# Weekly dependency updates. GitHub Actions pins (full commit SHAs) are
+# updated together with their version comments; npm updates are raised from
+# the workspace root with minor/patch changes grouped to keep PR noise down.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - '*'
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    versioning-strategy: increase
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch

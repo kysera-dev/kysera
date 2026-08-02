@@ -11,6 +11,11 @@ import {
 } from '../../core/test/utils/multi-db.js'
 import { createRepositoryFactory, zodAdapter } from '../src/index.js'
 import { parseDatabaseError } from '@kysera/core'
+import {
+  resolveTestDatabases,
+  acquireMultiDbLock,
+  type MultiDbLockRelease
+} from '../../testing/src/detection.js'
 
 // Test schemas
 const UserCreateSchema = z.object({
@@ -55,22 +60,37 @@ const createPostSchemas = (dbType: DatabaseType) => {
 type User = Selectable<MultiDbTestDatabase['users']>
 type Post = Selectable<MultiDbTestDatabase['posts']>
 
-// Test all database types based on environment
+// Databases to test: sqlite always; server dialects when TEST_* env forces
+// them on, or when a TCP probe finds the docker stack running
+const dbs = await resolveTestDatabases()
+
 const getDatabaseTypes = (): DatabaseType[] => {
   const types: DatabaseType[] = ['sqlite']
 
-  if (process.env['TEST_POSTGRES'] === 'true') {
+  if (dbs.postgres.available) {
     types.push('postgres')
   }
 
-  if (process.env['TEST_MYSQL'] === 'true') {
+  if (dbs.mysql.available) {
     types.push('mysql')
   }
 
   return types
 }
 
-describe.each(getDatabaseTypes())('Repository Multi-Database Tests (%s)', dbType => {
+const databaseTypes = getDatabaseTypes()
+
+// Server-dialect suites drop/recreate the same tables in one shared docker
+// database — hold the cross-process lock for the whole file
+let releaseMultiDbLock: MultiDbLockRelease | undefined
+beforeAll(async () => {
+  if (databaseTypes.length > 1) releaseMultiDbLock = await acquireMultiDbLock()
+}, 660_000)
+afterAll(() => {
+  releaseMultiDbLock?.()
+})
+
+describe.each(databaseTypes)('Repository Multi-Database Tests (%s)', dbType => {
   let db: Kysely<MultiDbTestDatabase>
   let userRepository: any
   let postRepository: any

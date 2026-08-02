@@ -15,16 +15,20 @@
     },
     "test": {
       "dependsOn": ["build"],
-      "env": ["NODE_ENV"],
-      "outputs": ["coverage/**"]
+      "env": ["NODE_ENV", "CI", "TEST_*", "POSTGRES_*", "MYSQL_*", "MSSQL_*", "DB_PORT"],
+      "outputs": ["coverage/**"],
+      "cache": false
     },
     "test:coverage": {
       "dependsOn": ["build"],
-      "outputs": ["coverage/**"]
+      "env": ["NODE_ENV", "CI", "TEST_*", "POSTGRES_*", "MYSQL_*", "MSSQL_*", "DB_PORT"],
+      "outputs": ["coverage/**"],
+      "cache": false
     },
     "test:multi-db": {
       "dependsOn": ["build"],
-      "env": ["NODE_ENV", "TEST_POSTGRES", "TEST_MYSQL", "TEST_MSSQL", "DB_PORT", "POSTGRES_PORT", "POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DB", "MYSQL_PORT"]
+      "env": ["NODE_ENV", "CI", "TEST_*", "POSTGRES_*", "MYSQL_*", "MSSQL_*", "DB_PORT"],
+      "cache": false
     },
     "lint": {
       "dependsOn": [],

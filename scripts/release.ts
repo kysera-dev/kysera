@@ -23,6 +23,9 @@
  * --skip-publish           Skip publishing to npm
  * --dry-run                Simulate release without modifying anything
  * --force                  Force release even with uncommitted changes
+ * --provenance             Publish with npm provenance attestation. Also
+ *                          auto-enabled when the CI env var is set (GitHub
+ *                          Actions OIDC); local publishes stay unchanged.
  */
 
 import { execSync } from 'node:child_process'
@@ -61,6 +64,7 @@ interface ReleaseOptions {
   dryRun?: boolean
   force?: boolean
   listPackages?: boolean
+  provenance?: boolean
 }
 
 /**
@@ -428,9 +432,7 @@ async function generateChangelog(version: string, packages: Package[]): Promise<
   const baseTag = findBaseTag(version)
   const existing = await readExistingChangelog()
 
-  const commits = readCommitsSince(baseTag).filter(
-    commit => !existing.includes(commit.rawSubject)
-  )
+  const commits = readCommitsSince(baseTag).filter(commit => !existing.includes(commit.rawSubject))
 
   let changelog = `## [${version}] - ${date}\n\n`
 
@@ -633,6 +635,8 @@ async function publishPackages(
   const publishable = await sortByDependencyOrder(packages.filter(pkg => !pkg.private))
   // Never let a prerelease hijack the `latest` dist-tag
   const distTagArg = semver.prerelease(version) ? ' --tag next' : ''
+  // Provenance attestation: opt-in locally (--provenance), automatic in CI
+  const provenanceArg = options.provenance || process.env['CI'] ? ' --provenance' : ''
 
   console.log(prism.cyan(`\n📦 Publishing ${publishable.length} packages...`))
 
@@ -649,7 +653,7 @@ async function publishPackages(
 
     console.log(prism.gray(`  Publishing ${pkg.name}@${version}...`))
     try {
-      exec(`pnpm publish --access public --no-git-checks${distTagArg}`, {
+      exec(`pnpm publish --access public --no-git-checks${distTagArg}${provenanceArg}`, {
         cwd: pkg.path
       })
       console.log(prism.green(`  ✅ ${pkg.name}@${version} published`))
@@ -732,7 +736,8 @@ function parseArgs(args: string[]): ReleaseOptions {
     skipPublish: args.includes('--skip-publish'),
     dryRun: args.includes('--dry-run'),
     force: args.includes('--force'),
-    listPackages: args.includes('--list-packages') || args.includes('--list')
+    listPackages: args.includes('--list-packages') || args.includes('--list'),
+    provenance: args.includes('--provenance')
   }
 
   const versionFlagIndex = args.indexOf('--version')

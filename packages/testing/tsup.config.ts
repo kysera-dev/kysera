@@ -9,7 +9,18 @@ export default defineConfig({
   clean: true,
   minify: true,
   treeshake: true,
-  external: ['kysely', '@kysera/core', '@kysera/executor', 'better-sqlite3'],
+  external: [
+    'kysely',
+    '@kysera/core',
+    '@kysera/executor',
+    'better-sqlite3',
+    // node builtins used by detection.ts (platform is neutral, so esbuild
+    // needs them declared explicitly)
+    'node:net',
+    'node:fs',
+    'node:os',
+    'node:path'
+  ],
   target: 'esnext',
   platform: 'neutral',
   tsconfig: './tsconfig.build.json'

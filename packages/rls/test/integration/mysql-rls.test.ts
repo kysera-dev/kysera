@@ -30,10 +30,33 @@ import {
 import { SelectTransformer } from '../../src/transformer/select.js'
 import { MutationGuard } from '../../src/transformer/mutation.js'
 
-// Skip tests if MySQL is not available
-const isMysqlEnabled = process.env['TEST_MYSQL'] === 'true' || process.env['CI'] === 'true'
+import {
+  detectTestDatabase,
+  acquireMultiDbLock,
+  explainAvailability,
+  type MultiDbLockRelease
+} from '../../../testing/src/detection.js'
 
-describe.skipIf(!isMysqlEnabled)('MySQL Integration Tests', () => {
+// Runs when TEST_MYSQL forces it on, or when a TCP probe finds the rls
+// docker stack (test/docker/docker-compose.test.yml — host port 3307 by
+// default, MYSQL_* env wins). The old `CI === 'true'` shortcut is gone:
+// CI sets TEST_MYSQL explicitly where a database service exists, and the
+// probe keeps service-less CI jobs from dialing a database that is not there.
+const mysqlDb = await detectTestDatabase('mysql', { port: 3307 })
+const isMysqlEnabled = mysqlDb.available
+
+// Suites talking to a real database serialize across files and packages
+let releaseMultiDbLock: MultiDbLockRelease | undefined
+beforeAll(async () => {
+  if (isMysqlEnabled) releaseMultiDbLock = await acquireMultiDbLock()
+}, 660_000)
+afterAll(() => {
+  releaseMultiDbLock?.()
+})
+
+describe.skipIf(!isMysqlEnabled)(
+  `MySQL Integration Tests (${explainAvailability(mysqlDb)})`,
+  () => {
   let db: Kysely<RLSTestDatabase>
   let mysqlAvailable = false
 

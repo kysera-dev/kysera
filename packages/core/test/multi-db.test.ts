@@ -14,27 +14,48 @@ import {
   ForeignKeyError,
   DatabaseError
 } from '../src/index.js'
+import {
+  resolveTestDatabases,
+  acquireMultiDbLock,
+  type MultiDbLockRelease
+} from '../../testing/src/detection.js'
 
-// Test all database types based on environment
+// Databases to test: sqlite always; server dialects when TEST_* env forces
+// them on, or when a TCP probe finds the docker stack running
+const dbs = await resolveTestDatabases()
+
 const getDatabaseTypes = (): DatabaseType[] => {
   const types: DatabaseType[] = ['sqlite']
 
-  if (process.env['TEST_POSTGRES'] === 'true') {
+  if (dbs.postgres.available) {
     types.push('postgres')
   }
 
-  if (process.env['TEST_MYSQL'] === 'true') {
+  if (dbs.mysql.available) {
     types.push('mysql')
   }
 
-  if (process.env['TEST_MSSQL'] === 'true') {
+  if (dbs.mssql.available) {
     types.push('mssql')
   }
 
   return types
 }
 
-describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', dbType => {
+const databaseTypes = getDatabaseTypes()
+
+// Server-dialect suites drop/recreate the same tables in one shared docker
+// database — hold the cross-process lock for the whole file (sqlite-only
+// runs skip it)
+let releaseMultiDbLock: MultiDbLockRelease | undefined
+beforeAll(async () => {
+  if (databaseTypes.length > 1) releaseMultiDbLock = await acquireMultiDbLock()
+}, 660_000)
+afterAll(() => {
+  releaseMultiDbLock?.()
+})
+
+describe.each(databaseTypes)('Multi-Database Tests (%s)', dbType => {
   let db: Kysely<MultiDbTestDatabase>
 
   beforeAll(async () => {

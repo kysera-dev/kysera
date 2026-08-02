@@ -10,6 +10,11 @@ import {
 import { createRepositoryFactory, createORM, zodAdapter } from '@kysera/repository'
 import { softDeletePlugin } from '../src/index.js'
 import { z } from 'zod'
+import {
+  resolveTestDatabases,
+  acquireMultiDbLock,
+  type MultiDbLockRelease
+} from '../../testing/src/detection.js'
 
 interface User {
   id: number
@@ -26,22 +31,37 @@ interface Post {
   deleted_at: Date | string | null
 }
 
-// Test all database types based on environment
+// Databases to test: sqlite always; server dialects when TEST_* env forces
+// them on, or when a TCP probe finds the docker stack running
+const dbs = await resolveTestDatabases()
+
 const getDatabaseTypes = (): DatabaseType[] => {
   const types: DatabaseType[] = ['sqlite']
 
-  if (process.env['TEST_POSTGRES'] === 'true') {
+  if (dbs.postgres.available) {
     types.push('postgres')
   }
 
-  if (process.env['TEST_MYSQL'] === 'true') {
+  if (dbs.mysql.available) {
     types.push('mysql')
   }
 
   return types
 }
 
-describe.each(getDatabaseTypes())('Soft Delete Multi-Database Tests (%s)', dbType => {
+const databaseTypes = getDatabaseTypes()
+
+// Server-dialect suites drop/recreate the same tables in one shared docker
+// database — hold the cross-process lock for the whole file
+let releaseMultiDbLock: MultiDbLockRelease | undefined
+beforeAll(async () => {
+  if (databaseTypes.length > 1) releaseMultiDbLock = await acquireMultiDbLock()
+}, 660_000)
+afterAll(() => {
+  releaseMultiDbLock?.()
+})
+
+describe.each(databaseTypes)('Soft Delete Multi-Database Tests (%s)', dbType => {
   let db: Kysely<MultiDbTestDatabase>
   let orm: any
   let userRepo: any

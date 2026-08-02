@@ -10,6 +10,7 @@ import type { Pool as PgPool } from 'pg'
 import type { Pool as MysqlPool } from 'mysql2/promise'
 import type { Dialect } from '@kysera/core'
 import Database from 'better-sqlite3'
+import { detectTestDatabase } from '../../../testing/src/detection.js'
 
 // For test utilities, we support all dialects but only implement postgres/mysql/sqlite
 // MSSQL tests are handled separately due to different setup requirements
@@ -641,16 +642,23 @@ export function setupRLSTestDatabase(type: DatabaseType = 'sqlite') {
 }
 
 /**
- * Get available database types for testing
+ * Get available database types for testing: sqlite always; postgres/mysql
+ * when TEST_* env forces them on or a TCP probe finds the rls docker stack
+ * (host ports 5433/3307 by default — see DB_CONFIGS above).
  */
-export function getAvailableDatabaseTypes(): DatabaseType[] {
+export async function getAvailableDatabaseTypes(): Promise<DatabaseType[]> {
   const types: DatabaseType[] = ['sqlite']
 
-  if (process.env['TEST_POSTGRES'] === 'true') {
+  const [postgres, mysql] = await Promise.all([
+    detectTestDatabase('postgres', { port: 5433 }),
+    detectTestDatabase('mysql', { port: 3307 })
+  ])
+
+  if (postgres.available) {
     types.push('postgres')
   }
 
-  if (process.env['TEST_MYSQL'] === 'true') {
+  if (mysql.available) {
     types.push('mysql')
   }
 

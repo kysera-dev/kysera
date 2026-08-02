@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { DockerCompose } from '../packages/core/test/utils/docker.js'
+import { probeTcp } from '../packages/testing/src/detection.js'
 import { execSync } from 'child_process'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
@@ -9,6 +10,30 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 const DOCKER_PATH = '/usr/local/bin/docker'
+
+/**
+ * Wait until a TCP endpoint accepts (and keeps) connections. probeTcp already
+ * sees through docker's userland proxy, which accepts connections on
+ * published ports before the service inside is actually listening.
+ */
+async function waitForPort(
+  label: string,
+  host: string,
+  port: number,
+  deadlineMs: number
+): Promise<void> {
+  const deadline = Date.now() + deadlineMs
+  process.stdout.write(`⏳ Waiting for ${label} at ${host}:${port}...`)
+  while (Date.now() < deadline) {
+    if (await probeTcp(host, port, 1000)) {
+      process.stdout.write(' ready\n')
+      return
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
+  process.stdout.write(' timed out\n')
+  throw new Error(`${label} did not become reachable at ${host}:${port} within ${deadlineMs}ms`)
+}
 
 /**
  * Run tests with Docker databases
@@ -31,9 +56,23 @@ async function runTests(): Promise<void> {
       return
     }
 
-    // Start containers
-    await docker.up()
-    console.log('✅ Docker containers started')
+    // Start containers. The compose health wait can time out legitimately —
+    // SQL Server needs 90s+ under emulation on Apple Silicon — so fall back
+    // to per-database TCP readiness probes instead of giving up.
+    try {
+      await docker.up()
+      console.log('✅ Docker containers started')
+    } catch (error) {
+      console.warn(
+        '⚠️  Compose health wait did not complete (slow-starting services such as mssql can cause this); ' +
+          'verifying database readiness with TCP probes instead.'
+      )
+      console.warn(String(error))
+    }
+
+    // Hard readiness gate for the databases the multi-db suites use
+    await waitForPort('PostgreSQL', 'localhost', 5432, 60_000)
+    await waitForPort('MySQL', 'localhost', 3306, 90_000)
 
     // Set environment variables for database connections
     process.env['TEST_POSTGRES'] = 'true'
@@ -42,11 +81,13 @@ async function runTests(): Promise<void> {
     process.env['POSTGRES_PORT'] = '5432'
     process.env['POSTGRES_USER'] = 'test'
     process.env['POSTGRES_PASSWORD'] = 'test'
+    process.env['POSTGRES_DB'] = 'kysera_test'
     process.env['POSTGRES_DATABASE'] = 'kysera_test'
     process.env['MYSQL_HOST'] = 'localhost'
     process.env['MYSQL_PORT'] = '3306'
     process.env['MYSQL_USER'] = 'test'
     process.env['MYSQL_PASSWORD'] = 'test'
+    process.env['MYSQL_DB'] = 'kysera_test'
     process.env['MYSQL_DATABASE'] = 'kysera_test'
 
     // Run tests

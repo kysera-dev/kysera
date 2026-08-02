@@ -68,6 +68,22 @@ export {
   type WaitForOptions
 } from './helpers.js'
 
+// Smart test-database detection (docker stack auto-discovery) + suite lock
+export {
+  probeTcp,
+  detectTestDatabase,
+  resolveTestDatabases,
+  explainAvailability,
+  resetDetectionCache,
+  acquireMultiDbLock,
+  type TestDatabaseDialect,
+  type TestDbAvailability,
+  type TestDatabaseMatrix,
+  type DetectOptions,
+  type MultiDbLockOptions,
+  type MultiDbLockRelease
+} from './detection.js'
+
 // Plugin testing utilities
 export {
   createMockPlugin,

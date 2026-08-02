@@ -1,0 +1,221 @@
+# Continuous integration for every push to main and every pull request.
+#
+# Jobs:
+#   lint-typecheck   eslint + tsc across the workspace (single Node 22)
+#   test             unit tests on Node 22/24 — NO database services on
+#                    purpose: @kysera/testing's TCP detection must skip the
+#                    multi-db suites cleanly when nothing is listening
+#   multi-db         the same suites against real postgres/mysql services
+#                    (TEST_* env forced, serialized via --concurrency=1);
+#                    mssql runs as an experimental continue-on-error step
+#   runtimes         Bun and Deno import/feature smoke over built dists
+#   website-examples website build (strict broken-link check) + tsc over
+#                    the three example apps
+#
+# All third-party actions are pinned to full commit SHAs (supply-chain
+# hardening); dependabot keeps the pins fresh via the version comments.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-typecheck:
+    name: Lint & typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Enable corepack (pnpm pinned via package.json#packageManager)
+        run: corepack enable
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint and typecheck (includes apps/cli)
+        run: pnpm turbo run lint typecheck
+
+  test:
+    name: Unit tests (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22.x, 24.x]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      # Deliberately no database services here: multi-db suites must
+      # auto-skip via TCP detection (closed ports) and stay green.
+      - name: Run tests (multi-db suites skip via detection)
+        run: pnpm test
+
+  multi-db:
+    name: Multi-database tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: kysera_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d kysera_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: kysera_test
+          MYSQL_USER: test
+          MYSQL_PASSWORD: test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: 'Y'
+          MSSQL_SA_PASSWORD: 'Test@12345'
+          MSSQL_PID: Developer
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Test@12345' -Q 'SELECT 1' -b"
+          --health-interval 10s
+          --health-timeout 15s
+          --health-retries 15
+          --health-start-period 60s
+    env:
+      TEST_POSTGRES: 'true'
+      TEST_MYSQL: 'true'
+      # mssql stays off for the main run; the experimental step flips it on
+      TEST_MSSQL: 'false'
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: '5432'
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: kysera_test
+      POSTGRES_DATABASE: kysera_test
+      MYSQL_HOST: localhost
+      MYSQL_PORT: '3306'
+      MYSQL_USER: test
+      MYSQL_PASSWORD: test
+      MYSQL_DB: kysera_test
+      MYSQL_DATABASE: kysera_test
+      MSSQL_HOST: localhost
+      MSSQL_PORT: '1433'
+      MSSQL_USER: sa
+      MSSQL_PASSWORD: 'Test@12345'
+      MSSQL_DB: kysera_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply database init scripts (parity with docker-compose.test.yml)
+        env:
+          PGPASSWORD: test
+        run: |
+          psql -h localhost -p 5432 -U test -d kysera_test -v ON_ERROR_STOP=1 -f scripts/postgres-init.sql
+          mysql --host=127.0.0.1 --port=3306 --user=root --password=test kysera_test < scripts/mysql-init.sql
+      - name: Multi-db suites (postgres + mysql, serialized)
+        run: pnpm test:multi-db
+      - name: RLS integration suites (against job services)
+        run: pnpm --filter @kysera/rls test:all-dbs
+      # Experimental until sp_getapplock parity is proven on the CI image —
+      # results are reported but must not fail the job.
+      - name: MSSQL suites (experimental)
+        continue-on-error: true
+        env:
+          TEST_MSSQL: 'true'
+          TEST_POSTGRES: 'false'
+          TEST_MYSQL: 'false'
+        run: |
+          pnpm --filter @kysera/core test:multi-db
+          pnpm --filter @kysera/migrations exec vitest run test/advisory-lock.mssql.integration.test.ts
+
+  runtimes:
+    name: Bun & Deno smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build packages
+        run: pnpm turbo run build --filter='./packages/*'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - name: Bun compatibility smoke
+        run: bun test-all-bun.js
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+      - name: Deno compatibility smoke
+        run: deno run --allow-read --allow-env test-all-deno.ts
+
+  website-examples:
+    name: Website & examples
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build website (broken links fail the build)
+        run: pnpm --filter website build
+      - name: Build packages (examples typecheck against dist types)
+        run: pnpm turbo run build --filter='./packages/*'
+      - name: Typecheck examples
+        run: |
+          pnpm --filter blog-app-example exec tsc --noEmit
+          pnpm --filter e-commerce-example exec tsc --noEmit
+          pnpm --filter multi-tenant-saas-example exec tsc --noEmit

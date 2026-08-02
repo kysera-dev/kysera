@@ -16,7 +16,7 @@
     "src"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node ../../scripts/fix-node-imports.cjs ./dist net fs os path",
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest watch",
