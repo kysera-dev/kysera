@@ -48,7 +48,7 @@ const DatabaseConfigSchema = z
   .refine(
     data => {
       // Either connection or database field must be present
-      return data.connection || data.database || (data.host && data.database)
+      return !!data.connection || !!data.database || !!(data.host && data.database)
     },
     {
       message:

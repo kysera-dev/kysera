@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { prism, select, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError, ValidationError } from '../../utils/errors.js'
@@ -9,6 +9,7 @@ import { validateIdentifier, safeTruncate } from '../../utils/sql-sanitizer.js'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import type { Faker } from '@faker-js/faker'
+import type { KyseraConfig } from '../../config/schema.js'
 
 // Faker costs ~60ms to import; loaded on demand when seeding starts so
 // building the command tree stays cheap.
@@ -29,12 +30,12 @@ export interface TestSeedOptions {
 }
 
 interface SeedResult {
-  tables: Array<{
+  tables: {
     name: string
     recordsCreated: number
     relationships: string[]
     duration: number
-  }>
+  }[]
   strategy: string
   totalRecords: number
   totalDuration: number
@@ -43,7 +44,7 @@ interface SeedResult {
 
 interface TableSchema {
   name: string
-  columns: Array<{
+  columns: {
     name: string
     type: string
     nullable: boolean
@@ -52,7 +53,50 @@ interface TableSchema {
       table: string
       column: string
     }
-  }>
+  }[]
+}
+
+/**
+ * Structural view of the connection these helpers receive. At runtime it is
+ * the Kysely instance from getDatabaseConnection; test doubles extend it with
+ * a `dialectName` marker and a knex-style promise-returning `raw`. Only the
+ * members actually used in this command are declared.
+ */
+interface SeedDatabase {
+  dialectName?: string
+  selectFrom(table: string): SeedQueryBuilder
+  insertInto(table: string): {
+    values(rows: Record<string, unknown> | Record<string, unknown>[]): {
+      execute(): Promise<unknown>
+    }
+  }
+  deleteFrom(table: string): { execute(): Promise<unknown> }
+  raw<R = unknown>(sql: string, parameters?: unknown[]): Promise<R>
+  fn(name: string): unknown
+  destroy(): Promise<void>
+}
+
+interface SeedQueryBuilder {
+  select(columns: string | string[]): SeedQueryBuilder
+  leftJoin(table: string, callback: (join: SeedJoinBuilder) => SeedJoinBuilder): SeedQueryBuilder
+  leftJoin(table: string, leftColumn: string, rightColumn: string): SeedQueryBuilder
+  where(column: string, operator: string, value: unknown): SeedQueryBuilder
+  orderBy(expression: unknown): SeedQueryBuilder
+  limit(count: number): SeedQueryBuilder
+  execute<R extends Record<string, unknown> = Record<string, unknown>>(): Promise<R[]>
+  executeTakeFirst(): Promise<Record<string, unknown> | undefined>
+}
+
+interface SeedJoinBuilder {
+  on(leftColumn: string, operator: string, rightColumn: string): SeedJoinBuilder
+}
+
+/** Module shape expected from a --custom seeder file. */
+interface CustomSeederModule {
+  seed?: (
+    db: SeedDatabase,
+    context: { faker: Faker; count: number; locale?: string; seed?: number }
+  ) => unknown
 }
 
 export function testSeedCommand(): Command {
@@ -89,7 +133,9 @@ export function testSeedCommand(): Command {
 async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
   const startTime = Date.now()
 
-  const config = await loadConfig(options.config)
+  // Widened: mocked loaders may resolve null even though the declared return
+  // type is non-nullable; the runtime guard below must stay meaningful.
+  const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   if (!config?.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
@@ -110,18 +156,20 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
 
   const result: SeedResult = {
     tables: [],
-    strategy: options.strategy || 'realistic',
+    strategy: options.strategy ?? 'realistic',
     totalRecords: 0,
     totalDuration: 0,
     seed: options.seed
   }
 
   try {
-    const db = await getDatabaseConnection(config.database)
+    const connection = await getDatabaseConnection(config.database)
 
-    if (!db) {
+    if (!connection) {
       throw new CLIError('Failed to connect to database', 'DATABASE_ERROR')
     }
+
+    const db = connection as unknown as SeedDatabase
 
     if (options.custom) {
       seedSpinner.text = 'Running custom seeder...'
@@ -155,7 +203,7 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
 
     const sortedSchemas = sortTablesByDependencies(schemas)
 
-    const count = parseInt(options.count as any) || 100
+    const count = parseInt(String(options.count)) || 100
     if (isNaN(count) || count <= 0) {
       throw new CLIError('Invalid count value - must be a positive number')
     }
@@ -168,7 +216,7 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
         db,
         schema,
         count,
-        options.strategy || 'realistic',
+        options.strategy ?? 'realistic',
         options.relationships !== false
       )
 
@@ -198,7 +246,7 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
     if (options.json) {
       console.log(JSON.stringify(result, null, 2))
     } else {
-      displaySeedResults(result, options)
+      displaySeedResults(result)
     }
   } catch (error) {
     seedSpinner.fail('Seeding failed')
@@ -206,7 +254,7 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
   }
 }
 
-async function getTableSchemas(db: any, tables?: string[]): Promise<TableSchema[]> {
+async function getTableSchemas(db: SeedDatabase, tables?: string[]): Promise<TableSchema[]> {
   const schemas: TableSchema[] = []
 
   try {
@@ -223,21 +271,22 @@ async function getTableSchemas(db: any, tables?: string[]): Promise<TableSchema[
           .where('table_type', '=', 'BASE TABLE')
           .execute()
 
-        tableList = result.map((r: any) => r.table_name)
+        tableList = result.map(r => r.table_name as string)
       } else if (db.dialectName === 'mysql') {
-        const result = await db.raw(`
+        // mysql2 returns [rows, fields]; column case varies by server version
+        const result = await db.raw<[{ TABLE_NAME?: string; table_name: string }[], unknown]>(`
           SELECT table_name FROM information_schema.tables
           WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'
         `)
 
-        tableList = result[0].map((r: any) => r.TABLE_NAME || r.table_name)
+        tableList = result[0].map(r => r.TABLE_NAME ?? r.table_name)
       } else if (db.dialectName === 'sqlite') {
-        const result = await db.raw(`
+        const result = await db.raw<{ name: string }[]>(`
           SELECT name FROM sqlite_master
           WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
         `)
 
-        tableList = result.map((r: any) => r.name)
+        tableList = result.map(r => r.name)
       }
     }
 
@@ -246,13 +295,16 @@ async function getTableSchemas(db: any, tables?: string[]): Promise<TableSchema[
       schemas.push({ name: tableName, columns })
     }
   } catch (error) {
-    logger.debug(`Failed to get table schemas: ${error}`)
+    logger.debug(`Failed to get table schemas: ${String(error)}`)
   }
 
   return schemas
 }
 
-async function getTableColumns(db: any, tableName: string): Promise<TableSchema['columns']> {
+async function getTableColumns(
+  db: SeedDatabase,
+  tableName: string
+): Promise<TableSchema['columns']> {
   const columns: TableSchema['columns'] = []
 
   // Validate table name before use
@@ -262,7 +314,7 @@ async function getTableColumns(db: any, tableName: string): Promise<TableSchema[
     if (db.dialectName === 'postgres') {
       const result = await db
         .selectFrom('information_schema.columns as c')
-        .leftJoin('information_schema.key_column_usage as k', (join: any) =>
+        .leftJoin('information_schema.key_column_usage as k', join =>
           join.on('c.table_name', '=', 'k.table_name').on('c.column_name', '=', 'k.column_name')
         )
         .leftJoin(
@@ -279,7 +331,12 @@ async function getTableColumns(db: any, tableName: string): Promise<TableSchema[
         ])
         .where('c.table_name', '=', tableName)
         .where('c.table_schema', '=', 'public')
-        .execute()
+        .execute<{
+          column_name: string
+          data_type: string
+          is_nullable: string
+          constraint_type: string | null
+        }>()
 
       for (const col of result) {
         columns.push({
@@ -290,7 +347,17 @@ async function getTableColumns(db: any, tableName: string): Promise<TableSchema[
         })
       }
     } else if (db.dialectName === 'mysql') {
-      const result = await db.raw(
+      const result = await db.raw<
+        [
+          {
+            column_name: string
+            data_type: string
+            is_nullable: string
+            column_key: string
+          }[],
+          unknown
+        ]
+      >(
         `
         SELECT COLUMN_NAME as column_name, DATA_TYPE as data_type,
                IS_NULLABLE as is_nullable, COLUMN_KEY as column_key
@@ -311,7 +378,9 @@ async function getTableColumns(db: any, tableName: string): Promise<TableSchema[
     } else if (db.dialectName === 'sqlite') {
       // Use parameterized approach for SQLite PRAGMA
       const validTableName = validateIdentifier(tableName, 'table')
-      const result = await db.raw(`PRAGMA table_info('${validTableName}')`)
+      const result = await db.raw<{ name: string; type: string; notnull: number; pk: number }[]>(
+        `PRAGMA table_info('${validTableName}')`
+      )
 
       for (const col of result) {
         columns.push({
@@ -323,7 +392,7 @@ async function getTableColumns(db: any, tableName: string): Promise<TableSchema[
       }
     }
   } catch (error) {
-    logger.debug(`Failed to get columns for ${tableName}: ${error}`)
+    logger.debug(`Failed to get columns for ${tableName}: ${String(error)}`)
   }
 
   return columns
@@ -338,8 +407,9 @@ function sortTablesByDependencies(schemas: TableSchema[]): TableSchema[] {
     visited.add(schema.name)
 
     for (const column of schema.columns) {
-      if (column.foreignKey) {
-        const dependency = schemas.find(s => s.name === column.foreignKey!.table)
+      const foreignKey = column.foreignKey
+      if (foreignKey) {
+        const dependency = schemas.find(s => s.name === foreignKey.table)
         if (dependency && !visited.has(dependency.name)) {
           visit(dependency)
         }
@@ -356,7 +426,7 @@ function sortTablesByDependencies(schemas: TableSchema[]): TableSchema[] {
   return sorted
 }
 
-async function cleanTable(db: any, tableName: string): Promise<void> {
+async function cleanTable(db: SeedDatabase, tableName: string): Promise<void> {
   try {
     // Validate and use safe truncate
     validateIdentifier(tableName, 'table')
@@ -367,18 +437,18 @@ async function cleanTable(db: any, tableName: string): Promise<void> {
       await db.deleteFrom(tableName).execute()
     }
   } catch (error) {
-    logger.debug(`Failed to clean table ${tableName}: ${error}`)
+    logger.debug(`Failed to clean table ${tableName}: ${String(error)}`)
   }
 }
 
 async function seedTable(
-  db: any,
+  db: SeedDatabase,
   schema: TableSchema,
   count: number,
   strategy: string,
   createRelationships: boolean
 ): Promise<{ recordsCreated: number; relationships: string[] }> {
-  const records: any[] = []
+  const records: Record<string, unknown>[] = []
   const relationships: string[] = []
 
   let actualCount = count
@@ -414,12 +484,12 @@ async function seedTable(
 }
 
 async function generateRecord(
-  db: any,
+  db: SeedDatabase,
   schema: TableSchema,
   strategy: string,
   createRelationships: boolean
-): Promise<any> {
-  const record: any = {}
+): Promise<Record<string, unknown> | null> {
+  const record: Record<string, unknown> = {}
 
   for (const column of schema.columns) {
     if (column.primaryKey && column.type.includes('int')) {
@@ -451,7 +521,7 @@ async function generateRecord(
   return record
 }
 
-function generateColumnValue(column: TableSchema['columns'][0], strategy: string): any {
+function generateColumnValue(column: TableSchema['columns'][0], strategy: string): unknown {
   const { name, type } = column
 
   if (name === 'email' || name.includes('email')) {
@@ -553,7 +623,11 @@ function generateColumnValue(column: TableSchema['columns'][0], strategy: string
   return faker.lorem.word()
 }
 
-async function getRandomForeignKey(db: any, tableName: string, columnName: string): Promise<any> {
+async function getRandomForeignKey(
+  db: SeedDatabase,
+  tableName: string,
+  columnName: string
+): Promise<unknown> {
   try {
     const result = await db
       .selectFrom(tableName)
@@ -569,7 +643,7 @@ async function getRandomForeignKey(db: any, tableName: string, columnName: strin
 }
 
 async function runCustomSeeder(
-  db: any,
+  db: SeedDatabase,
   seederPath: string,
   options: TestSeedOptions
 ): Promise<void> {
@@ -635,10 +709,10 @@ async function runCustomSeeder(
       ])
     }
 
-    const seeder = await import(resolvedPath)
+    const seeder = (await import(resolvedPath)) as CustomSeederModule
 
     if (seeder.seed) {
-      const seederCount = parseInt(options.count as any) || 100
+      const seederCount = parseInt(String(options.count)) || 100
       if (isNaN(seederCount) || seederCount <= 0) {
         throw new CLIError('Invalid count value - must be a positive number')
       }
@@ -655,11 +729,11 @@ async function runCustomSeeder(
     if (error instanceof CLIError) {
       throw error
     }
-    throw new CLIError(`Failed to run custom seeder: ${error}`, 'SEEDER_ERROR')
+    throw new CLIError(`Failed to run custom seeder: ${String(error)}`, 'SEEDER_ERROR')
   }
 }
 
-function displaySeedResults(result: SeedResult, options: TestSeedOptions): void {
+function displaySeedResults(result: SeedResult): void {
   console.log('')
   console.log(prism.bold('Test Database Seeded'))
   console.log(prism.gray('='.repeat(50)))

@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { prism, table, confirm } from '@xec-sh/kit'
+import { prism, confirm } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
@@ -8,6 +8,7 @@ import { loadConfig } from '../../config/loader.js'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { toCamelCase, toPascalCase } from '../../utils/templates.js'
+import type { KyseraConfig } from '../../config/schema.js'
 
 export interface ValidateRepositoryOptions {
   directory?: string
@@ -48,9 +49,36 @@ interface ColumnInfo {
   name: string
   type: string
   nullable: boolean
-  default?: string
+  default?: string | null
   isPrimary: boolean
   isUnique: boolean
+}
+
+/**
+ * Structural view of the connection used for schema validation. At runtime it
+ * is the Kysely instance from getDatabaseConnection, reduced to the members
+ * this command touches.
+ */
+interface ValidateDatabase {
+  selectFrom(table: string): ValidateQueryBuilder
+  destroy(): Promise<void>
+}
+
+interface ValidateQueryBuilder {
+  select(selection: string | string[]): ValidateQueryBuilder
+  where(column: string, operator: string, value: unknown): ValidateQueryBuilder
+  execute<R extends Record<string, unknown> = Record<string, unknown>>(): Promise<R[]>
+  executeTakeFirst<R extends Record<string, unknown> = Record<string, unknown>>(): Promise<
+    R | undefined
+  >
+}
+
+/** Row shape returned by the aliased information_schema.columns queries. */
+interface InformationSchemaColumnRow extends Record<string, unknown> {
+  name: string
+  type: string
+  nullable: string
+  default: string | null
 }
 
 export function validateRepositoryCommand(): Command {
@@ -81,8 +109,9 @@ export function validateRepositoryCommand(): Command {
 }
 
 async function validateRepositories(options: ValidateRepositoryOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config)
+  // Widened: mocked loaders may resolve null even though the declared return
+  // type is non-nullable; the runtime guard below must stay meaningful.
+  const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   if (!config?.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
@@ -96,23 +125,22 @@ async function validateRepositories(options: ValidateRepositoryOptions): Promise
 
   try {
     // Get database connection
-    const db = await getDatabaseConnection(config.database)
+    const connection = await getDatabaseConnection(config.database)
 
-    if (!db) {
+    if (!connection) {
       throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
         'Check your database configuration',
         'Ensure the database server is running'
       ])
     }
 
+    const db = connection as unknown as ValidateDatabase
+
     // Find repository files
     const projectRoot = process.cwd()
-    const scanDirectory = path.join(projectRoot, options.directory || 'src')
+    const scanDirectory = path.join(projectRoot, options.directory ?? 'src')
 
-    const repositoryFiles = await findRepositoryFiles(
-      scanDirectory,
-      options.pattern || '**/*Repository.ts'
-    )
+    const repositoryFiles = await findRepositoryFiles(scanDirectory)
 
     if (repositoryFiles.length === 0) {
       validateSpinner.warn('No repository files found')
@@ -161,7 +189,7 @@ async function validateRepositories(options: ValidateRepositoryOptions): Promise
       const shouldFix = await confirm({ message: 'Do you want to attempt automatic fixes?' })
 
       if (shouldFix) {
-        await attemptFixes(validationResults, db, options)
+        await attemptFixes(validationResults, db)
       }
     }
 
@@ -173,7 +201,7 @@ async function validateRepositories(options: ValidateRepositoryOptions): Promise
   }
 }
 
-async function findRepositoryFiles(directory: string, pattern: string): Promise<string[]> {
+async function findRepositoryFiles(directory: string): Promise<string[]> {
   const files: string[] = []
 
   async function scanDir(dir: string): Promise<void> {
@@ -203,14 +231,14 @@ async function findRepositoryFiles(directory: string, pattern: string): Promise<
 
 async function validateRepositoryFile(
   filePath: string,
-  db: any,
+  db: ValidateDatabase,
   options: ValidateRepositoryOptions
 ): Promise<ValidationResult | null> {
   try {
     const content = await fs.readFile(filePath, 'utf-8')
 
     // Extract repository info
-    const classMatch = content.match(/export\s+(?:default\s+)?class\s+(\w+Repository)/m)
+    const classMatch = /export\s+(?:default\s+)?class\s+(\w+Repository)/m.exec(content)
     if (!classMatch) {
       return null
     }
@@ -218,7 +246,7 @@ async function validateRepositoryFile(
     const className = classMatch[1]
 
     // Extract table name
-    const tableMatch = content.match(/tableName[:\s=]+['"`](\w+)['"`]/m)
+    const tableMatch = /tableName[:\s=]+['"`](\w+)['"`]/m.exec(content)
     if (!tableMatch) {
       return {
         repository: className,
@@ -263,9 +291,8 @@ async function validateRepositoryFile(
     // Get table columns
     const columns = await getTableColumns(db, tableName)
 
-    // Extract entity/schema properties
+    // Extract entity properties
     const entityProperties = extractEntityProperties(content)
-    const schemaProperties = extractSchemaProperties(content)
 
     // Validate properties against database columns
     const issues: ValidationIssue[] = []
@@ -286,7 +313,7 @@ async function validateRepositoryFile(
         suggestions.push(`Add column '${toSnakeCase(prop.name)}' to table '${tableName}'`)
       } else {
         // Check type compatibility
-        const typeIssue = validateTypeCompatibility(prop, column, options.strict || false)
+        const typeIssue = validateTypeCompatibility(prop, column, options.strict ?? false)
         if (typeIssue) {
           issues.push(typeIssue)
         }
@@ -359,12 +386,12 @@ async function validateRepositoryFile(
       suggestions
     }
   } catch (error) {
-    logger.debug(`Failed to validate ${filePath}: ${error}`)
+    logger.debug(`Failed to validate ${filePath}: ${String(error)}`)
     return null
   }
 }
 
-async function checkTableExists(db: any, tableName: string): Promise<boolean> {
+async function checkTableExists(db: ValidateDatabase, tableName: string): Promise<boolean> {
   try {
     const tables = await db
       .selectFrom('information_schema.tables')
@@ -378,7 +405,7 @@ async function checkTableExists(db: any, tableName: string): Promise<boolean> {
   }
 }
 
-async function getTableColumns(db: any, tableName: string): Promise<ColumnInfo[]> {
+async function getTableColumns(db: ValidateDatabase, tableName: string): Promise<ColumnInfo[]> {
   try {
     const columns = await db
       .selectFrom('information_schema.columns')
@@ -389,9 +416,9 @@ async function getTableColumns(db: any, tableName: string): Promise<ColumnInfo[]
         'column_default as default'
       ])
       .where('table_name', '=', tableName)
-      .execute()
+      .execute<InformationSchemaColumnRow>()
 
-    return columns.map((col: any) => ({
+    return columns.map(col => ({
       name: col.name,
       type: col.type,
       nullable: col.nullable === 'YES',
@@ -404,7 +431,11 @@ async function getTableColumns(db: any, tableName: string): Promise<ColumnInfo[]
   }
 }
 
-async function checkIndexExists(db: any, tableName: string, columnName: string): Promise<boolean> {
+async function checkIndexExists(
+  db: ValidateDatabase,
+  tableName: string,
+  columnName: string
+): Promise<boolean> {
   try {
     const indexes = await db
       .selectFrom('information_schema.statistics')
@@ -421,11 +452,11 @@ async function checkIndexExists(db: any, tableName: string, columnName: string):
 
 function extractEntityProperties(
   content: string
-): Array<{ name: string; type: string; optional: boolean }> {
-  const properties: Array<{ name: string; type: string; optional: boolean }> = []
+): { name: string; type: string; optional: boolean }[] {
+  const properties: { name: string; type: string; optional: boolean }[] = []
 
-  const entityMatch = content.match(
-    /(?:interface|type)\s+\w+Entity\s*(?:extends\s+\w+)?\s*\{([^}]+)\}/m
+  const entityMatch = /(?:interface|type)\s+\w+Entity\s*(?:extends\s+\w+)?\s*\{([^}]+)\}/m.exec(
+    content
   )
   if (entityMatch) {
     const bodyContent = entityMatch[1]
@@ -443,35 +474,13 @@ function extractEntityProperties(
   return properties
 }
 
-function extractSchemaProperties(
-  content: string
-): Array<{ name: string; type: string; required: boolean }> {
-  const properties: Array<{ name: string; type: string; required: boolean }> = []
-
-  const schemaMatch = content.match(/(?:const|let)\s+\w+Schema\s*=\s*z\.object\(\{([^}]+)\}/m)
-  if (schemaMatch) {
-    const schemaBody = schemaMatch[1]
-    const propMatches = schemaBody.matchAll(/(\w+):\s*z\.(\w+)\(\)([^,\n}]*)/gm)
-
-    for (const match of propMatches) {
-      properties.push({
-        name: match[1],
-        type: match[2],
-        required: !match[3].includes('.optional()')
-      })
-    }
-  }
-
-  return properties
-}
-
 function validateTypeCompatibility(
   property: { name: string; type: string; optional: boolean },
   column: ColumnInfo,
   strict: boolean
 ): ValidationIssue | null {
-  // Map TypeScript types to database types
-  const typeMap: Record<string, string[]> = {
+  // Map TypeScript types to database types (lookup may miss for custom types)
+  const typeMap: Record<string, string[] | undefined> = {
     string: ['varchar', 'text', 'char', 'character varying'],
     number: ['int', 'integer', 'bigint', 'decimal', 'numeric', 'float', 'double', 'real'],
     boolean: ['boolean', 'bool', 'tinyint'],
@@ -481,7 +490,7 @@ function validateTypeCompatibility(
   }
 
   // Get base type (remove array notation, union types, etc.)
-  let propType = property.type.replace(/\[\]$/, '').split('|')[0].trim()
+  const propType = property.type.replace(/\[\]$/, '').split('|')[0].trim()
 
   // Check nullable mismatch
   if (strict && !property.optional && column.nullable) {
@@ -497,7 +506,7 @@ function validateTypeCompatibility(
   }
 
   // Check type compatibility
-  const compatibleTypes = typeMap[propType] || []
+  const compatibleTypes = typeMap[propType] ?? []
   const columnType = column.type.toLowerCase()
 
   if (compatibleTypes.length > 0 && !compatibleTypes.some(t => columnType.includes(t))) {
@@ -612,11 +621,7 @@ function displayValidationResults(
   }
 }
 
-async function attemptFixes(
-  results: ValidationResult[],
-  db: any,
-  options: ValidateRepositoryOptions
-): Promise<void> {
+async function attemptFixes(results: ValidationResult[], db: ValidateDatabase): Promise<void> {
   const fixSpinner = spinner()
   let fixedCount = 0
 
@@ -634,9 +639,10 @@ async function attemptFixes(
         for (const issue of fixableIssues) {
           if (issue.type === 'missing_column' && issue.field) {
             // Add missing property to entity
-            const entityMatch = updatedContent.match(
-              /((?:interface|type)\s+\w+Entity\s*(?:extends\s+\w+)?\s*\{)([^}]+)(\})/m
-            )
+            const entityMatch =
+              /((?:interface|type)\s+\w+Entity\s*(?:extends\s+\w+)?\s*\{)([^}]+)(\})/m.exec(
+                updatedContent
+              )
             if (entityMatch) {
               const columnInfo = await getColumnInfo(db, result.tableName, issue.field)
               if (columnInfo) {
@@ -664,7 +670,7 @@ async function attemptFixes(
           fixSpinner.warn(`Could not fix issues in ${result.repository}`)
         }
       } catch (error) {
-        fixSpinner.fail(`Failed to fix ${result.repository}: ${error}`)
+        fixSpinner.fail(`Failed to fix ${result.repository}: ${String(error)}`)
       }
     }
   }
@@ -679,7 +685,7 @@ async function attemptFixes(
 }
 
 async function getColumnInfo(
-  db: any,
+  db: ValidateDatabase,
   tableName: string,
   columnName: string
 ): Promise<ColumnInfo | null> {
@@ -689,7 +695,7 @@ async function getColumnInfo(
       .select(['column_name as name', 'data_type as type', 'is_nullable as nullable'])
       .where('table_name', '=', tableName)
       .where('column_name', '=', columnName)
-      .executeTakeFirst()
+      .executeTakeFirst<{ name: string; type: string; nullable: string }>()
 
     if (column) {
       return {
@@ -708,7 +714,8 @@ async function getColumnInfo(
 }
 
 function mapDatabaseTypeToTypeScript(dbType: string): string {
-  const typeMap: Record<string, string> = {
+  // Lookup may miss for unmapped database types
+  const typeMap: Record<string, string | undefined> = {
     varchar: 'string',
     text: 'string',
     char: 'string',
@@ -730,11 +737,11 @@ function mapDatabaseTypeToTypeScript(dbType: string): string {
   }
 
   const baseType = dbType.toLowerCase().split('(')[0]
-  return typeMap[baseType] || 'any'
+  return typeMap[baseType] ?? 'any'
 }
 
 function toSnakeCase(str: string): string {
-  return str.replace(/[A-Z]/g, (match, index) => {
+  return str.replace(/[A-Z]/g, (match: string, index: number) => {
     return index > 0 ? '_' + match.toLowerCase() : match.toLowerCase()
   })
 }

@@ -4,7 +4,7 @@ import { table as rawTable, type TableOptions, type TableColumn } from '@xec-sh/
  * Helper to display a table from an array of objects
  * Automatically generates columns from the first object's keys
  */
-export function displayTable<T extends Record<string, any>>(
+export function displayTable<T extends object>(
   data: T[],
   options?: Partial<Omit<TableOptions<T>, 'data' | 'columns'>> & {
     columns?: TableColumn<T>[]
@@ -16,9 +16,9 @@ export function displayTable<T extends Record<string, any>>(
 
   // Auto-generate columns from first object if not provided
   const columns =
-    options?.columns ||
+    options?.columns ??
     Object.keys(data[0]).map(key => ({
-      key: key as keyof T,
+      key,
       header: key.charAt(0).toUpperCase() + key.slice(1) // Capitalize first letter
     }))
 

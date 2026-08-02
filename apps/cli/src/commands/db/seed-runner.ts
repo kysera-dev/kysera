@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { prism } from '@xec-sh/kit'
 import { logger } from '../../utils/logger.js'
 import { CLIError, ValidationError } from '../../utils/errors.js'
+import type { Database } from '../../types/index.js'
 
 /**
  * Seed file interface - defines the contract for seed files
@@ -23,7 +24,7 @@ export interface SeedFile {
  */
 export interface SeedModule {
   /** Main seed function */
-  seed: (db: Kysely<any>, context?: SeedContext) => Promise<void>
+  seed: (db: Kysely<Database>, context?: SeedContext) => Promise<void>
   /** Optional order override */
   order?: number
   /** Optional dependencies (other seed names that must run first) */
@@ -87,7 +88,7 @@ export interface SeedResult {
   /** Seeds that were skipped */
   skipped: string[]
   /** Seeds that failed */
-  failed: Array<{ name: string; error: string }>
+  failed: { name: string; error: string }[]
   /** Total execution time in milliseconds */
   duration: number
 }
@@ -97,13 +98,17 @@ export interface SeedResult {
  */
 export interface SeedHooks {
   /** Called before each seed runs */
-  beforeSeed?: (name: string, db: Kysely<any>) => Promise<void>
+  beforeSeed?: (name: string, db: Kysely<Database>) => Promise<void>
   /** Called after each seed completes */
-  afterSeed?: (name: string, db: Kysely<any>, success: boolean) => Promise<void>
+  afterSeed?: (name: string, db: Kysely<Database>, success: boolean) => Promise<void>
   /** Called before all seeds run */
-  beforeAll?: (db: Kysely<any>) => Promise<void>
+  beforeAll?: (db: Kysely<Database>) => Promise<void>
   /** Called after all seeds complete */
-  afterAll?: (db: Kysely<any>, result: SeedResult) => Promise<void>
+  afterAll?: (db: Kysely<Database>, result: SeedResult) => Promise<void>
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /**
@@ -118,11 +123,11 @@ export interface SeedHooks {
  * - Hooks for extensibility
  */
 export class SeedRunner {
-  private db: Kysely<any>
+  private db: Kysely<Database>
   private seedsDir: string
   private hooks: SeedHooks
 
-  constructor(db: Kysely<any>, seedsDir: string = './seeds', hooks: SeedHooks = {}) {
+  constructor(db: Kysely<Database>, seedsDir = './seeds', hooks: SeedHooks = {}) {
     this.db = db
     this.seedsDir = resolve(process.cwd(), seedsDir)
     this.hooks = hooks
@@ -160,8 +165,8 @@ export class SeedRunner {
 
       // Create seed context
       const context: SeedContext = {
-        dryRun: options.dryRun || false,
-        verbose: options.verbose || false,
+        dryRun: options.dryRun ?? false,
+        verbose: options.verbose ?? false,
         factory,
         logger
       }
@@ -179,8 +184,8 @@ export class SeedRunner {
       if (this.hooks.afterAll) {
         await this.hooks.afterAll(this.db, result)
       }
-    } catch (error: any) {
-      logger.error('Seed runner error: ' + error.message)
+    } catch (error) {
+      logger.error('Seed runner error: ' + errorMessage(error))
       throw error
     }
 
@@ -191,7 +196,7 @@ export class SeedRunner {
   /**
    * Get seed files to execute
    */
-  async getSeedFiles(options: SeedRunnerOptions): Promise<SeedFile[]> {
+  getSeedFiles(options: SeedRunnerOptions): Promise<SeedFile[]> {
     const seedFiles: SeedFile[] = []
 
     if (options.file) {
@@ -231,14 +236,14 @@ export class SeedRunner {
     }
 
     // Sort by order
-    return seedFiles.sort((a, b) => a.order - b.order)
+    return Promise.resolve(seedFiles.sort((a, b) => a.order - b.order))
   }
 
   /**
    * Extract order from filename (e.g., "01_users.ts" -> 1)
    */
   private extractOrder(filename: string): number {
-    const match = filename.match(/^(\d+)/)
+    const match = /^(\d+)/.exec(filename)
     return match ? parseInt(match[1], 10) : 999
   }
 
@@ -248,20 +253,20 @@ export class SeedRunner {
   async loadSeedModule(file: SeedFile): Promise<SeedModule> {
     try {
       const fileUrl = pathToFileURL(file.path).href
-      const module = await import(fileUrl)
+      const module = (await import(fileUrl)) as Record<string, unknown>
 
-      if (!module.seed || typeof module.seed !== 'function') {
+      if (typeof module.seed !== 'function') {
         throw new ValidationError("Seed file must export a 'seed' function")
       }
 
       return {
-        seed: module.seed,
-        order: module.order,
-        dependencies: module.dependencies
+        seed: module.seed as SeedModule['seed'],
+        order: module.order as number | undefined,
+        dependencies: module.dependencies as string[] | undefined
       }
-    } catch (error: any) {
+    } catch (error) {
       throw new CLIError(
-        'Failed to load seed ' + file.name + ': ' + error.message,
+        'Failed to load seed ' + file.name + ': ' + errorMessage(error),
         'SEED_LOAD_ERROR'
       )
     }
@@ -291,8 +296,8 @@ export class SeedRunner {
           await this.executeSeed(file, trx, context, result, options)
         }
       })
-    } catch (error: any) {
-      logger.error('Transaction rolled back: ' + error.message)
+    } catch (error) {
+      logger.error('Transaction rolled back: ' + errorMessage(error))
       throw error
     }
   }
@@ -317,13 +322,14 @@ export class SeedRunner {
         await this.db.transaction().execute(async trx => {
           await this.executeSeed(file, trx, context, result, options)
         })
-      } catch (error: any) {
-        result.failed.push({ name: file.name, error: error.message })
-        logger.error(prism.red('x') + ' ' + file.name + ': ' + error.message)
+      } catch (error) {
+        const message = errorMessage(error)
+        result.failed.push({ name: file.name, error: message })
+        logger.error(prism.red('x') + ' ' + file.name + ': ' + message)
 
         // Continue with other seeds unless in strict mode
         if (options.verbose) {
-          logger.error(error.stack)
+          logger.error(error instanceof Error ? (error.stack ?? '') : String(error))
         }
       }
     }
@@ -334,7 +340,7 @@ export class SeedRunner {
    */
   private async executeSeed(
     file: SeedFile,
-    db: Kysely<any>,
+    db: Kysely<Database>,
     context: SeedContext,
     result: SeedResult,
     options: SeedRunnerOptions
@@ -357,12 +363,12 @@ export class SeedRunner {
       await module.seed(db, context)
 
       const duration = Date.now() - seedStart
-      logger.info(prism.green('v') + ' ' + file.name + ' (' + duration + 'ms)')
+      logger.info(prism.green('v') + ' ' + file.name + ` (${duration}ms)`)
       result.executed.push(file.name)
       success = true
-    } catch (error: any) {
+    } catch (error) {
       const duration = Date.now() - seedStart
-      logger.error(prism.red('x') + ' ' + file.name + ' (' + duration + 'ms)')
+      logger.error(prism.red('x') + ' ' + file.name + ` (${duration}ms)`)
       throw error
     } finally {
       // Call afterSeed hook
@@ -406,7 +412,7 @@ export class SeedRunner {
    * This is a placeholder - in a real implementation, you might track
    * seed execution in a database table similar to migrations
    */
-  async getSeedStatus(): Promise<Array<{ name: string; executedAt?: Date }>> {
+  async getSeedStatus(): Promise<{ name: string; executedAt?: Date }[]> {
     const files = await this.getSeedFiles({})
     return files.map(f => ({ name: f.name }))
   }
@@ -416,7 +422,7 @@ export class SeedRunner {
  * Create a seed runner instance
  */
 export function createSeedRunner(
-  db: Kysely<any>,
+  db: Kysely<Database>,
   seedsDir?: string,
   hooks?: SeedHooks
 ): SeedRunner {
@@ -427,7 +433,7 @@ export function createSeedRunner(
  * Helper to define seed with type checking
  */
 export function defineSeed(
-  seedFn: (db: Kysely<any>, context?: SeedContext) => Promise<void>,
+  seedFn: (db: Kysely<Database>, context?: SeedContext) => Promise<void>,
   options?: { order?: number; dependencies?: string[] }
 ): SeedModule {
   return {

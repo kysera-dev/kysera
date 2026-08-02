@@ -1,5 +1,10 @@
 import { Command } from 'commander'
-import { DatabaseIntrospector } from '../generate/introspector.js'
+import {
+  DatabaseIntrospector,
+  type TableColumn,
+  type TableIndex,
+  type TableInfo
+} from '../generate/introspector.js'
 import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
@@ -10,6 +15,8 @@ import { formatBytes } from '../../utils/formatting.js'
 import { isJsonMode, output } from '../../utils/output.js'
 import { writeFileSync } from 'fs'
 import { resolve, dirname } from 'path'
+import type { DatabaseDialect } from '../../utils/database.js'
+import type { DatabaseInstance } from '../../types/index.js'
 
 export interface DumpOptions {
   json?: boolean
@@ -20,6 +27,23 @@ export interface DumpOptions {
   format?: 'sql' | 'json'
   config?: string
   schema?: string
+}
+
+interface JsonDumpTable {
+  name: string
+  schema?: {
+    columns: TableColumn[]
+    indexes: TableIndex[]
+    primaryKey?: string[]
+    foreignKeys?: TableInfo['foreignKeys']
+  }
+  data?: unknown[]
+}
+
+interface JsonDump {
+  version: string
+  timestamp: string
+  tables: Record<string, JsonDumpTable>
 }
 
 export function dumpCommand(): Command {
@@ -59,12 +83,12 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
   await withDatabase(
     { config: options.config, schema: options.schema },
     async (db, config, schema) => {
-      const dumpSpinner = spinner() as any
+      const dumpSpinner = spinner()
       dumpSpinner.start(
         `Creating database dump${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
       )
 
-      const introspector = new DatabaseIntrospector(db, config.database!.dialect as any, schema)
+      const introspector = new DatabaseIntrospector(db, config.database.dialect, schema)
 
       // Get tables to dump
       let tables: string[]
@@ -90,7 +114,7 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
       // Generate output filename
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
       const outputFile =
-        options.output || `dump_${timestamp}.${options.format === 'json' ? 'json' : 'sql'}`
+        options.output ?? `dump_${timestamp}.${options.format === 'json' ? 'json' : 'sql'}`
 
       // Validate output path is safe (within current working directory or absolute path)
       const baseDir = process.cwd()
@@ -130,7 +154,7 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
           introspector,
           tables,
           options,
-          config.database!.dialect
+          config.database.dialect
         )
       }
 
@@ -142,7 +166,7 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
       if (isJsonMode()) {
         output({
           file: outputPath,
-          format: options.format || 'sql',
+          format: options.format ?? 'sql',
           tables: tables.length,
           schemaIncluded: !options.dataOnly,
           dataIncluded: !options.schemaOnly,
@@ -154,7 +178,7 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
       // Show summary
       console.log('')
       console.log(prism.gray('Dump Summary:'))
-      console.log(`  Format: ${options.format || 'sql'}`)
+      console.log(`  Format: ${options.format ?? 'sql'}`)
       console.log(`  Tables: ${tables.length}`)
       console.log(`  Schema: ${options.dataOnly ? 'No' : 'Yes'}`)
       console.log(`  Data: ${options.schemaOnly ? 'No' : 'Yes'}`)
@@ -164,19 +188,19 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
 }
 
 async function generateJsonDump(
-  db: any,
+  db: DatabaseInstance,
   introspector: DatabaseIntrospector,
   tables: string[],
   options: DumpOptions
 ): Promise<string> {
-  const dump: any = {
+  const dump: JsonDump = {
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     tables: {}
   }
 
   for (const tableName of tables) {
-    const tableData: any = {
+    const tableData: JsonDumpTable = {
       name: tableName
     }
 
@@ -204,11 +228,11 @@ async function generateJsonDump(
 }
 
 async function generateSqlDump(
-  db: any,
+  db: DatabaseInstance,
   introspector: DatabaseIntrospector,
   tables: string[],
   options: DumpOptions,
-  dialect: string
+  dialect: DatabaseDialect
 ): Promise<string> {
   const lines: string[] = []
 
@@ -224,7 +248,7 @@ async function generateSqlDump(
     lines.push(`SET session_replication_role = replica;`)
   } else if (dialect === 'mysql') {
     lines.push(`SET FOREIGN_KEY_CHECKS = 0;`)
-  } else if (dialect === 'sqlite') {
+  } else {
     lines.push(`PRAGMA foreign_keys = OFF;`)
   }
   lines.push(``)
@@ -249,7 +273,7 @@ async function generateSqlDump(
       // Create indexes
       for (const index of tableInfo.indexes) {
         if (!index.isPrimary) {
-          const indexSql = generateCreateIndexSql(tableName, index, dialect)
+          const indexSql = generateCreateIndexSql(tableName, index)
           lines.push(indexSql)
         }
       }
@@ -274,7 +298,7 @@ async function generateSqlDump(
         for (const row of rows) {
           const values = columns
             .map(col => {
-              const value = row[col]
+              const value: unknown = row[col]
               if (value === null) {
                 return 'NULL'
               } else if (typeof value === 'string') {
@@ -284,7 +308,10 @@ async function generateSqlDump(
               } else if (typeof value === 'boolean') {
                 return value ? 'TRUE' : 'FALSE'
               } else {
-                return String(value)
+                // Numbers, bigints and exotic values (buffers, json objects)
+                // keep their default stringification in SQL dumps
+                const stringable = value as { toString(): string }
+                return String(stringable)
               }
             })
             .join(', ')
@@ -301,19 +328,19 @@ async function generateSqlDump(
     lines.push(`SET session_replication_role = DEFAULT;`)
   } else if (dialect === 'mysql') {
     lines.push(`SET FOREIGN_KEY_CHECKS = 1;`)
-  } else if (dialect === 'sqlite') {
+  } else {
     lines.push(`PRAGMA foreign_keys = ON;`)
   }
 
   return lines.join('\n')
 }
 
-function generateCreateTableSql(tableInfo: any, dialect: string): string {
+function generateCreateTableSql(tableInfo: TableInfo, dialect: string): string {
   const lines: string[] = []
   lines.push(`CREATE TABLE "${tableInfo.name}" (`)
 
   // Columns
-  const columnDefs = tableInfo.columns.map((col: any) => {
+  const columnDefs = tableInfo.columns.map((col: TableColumn) => {
     let def = `  "${col.name}" ${mapDataTypeToSql(col.dataType, dialect)}`
 
     if (col.isPrimaryKey && dialect !== 'sqlite') {
@@ -364,7 +391,7 @@ function generateCreateTableSql(tableInfo: any, dialect: string): string {
   return lines.join('\n')
 }
 
-function generateCreateIndexSql(tableName: string, index: any, dialect: string): string {
+function generateCreateIndexSql(tableName: string, index: TableIndex): string {
   const unique = index.isUnique ? 'UNIQUE ' : ''
   const columns = index.columns.map((c: string) => `"${c}"`).join(', ')
   return `CREATE ${unique}INDEX "${index.name}" ON "${tableName}" (${columns});`

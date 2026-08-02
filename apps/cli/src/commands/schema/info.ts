@@ -1,8 +1,9 @@
 import { Command } from 'commander'
-import { prism, table } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
+import { displayTable } from '../../utils/table-helper.js'
 
 export interface InfoOptions {
   json?: boolean
@@ -10,6 +11,39 @@ export interface InfoOptions {
   foreignKeys?: boolean
   verbose?: boolean
   config?: string
+}
+
+interface SchemaIndexInfo {
+  tableName: string
+  indexName: string
+  indexType: string
+  isUnique: boolean
+  isPrimary: boolean
+  columns: string[]
+}
+
+interface SchemaForeignKeyInfo {
+  constraintName: string
+  tableName: string
+  columnName: string
+  referencedSchema: string
+  referencedTable: string
+  referencedColumn: string
+  onDelete: string
+  onUpdate: string
+}
+
+interface SchemaInfoResult {
+  name: string
+  owner: string | null
+  tableCount: number
+  sizeBytes: number
+  sizeFormatted: string
+  tables: string[]
+  isTenantSchema: boolean
+  tenantId: string | null
+  indexes?: SchemaIndexInfo[]
+  foreignKeys?: SchemaForeignKeyInfo[]
 }
 
 export function infoCommand(): Command {
@@ -50,8 +84,7 @@ async function showSchemaInfo(name: string, options: InfoOptions): Promise<void>
     const infoSpinner = spinner()
     infoSpinner.start(`Fetching schema info for '${name}'...`)
 
-    const { createPostgresAdapter, isTenantSchema, parseTenantSchemaName } =
-      await import('@kysera/dialects')
+    const { createPostgresAdapter, parseTenantSchemaName } = await import('@kysera/dialects')
     const adapter = createPostgresAdapter()
 
     // Check if schema exists
@@ -71,7 +104,7 @@ async function showSchemaInfo(name: string, options: InfoOptions): Promise<void>
     const tenantId = parseTenantSchemaName(name)
 
     // Prepare result object
-    const result: any = {
+    const result: SchemaInfoResult = {
       name: info.name,
       owner: info.owner,
       tableCount: info.tableCount,
@@ -83,14 +116,14 @@ async function showSchemaInfo(name: string, options: InfoOptions): Promise<void>
     }
 
     // Get indexes if requested
-    let indexes: any[] = []
+    let indexes: SchemaIndexInfo[] = []
     if (options.indexes || options.verbose) {
       indexes = await adapter.getSchemaIndexes(db, { schema: name })
       result.indexes = indexes
     }
 
     // Get foreign keys if requested
-    let foreignKeys: any[] = []
+    let foreignKeys: SchemaForeignKeyInfo[] = []
     if (options.foreignKeys || options.verbose) {
       foreignKeys = await adapter.getSchemaForeignKeys(db, { schema: name })
       result.foreignKeys = foreignKeys
@@ -111,7 +144,7 @@ async function showSchemaInfo(name: string, options: InfoOptions): Promise<void>
 
     // Basic info
     console.log(prism.cyan('General Information:'))
-    console.log(`  Owner: ${info.owner || 'unknown'}`)
+    console.log(`  Owner: ${info.owner ?? 'unknown'}`)
     console.log(`  Tables: ${info.tableCount}`)
     console.log(`  Size: ${formatBytes(info.sizeBytes)}`)
 
@@ -143,7 +176,7 @@ async function showSchemaInfo(name: string, options: InfoOptions): Promise<void>
         primary: idx.isPrimary ? 'Yes' : 'No',
         columns: idx.columns.join(', ')
       }))
-      console.log(table(indexTable as any))
+      displayTable(indexTable)
     }
 
     // Foreign keys
@@ -158,7 +191,7 @@ async function showSchemaInfo(name: string, options: InfoOptions): Promise<void>
         onDelete: fk.onDelete,
         onUpdate: fk.onUpdate
       }))
-      console.log(table(fkTable as any))
+      displayTable(fkTable)
     }
 
     // Usage hints

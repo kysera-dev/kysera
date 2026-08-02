@@ -4,8 +4,6 @@
  * These templates provide starting points for creating database seeds.
  */
 
-import { ValidationError } from '../../../utils/errors.js'
-
 export const SEED_TEMPLATES = {
   /**
    * Basic seed template - simple data insertion

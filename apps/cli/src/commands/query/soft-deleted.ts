@@ -2,7 +2,6 @@ import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
 import { displayTable } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 
@@ -58,20 +57,20 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
 
   await withDatabase(
     { config: options.config, schema: options.schema },
-    async (db, config, schema) => {
+    async (db, _config, schema) => {
       // Use schema-aware db for PostgreSQL
       const schemaDb = schema !== 'public' ? db.withSchema(schema) : db
       const querySpinner = spinner()
-      const column = options.column || 'deleted_at'
-      const limit = parseInt(options.limit || '100', 10)
+      const column = options.column ?? 'deleted_at'
+      const limit = parseInt(options.limit ?? '100', 10)
 
       if (options.restore) {
         querySpinner.start(`Restoring record ${options.restore}...`)
 
         await schemaDb
           .updateTable(tableName)
-          .set({ [column]: null } as any)
-          .where('id', '=', options.restore as any)
+          .set({ [column]: null })
+          .where('id', '=', options.restore)
           .execute()
 
         querySpinner.succeed(`Record ${options.restore} restored successfully`)
@@ -84,10 +83,10 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
         const countResult = await schemaDb
           .selectFrom(tableName)
           .select(schemaDb.fn.countAll().as('count'))
-          .where(column as any, 'is not', null)
+          .where(column, 'is not', null)
           .executeTakeFirst()
 
-        const count = Number(countResult?.count || 0)
+        const count = Number(countResult?.count ?? 0)
         querySpinner.stop(`Found ${count} soft-deleted records`)
 
         if (count === 0) {
@@ -112,7 +111,7 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
 
         await schemaDb
           .deleteFrom(tableName)
-          .where(column as any, 'is not', null)
+          .where(column, 'is not', null)
           .execute()
 
         querySpinner.succeed(`Purged ${count} records from ${tableName}`)
@@ -124,8 +123,8 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
       const results = await schemaDb
         .selectFrom(tableName)
         .selectAll()
-        .where(column as any, 'is not', null)
-        .orderBy(column as any, 'desc')
+        .where(column, 'is not', null)
+        .orderBy(column, 'desc')
         .limit(limit)
         .execute()
 
@@ -145,8 +144,8 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
         console.log(prism.bold(`Soft-Deleted Records in '${options.table}':`))
         console.log('')
 
-        const formattedResults = results.map((row: any) => {
-          const formatted: any = {}
+        const formattedResults = results.map(row => {
+          const formatted: Record<string, string> = {}
           for (const [key, value] of Object.entries(row)) {
             if (value === null) {
               formatted[key] = prism.gray('NULL')
@@ -155,13 +154,14 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
             } else if (typeof value === 'object') {
               formatted[key] = JSON.stringify(value)
             } else {
-              formatted[key] = String(value)
+              const stringable = value as { toString(): string }
+              formatted[key] = String(stringable)
             }
           }
           return formatted
         })
 
-        console.log(displayTable(formattedResults))
+        displayTable(formattedResults)
 
         console.log('')
         console.log(prism.cyan('Actions:'))

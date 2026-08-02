@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { DatabaseIntrospector } from '../generate/introspector.js'
+import { DatabaseIntrospector, type TableInfo } from '../generate/introspector.js'
 import { prism } from '@xec-sh/kit'
 import { displayTable as table } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
@@ -7,7 +7,7 @@ import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 
 import { logger } from '../../utils/logger.js'
-import type { DatabaseInstance, TableInfo, ColumnInfo } from '../../types/index.js'
+import type { DatabaseInstance } from '../../types/index.js'
 import { toCamelCase, toPascalCase } from '../../utils/templates.js'
 
 export interface IntrospectOptions {
@@ -50,12 +50,12 @@ async function introspectDatabase(
   await withDatabase(
     { config: options.config, schema: options.schema },
     async (db, config, schema) => {
-      const introspectSpinner = spinner() as any
+      const introspectSpinner = spinner()
       introspectSpinner.start(
         `Introspecting database${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
       )
 
-      const introspector = new DatabaseIntrospector(db, config.database.dialect as any, schema)
+      const introspector = new DatabaseIntrospector(db, config.database.dialect, schema)
 
       if (tableName) {
         const tableInfo = await introspector.getTableInfo(tableName)
@@ -64,7 +64,7 @@ async function introspectDatabase(
         if (options.json) {
           console.log(JSON.stringify(tableInfo, null, 2))
         } else {
-          displayTableInfo(tableInfo, options.detailed || false)
+          displayTableInfo(tableInfo, options.detailed ?? false)
         }
       } else {
         const tables = await introspector.getTables()
@@ -96,11 +96,11 @@ async function introspectDatabase(
                 Columns: info.columns.length,
                 Indexes: info.indexes.length,
                 'Primary Key': info.primaryKey ? info.primaryKey.join(', ') : '-',
-                'Foreign Keys': info.foreignKeys?.length || 0,
+                'Foreign Keys': info.foreignKeys?.length ?? 0,
                 Rows: rowCount
               })
             } catch (error) {
-              logger.debug(`Failed to get info for ${tblName}: ${error}`)
+              logger.debug(`Failed to get info for ${tblName}: ${String(error)}`)
               summaryData.push({
                 Table: tblName,
                 Columns: '?',
@@ -115,7 +115,7 @@ async function introspectDatabase(
           console.log('')
           console.log(prism.bold('Database Schema Summary'))
           console.log('')
-          console.log(table(summaryData))
+          table(summaryData)
 
           console.log('')
           console.log(prism.gray('Database Information:'))
@@ -143,8 +143,8 @@ function displayTableInfo(tableInfo: TableInfo, detailed: boolean): void {
   console.log('')
   console.log(prism.cyan('Columns:'))
 
-  const columnData = tableInfo.columns.map((col: ColumnInfo) => {
-    const row: any = {
+  const columnData = tableInfo.columns.map(col => {
+    const row: Record<string, string | number> = {
       Name: col.name,
       Type: col.dataType,
       Nullable: col.isNullable ? 'Yes' : 'No'
@@ -158,7 +158,7 @@ function displayTableInfo(tableInfo: TableInfo, detailed: boolean): void {
     }
 
     if (detailed) {
-      row.Default = col.defaultValue || '-'
+      row.Default = col.defaultValue ?? '-'
       if (col.maxLength) {
         row['Max Length'] = col.maxLength
       }
@@ -170,28 +170,28 @@ function displayTableInfo(tableInfo: TableInfo, detailed: boolean): void {
     return row
   })
 
-  console.log(table(columnData))
+  table(columnData)
 
   if (tableInfo.indexes.length > 0) {
     console.log('')
     console.log(prism.cyan('Indexes:'))
-    const indexData = tableInfo.indexes.map((idx: any) => ({
+    const indexData = tableInfo.indexes.map(idx => ({
       Name: idx.name,
       Columns: idx.columns.join(', '),
       Unique: idx.isUnique ? 'Yes' : 'No',
       Primary: idx.isPrimary ? 'Yes' : 'No'
     }))
-    console.log(table(indexData))
+    table(indexData)
   }
 
   if (tableInfo.foreignKeys && tableInfo.foreignKeys.length > 0) {
     console.log('')
     console.log(prism.cyan('Foreign Keys:'))
-    const fkData = tableInfo.foreignKeys.map((fk: any) => ({
+    const fkData = tableInfo.foreignKeys.map(fk => ({
       Column: fk.column,
       References: `${fk.referencedTable}.${fk.referencedColumn}`
     }))
-    console.log(table(fkData))
+    table(fkData)
   }
 
   if (detailed) {
@@ -215,7 +215,7 @@ async function getTableRowCount(db: DatabaseInstance, tableName: string): Promis
       .selectFrom(tableName)
       .select(db.fn.countAll().as('count'))
       .executeTakeFirst()
-    return result?.count?.toString() || '0'
+    return result ? String(result.count) : '0'
   } catch {
     return '?'
   }

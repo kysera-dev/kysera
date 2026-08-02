@@ -1,10 +1,14 @@
 import { Command } from 'commander'
-import { prism, table as displayTable } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
-import type { DatabaseInstance } from '../../types/index.js'
+import type {
+  DatabaseInstance,
+  MySQLExplainJsonRow,
+  PostgresExplainOutput,
+  SQLitePlan
+} from '../../types/index.js'
 
 export interface ExplainOptions {
   query?: string
@@ -23,10 +27,14 @@ export interface ExplainOptions {
 
 interface ExplainResult {
   query: string
-  plan: any
+  plan: unknown
   executionTime?: number
   planningTime?: number
   totalTime?: number
+}
+
+interface PostgresExplainJsonRow {
+  'QUERY PLAN': string | PostgresExplainOutput[]
 }
 
 export function explainCommand(): Command {
@@ -98,11 +106,13 @@ async function explainQuery(options: ExplainOptions): Promise<void> {
         result = await explainMysql(db, queryToExplain, options)
         break
       case 'sqlite':
-        result = await explainSqlite(db, queryToExplain, options)
+        result = await explainSqlite(db, queryToExplain)
         break
       default:
+        // Config is zod-validated, but mocked/legacy configs can still carry
+        // an unknown dialect at runtime
         throw new CLIError(
-          `Unsupported database dialect: ${config.database.dialect}`,
+          `Unsupported database dialect: ${String(config.database.dialect)}`,
           'UNSUPPORTED_DIALECT'
         )
     }
@@ -128,7 +138,7 @@ async function explainPostgres(
   if (options.timing !== false && options.analyze) explainOptions.push('TIMING')
   if (options.summary !== false && options.analyze) explainOptions.push('SUMMARY')
 
-  const format = options.format === 'tree' ? 'TEXT' : options.format?.toUpperCase() || 'JSON'
+  const format = options.format === 'tree' ? 'TEXT' : (options.format?.toUpperCase() ?? 'JSON')
   explainOptions.push(`FORMAT ${format}`)
 
   if (explainOptions.length > 0) {
@@ -137,17 +147,20 @@ async function explainPostgres(
   explainParts.push(query)
 
   const explainQuery = explainParts.join(' ')
-  const result = await db.executeQuery(db.raw(explainQuery))
+  const { CompiledQuery } = await import('kysely')
+  const result = await db.executeQuery(CompiledQuery.raw(explainQuery, []))
 
-  if (format === 'JSON' && result.rows && result.rows[0]) {
-    const plan = result.rows[0]['QUERY PLAN']
-    const planData = typeof plan === 'string' ? JSON.parse(plan) : plan
+  if (format === 'JSON' && result.rows.length > 0) {
+    const rows = result.rows as PostgresExplainJsonRow[]
+    const plan = rows[0]['QUERY PLAN']
+    const planData = (typeof plan === 'string' ? JSON.parse(plan) : plan) as PostgresExplainOutput[]
+    const firstPlan = planData[0] as PostgresExplainOutput | undefined
     return {
       query,
       plan: planData,
-      executionTime: planData[0]?.['Execution Time'],
-      planningTime: planData[0]?.['Planning Time'],
-      totalTime: planData[0]?.['Total Runtime']
+      executionTime: firstPlan?.['Execution Time'],
+      planningTime: firstPlan?.['Planning Time'],
+      totalTime: firstPlan?.['Total Runtime']
     }
   }
   return { query, plan: result.rows }
@@ -163,23 +176,22 @@ async function explainMysql(
   if (options.format === 'json') explainQuery += 'FORMAT=JSON '
   explainQuery += query
 
-  const result = await db.executeQuery(db.raw(explainQuery))
+  const { CompiledQuery } = await import('kysely')
+  const result = await db.executeQuery(CompiledQuery.raw(explainQuery, []))
 
-  if (options.format === 'json' && result.rows && result.rows[0]) {
-    const plan = result.rows[0]['EXPLAIN']
-    const planData = typeof plan === 'string' ? JSON.parse(plan) : plan
+  if (options.format === 'json' && result.rows.length > 0) {
+    const rows = result.rows as MySQLExplainJsonRow[]
+    const plan = rows[0].EXPLAIN
+    const planData: unknown = typeof plan === 'string' ? JSON.parse(plan) : plan
     return { query, plan: planData }
   }
   return { query, plan: result.rows }
 }
 
-async function explainSqlite(
-  db: DatabaseInstance,
-  query: string,
-  options: ExplainOptions
-): Promise<ExplainResult> {
+async function explainSqlite(db: DatabaseInstance, query: string): Promise<ExplainResult> {
   const explainQuery = `EXPLAIN QUERY PLAN ${query}`
-  const result = await db.executeQuery(db.raw(explainQuery))
+  const { CompiledQuery } = await import('kysely')
+  const result = await db.executeQuery(CompiledQuery.raw(explainQuery, []))
   return { query, plan: result.rows }
 }
 
@@ -200,21 +212,22 @@ function displayExplainResults(
   console.log(prism.cyan('Execution Plan:'))
 
   if (Array.isArray(result.plan)) {
+    const rows = result.plan as Record<string, unknown>[]
     if (dialect === 'sqlite') {
-      for (const row of result.plan) {
-        console.log(`  ${row.detail || JSON.stringify(row)}`)
+      for (const row of rows) {
+        const detail = (row as SQLitePlan).detail
+        console.log(`  ${detail ?? JSON.stringify(row)}`)
       }
     } else {
-      for (const row of result.plan) {
-        if (typeof row === 'object' && row['QUERY PLAN']) {
-          console.log(`  ${row['QUERY PLAN']}`)
+      for (const row of rows) {
+        const queryPlan = row['QUERY PLAN']
+        if (typeof queryPlan === 'string') {
+          console.log(`  ${queryPlan}`)
         } else {
           console.log(`  ${JSON.stringify(row)}`)
         }
       }
     }
-  } else if (options.format === 'json') {
-    console.log(JSON.stringify(result.plan, null, 2))
   } else {
     console.log(JSON.stringify(result.plan, null, 2))
   }

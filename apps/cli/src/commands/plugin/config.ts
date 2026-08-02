@@ -4,6 +4,7 @@ import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { loadConfig, saveConfig } from '../../config/loader.js'
+import type { KyseraConfig } from '../../config/schema.js'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import * as yaml from 'js-yaml'
@@ -24,8 +25,11 @@ export interface ConfigPluginOptions {
 
 interface PluginConfig {
   enabled: boolean
-  [key: string]: any
+  [key: string]: unknown
 }
+
+/** Plugin settings as stored in the kysera config, keyed by plugin package name. */
+type PluginsRecord = Record<string, PluginConfig | undefined>
 
 interface ConfigSchema {
   properties: Record<
@@ -33,8 +37,8 @@ interface ConfigSchema {
     {
       type: 'string' | 'number' | 'boolean' | 'array' | 'object'
       description?: string
-      default?: any
-      enum?: any[]
+      default?: unknown
+      enum?: unknown[]
       required?: boolean
       min?: number
       max?: number
@@ -82,12 +86,10 @@ async function configurePlugin(
 
   try {
     // Load configuration
-    const config = (await loadConfig(options.config)) || {}
+    const config = await loadConfig(options.config)
 
-    if (!config.plugins) {
-      config.plugins = {} as NonNullable<typeof config.plugins>
-    }
-    const pluginsRecord = config.plugins as Record<string, PluginConfig | undefined>
+    config.plugins ??= {}
+    const pluginsRecord = config.plugins as PluginsRecord
 
     // Handle import first
     if (options.import) {
@@ -118,11 +120,11 @@ async function configurePlugin(
     }
 
     // Initialize plugin config if not exists
-    if (!pluginsRecord[name]) {
-      pluginsRecord[name] = { enabled: false }
+    let pluginConfig = pluginsRecord[name]
+    if (!pluginConfig) {
+      pluginConfig = { enabled: false }
+      pluginsRecord[name] = pluginConfig
     }
-
-    const pluginConfig = pluginsRecord[name]!
 
     // Handle export
     if (options.export) {
@@ -133,7 +135,7 @@ async function configurePlugin(
 
     // Handle show
     if (options.show) {
-      displayPluginConfig(name, pluginConfig, options.json || false)
+      displayPluginConfig(name, pluginConfig, options.json ?? false)
       return
     }
 
@@ -166,10 +168,11 @@ async function configurePlugin(
 
     // Handle reset
     if (options.reset) {
-      const defaultConfig = await getDefaultConfig(name)
+      const defaultConfig = getDefaultConfig(name)
 
       const shouldReset =
-        options.json || (await confirm({ message: `Reset ${name} to default configuration?` }))
+        (options.json ?? false) ||
+        (await confirm({ message: `Reset ${name} to default configuration?` }))
 
       if (shouldReset) {
         pluginsRecord[name] = {
@@ -185,7 +188,7 @@ async function configurePlugin(
 
     // Handle validate
     if (options.validate) {
-      const schema = await getConfigSchema(name)
+      const schema = getConfigSchema(name)
       const errors = validateConfig(pluginConfig, schema)
 
       if (errors.length === 0) {
@@ -201,12 +204,12 @@ async function configurePlugin(
 
     // Handle edit (interactive)
     if (options.edit) {
-      await editConfigInteractive(name, pluginConfig, config, options)
+      await editConfigInteractive(name, pluginConfig, pluginsRecord, config, options)
       return
     }
 
     // Default: show configuration
-    displayPluginConfig(name, pluginConfig, options.json || false)
+    displayPluginConfig(name, pluginConfig, options.json ?? false)
   } catch (error) {
     configSpinner.stop()
     logger.error('Configuration failed')
@@ -214,13 +217,13 @@ async function configurePlugin(
   }
 }
 
-function getConfigValue(config: PluginConfig, key: string): any {
+function getConfigValue(config: PluginConfig, key: string): unknown {
   const keys = key.split('.')
-  let value: any = config
+  let value: unknown = config
 
   for (const k of keys) {
     if (value && typeof value === 'object' && k in value) {
-      value = value[k]
+      value = (value as Record<string, unknown>)[k]
     } else {
       return undefined
     }
@@ -229,25 +232,25 @@ function getConfigValue(config: PluginConfig, key: string): any {
   return value
 }
 
-function setConfigValue(config: PluginConfig, key: string, value: any): void {
+function setConfigValue(config: PluginConfig, key: string, value: unknown): void {
   const keys = key.split('.')
-  let target: any = config
+  let target: Record<string, unknown> = config
 
   for (let i = 0; i < keys.length - 1; i++) {
     const k = keys[i]
     if (!(k in target) || typeof target[k] !== 'object') {
       target[k] = {}
     }
-    target = target[k]
+    target = target[k] as Record<string, unknown>
   }
 
   target[keys[keys.length - 1]] = value
 }
 
-function parseConfigValue(value: string): any {
+function parseConfigValue(value: string): unknown {
   // Try to parse as JSON
   try {
-    return JSON.parse(value)
+    return JSON.parse(value) as unknown
   } catch {
     // Not JSON
   }
@@ -273,19 +276,31 @@ function parseConfigValue(value: string): any {
   return value
 }
 
-function formatValue(value: any): string {
-  if (value === null) return 'null'
-  if (value === undefined) return 'undefined'
-  if (typeof value === 'boolean') return value ? 'true' : 'false'
-  if (typeof value === 'string') return value
-  if (typeof value === 'number') return String(value)
-  if (Array.isArray(value)) return `[${value.join(', ')}]`
-  if (typeof value === 'object') return JSON.stringify(value, null, 2)
-  return String(value)
+function formatValue(value: unknown): string {
+  switch (typeof value) {
+    case 'undefined':
+      return 'undefined'
+    case 'boolean':
+      return value ? 'true' : 'false'
+    case 'string':
+      return value
+    case 'number':
+      return String(value)
+    case 'object':
+      if (value === null) return 'null'
+      if (Array.isArray(value)) {
+        // Match Array#join semantics: null/undefined render as empty strings
+        return `[${value.map(v => (v == null ? '' : String(v))).join(', ')}]`
+      }
+      return JSON.stringify(value, null, 2)
+    default:
+      // bigint, symbol or function
+      return String(value)
+  }
 }
 
-async function getDefaultConfig(pluginName: string): Promise<PluginConfig> {
-  const defaults: Record<string, PluginConfig> = {
+function getDefaultConfig(pluginName: string): PluginConfig {
+  const defaults: Record<string, PluginConfig | undefined> = {
     '@kysera/soft-delete': {
       enabled: true,
       column: 'deleted_at',
@@ -324,11 +339,11 @@ async function getDefaultConfig(pluginName: string): Promise<PluginConfig> {
     }
   }
 
-  return defaults[pluginName] || { enabled: false }
+  return defaults[pluginName] ?? { enabled: false }
 }
 
-async function getConfigSchema(pluginName: string): Promise<ConfigSchema> {
-  const schemas: Record<string, ConfigSchema> = {
+function getConfigSchema(pluginName: string): ConfigSchema {
+  const schemas: Record<string, ConfigSchema | undefined> = {
     '@kysera/soft-delete': {
       properties: {
         enabled: {
@@ -436,14 +451,14 @@ async function getConfigSchema(pluginName: string): Promise<ConfigSchema> {
     }
   }
 
-  return schemas[pluginName] || { properties: {} }
+  return schemas[pluginName] ?? { properties: {} }
 }
 
 function validateConfig(config: PluginConfig, schema: ConfigSchema): string[] {
   const errors: string[] = []
 
   for (const [key, spec] of Object.entries(schema.properties)) {
-    const value = config[key]
+    const value: unknown = config[key]
 
     // Check required fields
     if (spec.required && value === undefined) {
@@ -467,12 +482,14 @@ function validateConfig(config: PluginConfig, schema: ConfigSchema): string[] {
       errors.push(`${key}: must be one of [${spec.enum.join(', ')}]`)
     }
 
-    // Range validation
+    // Range validation (loose comparison, matching the historical behavior
+    // for non-number values that already failed type validation above)
     if (spec.type === 'number') {
-      if (spec.min !== undefined && value < spec.min) {
+      const numValue = value as number
+      if (spec.min !== undefined && numValue < spec.min) {
         errors.push(`${key}: must be >= ${spec.min}`)
       }
-      if (spec.max !== undefined && value > spec.max) {
+      if (spec.max !== undefined && numValue > spec.max) {
         errors.push(`${key}: must be <= ${spec.max}`)
       }
     }
@@ -484,10 +501,11 @@ function validateConfig(config: PluginConfig, schema: ConfigSchema): string[] {
 async function editConfigInteractive(
   pluginName: string,
   config: PluginConfig,
-  fullConfig: any,
+  pluginsRecord: PluginsRecord,
+  fullConfig: KyseraConfig,
   options: ConfigPluginOptions
 ): Promise<void> {
-  const schema = await getConfigSchema(pluginName)
+  const schema = getConfigSchema(pluginName)
 
   console.log('')
   console.log(prism.bold(`🔧 Configure ${pluginName}`))
@@ -504,12 +522,12 @@ async function editConfigInteractive(
       console.log(prism.gray(`  ${spec.description}`))
     }
 
-    const currentValue = config[key] ?? spec.default
+    const currentValue: unknown = config[key] ?? spec.default
 
     if (spec.type === 'boolean') {
       const newValue = await confirm({
-        message: `${key} (current: ${currentValue}):`,
-        initialValue: currentValue
+        message: `${key} (current: ${String(currentValue)}):`,
+        initialValue: currentValue as boolean | undefined
       })
       updatedConfig[key] = newValue
     } else if (spec.enum) {
@@ -551,7 +569,10 @@ async function editConfigInteractive(
         .map(v => v.trim())
         .filter(Boolean)
     } else {
-      const newValue = await text({ message: `${key}:`, defaultValue: currentValue || '' })
+      const newValue = await text({
+        message: `${key}:`,
+        defaultValue: typeof currentValue === 'string' ? currentValue : ''
+      })
       updatedConfig[key] = newValue
     }
   }
@@ -574,7 +595,7 @@ async function editConfigInteractive(
   }
 
   // Save configuration
-  fullConfig.plugins[pluginName] = updatedConfig
+  pluginsRecord[pluginName] = updatedConfig
   await saveConfig(fullConfig, options.config)
 
   console.log('')
@@ -605,15 +626,22 @@ async function exportPluginConfig(
   await fs.writeFile(filename, content, 'utf-8')
 }
 
-async function importPluginConfig(filename: string, config: any): Promise<void> {
+interface PluginConfigImport {
+  plugin?: string
+  version?: string
+  timestamp?: string
+  config?: PluginConfig
+}
+
+async function importPluginConfig(filename: string, config: KyseraConfig): Promise<void> {
   const content = await fs.readFile(filename, 'utf-8')
   const ext = path.extname(filename).toLowerCase()
 
-  let importData: any
+  let importData: PluginConfigImport
   if (ext === '.yaml' || ext === '.yml') {
-    importData = yaml.load(content) as any
+    importData = yaml.load(content) as PluginConfigImport
   } else {
-    importData = JSON.parse(content)
+    importData = JSON.parse(content) as PluginConfigImport
   }
 
   if (!importData.plugin || !importData.config) {
@@ -622,11 +650,9 @@ async function importPluginConfig(filename: string, config: any): Promise<void> 
     ])
   }
 
-  if (!config.plugins) {
-    config.plugins = {}
-  }
+  config.plugins ??= {}
 
-  config.plugins[importData.plugin] = importData.config
+  ;(config.plugins as PluginsRecord)[importData.plugin] = importData.config
 }
 
 function displayPluginConfig(name: string, config: PluginConfig, json: boolean): void {

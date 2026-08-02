@@ -1,10 +1,20 @@
 import { Command } from 'commander'
-import { prism, table } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 import { formatBytes } from '../../utils/formatting.js'
+import { displayTable } from '../../utils/table-helper.js'
+import type { DatabaseDialect } from '../../utils/database.js'
+import type {
+  DatabaseInstance,
+  QueryResult,
+  MySQLPlan,
+  PostgresExplainOutput,
+  PostgresPlan,
+  SQLitePlan
+} from '../../types/index.js'
 
 export interface AnalyzeOptions {
   query?: string
@@ -39,6 +49,26 @@ interface TableStatistics {
   dataLength?: number
   indexLength?: number
   lastAnalyzed?: Date
+}
+
+interface PostgresExplainJsonRow {
+  'QUERY PLAN': string | PostgresExplainOutput[]
+}
+
+interface PostgresTableStatsRow {
+  data_length: string | number
+  index_length: string | number
+}
+
+interface MysqlTableStatsRow {
+  DATA_LENGTH: string | number
+  INDEX_LENGTH: string | number
+  AVG_ROW_LENGTH: string | number
+}
+
+async function executeRaw(db: DatabaseInstance, sql: string): Promise<QueryResult> {
+  const { CompiledQuery } = await import('kysely')
+  return db.executeQuery(CompiledQuery.raw(sql, []))
 }
 
 export function analyzeCommand(): Command {
@@ -95,11 +125,11 @@ async function analyzeQueryPerformance(options: AnalyzeOptions): Promise<void> {
   }
 
   await withDatabase({ config: options.config }, async (db, config) => {
-    const analyzeSpinner = spinner() as any
+    const analyzeSpinner = spinner()
     analyzeSpinner.start('Analyzing query...')
 
     // Analyze the query
-    const analysis = await performAnalysis(db, queryToAnalyze, config.database!.dialect, options)
+    const analysis = await performAnalysis(db, queryToAnalyze, config.database.dialect, options)
 
     analyzeSpinner.succeed('Analysis complete')
 
@@ -113,9 +143,9 @@ async function analyzeQueryPerformance(options: AnalyzeOptions): Promise<void> {
 }
 
 async function performAnalysis(
-  db: any,
+  db: DatabaseInstance,
   query: string,
-  dialect: string,
+  dialect: DatabaseDialect,
   options: AnalyzeOptions
 ): Promise<QueryAnalysis> {
   const analysis: QueryAnalysis = {
@@ -139,7 +169,7 @@ async function performAnalysis(
     for (let i = 0; i < iterations; i++) {
       const startTime = Date.now()
       try {
-        await db.executeQuery(db.raw(query))
+        await executeRaw(db, query)
         times.push(Date.now() - startTime)
       } catch (error) {
         if (i === 0) throw error // Throw on first iteration
@@ -153,9 +183,9 @@ async function performAnalysis(
     // Single execution
     const startTime = Date.now()
     try {
-      const result = await db.executeQuery(db.raw(query))
+      const result = await executeRaw(db, query)
       analysis.executionTime = Date.now() - startTime
-      analysis.rowsReturned = result.rows?.length || 0
+      analysis.rowsReturned = result.rows.length
     } catch (error) {
       analysis.warnings.push(
         `Query execution failed: ${error instanceof Error ? error.message : String(error)}`
@@ -168,7 +198,7 @@ async function performAnalysis(
     await analyzePostgres(db, query, analysis)
   } else if (dialect === 'mysql') {
     await analyzeMysql(db, query, analysis)
-  } else if (dialect === 'sqlite') {
+  } else {
     await analyzeSqlite(db, query, analysis)
   }
 
@@ -185,18 +215,24 @@ async function performAnalysis(
   return analysis
 }
 
-async function analyzePostgres(db: any, query: string, analysis: QueryAnalysis): Promise<void> {
+async function analyzePostgres(
+  db: DatabaseInstance,
+  query: string,
+  analysis: QueryAnalysis
+): Promise<void> {
   try {
     // Get EXPLAIN output
-    const explainResult = await db.executeQuery(db.raw(`EXPLAIN (FORMAT JSON, BUFFERS) ${query}`))
+    const explainResult = await executeRaw(db, `EXPLAIN (FORMAT JSON, BUFFERS) ${query}`)
+    const rows = explainResult.rows as PostgresExplainJsonRow[]
 
-    if (explainResult.rows && explainResult.rows.length > 0) {
-      const plan = explainResult.rows[0]['QUERY PLAN']
-      const planData = typeof plan === 'string' ? JSON.parse(plan) : plan
+    if (rows.length > 0) {
+      const plan = rows[0]['QUERY PLAN']
+      const planData = (
+        typeof plan === 'string' ? JSON.parse(plan) : plan
+      ) as PostgresExplainOutput[]
 
-      if (planData && planData[0] && planData[0].Plan) {
-        const rootPlan = planData[0].Plan
-
+      const rootPlan = planData[0]?.Plan
+      if (rootPlan) {
         // Extract cost
         analysis.cost = rootPlan['Total Cost']
 
@@ -208,102 +244,107 @@ async function analyzePostgres(db: any, query: string, analysis: QueryAnalysis):
       }
     }
   } catch (error) {
-    logger.debug(`Failed to get PostgreSQL execution plan: ${error}`)
+    logger.debug(`Failed to get PostgreSQL execution plan: ${String(error)}`)
   }
 }
 
-async function analyzeMysql(db: any, query: string, analysis: QueryAnalysis): Promise<void> {
+async function analyzeMysql(
+  db: DatabaseInstance,
+  query: string,
+  analysis: QueryAnalysis
+): Promise<void> {
   try {
     // Get EXPLAIN output
-    const explainResult = await db.executeQuery(db.raw(`EXPLAIN ${query}`))
+    const explainResult = await executeRaw(db, `EXPLAIN ${query}`)
+    const rows = explainResult.rows as MySQLPlan[]
 
-    if (explainResult.rows && explainResult.rows.length > 0) {
-      for (const row of explainResult.rows) {
-        // Extract index usage
-        if (row.key) {
-          analysis.indexesUsed.push(row.key)
-        }
+    for (const row of rows) {
+      // Extract index usage
+      if (row.key) {
+        analysis.indexesUsed.push(row.key)
+      }
 
-        // Extract rows examined
-        if (row.rows) {
-          analysis.rowsExamined = (analysis.rowsExamined || 0) + Number(row.rows)
-        }
+      // Extract rows examined
+      if (row.rows) {
+        analysis.rowsExamined = (analysis.rowsExamined ?? 0) + row.rows
+      }
 
-        // Check for warnings
-        if (row.Extra) {
-          if (row.Extra.includes('Using filesort')) {
-            analysis.warnings.push('Using filesort - consider adding an index')
-          }
-          if (row.Extra.includes('Using temporary')) {
-            analysis.warnings.push('Using temporary table - may impact performance')
-          }
-          if (row.Extra.includes('Using where') && !row.key) {
-            analysis.warnings.push('Full table scan with WHERE clause - consider adding an index')
-          }
+      // Check for warnings
+      if (row.Extra) {
+        if (row.Extra.includes('Using filesort')) {
+          analysis.warnings.push('Using filesort - consider adding an index')
         }
+        if (row.Extra.includes('Using temporary')) {
+          analysis.warnings.push('Using temporary table - may impact performance')
+        }
+        if (row.Extra.includes('Using where') && !row.key) {
+          analysis.warnings.push('Full table scan with WHERE clause - consider adding an index')
+        }
+      }
 
-        // Check for full table scans
-        if (row.type === 'ALL') {
-          analysis.warnings.push(`Full table scan on ${row.table}`)
-          analysis.missingIndexes.push(`${row.table} (consider adding index)`)
-        }
+      // Check for full table scans
+      if (row.type === 'ALL') {
+        analysis.warnings.push(`Full table scan on ${row.table ?? 'unknown'}`)
+        analysis.missingIndexes.push(`${row.table ?? 'unknown'} (consider adding index)`)
       }
     }
   } catch (error) {
-    logger.debug(`Failed to get MySQL execution plan: ${error}`)
+    logger.debug(`Failed to get MySQL execution plan: ${String(error)}`)
   }
 }
 
-async function analyzeSqlite(db: any, query: string, analysis: QueryAnalysis): Promise<void> {
+async function analyzeSqlite(
+  db: DatabaseInstance,
+  query: string,
+  analysis: QueryAnalysis
+): Promise<void> {
   try {
     // Get EXPLAIN QUERY PLAN output
-    const explainResult = await db.executeQuery(db.raw(`EXPLAIN QUERY PLAN ${query}`))
+    const explainResult = await executeRaw(db, `EXPLAIN QUERY PLAN ${query}`)
+    const rows = explainResult.rows as SQLitePlan[]
 
-    if (explainResult.rows && explainResult.rows.length > 0) {
-      for (const row of explainResult.rows) {
-        const detail = row.detail || ''
+    for (const row of rows) {
+      const detail = row.detail ?? ''
 
-        // Extract index usage
-        if (detail.includes('USING INDEX')) {
-          const indexMatch = detail.match(/USING INDEX (\w+)/)
-          if (indexMatch) {
-            analysis.indexesUsed.push(indexMatch[1])
-          }
+      // Extract index usage
+      if (detail.includes('USING INDEX')) {
+        const indexMatch = /USING INDEX (\w+)/.exec(detail)
+        if (indexMatch) {
+          analysis.indexesUsed.push(indexMatch[1])
         }
+      }
 
-        // Check for full table scans
-        if (detail.includes('SCAN TABLE')) {
-          const tableMatch = detail.match(/SCAN TABLE (\w+)/)
-          if (tableMatch) {
-            analysis.warnings.push(`Full table scan on ${tableMatch[1]}`)
-            analysis.missingIndexes.push(`${tableMatch[1]} (consider adding index)`)
-          }
+      // Check for full table scans
+      if (detail.includes('SCAN TABLE')) {
+        const tableMatch = /SCAN TABLE (\w+)/.exec(detail)
+        if (tableMatch) {
+          analysis.warnings.push(`Full table scan on ${tableMatch[1]}`)
+          analysis.missingIndexes.push(`${tableMatch[1]} (consider adding index)`)
         }
       }
     }
   } catch (error) {
-    logger.debug(`Failed to get SQLite execution plan: ${error}`)
+    logger.debug(`Failed to get SQLite execution plan: ${String(error)}`)
   }
 }
 
-function extractPostgresIndexes(plan: any, analysis: QueryAnalysis): void {
-  if (!plan) return
-
+function extractPostgresIndexes(plan: PostgresPlan, analysis: QueryAnalysis): void {
   // Check for index usage
-  if (plan['Node Type']) {
-    if (plan['Node Type'].includes('Index')) {
+  const nodeType = plan['Node Type']
+  if (nodeType) {
+    if (nodeType.includes('Index')) {
       if (plan['Index Name']) {
         analysis.indexesUsed.push(plan['Index Name'])
       }
     }
 
     // Check for sequential scans
-    if (plan['Node Type'] === 'Seq Scan') {
-      const tableName = plan['Relation Name'] || 'unknown'
+    if (nodeType === 'Seq Scan') {
+      const tableName = plan['Relation Name'] ?? 'unknown'
       analysis.warnings.push(`Sequential scan on table ${tableName}`)
 
       // Try to identify missing indexes from filter conditions
-      if (plan['Filter']) {
+      if (plan.Filter) {
         analysis.missingIndexes.push(`${tableName} (consider index on filtered columns)`)
       }
     }
@@ -317,15 +358,13 @@ function extractPostgresIndexes(plan: any, analysis: QueryAnalysis): void {
   }
 }
 
-function checkPostgresWarnings(plan: any, analysis: QueryAnalysis): void {
-  if (!plan) return
-
+function checkPostgresWarnings(plan: PostgresPlan, analysis: QueryAnalysis): void {
   // Check for performance issues
   if (plan['Node Type'] === 'Sort' && plan['Sort Method'] === 'external merge') {
     analysis.warnings.push('External sort detected - query may use significant memory')
   }
 
-  if (plan['Node Type'] === 'Hash Join' && plan['Hash Batches'] > 1) {
+  if (plan['Node Type'] === 'Hash Join' && (plan['Hash Batches'] ?? 0) > 1) {
     analysis.warnings.push('Hash join using multiple batches - consider increasing work_mem')
   }
 
@@ -338,9 +377,9 @@ function checkPostgresWarnings(plan: any, analysis: QueryAnalysis): void {
 }
 
 async function getTableStatistics(
-  db: any,
+  db: DatabaseInstance,
   tables: string[],
-  dialect: string
+  dialect: DatabaseDialect
 ): Promise<TableStatistics[]> {
   const stats: TableStatistics[] = []
 
@@ -356,44 +395,48 @@ async function getTableStatistics(
         .selectFrom(tableName)
         .select(db.fn.countAll().as('count'))
         .executeTakeFirst()
-      stat.rowCount = Number(countResult?.count || 0)
+      stat.rowCount = Number(countResult?.count ?? 0)
 
       // Get additional statistics based on dialect
       if (dialect === 'postgres') {
-        const statsResult = await db.executeQuery(
-          db.raw(`
+        const statsResult = await executeRaw(
+          db,
+          `
           SELECT
             pg_relation_size('${tableName}') as data_length,
             pg_indexes_size('${tableName}') as index_length
-        `)
+        `
         )
 
-        if (statsResult.rows && statsResult.rows[0]) {
-          stat.dataLength = Number(statsResult.rows[0].data_length)
-          stat.indexLength = Number(statsResult.rows[0].index_length)
+        const statsRow = statsResult.rows[0] as PostgresTableStatsRow | undefined
+        if (statsRow) {
+          stat.dataLength = Number(statsRow.data_length)
+          stat.indexLength = Number(statsRow.index_length)
         }
       } else if (dialect === 'mysql') {
-        const statsResult = await db.executeQuery(
-          db.raw(`
+        const statsResult = await executeRaw(
+          db,
+          `
           SELECT
             DATA_LENGTH,
             INDEX_LENGTH,
             AVG_ROW_LENGTH
           FROM information_schema.TABLES
           WHERE TABLE_NAME = '${tableName}'
-        `)
+        `
         )
 
-        if (statsResult.rows && statsResult.rows[0]) {
-          stat.dataLength = Number(statsResult.rows[0].DATA_LENGTH)
-          stat.indexLength = Number(statsResult.rows[0].INDEX_LENGTH)
-          stat.averageRowLength = Number(statsResult.rows[0].AVG_ROW_LENGTH)
+        const statsRow = statsResult.rows[0] as MysqlTableStatsRow | undefined
+        if (statsRow) {
+          stat.dataLength = Number(statsRow.DATA_LENGTH)
+          stat.indexLength = Number(statsRow.INDEX_LENGTH)
+          stat.averageRowLength = Number(statsRow.AVG_ROW_LENGTH)
         }
       }
 
       stats.push(stat)
     } catch (error) {
-      logger.debug(`Failed to get statistics for table ${tableName}: ${error}`)
+      logger.debug(`Failed to get statistics for table ${tableName}: ${String(error)}`)
     }
   }
 
@@ -477,7 +520,7 @@ function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzeOptions
         : analysis.executionTime > 100
           ? prism.yellow
           : prism.green
-    console.log(`  Execution Time: ${timeColor(analysis.executionTime + 'ms')}`)
+    console.log(`  Execution Time: ${timeColor(`${analysis.executionTime}ms`)}`)
   }
 
   if (analysis.rowsReturned !== undefined) {
@@ -533,11 +576,11 @@ function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzeOptions
     const statsData = analysis.statistics.map(stat => ({
       Table: stat.table,
       Rows: stat.rowCount.toLocaleString(),
-      'Data Size': formatBytes(stat.dataLength || 0),
-      'Index Size': formatBytes(stat.indexLength || 0)
+      'Data Size': formatBytes(stat.dataLength ?? 0),
+      'Index Size': formatBytes(stat.indexLength ?? 0)
     }))
 
-    console.log(table(statsData as any))
+    displayTable(statsData)
   }
 
   // Warnings
@@ -564,7 +607,7 @@ function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzeOptions
   console.log(prism.gray('Overall Assessment:'))
 
   const issues = analysis.warnings.length + analysis.missingIndexes.length
-  if (issues === 0 && (analysis.executionTime || 0) < 100) {
+  if (issues === 0 && (analysis.executionTime ?? 0) < 100) {
     console.log(prism.green('  [OK] Query appears well-optimized'))
   } else if (issues <= 2) {
     console.log(prism.yellow('  [WARN] Minor optimization opportunities detected'))
@@ -573,7 +616,7 @@ function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzeOptions
   }
 
   // Benchmark info
-  const benchmarkIterations = parseInt(options.benchmark || '0')
+  const benchmarkIterations = parseInt(options.benchmark ?? '0')
   if (!isNaN(benchmarkIterations) && benchmarkIterations > 1) {
     console.log('')
     console.log(prism.gray(`Benchmarked with ${benchmarkIterations} iterations`))
@@ -622,17 +665,17 @@ function extractTables(query: string): string[] {
 
   // Extract UPDATE/INSERT/DELETE tables
   if (queryUpper.startsWith('UPDATE')) {
-    const updateMatch = query.match(/UPDATE\s+([^\s]+)/i)
+    const updateMatch = /UPDATE\s+([^\s]+)/i.exec(query)
     if (updateMatch) {
       tables.push(updateMatch[1])
     }
   } else if (queryUpper.startsWith('INSERT')) {
-    const insertMatch = query.match(/INTO\s+([^\s(]+)/i)
+    const insertMatch = /INTO\s+([^\s(]+)/i.exec(query)
     if (insertMatch) {
       tables.push(insertMatch[1])
     }
   } else if (queryUpper.startsWith('DELETE')) {
-    const deleteMatch = query.match(/FROM\s+([^\s]+)/i)
+    const deleteMatch = /FROM\s+([^\s]+)/i.exec(query)
     if (deleteMatch) {
       tables.push(deleteMatch[1])
     }

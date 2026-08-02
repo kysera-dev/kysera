@@ -3,7 +3,6 @@ import { CLIDatabaseError, ValidationError } from '../errors.js'
 import { logger } from '../logger.js'
 import {
   validateIdentifier,
-  escapeIdentifier,
   safeOptimizeTable,
   safeCheckTable,
   safeRepairTable,
@@ -13,6 +12,39 @@ import {
 /**
  * MySQL specific utilities
  */
+
+/**
+ * System tables these helpers query. Nullable columns reflect what the
+ * mysql2 driver actually returns for information_schema rows.
+ */
+interface MysqlSystemTables {
+  'information_schema.tables': {
+    table_name: string
+    table_schema: string
+    table_rows: number | null
+    data_length: number | null
+    index_length: number | null
+    avg_row_length: number | null
+    auto_increment: number | null
+  }
+  'information_schema.statistics': {
+    index_name: string
+    table_name: string
+    table_schema: string
+    stat_value: number | null
+  }
+  'information_schema.processlist': {
+    command: string
+    time: number | null
+    state: string | null
+    info: string | null
+  }
+  'information_schema.schemata': {
+    schema_name: string
+  }
+}
+
+type MysqlDb = Kysely<MysqlSystemTables>
 
 export interface MysqlInfo {
   version: string
@@ -26,7 +58,7 @@ export interface MysqlInfo {
 /**
  * Get MySQL server info
  */
-export async function getMysqlInfo(db: Kysely<any>): Promise<MysqlInfo> {
+export async function getMysqlInfo(db: MysqlDb): Promise<MysqlInfo> {
   try {
     const result = await db
       .selectNoFrom([
@@ -43,9 +75,11 @@ export async function getMysqlInfo(db: Kysely<any>): Promise<MysqlInfo> {
       throw new CLIDatabaseError('Failed to get MySQL info')
     }
 
-    return result as MysqlInfo
-  } catch (error: any) {
-    throw new CLIDatabaseError(`Failed to get MySQL info: ${error.message}`)
+    return result
+  } catch (error) {
+    throw new CLIDatabaseError(
+      `Failed to get MySQL info: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
 
@@ -53,7 +87,7 @@ export async function getMysqlInfo(db: Kysely<any>): Promise<MysqlInfo> {
  * Get table size
  */
 export async function getTableSize(
-  db: Kysely<any>,
+  db: MysqlDb,
   tableName: string,
   schema?: string
 ): Promise<string> {
@@ -62,7 +96,7 @@ export async function getTableSize(
       .selectFrom('information_schema.tables')
       .select(sql<number>`(data_length + index_length)`.as('sizeBytes'))
       .where('table_name', '=', tableName)
-      .$if(!!schema, qb => qb.where('table_schema', '=', schema!))
+      .$if(!!schema, qb => qb.where('table_schema', '=', schema ?? ''))
       .executeTakeFirst()
 
     if (!result?.sizeBytes) {
@@ -81,7 +115,7 @@ export async function getTableSize(
  * Get index size
  */
 export async function getIndexSize(
-  db: Kysely<any>,
+  db: MysqlDb,
   indexName: string,
   tableName: string,
   schema?: string
@@ -92,7 +126,7 @@ export async function getIndexSize(
       .select(sql<number>`SUM(stat_value)`.as('sizePages'))
       .where('index_name', '=', indexName)
       .where('table_name', '=', tableName)
-      .$if(!!schema, qb => qb.where('table_schema', '=', schema!))
+      .$if(!!schema, qb => qb.where('table_schema', '=', schema ?? ''))
       .executeTakeFirst()
 
     if (!result?.sizePages) {
@@ -110,7 +144,7 @@ export async function getIndexSize(
 /**
  * Get active connections
  */
-export async function getActiveConnections(db: Kysely<any>): Promise<number> {
+export async function getActiveConnections(db: MysqlDb): Promise<number> {
   try {
     const result = await db
       .selectFrom('information_schema.processlist')
@@ -118,7 +152,7 @@ export async function getActiveConnections(db: Kysely<any>): Promise<number> {
       .where('command', '!=', 'Sleep')
       .executeTakeFirst()
 
-    return result?.count || 0
+    return result?.count ?? 0
   } catch (error) {
     logger.debug('Failed to get active connections:', error)
     return 0
@@ -129,9 +163,9 @@ export async function getActiveConnections(db: Kysely<any>): Promise<number> {
  * Get slow queries
  */
 export async function getSlowQueries(
-  db: Kysely<any>,
-  thresholdMs: number = 100
-): Promise<Array<{ query: string; duration: number; state: string }>> {
+  db: MysqlDb,
+  thresholdMs = 100
+): Promise<{ query: string; duration: number; state: string }[]> {
   try {
     const result = await db
       .selectFrom('information_schema.processlist')
@@ -143,9 +177,9 @@ export async function getSlowQueries(
       .execute()
 
     return result.map(r => ({
-      query: r.query || '',
-      duration: (r.duration || 0) * 1000,
-      state: r.state || ''
+      query: r.query ?? '',
+      duration: (r.duration ?? 0) * 1000,
+      state: r.state ?? ''
     }))
   } catch (error) {
     logger.debug('Failed to get slow queries:', error)
@@ -156,7 +190,7 @@ export async function getSlowQueries(
 /**
  * Kill connection
  */
-export async function killConnection(db: Kysely<any>, processId: number): Promise<boolean> {
+export async function killConnection(db: MysqlDb, processId: number): Promise<boolean> {
   try {
     // Process ID is a number, so it's safe to interpolate
     if (!Number.isInteger(processId) || processId < 0) {
@@ -173,37 +207,41 @@ export async function killConnection(db: Kysely<any>, processId: number): Promis
 /**
  * Optimize table
  */
-export async function optimizeTable(db: Kysely<any>, tableName: string): Promise<void> {
+export async function optimizeTable(db: MysqlDb, tableName: string): Promise<void> {
   try {
     // Use safe SQL builder
     await sql.raw(safeOptimizeTable(tableName)).execute(db)
-  } catch (error: any) {
-    throw new CLIDatabaseError(`Failed to optimize table ${tableName}: ${error.message}`)
+  } catch (error) {
+    throw new CLIDatabaseError(
+      `Failed to optimize table ${tableName}: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
 
 /**
  * Analyze table
  */
-export async function analyzeTable(db: Kysely<any>, tableName: string): Promise<void> {
+export async function analyzeTable(db: MysqlDb, tableName: string): Promise<void> {
   try {
     // Validate and escape table name
     const escapedTable = escapeTypedIdentifier(tableName, 'table', 'mysql')
     await sql.raw(`ANALYZE TABLE ${escapedTable}`).execute(db)
-  } catch (error: any) {
-    throw new CLIDatabaseError(`Failed to analyze table ${tableName}: ${error.message}`)
+  } catch (error) {
+    throw new CLIDatabaseError(
+      `Failed to analyze table ${tableName}: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
 
 /**
  * Check table
  */
-export async function checkTable(db: Kysely<any>, tableName: string): Promise<boolean> {
+export async function checkTable(db: MysqlDb, tableName: string): Promise<boolean> {
   try {
     // Use safe SQL builder
-    const result = await sql.raw<any>(safeCheckTable(tableName)).execute(db)
+    const result = await sql.raw<{ Msg_text: string }>(safeCheckTable(tableName)).execute(db)
 
-    return result.rows.some((row: any) => row.Msg_text === 'OK')
+    return result.rows.some(row => row.Msg_text === 'OK')
   } catch (error) {
     logger.debug(`Failed to check table ${tableName}:`, error)
     return false
@@ -213,19 +251,21 @@ export async function checkTable(db: Kysely<any>, tableName: string): Promise<bo
 /**
  * Repair table
  */
-export async function repairTable(db: Kysely<any>, tableName: string): Promise<void> {
+export async function repairTable(db: MysqlDb, tableName: string): Promise<void> {
   try {
     // Use safe SQL builder
     await sql.raw(safeRepairTable(tableName)).execute(db)
-  } catch (error: any) {
-    throw new CLIDatabaseError(`Failed to repair table ${tableName}: ${error.message}`)
+  } catch (error) {
+    throw new CLIDatabaseError(
+      `Failed to repair table ${tableName}: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
 
 /**
  * Check if database exists
  */
-export async function databaseExists(db: Kysely<any>, databaseName: string): Promise<boolean> {
+export async function databaseExists(db: MysqlDb, databaseName: string): Promise<boolean> {
   try {
     const result = await db
       .selectFrom('information_schema.schemata')
@@ -244,10 +284,10 @@ export async function databaseExists(db: Kysely<any>, databaseName: string): Pro
  * Create database
  */
 export async function createDatabase(
-  db: Kysely<any>,
+  db: MysqlDb,
   databaseName: string,
-  charset: string = 'utf8mb4',
-  collation: string = 'utf8mb4_unicode_ci'
+  charset = 'utf8mb4',
+  collation = 'utf8mb4_unicode_ci'
 ): Promise<void> {
   try {
     // Validate database name and charset/collation
@@ -260,21 +300,25 @@ export async function createDatabase(
     await sql
       .raw(`CREATE DATABASE ${escapedDb} CHARACTER SET ${charset} COLLATE ${collation}`)
       .execute(db)
-  } catch (error: any) {
-    throw new CLIDatabaseError(`Failed to create database ${databaseName}: ${error.message}`)
+  } catch (error) {
+    throw new CLIDatabaseError(
+      `Failed to create database ${databaseName}: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
 
 /**
  * Drop database
  */
-export async function dropDatabase(db: Kysely<any>, databaseName: string): Promise<void> {
+export async function dropDatabase(db: MysqlDb, databaseName: string): Promise<void> {
   try {
     // Validate and escape database name
     const escapedDb = escapeTypedIdentifier(databaseName, 'database', 'mysql')
     await sql.raw(`DROP DATABASE IF EXISTS ${escapedDb}`).execute(db)
-  } catch (error: any) {
-    throw new CLIDatabaseError(`Failed to drop database ${databaseName}: ${error.message}`)
+  } catch (error) {
+    throw new CLIDatabaseError(
+      `Failed to drop database ${databaseName}: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
 
@@ -282,7 +326,7 @@ export async function dropDatabase(db: Kysely<any>, databaseName: string): Promi
  * Get table statistics
  */
 export async function getTableStatistics(
-  db: Kysely<any>,
+  db: MysqlDb,
   tableName: string,
   schema?: string
 ): Promise<{
@@ -304,7 +348,7 @@ export async function getTableStatistics(
         'auto_increment as autoIncrement'
       ])
       .where('table_name', '=', tableName)
-      .$if(!!schema, qb => qb.where('table_schema', '=', schema!))
+      .$if(!!schema, qb => qb.where('table_schema', '=', schema ?? ''))
       .executeTakeFirst()
 
     if (!result) {
@@ -318,14 +362,16 @@ export async function getTableStatistics(
     }
 
     return {
-      rows: result.rows || 0,
-      dataSize: formatSize(result.dataLength || 0),
-      indexSize: formatSize(result.indexLength || 0),
-      totalSize: formatSize((result.dataLength || 0) + (result.indexLength || 0)),
-      avgRowLength: result.avgRowLength || 0,
+      rows: result.rows ?? 0,
+      dataSize: formatSize(result.dataLength ?? 0),
+      indexSize: formatSize(result.indexLength ?? 0),
+      totalSize: formatSize((result.dataLength ?? 0) + (result.indexLength ?? 0)),
+      avgRowLength: result.avgRowLength ?? 0,
       autoIncrement: result.autoIncrement
     }
-  } catch (error: any) {
-    throw new CLIDatabaseError(`Failed to get table statistics: ${error.message}`)
+  } catch (error) {
+    throw new CLIDatabaseError(
+      `Failed to get table statistics: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }

@@ -2,10 +2,10 @@ import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
 import { displayTable as table } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
+import type { KyseraConfig } from '../../config/schema.js'
 
 export interface ErrorsOptions {
   since?: string
@@ -39,6 +39,18 @@ interface ErrorLog {
   stackTrace?: string
 }
 
+/** Row shape read from the error_logs table. */
+interface ErrorLogRow {
+  id?: number
+  timestamp: Date | string | number
+  error: string
+  query?: string
+  table_name?: string
+  operation?: string
+  user_id?: string
+  stack_trace?: string
+}
+
 export function errorsCommand(): Command {
   const cmd = new Command('errors')
     .description('Error analysis and pattern detection')
@@ -69,7 +81,9 @@ export function errorsCommand(): Command {
 
 async function analyzeErrors(options: ErrorsOptions): Promise<void> {
   // Load configuration
-  const config = await loadConfig(options.config)
+  // Widened: mocked loaders may resolve null even though the declared return
+  // type is non-nullable; the runtime guard below must stay meaningful.
+  const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   if (!config?.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
@@ -133,7 +147,7 @@ async function analyzeErrors(options: ErrorsOptions): Promise<void> {
       query = query.where('timestamp', '<=', untilDate)
     }
 
-    const limit = parseInt(options.limit || '100', 10)
+    const limit = parseInt(options.limit ?? '100', 10)
     if (isNaN(limit) || limit <= 0) {
       throw new CLIError('Invalid limit value - must be a positive number')
     }
@@ -150,7 +164,7 @@ async function analyzeErrors(options: ErrorsOptions): Promise<void> {
     analyzeSpinner.succeed(`Found ${errorLogs.length} error${errorLogs.length !== 1 ? 's' : ''}`)
 
     // Convert to ErrorLog format
-    const errors: ErrorLog[] = errorLogs.map((log: any) => ({
+    const errors: ErrorLog[] = (errorLogs as unknown as ErrorLogRow[]).map(log => ({
       id: log.id,
       timestamp: new Date(log.timestamp),
       error: log.error,
@@ -210,8 +224,9 @@ function detectErrorPatterns(errors: ErrorLog[]): Map<string, ErrorPattern> {
     // Normalize error message to find pattern
     const pattern = normalizeErrorMessage(error.error)
 
-    if (!patterns.has(pattern)) {
-      patterns.set(pattern, {
+    let errorPattern = patterns.get(pattern)
+    if (!errorPattern) {
+      errorPattern = {
         pattern,
         count: 0,
         firstSeen: error.timestamp,
@@ -219,10 +234,10 @@ function detectErrorPatterns(errors: ErrorLog[]): Map<string, ErrorPattern> {
         examples: [],
         affectedTables: new Set(),
         affectedUsers: new Set()
-      })
+      }
+      patterns.set(pattern, errorPattern)
     }
 
-    const errorPattern = patterns.get(pattern)!
     errorPattern.count++
     errorPattern.lastSeen = error.timestamp
 
@@ -328,7 +343,7 @@ function displayErrorAnalysis(
   const errorTypes = new Map<string, number>()
   for (const error of errors) {
     const type = getErrorType(error.error)
-    errorTypes.set(type, (errorTypes.get(type) || 0) + 1)
+    errorTypes.set(type, (errorTypes.get(type) ?? 0) + 1)
   }
 
   console.log('')
@@ -346,7 +361,10 @@ function displayErrorAnalysis(
   console.log('')
   console.log(prism.cyan('Recommendations:'))
 
-  const topPattern = Array.from(patterns.values()).sort((a, b) => b.count - a.count)[0]
+  // Widened: [0] on a possibly-empty array; the guard must stay meaningful.
+  const topPattern = Array.from(patterns.values()).sort((a, b) => b.count - a.count)[0] as
+    | ErrorPattern
+    | undefined
 
   if (topPattern && topPattern.count > 5) {
     console.log(
@@ -395,7 +413,7 @@ function displayErrorsByPattern(patterns: Map<string, ErrorPattern>): void {
     Users: p.affectedUsers.size
   }))
 
-  console.log(table(patternData))
+  table(patternData)
 }
 
 function displayErrorsByTable(errors: ErrorLog[]): void {
@@ -403,7 +421,7 @@ function displayErrorsByTable(errors: ErrorLog[]): void {
 
   for (const error of errors) {
     if (error.table) {
-      tableErrors.set(error.table, (tableErrors.get(error.table) || 0) + 1)
+      tableErrors.set(error.table, (tableErrors.get(error.table) ?? 0) + 1)
     }
   }
 
@@ -412,21 +430,21 @@ function displayErrorsByTable(errors: ErrorLog[]): void {
   console.log('')
   console.log(prism.cyan('Errors by Table:'))
 
-  const tableData = sortedTables.map(([table, count]) => ({
-    Table: table,
+  const tableData = sortedTables.map(([tableName, count]) => ({
+    Table: tableName,
     Errors: count,
     Percentage: `${((count / errors.length) * 100).toFixed(1)}%`
   }))
 
-  console.log(table(tableData))
+  table(tableData)
 }
 
 function displayErrorsByOperation(errors: ErrorLog[]): void {
   const operationErrors = new Map<string, number>()
 
   for (const error of errors) {
-    const operation = error.operation || 'unknown'
-    operationErrors.set(operation, (operationErrors.get(operation) || 0) + 1)
+    const operation = error.operation ?? 'unknown'
+    operationErrors.set(operation, (operationErrors.get(operation) ?? 0) + 1)
   }
 
   const sortedOperations = Array.from(operationErrors.entries()).sort((a, b) => b[1] - a[1])
@@ -440,15 +458,15 @@ function displayErrorsByOperation(errors: ErrorLog[]): void {
     Percentage: `${((count / errors.length) * 100).toFixed(1)}%`
   }))
 
-  console.log(table(operationData))
+  table(operationData)
 }
 
 function displayErrorsByUser(errors: ErrorLog[]): void {
   const userErrors = new Map<string, number>()
 
   for (const error of errors) {
-    const user = error.user || 'system'
-    userErrors.set(user, (userErrors.get(user) || 0) + 1)
+    const user = error.user ?? 'system'
+    userErrors.set(user, (userErrors.get(user) ?? 0) + 1)
   }
 
   const sortedUsers = Array.from(userErrors.entries())
@@ -464,7 +482,7 @@ function displayErrorsByUser(errors: ErrorLog[]): void {
     Percentage: `${((count / errors.length) * 100).toFixed(1)}%`
   }))
 
-  console.log(table(userData))
+  table(userData)
 }
 
 function displayErrorTimeline(errors: ErrorLog[]): void {
@@ -473,7 +491,7 @@ function displayErrorTimeline(errors: ErrorLog[]): void {
 
   for (const error of errors) {
     const hour = error.timestamp.toISOString().slice(0, 13) + ':00'
-    hourlyErrors.set(hour, (hourlyErrors.get(hour) || 0) + 1)
+    hourlyErrors.set(hour, (hourlyErrors.get(hour) ?? 0) + 1)
   }
 
   const sortedHours = Array.from(hourlyErrors.entries())
@@ -522,19 +540,19 @@ function getErrorType(error: string): string {
   }
 }
 
-function formatDate(date: Date, compact: boolean = false): string {
+function formatDate(date: Date, compact = false): string {
   if (compact) {
     return date.toISOString().slice(0, 16).replace('T', ' ')
   }
   return date.toLocaleString()
 }
 
-function truncateError(error: string, maxLength: number = 60): string {
+function truncateError(error: string, maxLength = 60): string {
   if (error.length <= maxLength) return error
   return error.substring(0, maxLength - 3) + '...'
 }
 
-function truncateQuery(query: string, maxLength: number = 80): string {
+function truncateQuery(query: string, maxLength = 80): string {
   const normalized = query.replace(/\s+/g, ' ').trim()
   if (normalized.length <= maxLength) return normalized
   return normalized.substring(0, maxLength - 3) + '...'

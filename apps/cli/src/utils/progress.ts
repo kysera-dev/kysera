@@ -39,7 +39,8 @@ export class ProgressTracker extends EventEmitter {
       quiet: false,
       ...options
     }
-    this.total = options.total || 100
+    const requestedTotal = options.total ?? 100
+    this.total = requestedTotal === 0 ? 100 : requestedTotal
     this.startTime = Date.now()
     this.spinner = createSpinner()
 
@@ -114,7 +115,8 @@ export class ProgressTracker extends EventEmitter {
     this.spinner.stop()
 
     const duration = this.getDuration()
-    const finalMessage = message || 'Complete'
+    const messageText = message ?? ''
+    const finalMessage = messageText === '' ? 'Complete' : messageText
 
     console.log(
       prism.green('✓') + ' ' + finalMessage + ' ' + prism.gray(`(${this.formatDuration(duration)})`)
@@ -132,7 +134,8 @@ export class ProgressTracker extends EventEmitter {
     this.isActive = false
     this.spinner.stop()
 
-    const finalMessage = message || 'Failed'
+    const messageText = message ?? ''
+    const finalMessage = messageText === '' ? 'Failed' : messageText
     console.log(prism.red('✗') + ' ' + finalMessage)
 
     this.emit('fail', { message })
@@ -233,7 +236,7 @@ export class ProgressTracker extends EventEmitter {
  * Progress bar for batch operations
  */
 export class BatchProgress {
-  private trackers: Map<string, ProgressTracker> = new Map()
+  private trackers = new Map<string, ProgressTracker>()
   private options: ProgressOptions
 
   constructor(options: ProgressOptions = {}) {
@@ -309,8 +312,9 @@ export class BatchProgress {
     let total = 0
 
     this.trackers.forEach(tracker => {
-      current += (tracker as any).current
-      total += (tracker as any).total
+      const counters = tracker as unknown as { current: number; total: number }
+      current += counters.current
+      total += counters.total
     })
 
     return {
@@ -336,7 +340,7 @@ export function withProgress<T>(
       progress.complete()
       return result
     })
-    .catch(error => {
+    .catch((error: unknown) => {
       progress.fail()
       throw error
     })

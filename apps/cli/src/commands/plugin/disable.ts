@@ -21,6 +21,10 @@ interface DisableResult {
   dependencies?: string[]
 }
 
+/** Per-plugin settings as stored in the kysera config, keyed by plugin package name. */
+type PluginSettings = { enabled?: boolean } & Record<string, unknown>
+type PluginsRecord = Record<string, PluginSettings | undefined>
+
 export function disablePluginCommand(): Command {
   const cmd = new Command('disable')
     .description('Disable a plugin')
@@ -58,19 +62,20 @@ async function disablePlugin(
     // Load configuration
     const config = await loadConfig(options.config)
 
-    if (!config?.plugins) {
+    if (!config.plugins) {
       console.log(prism.yellow('No plugins configured'))
       return
     }
 
+    const plugins = config.plugins as PluginsRecord
     const results: DisableResult[] = []
 
     if (options.all) {
       // Disable all enabled plugins
       disableSpinner.start('Finding enabled plugins...')
 
-      const enabledPlugins = Object.entries(config.plugins)
-        .filter(([_, conf]: [string, any]) => conf.enabled === true)
+      const enabledPlugins = Object.entries(plugins)
+        .filter(([_, conf]) => conf?.enabled === true)
         .map(([name]) => name)
 
       if (enabledPlugins.length === 0) {
@@ -106,14 +111,14 @@ async function disablePlugin(
 
       // Disable each plugin
       for (const plugin of enabledPlugins) {
-        const result = await disableSinglePlugin(plugin, config, options)
+        const result = await disableSinglePlugin(plugin, plugins, options)
         results.push(result)
       }
     } else if (name) {
       // Disable specific plugin
       disableSpinner.start(`Disabling plugin: ${name}...`)
 
-      const result = await disableSinglePlugin(name, config, options)
+      const result = await disableSinglePlugin(name, plugins, options)
       results.push(result)
 
       if (result.status === 'disabled') {
@@ -130,8 +135,8 @@ async function disablePlugin(
       // Interactive selection
       disableSpinner.start('Finding enabled plugins...')
 
-      const enabledPlugins = Object.entries(config.plugins)
-        .filter(([_, conf]: [string, any]) => conf.enabled === true)
+      const enabledPlugins = Object.entries(plugins)
+        .filter(([_, conf]) => conf?.enabled === true)
         .map(([name]) => name)
 
       disableSpinner.stop()
@@ -151,7 +156,7 @@ async function disablePlugin(
       })
 
       disableSpinner.start(`Disabling plugin: ${selected as string}...`)
-      const result = await disableSinglePlugin(selected as string, config, options)
+      const result = await disableSinglePlugin(selected as string, plugins, options)
       results.push(result)
 
       if (result.status === 'disabled') {
@@ -190,7 +195,7 @@ async function disablePlugin(
 
 async function disableSinglePlugin(
   pluginName: string,
-  config: any,
+  plugins: PluginsRecord,
   options: DisablePluginOptions
 ): Promise<DisableResult> {
   const result: DisableResult = {
@@ -200,14 +205,15 @@ async function disableSinglePlugin(
 
   try {
     // Check if plugin is configured
-    if (!config.plugins[pluginName]) {
+    const settings = plugins[pluginName]
+    if (!settings) {
       result.status = 'not_enabled'
       result.message = 'Plugin is not configured'
       return result
     }
 
     // Check if already disabled
-    if (config.plugins[pluginName].enabled === false) {
+    if (settings.enabled === false) {
       result.status = 'not_enabled'
       result.message = 'Plugin is already disabled'
       return result
@@ -215,7 +221,7 @@ async function disableSinglePlugin(
 
     // Check for dependent plugins
     if (!options.force) {
-      const dependents = await findDependentPlugins(pluginName, config)
+      const dependents = findDependentPlugins(pluginName, plugins)
 
       if (dependents.length > 0) {
         result.status = 'failed'
@@ -250,16 +256,16 @@ async function disableSinglePlugin(
     }
 
     // Disable the plugin
-    config.plugins[pluginName].enabled = false
+    settings.enabled = false
 
     // Remove configuration if requested
     if (!options.keepConfig) {
       // Keep only the enabled flag
-      const { enabled, ...rest } = config.plugins[pluginName]
+      const { enabled: _enabled, ...rest } = settings
       if (Object.keys(rest).length === 0) {
-        delete config.plugins[pluginName]
+        Reflect.deleteProperty(plugins, pluginName)
       } else {
-        config.plugins[pluginName] = { enabled: false }
+        plugins[pluginName] = { enabled: false }
       }
     }
 
@@ -275,24 +281,20 @@ async function disableSinglePlugin(
   return result
 }
 
-async function findDependentPlugins(pluginName: string, config: any): Promise<string[]> {
+function findDependentPlugins(pluginName: string, plugins: PluginsRecord): string[] {
   const dependents: string[] = []
 
   // Check each enabled plugin for dependencies
-  for (const [name, conf] of Object.entries(config.plugins)) {
-    if (name === pluginName || (conf as any).enabled !== true) {
+  for (const [name, conf] of Object.entries(plugins)) {
+    if (name === pluginName || conf?.enabled !== true) {
       continue
     }
 
     // Check if this plugin depends on the one being disabled
-    const pluginConfig = conf as any
+    const dependencies = conf.dependencies
 
-    if (pluginConfig.dependencies) {
-      if (Array.isArray(pluginConfig.dependencies)) {
-        if (pluginConfig.dependencies.includes(pluginName)) {
-          dependents.push(name)
-        }
-      }
+    if (Array.isArray(dependencies) && dependencies.includes(pluginName)) {
+      dependents.push(name)
     }
 
     // Check for implicit dependencies
@@ -311,8 +313,10 @@ async function findDependentPlugins(pluginName: string, config: any): Promise<st
 }
 
 function logRemovedFeatures(pluginName: string): void {
-  const features: Record<string, { hooks?: string[]; providers?: string[]; commands?: string[] }> =
-    {
+  const features: Record<
+    string,
+    { hooks?: string[]; providers?: string[]; commands?: string[] } | undefined
+  > = {
       '@kysera/soft-delete': {
         hooks: ['beforeDelete', 'afterRestore'],
         providers: ['SoftDeletePlugin']

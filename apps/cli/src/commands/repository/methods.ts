@@ -2,7 +2,6 @@ import { Command } from 'commander'
 import { prism, select } from '@xec-sh/kit'
 import { displayTable as table } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { loadConfig } from '../../config/loader.js'
 import * as fs from 'node:fs/promises'
@@ -27,12 +26,12 @@ interface MethodInfo {
   visibility: 'public' | 'private' | 'protected'
   type: 'query' | 'mutation' | 'utility' | 'validation'
   async: boolean
-  parameters: Array<{
+  parameters: {
     name: string
     type: string
     optional: boolean
     default?: string
-  }>
+  }[]
   returnType: string
   description?: string
   example?: string
@@ -90,8 +89,8 @@ export function showMethodsCommand(): Command {
 }
 
 async function showMethods(options: ShowMethodsOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config)
+  // Load configuration (validates config file; result unused here)
+  await loadConfig(options.config)
 
   const methodsSpinner = spinner()
 
@@ -167,7 +166,7 @@ async function showMethods(options: ShowMethodsOptions): Promise<void> {
     if (options.json) {
       console.log(JSON.stringify(analysis, null, 2))
     } else if (options.markdown) {
-      displayMarkdownDocumentation(analysis, options)
+      displayMarkdownDocumentation(analysis)
     } else {
       displayMethods(analysis, options)
     }
@@ -183,7 +182,7 @@ function analyzeRepository(
   options: ShowMethodsOptions
 ): RepositoryMethods | null {
   // Extract class name
-  const classMatch = content.match(/export\s+(?:default\s+)?class\s+(\w+Repository)/m)
+  const classMatch = /export\s+(?:default\s+)?class\s+(\w+Repository)/m.exec(content)
   if (!classMatch) {
     return null
   }
@@ -191,7 +190,7 @@ function analyzeRepository(
   const className = classMatch[1]
 
   // Extract table name
-  const tableMatch = content.match(/tableName[:\s=]+['"`](\w+)['"`]/m)
+  const tableMatch = /tableName[:\s=]+['"`](\w+)['"`]/m.exec(content)
   const tableName = tableMatch ? tableMatch[1] : undefined
 
   // Extract methods
@@ -199,14 +198,19 @@ function analyzeRepository(
   const methodRegex =
     /(\/\*\*[^*]*\*+(?:[^/*][^*]*\*+)*\/)?\s*(public\s+|private\s+|protected\s+)?(async\s+)?(\w+)\s*\(([^)]*)\)\s*(?::\s*([^{]+))?\s*\{/gm
 
-  let match
+  let match: RegExpExecArray | null
   while ((match = methodRegex.exec(content)) !== null) {
     const jsdoc = match[1]
-    const visibility = match[2] ? (match[2].trim() as any) : 'public'
+    const visibility = match[2] ? (match[2].trim() as MethodInfo['visibility']) : 'public'
     const isAsync = !!match[3]
     const methodName = match[4]
     const params = match[5]
-    const returnType = match[6]?.trim() || (isAsync ? 'Promise<void>' : 'void')
+    // Return-type group may be absent or trim to '' (whitespace before `{`)
+    let returnType = isAsync ? 'Promise<void>' : 'void'
+    const declaredReturnType = (match[6] as string | undefined)?.trim()
+    if (declaredReturnType) {
+      returnType = declaredReturnType
+    }
 
     // Skip constructor and getters/setters
     if (['constructor', 'get', 'set'].includes(methodName)) {
@@ -303,7 +307,7 @@ function extractJSDocDescription(jsdoc?: string): string | undefined {
 function extractJSDocExample(jsdoc?: string): string | undefined {
   if (!jsdoc) return undefined
 
-  const exampleMatch = jsdoc.match(/@example\s*\n([^@]*)/m)
+  const exampleMatch = /@example\s*\n([^@]*)/m.exec(jsdoc)
   if (exampleMatch) {
     const example = exampleMatch[1]
       .split('\n')
@@ -334,12 +338,13 @@ function parseMethodParameters(params: string, jsdoc?: string): MethodInfo['para
   const paramParts = splitParameters(params)
 
   for (const part of paramParts) {
-    const paramMatch = part.match(/\s*(\w+)(\?)?:\s*([^=]+?)(?:\s*=\s*(.+))?$/)
+    const paramMatch = /\s*(\w+)(\?)?:\s*([^=]+?)(?:\s*=\s*(.+))?$/.exec(part)
     if (paramMatch) {
       const name = paramMatch[1]
       const optional = !!paramMatch[2] || !!paramMatch[4]
       const type = paramMatch[3].trim()
-      const defaultValue = paramMatch[4]?.trim()
+      // Default-value group is absent when no initializer is present
+      const defaultValue = (paramMatch[4] as string | undefined)?.trim()
 
       parameters.push({
         name,
@@ -403,7 +408,7 @@ function determineMethodType(name: string, body: string): MethodInfo['type'] {
   if (
     body.includes('.selectFrom') ||
     body.includes('.select(') ||
-    name.match(/^(get|find|fetch|list|search|query)/i)
+    /^(get|find|fetch|list|search|query)/i.exec(name)
   ) {
     return 'query'
   }
@@ -412,7 +417,7 @@ function determineMethodType(name: string, body: string): MethodInfo['type'] {
     body.includes('.insertInto') ||
     body.includes('.updateTable') ||
     body.includes('.deleteFrom') ||
-    name.match(/^(create|update|delete|remove|save|add|set)/i)
+    /^(create|update|delete|remove|save|add|set)/i.exec(name)
   ) {
     return 'mutation'
   }
@@ -420,7 +425,7 @@ function determineMethodType(name: string, body: string): MethodInfo['type'] {
   if (
     body.includes('.parse(') ||
     body.includes('validate') ||
-    name.match(/^(validate|check|verify)/i)
+    /^(validate|check|verify)/i.exec(name)
   ) {
     return 'validation'
   }
@@ -430,24 +435,24 @@ function determineMethodType(name: string, body: string): MethodInfo['type'] {
 
 function determineMethodCategory(name: string, type: MethodInfo['type']): string {
   // Common categories based on name patterns
-  if (name.match(/^find/i)) return 'Finding'
-  if (name.match(/^get/i)) return 'Retrieval'
-  if (name.match(/^list/i)) return 'Listing'
-  if (name.match(/^search/i)) return 'Search'
-  if (name.match(/^create/i)) return 'Creation'
-  if (name.match(/^update/i)) return 'Update'
-  if (name.match(/^delete|remove/i)) return 'Deletion'
-  if (name.match(/^validate|check/i)) return 'Validation'
-  if (name.match(/^paginate/i)) return 'Pagination'
-  if (name.match(/^count/i)) return 'Counting'
-  if (name.match(/^exists/i)) return 'Existence'
+  if (/^find/i.exec(name)) return 'Finding'
+  if (/^get/i.exec(name)) return 'Retrieval'
+  if (/^list/i.exec(name)) return 'Listing'
+  if (/^search/i.exec(name)) return 'Search'
+  if (/^create/i.exec(name)) return 'Creation'
+  if (/^update/i.exec(name)) return 'Update'
+  if (/^delete|remove/i.exec(name)) return 'Deletion'
+  if (/^validate|check/i.exec(name)) return 'Validation'
+  if (/^paginate/i.exec(name)) return 'Pagination'
+  if (/^count/i.exec(name)) return 'Counting'
+  if (/^exists/i.exec(name)) return 'Existence'
 
   // Default to type
   return type.charAt(0).toUpperCase() + type.slice(1)
 }
 
 function extractMethodCalls(body: string): string[] {
-  const calls: Set<string> = new Set()
+  const calls = new Set<string>()
 
   // Extract Kysely method calls
   const kyselyMatches = body.matchAll(
@@ -582,7 +587,7 @@ function displayMethods(analysis: RepositoryMethods, options: ShowMethodsOptions
   console.log(`  Async Methods: ${analysis.stats.async}`)
 
   // Group methods
-  const groups = groupMethods(analysis.methods, options.groupBy || 'visibility')
+  const groups = groupMethods(analysis.methods, options.groupBy ?? 'visibility')
 
   // Display methods by group
   for (const [groupName, methods] of Object.entries(groups)) {
@@ -632,12 +637,12 @@ function displayMethods(analysis: RepositoryMethods, options: ShowMethodsOptions
         Async: m.async ? '✅' : '',
         Parameters: m.parameters.length,
         Lines: m.linesOfCode,
-        Complexity: options.showComplexity ? String(m.complexity || 1) : undefined
+        Complexity: options.showComplexity ? String(m.complexity ?? 1) : undefined
       }))
 
       // Remove undefined columns
       const cleanedData = tableData.map(row => {
-        const cleaned: any = {}
+        const cleaned: Record<string, unknown> = {}
         for (const [key, value] of Object.entries(row)) {
           if (value !== undefined) {
             cleaned[key] = value
@@ -646,7 +651,8 @@ function displayMethods(analysis: RepositoryMethods, options: ShowMethodsOptions
         return cleaned
       })
 
-      console.log(table(cleanedData))
+      // displayTable renders directly and returns void
+      table(cleanedData)
     }
   }
 
@@ -676,13 +682,13 @@ function groupMethods(
         key = method.type.charAt(0).toUpperCase() + method.type.slice(1) + ' Methods'
         break
       case 'category':
-        key = method.category || 'Other'
+        key = method.category ?? 'Other'
         break
       default:
         key = 'All Methods'
     }
 
-    if (!groups[key]) {
+    if (!(key in groups)) {
       groups[key] = []
     }
     groups[key].push(method)
@@ -691,10 +697,7 @@ function groupMethods(
   return groups
 }
 
-function displayMarkdownDocumentation(
-  analysis: RepositoryMethods,
-  options: ShowMethodsOptions
-): void {
+function displayMarkdownDocumentation(analysis: RepositoryMethods): void {
   console.log(`# ${analysis.repository}`)
   console.log('')
 

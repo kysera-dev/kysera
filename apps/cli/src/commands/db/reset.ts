@@ -53,14 +53,14 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
   await withDatabase(
     { config: options.config, verbose: options.verbose, schema: options.schema },
     async (db, config, schema) => {
-      const resetSpinner = spinner() as any
+      const resetSpinner = spinner()
 
       // Step 1: Drop all tables
       resetSpinner.start(
         `Dropping all tables${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
       )
 
-      let tables: string[] = []
+      let tables: string[]
 
       // Get all tables based on dialect
       if (config.database.dialect === 'postgres') {
@@ -69,22 +69,22 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
           .select('table_name')
           .where('table_schema', '=', schema)
           .where('table_type', '=', 'BASE TABLE')
-          .execute()) as any[]
+          .execute()) as { table_name: string }[]
         tables = result.map(r => r.table_name)
       } else if (config.database.dialect === 'mysql') {
         const result = (await db
           .selectFrom('information_schema.tables')
           .select('table_name')
           .where('table_schema', '=', db.fn('DATABASE'))
-          .execute()) as any[]
-        tables = result.map(r => r.table_name || r.TABLE_NAME)
-      } else if (config.database.dialect === 'sqlite') {
+          .execute()) as { table_name?: string; TABLE_NAME?: string }[]
+        tables = result.map(r => r.table_name ?? r.TABLE_NAME ?? '')
+      } else {
         const result = (await db
           .selectFrom('sqlite_master')
           .select('name')
           .where('type', '=', 'table')
           .where('name', 'not like', 'sqlite_%')
-          .execute()) as any[]
+          .execute()) as { name: string }[]
         tables = result.map(r => r.name)
       }
 
@@ -99,7 +99,7 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
         } catch (error) {
           // Some tables might have dependencies, continue anyway
           if (options.verbose) {
-            console.log(`Failed to drop ${table}: ${error}`)
+            console.log(`Failed to drop ${table}: ${String(error)}`)
           }
         }
       }
@@ -109,8 +109,8 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
       // Step 2: Run migrations
       resetSpinner.start('Running migrations...')
 
-      const migrationsDir = config.migrations?.directory || './migrations'
-      const tableName = config.migrations?.tableName || 'migrations'
+      const migrationsDir = config.migrations?.directory ?? './migrations'
+      const tableName = config.migrations?.tableName ?? 'migrations'
 
       const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 
@@ -132,7 +132,7 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
             stdio: options.verbose ? 'inherit' : 'ignore'
           })
           resetSpinner.succeed('Seeds ran successfully')
-        } catch (error) {
+        } catch {
           resetSpinner.warn('Failed to run seeds')
           logger.info(`Run ${prism.cyan('kysera db seed')} manually to seed the database`)
         }

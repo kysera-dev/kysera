@@ -14,6 +14,7 @@ import type {
   SQLitePlan,
   IndexInfo
 } from '../../types/index.js'
+import type { KyseraConfig } from '../../config/schema.js'
 
 export interface AnalyzerOptions {
   query?: string
@@ -28,7 +29,7 @@ export interface AnalyzerOptions {
 
 interface QueryAnalysis {
   query: string
-  executionPlan: Array<PostgresExplainOutput | MySQLPlan | SQLitePlan>
+  executionPlan: (PostgresExplainOutput | MySQLPlan | SQLitePlan)[]
   estimatedCost?: number
   actualTime?: number
   rowsExamined?: number
@@ -46,6 +47,12 @@ interface TableStatistics {
   dataSize: number
   indexSize: number
   indexes: IndexInfo[]
+}
+
+/** Row shape read from pg_indexes. */
+interface PgIndexRow {
+  indexname: string
+  indexdef: string
 }
 
 export function analyzerCommand(): Command {
@@ -78,7 +85,9 @@ export function analyzerCommand(): Command {
 
 async function analyzeQuery(options: AnalyzerOptions): Promise<void> {
   // Load configuration
-  const config = await loadConfig(options.config)
+  // Widened: mocked loaders may resolve null even though the declared return
+  // type is non-nullable; the runtime guard below must stay meaningful.
+  const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   if (!config?.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
@@ -156,9 +165,9 @@ async function performQueryAnalysis(
   if (dialect === 'postgres') {
     await analyzePostgresQuery(db, query, analysis, options)
   } else if (dialect === 'mysql') {
-    await analyzeMysqlQuery(db, query, analysis, options)
+    await analyzeMysqlQuery(db, query, analysis)
   } else if (dialect === 'sqlite') {
-    await analyzeSqliteQuery(db, query, analysis, options)
+    await analyzeSqliteQuery(db, query, analysis)
   }
 
   // Analyze query structure
@@ -190,18 +199,29 @@ async function analyzePostgresQuery(
 
     const result = await db.executeQuery(db.raw(explainQuery))
 
-    if (result.rows && result.rows.length > 0) {
-      const plan = (result.rows[0] as Record<string, unknown>)['QUERY PLAN']
+    // Widened: the declared QueryResult type has required rows, but driver
+    // results may omit them at runtime; the guard must stay meaningful.
+    const rows = result.rows as unknown[] | undefined
+    if (rows && rows.length > 0) {
+      const plan = (rows[0] as Record<string, unknown>)['QUERY PLAN']
       if (typeof plan === 'string') {
-        analysis.executionPlan = JSON.parse(plan)
+        analysis.executionPlan = JSON.parse(plan) as (
+          | PostgresExplainOutput
+          | MySQLPlan
+          | SQLitePlan
+        )[]
       } else if (Array.isArray(plan)) {
-        analysis.executionPlan = plan as Array<PostgresExplainOutput | MySQLPlan | SQLitePlan>
+        analysis.executionPlan = plan as (PostgresExplainOutput | MySQLPlan | SQLitePlan)[]
       }
 
       // Extract metrics from plan
-      if (analysis.executionPlan && analysis.executionPlan[0]) {
-        const planData = analysis.executionPlan[0]
-
+      // Widened: [0] on a possibly-empty plan array; the guard must stay meaningful.
+      const planData = analysis.executionPlan[0] as
+        | PostgresExplainOutput
+        | MySQLPlan
+        | SQLitePlan
+        | undefined
+      if (planData) {
         // Type guard for PostgresExplainOutput
         if ('Plan' in planData && planData.Plan) {
           analysis.estimatedCost = planData.Plan['Total Cost']
@@ -231,36 +251,38 @@ async function analyzePostgresQuery(
 async function analyzeMysqlQuery(
   db: DatabaseInstance,
   query: string,
-  analysis: QueryAnalysis,
-  options: AnalyzerOptions
+  analysis: QueryAnalysis
 ): Promise<void> {
   try {
     // Get EXPLAIN output
     const explainResult = await db.executeQuery(db.raw(`EXPLAIN ${query}`))
 
-    if (explainResult.rows && explainResult.rows.length > 0) {
-      analysis.executionPlan = explainResult.rows as MySQLPlan[]
+    // Widened: the declared QueryResult type has required rows, but driver
+    // results may omit them at runtime; the guard must stay meaningful.
+    const explainRows = explainResult.rows as unknown[] | undefined
+    if (explainRows && explainRows.length > 0) {
+      analysis.executionPlan = explainRows as MySQLPlan[]
 
       // Extract metrics from plan
-      for (const row of explainResult.rows) {
-        const mysqlRow = row as any // MySQL EXPLAIN row structure
+      for (const row of explainRows) {
+        const mysqlRow = row as MySQLPlan
         if (mysqlRow.key) {
-          analysis.indexesUsed.push(String(mysqlRow.key))
+          analysis.indexesUsed.push(mysqlRow.key)
         }
 
         if (mysqlRow.rows) {
-          analysis.rowsExamined = (analysis.rowsExamined || 0) + Number(mysqlRow.rows)
+          analysis.rowsExamined = (analysis.rowsExamined ?? 0) + mysqlRow.rows
         }
 
         // Check for warnings
         if (mysqlRow.Extra) {
-          if (String(mysqlRow.Extra).includes('Using filesort')) {
+          if (mysqlRow.Extra.includes('Using filesort')) {
             analysis.warnings.push('Query uses filesort (consider adding index)')
           }
-          if (String(mysqlRow.Extra).includes('Using temporary')) {
+          if (mysqlRow.Extra.includes('Using temporary')) {
             analysis.warnings.push('Query uses temporary table (may impact performance)')
           }
-          if (String(mysqlRow.Extra).includes('Using where')) {
+          if (mysqlRow.Extra.includes('Using where')) {
             analysis.warnings.push('Using WHERE without index')
           }
         }
@@ -281,23 +303,25 @@ async function analyzeMysqlQuery(
 async function analyzeSqliteQuery(
   db: DatabaseInstance,
   query: string,
-  analysis: QueryAnalysis,
-  options: AnalyzerOptions
+  analysis: QueryAnalysis
 ): Promise<void> {
   try {
     // Get EXPLAIN QUERY PLAN output
     const explainResult = await db.executeQuery(db.raw(`EXPLAIN QUERY PLAN ${query}`))
 
-    if (explainResult.rows && explainResult.rows.length > 0) {
-      analysis.executionPlan = explainResult.rows as SQLitePlan[]
+    // Widened: the declared QueryResult type has required rows, but driver
+    // results may omit them at runtime; the guard must stay meaningful.
+    const explainRows = explainResult.rows as unknown[] | undefined
+    if (explainRows && explainRows.length > 0) {
+      analysis.executionPlan = explainRows as SQLitePlan[]
 
       // Extract index usage from plan
-      for (const row of explainResult.rows) {
-        const sqliteRow = row as any // SQLite EXPLAIN row structure
-        const detail = String(sqliteRow.detail || '')
+      for (const row of explainRows) {
+        const sqliteRow = row as SQLitePlan
+        const detail = sqliteRow.detail ?? ''
 
         if (detail.includes('USING INDEX')) {
-          const indexMatch = detail.match(/USING INDEX (\w+)/)
+          const indexMatch = /USING INDEX (\w+)/.exec(detail)
           if (indexMatch) {
             analysis.indexesUsed.push(indexMatch[1])
           }
@@ -320,7 +344,7 @@ async function analyzeSqliteQuery(
   }
 }
 
-function extractPostgresIndexUsage(plan: any, analysis: QueryAnalysis): void {
+function extractPostgresIndexUsage(plan: PostgresPlan | undefined, analysis: QueryAnalysis): void {
   if (!plan) return
 
   // Check node type for index usage
@@ -332,7 +356,7 @@ function extractPostgresIndexUsage(plan: any, analysis: QueryAnalysis): void {
     }
 
     if (plan['Node Type'] === 'Seq Scan') {
-      analysis.warnings.push(`Sequential scan on table ${plan['Relation Name']}`)
+      analysis.warnings.push(`Sequential scan on table ${String(plan['Relation Name'])}`)
     }
   }
 
@@ -373,8 +397,8 @@ function analyzeQueryStructure(query: string, analysis: QueryAnalysis): void {
   }
 
   // Check for missing JOIN conditions
-  const joinCount = (queryUpper.match(/JOIN/g) || []).length
-  const onCount = (queryUpper.match(/\bON\b/g) || []).length
+  const joinCount = (queryUpper.match(/JOIN/g) ?? []).length
+  const onCount = (queryUpper.match(/\bON\b/g) ?? []).length
   if (joinCount > onCount) {
     analysis.warnings.push('Possible missing JOIN condition')
   }
@@ -429,7 +453,7 @@ async function getTableStatistics(
         .selectFrom(tableName)
         .select(db.fn.countAll().as('count'))
         .executeTakeFirst()
-      tableStats.rowCount = Number(countResult?.count || 0)
+      tableStats.rowCount = Number(countResult?.count ?? 0)
 
       // Get indexes
       if (dialect === 'postgres') {
@@ -442,14 +466,12 @@ async function getTableStatistics(
         )
 
         for (const idx of indexResult.rows) {
-          const pgIdx = idx as any // PostgreSQL index row
+          const pgIdx = idx as PgIndexRow
           tableStats.indexes.push({
-            name: String(pgIdx.indexname),
-            columns: extractColumnsFromIndexDef(String(pgIdx.indexdef)),
-            isUnique: String(pgIdx.indexdef).includes('UNIQUE'),
-            isPrimary:
-              String(pgIdx.indexname).endsWith('_pkey') ||
-              String(pgIdx.indexdef).includes('PRIMARY KEY')
+            name: pgIdx.indexname,
+            columns: extractColumnsFromIndexDef(pgIdx.indexdef),
+            isUnique: pgIdx.indexdef.includes('UNIQUE'),
+            isPrimary: pgIdx.indexname.endsWith('_pkey') || pgIdx.indexdef.includes('PRIMARY KEY')
           })
         }
       }
@@ -468,7 +490,7 @@ async function getTableStatistics(
 }
 
 function extractColumnsFromIndexDef(indexDef: string): string[] {
-  const match = indexDef.match(/\(([^)]+)\)/)
+  const match = /\(([^)]+)\)/.exec(indexDef)
   if (match) {
     return match[1].split(',').map(c => c.trim())
   }
@@ -519,11 +541,13 @@ function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzerOption
     console.log(prism.cyan('Execution Plan:'))
 
     if (typeof analysis.executionPlan[0] === 'object' && 'Plan' in analysis.executionPlan[0]) {
-      // PostgreSQL JSON format
-      displayPostgresPlan(analysis.executionPlan[0].Plan)
+      // PostgreSQL JSON format; Plan is present in practice on this shape
+      displayPostgresPlan(
+        (analysis.executionPlan[0] as PostgresExplainOutput & { Plan: PostgresPlan }).Plan
+      )
     } else {
       // Table format
-      console.log(table(analysis.executionPlan))
+      table(analysis.executionPlan)
     }
   }
 
@@ -627,10 +651,10 @@ function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzerOption
   }
 }
 
-function displayPostgresPlan(plan: any, indent: number = 0): void {
+function displayPostgresPlan(plan: PostgresPlan, indent = 0): void {
   const prefix = '  ' + '  '.repeat(indent)
 
-  console.log(`${prefix}${plan['Node Type']}`)
+  console.log(`${prefix}${String(plan['Node Type'])}`)
 
   if (plan['Relation Name']) {
     console.log(`${prefix}  Table: ${plan['Relation Name']}`)

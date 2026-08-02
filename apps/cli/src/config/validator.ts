@@ -1,4 +1,4 @@
-import { z, ZodError } from 'zod'
+import { ZodError } from 'zod'
 import type { KyseraConfig } from './schema.js'
 import { KyseraConfigSchema } from './schema.js'
 
@@ -84,7 +84,7 @@ export function validateConfiguration(config: unknown): ValidationResult {
 function checkDeprecations(config: Partial<KyseraConfig>, warnings: ValidationWarning[]): void {
   // Example: Check for old plugin format
   if ('plugins' in config) {
-    const plugins = config.plugins as any
+    const plugins: unknown = config.plugins
 
     // Check if using old format (e.g., plugins as array)
     if (Array.isArray(plugins)) {

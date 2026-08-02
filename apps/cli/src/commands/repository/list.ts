@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { prism, table } from '@xec-sh/kit'
+import { prism, table, type TableOptions } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
@@ -70,13 +70,13 @@ async function listRepositories(options: ListRepositoriesOptions): Promise<void>
     // Config is optional for this command
   }
 
-  const listSpinner = spinner() as any
+  const listSpinner = spinner()
   listSpinner.start('Scanning for repository files...')
 
   try {
     // Get project root directory
     const projectRoot = process.cwd()
-    const scanDirectory = path.join(projectRoot, options.directory || 'src')
+    const scanDirectory = path.join(projectRoot, options.directory ?? 'src')
 
     // Check if directory exists
     try {
@@ -87,16 +87,13 @@ async function listRepositories(options: ListRepositoriesOptions): Promise<void>
     }
 
     // Find repository files
-    const repositoryFiles = await findRepositoryFiles(
-      scanDirectory,
-      options.pattern || '**/*Repository.ts'
-    )
+    const repositoryFiles = await findRepositoryFiles(scanDirectory)
 
     if (repositoryFiles.length === 0) {
       listSpinner.warn('No repository files found')
       console.log('')
       console.log(prism.gray(`Searched in: ${scanDirectory}`))
-      console.log(prism.gray(`Pattern: ${options.pattern || '**/*Repository.ts'}`))
+      console.log(prism.gray(`Pattern: ${options.pattern ?? '**/*Repository.ts'}`))
       console.log('')
       console.log(prism.yellow('Tips:'))
       console.log('  - Make sure your repositories follow the naming convention (*Repository.ts)')
@@ -131,7 +128,7 @@ async function listRepositories(options: ListRepositoriesOptions): Promise<void>
   }
 }
 
-async function findRepositoryFiles(directory: string, pattern: string): Promise<string[]> {
+async function findRepositoryFiles(directory: string): Promise<string[]> {
   const files: string[] = []
 
   async function scanDir(dir: string): Promise<void> {
@@ -163,7 +160,7 @@ async function parseRepositoryFile(
     const content = await fs.readFile(filePath, 'utf-8')
 
     // Extract class name
-    const classMatch = content.match(/export\s+(?:default\s+)?class\s+(\w+Repository)/m)
+    const classMatch = /export\s+(?:default\s+)?class\s+(\w+Repository)/m.exec(content)
     if (!classMatch) {
       return null
     }
@@ -171,11 +168,11 @@ async function parseRepositoryFile(
     const className = classMatch[1]
 
     // Extract table name
-    const tableMatch = content.match(/tableName[:\s=]+['"`](\w+)['"`]/m)
+    const tableMatch = /tableName[:\s=]+['"`](\w+)['"`]/m.exec(content)
     const tableName = tableMatch ? tableMatch[1] : undefined
 
     // Extract entity name
-    const entityMatch = content.match(/(?:interface|type)\s+(\w+Entity)/m)
+    const entityMatch = /(?:interface|type)\s+(\w+Entity)/m.exec(content)
     const entity = entityMatch ? entityMatch[1] : undefined
 
     // Extract methods if requested
@@ -196,7 +193,7 @@ async function parseRepositoryFile(
     // Extract schema if requested
     let schema: RepositoryInfo['schema'] | undefined
     if (options.showSchemas) {
-      const schemaMatch = content.match(/(?:const|let)\s+\w+Schema\s*=\s*z\.object\(\{([^}]+)\}/m)
+      const schemaMatch = /(?:const|let)\s+\w+Schema\s*=\s*z\.object\(\{([^}]+)\}/m.exec(content)
       if (schemaMatch) {
         const schemaContent = schemaMatch[1]
         const properties: string[] = []
@@ -221,7 +218,7 @@ async function parseRepositoryFile(
     // Calculate stats
     const stats: RepositoryInfo['stats'] = {
       linesOfCode: content.split('\n').length,
-      methodCount: methods?.length || 0,
+      methodCount: methods?.length ?? 0,
       hasValidation: content.includes('z.object') || content.includes('zod'),
       hasPagination: content.includes('paginate') || content.includes('limit'),
       hasSoftDelete: content.includes('soft') && content.includes('delete')
@@ -238,7 +235,7 @@ async function parseRepositoryFile(
       stats
     }
   } catch (error) {
-    logger.debug(`Failed to parse ${filePath}: ${error}`)
+    logger.debug(`Failed to parse ${filePath}: ${String(error)}`)
     return null
   }
 }
@@ -292,9 +289,9 @@ function displayRepositories(
     // Table view
     const tableData = repositories.map(repo => ({
       Repository: repo.name,
-      Table: repo.tableName || prism.gray('N/A'),
+      Table: repo.tableName ?? prism.gray('N/A'),
       Path: repo.path,
-      Methods: String(repo.stats?.methodCount || 0),
+      Methods: String(repo.stats?.methodCount ?? 0),
       Features:
         [
           repo.stats?.hasValidation ? 'V' : '',
@@ -306,7 +303,10 @@ function displayRepositories(
     }))
 
     console.log('')
-    console.log(table(tableData as any))
+    // kit's `table` renders directly and returns void; it has always been
+    // handed the row array here even though its signature says TableOptions —
+    // runtime argument shape preserved.
+    table(tableData as unknown as TableOptions<Record<string, string>>)
   }
 
   // Summary

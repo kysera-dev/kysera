@@ -104,6 +104,7 @@ const INJECTION_PATTERNS = [
   /"/, // Double quote
   /`/, // Backtick
   /\\/, // Backslash
+  // eslint-disable-next-line no-control-regex -- NUL byte is exactly what this pattern must reject
   /\x00/, // Null byte
   /\/\*/, // Block comment start
   /\*\//, // Block comment end
@@ -188,7 +189,7 @@ export function validateIdentifier(name: string, type: IdentifierType): string {
     throw new SqlSanitizationError(
       `Invalid ${type} name: name must be a non-empty string`,
       type,
-      String(name)
+      name
     )
   }
 
@@ -363,11 +364,7 @@ export function interpolateTableName(sql: string, tableName: string, dialect: Sq
  * @param cascade - Whether to include CASCADE (postgres/mysql)
  * @returns Safe TRUNCATE statement
  */
-export function safeTruncate(
-  tableName: string,
-  dialect: SqlDialect,
-  cascade: boolean = false
-): string {
+export function safeTruncate(tableName: string, dialect: SqlDialect, cascade = false): string {
   const escapedTable = escapeTypedIdentifier(tableName, 'table', dialect)
 
   switch (dialect) {
@@ -390,11 +387,7 @@ export function safeTruncate(
  * @param ifExists - Whether to include IF EXISTS
  * @returns Safe DROP DATABASE statement
  */
-export function safeDropDatabase(
-  dbName: string,
-  dialect: SqlDialect,
-  ifExists: boolean = true
-): string {
+export function safeDropDatabase(dbName: string, dialect: SqlDialect, ifExists = true): string {
   const escapedDb = escapeTypedIdentifier(dbName, 'database', dialect)
   const ifExistsClause = ifExists ? 'IF EXISTS ' : ''
 
@@ -468,10 +461,11 @@ export function safeAnalyze(tableName: string | undefined, dialect: SqlDialect):
   const escapedTable = escapeTypedIdentifier(tableName, 'table', dialect)
 
   switch (dialect) {
-    case 'sqlite':
+    case 'sqlite': {
       // SQLite ANALYZE uses quotes differently
       const validName = validateIdentifier(tableName, 'table')
       return `ANALYZE '${validName}'`
+    }
     case 'mysql':
       return `ANALYZE TABLE ${escapedTable}`
     case 'postgres':

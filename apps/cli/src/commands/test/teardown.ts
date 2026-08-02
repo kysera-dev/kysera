@@ -9,6 +9,7 @@ import { loadConfig } from '../../config/loader.js'
 import { validateIdentifier, safeTruncate, safeDropDatabase } from '../../utils/sql-sanitizer.js'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import type { KyseraConfig, DatabaseConfig } from '../../config/schema.js'
 
 export interface TestTeardownOptions {
   environment?: 'test' | 'ci' | 'local' | 'all'
@@ -25,9 +26,19 @@ export interface TestTeardownOptions {
 
 interface TeardownResult {
   environment: string
-  databases: Array<{ name: string; status: 'dropped' | 'preserved' | 'failed'; reason?: string }>
+  databases: { name: string; status: 'dropped' | 'preserved' | 'failed'; reason?: string }[]
   artifacts: { cleaned: string[]; preserved: string[] }
   duration: number
+}
+
+/**
+ * Database config as consumed here. Kept loose on purpose: schema-validated
+ * configs carry dialect 'postgres', but the branches below (and test doubles)
+ * compare against 'postgresql', so the dialect stays a plain string.
+ */
+interface TeardownDatabaseConfig {
+  dialect?: string
+  database?: string
 }
 
 export function testTeardownCommand(): Command {
@@ -62,7 +73,9 @@ export function testTeardownCommand(): Command {
 
 async function teardownTestEnvironment(options: TestTeardownOptions): Promise<void> {
   const startTime = Date.now()
-  const config = await loadConfig(options.config)
+  // Widened: mocked loaders may resolve null even though the declared return
+  // type is non-nullable; the runtime guard below must stay meaningful.
+  const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   if (!config?.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
@@ -75,7 +88,7 @@ async function teardownTestEnvironment(options: TestTeardownOptions): Promise<vo
   teardownSpinner.start('Scanning for test databases...')
 
   const result: TeardownResult = {
-    environment: options.environment || 'test',
+    environment: options.environment ?? 'test',
     databases: [],
     artifacts: { cleaned: [], preserved: [] },
     duration: 0
@@ -116,7 +129,7 @@ async function teardownTestEnvironment(options: TestTeardownOptions): Promise<vo
 
         try {
           if (options.keepData) {
-            await truncateDatabase(config.database, dbName, options.preserveLogs || false)
+            await truncateDatabase(config.database, dbName, options.preserveLogs ?? false)
             result.databases.push({
               name: dbName,
               status: 'preserved',
@@ -134,7 +147,7 @@ async function teardownTestEnvironment(options: TestTeardownOptions): Promise<vo
             status: 'failed',
             reason: error instanceof Error ? error.message : String(error)
           })
-          cleanupSpinner.stop(`Failed to clean ${dbName}: ${error}`)
+          cleanupSpinner.stop(`Failed to clean ${dbName}: ${String(error)}`)
         }
       }
     }
@@ -143,7 +156,7 @@ async function teardownTestEnvironment(options: TestTeardownOptions): Promise<vo
       const artifactSpinner = spinner()
       artifactSpinner.start('Cleaning test artifacts...')
 
-      const artifacts = await cleanTestArtifacts(options.preserveLogs || false)
+      const artifacts = await cleanTestArtifacts(options.preserveLogs ?? false)
       result.artifacts = artifacts
 
       artifactSpinner.stop(
@@ -156,7 +169,7 @@ async function teardownTestEnvironment(options: TestTeardownOptions): Promise<vo
     if (options.json) {
       console.log(JSON.stringify(result, null, 2))
     } else {
-      displayTeardownResults(result, options)
+      displayTeardownResults(result)
     }
   } catch (error) {
     teardownSpinner.stop('Teardown failed')
@@ -164,7 +177,10 @@ async function teardownTestEnvironment(options: TestTeardownOptions): Promise<vo
   }
 }
 
-async function findTestDatabases(config: any, options: TestTeardownOptions): Promise<string[]> {
+async function findTestDatabases(
+  config: TeardownDatabaseConfig,
+  options: TestTeardownOptions
+): Promise<string[]> {
   const databases: string[] = []
 
   if (options.database) {
@@ -185,18 +201,18 @@ async function findTestDatabases(config: any, options: TestTeardownOptions): Pro
     pattern = '_test'
   }
 
-  const dialect = config.dialect || 'postgresql'
+  const dialect = config.dialect ?? 'postgresql'
 
   if (dialect === 'postgresql') {
     const adminConfig = { ...config, database: 'postgres' }
-    const db = await getDatabaseConnection(adminConfig)
+    const db = await getDatabaseConnection(adminConfig as unknown as DatabaseConfig)
     if (db) {
       const result = await db
-        .selectFrom('pg_database' as any)
+        .selectFrom('pg_database')
         .select('datname')
         .where('datname', 'like', `%${pattern}%`)
         .execute()
-      databases.push(...result.map((r: any) => r.datname))
+      databases.push(...result.map(r => r.datname as string))
       await db.destroy()
     }
   } else if (dialect === 'sqlite') {
@@ -212,34 +228,40 @@ async function findTestDatabases(config: any, options: TestTeardownOptions): Pro
   return databases
 }
 
-async function truncateDatabase(config: any, dbName: string, preserveLogs: boolean): Promise<void> {
+async function truncateDatabase(
+  config: TeardownDatabaseConfig,
+  dbName: string,
+  preserveLogs: boolean
+): Promise<void> {
   const { sql } = await import('kysely')
   validateIdentifier(dbName, 'database')
 
   const testConfig = { ...config, database: dbName }
-  const db = await getDatabaseConnection(testConfig)
+  const db = await getDatabaseConnection(testConfig as unknown as DatabaseConfig)
   if (!db) {
     throw new CLIDatabaseError(`Cannot connect to database ${dbName}`)
   }
 
   try {
     let tables: string[] = []
-    const dialect = config.dialect || 'postgresql'
+    const dialect = config.dialect ?? 'postgresql'
 
     if (dialect === 'postgresql') {
       const result = await db
-        .selectFrom('information_schema.tables' as any)
+        .selectFrom('information_schema.tables')
         .select('table_name')
         .where('table_schema', '=', 'public')
         .where('table_type', '=', 'BASE TABLE')
         .execute()
-      tables = result.map((r: any) => r.table_name)
+      tables = result.map(r => r.table_name as string)
       await sql.raw('SET session_replication_role = replica').execute(db)
     } else if (dialect === 'sqlite') {
       const result = await sql
-        .raw(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
+        .raw<{ name: string }>(
+          `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`
+        )
         .execute(db)
-      tables = (result as any).rows.map((r: any) => r.name)
+      tables = result.rows.map(r => r.name)
       await sql.raw('PRAGMA foreign_keys = OFF').execute(db)
     }
 
@@ -252,9 +274,9 @@ async function truncateDatabase(config: any, dbName: string, preserveLogs: boole
         if (dialect === 'postgresql') {
           await sql.raw(safeTruncate(table, 'postgres', true)).execute(db)
         } else {
-          await db.deleteFrom(table as any).execute()
+          await db.deleteFrom(table).execute()
         }
-      } catch (err) {
+      } catch {
         logger.debug(`Skipping table with invalid name: ${table}`)
       }
     }
@@ -269,14 +291,14 @@ async function truncateDatabase(config: any, dbName: string, preserveLogs: boole
   }
 }
 
-async function dropTestDatabase(config: any, dbName: string): Promise<void> {
+async function dropTestDatabase(config: TeardownDatabaseConfig, dbName: string): Promise<void> {
   const { sql } = await import('kysely')
-  const dialect = config.dialect || 'postgresql'
+  const dialect = config.dialect ?? 'postgresql'
   const validDbName = validateIdentifier(dbName, 'database')
 
   if (dialect === 'postgresql') {
     const adminConfig = { ...config, database: 'postgres' }
-    const db = await getDatabaseConnection(adminConfig)
+    const db = await getDatabaseConnection(adminConfig as unknown as DatabaseConfig)
     if (db) {
       await sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = ${validDbName} AND pid <> pg_backend_pid()`.execute(
         db
@@ -287,7 +309,9 @@ async function dropTestDatabase(config: any, dbName: string): Promise<void> {
   } else if (dialect === 'sqlite') {
     try {
       await fs.unlink(dbName)
-    } catch {}
+    } catch {
+      /* nothing to remove */
+    }
   }
 }
 
@@ -311,7 +335,9 @@ async function cleanTestArtifacts(preserveLogs: boolean): Promise<TeardownResult
     try {
       await fs.rm(fullPath, { recursive: true, force: true })
       artifacts.cleaned.push(dir)
-    } catch {}
+    } catch {
+      /* directory absent */
+    }
   }
 
   const filesToClean = ['tests/test-config.ts', 'tests/test-config.js', '.test.env']
@@ -320,7 +346,9 @@ async function cleanTestArtifacts(preserveLogs: boolean): Promise<TeardownResult
     try {
       await fs.unlink(fullPath)
       artifacts.cleaned.push(file)
-    } catch {}
+    } catch {
+      /* file absent */
+    }
   }
 
   if (preserveLogs) {
@@ -330,14 +358,16 @@ async function cleanTestArtifacts(preserveLogs: boolean): Promise<TeardownResult
       try {
         await fs.access(fullPath)
         artifacts.preserved.push(log)
-      } catch {}
+      } catch {
+        /* nothing to preserve */
+      }
     }
   }
 
   return artifacts
 }
 
-function displayTeardownResults(result: TeardownResult, options: TestTeardownOptions): void {
+function displayTeardownResults(result: TeardownResult): void {
   console.log('')
   console.log(prism.bold('Test Environment Teardown Complete'))
   console.log(prism.gray('='.repeat(50)))
@@ -363,7 +393,7 @@ function displayTeardownResults(result: TeardownResult, options: TestTeardownOpt
     if (grouped.failed.length > 0) {
       console.log(prism.red(`  [ERROR] Failed: ${grouped.failed.length}`))
       for (const db of grouped.failed) {
-        console.log(`     - ${db.name}: ${db.reason}`)
+        console.log(`     - ${db.name}: ${db.reason ?? ''}`)
       }
     }
   }

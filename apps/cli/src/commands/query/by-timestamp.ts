@@ -2,7 +2,6 @@ import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
 import { displayTable } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 
@@ -56,16 +55,16 @@ async function queryByTimestamp(options: ByTimestampOptions): Promise<void> {
 
   const tableName = options.table
 
-  await withDatabase({ config: options.config }, async (db, config) => {
+  await withDatabase({ config: options.config }, async db => {
     const querySpinner = spinner()
-    const column = options.column || 'created_at'
-    const limit = parseInt(options.limit || '100', 10)
+    const column = options.column ?? 'created_at'
+    const limit = parseInt(options.limit ?? '100', 10)
 
     let fromDate: Date | undefined
     let toDate: Date | undefined
 
     if (options.last) {
-      const match = options.last.match(/^(\d+)([hdwm])$/)
+      const match = /^(\d+)([hdwm])$/.exec(options.last)
       if (!match) {
         throw new CLIError(
           'Invalid duration format. Use format like 24h, 7d, 2w, 1m',
@@ -122,13 +121,13 @@ async function queryByTimestamp(options: ByTimestampOptions): Promise<void> {
     let query = db.selectFrom(tableName).selectAll()
 
     if (fromDate) {
-      query = query.where(column as any, '>=', fromDate as any)
+      query = query.where(column, '>=', fromDate)
     }
     if (toDate) {
-      query = query.where(column as any, '<=', toDate as any)
+      query = query.where(column, '<=', toDate)
     }
 
-    query = query.orderBy(column as any, options.order || 'desc').limit(limit)
+    query = query.orderBy(column, options.order ?? 'desc').limit(limit)
 
     const results = await query.execute()
 
@@ -146,8 +145,8 @@ async function queryByTimestamp(options: ByTimestampOptions): Promise<void> {
       console.log(prism.bold(`Records in '${options.table}' (${timeRange}):`))
       console.log('')
 
-      const formattedResults = results.map((row: any) => {
-        const formatted: any = {}
+      const formattedResults = results.map(row => {
+        const formatted: Record<string, string> = {}
         for (const [key, value] of Object.entries(row)) {
           if (value === null) {
             formatted[key] = prism.gray('NULL')
@@ -156,18 +155,19 @@ async function queryByTimestamp(options: ByTimestampOptions): Promise<void> {
           } else if (typeof value === 'object') {
             formatted[key] = JSON.stringify(value)
           } else {
-            formatted[key] = String(value)
+            const stringable = value as { toString(): string }
+            formatted[key] = String(stringable)
           }
         }
         return formatted
       })
 
-      console.log(displayTable(formattedResults))
+      displayTable(formattedResults)
 
       console.log('')
       console.log(
         prism.gray(
-          `Showing ${results.length} of up to ${limit} records, ordered by ${column} ${options.order || 'desc'}`
+          `Showing ${results.length} of up to ${limit} records, ordered by ${column} ${options.order ?? 'desc'}`
         )
       )
     }

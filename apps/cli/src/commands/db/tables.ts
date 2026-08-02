@@ -1,14 +1,14 @@
 import { Command } from 'commander'
 import { DatabaseIntrospector } from '../generate/introspector.js'
-import { prism, table } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 
-import { validateIdentifier } from '../../utils/sql-sanitizer.js'
 import { formatBytes, formatNumber } from '../../utils/formatting.js'
 import { getTableStatistics, getDatabaseStatistics } from '../../utils/table-stats.js'
+import { displayTable } from '../../utils/table-helper.js'
 
 export interface TablesOptions {
   json?: boolean
@@ -45,12 +45,12 @@ async function listTables(options: TablesOptions): Promise<void> {
   await withDatabase(
     { config: options.config, verbose: options.verbose, schema: options.schema },
     async (db, config, schema) => {
-      const listSpinner = spinner() as any
+      const listSpinner = spinner()
       listSpinner.start(
         `Fetching table information${schema !== 'public' ? ` (schema: ${schema})` : ''}...`
       )
 
-      const introspector = new DatabaseIntrospector(db, config.database!.dialect as any, schema)
+      const introspector = new DatabaseIntrospector(db, config.database.dialect, schema)
       const tables = await introspector.getTables()
 
       if (tables.length === 0) {
@@ -65,13 +65,13 @@ async function listTables(options: TablesOptions): Promise<void> {
         const tablesData: Record<string, unknown>[] = []
         for (const tableName of tables) {
           const info = await introspector.getTableInfo(tableName)
-          const stats = await getTableStatistics(db, tableName, config.database!.dialect)
+          const stats = await getTableStatistics(db, tableName, config.database.dialect)
           tablesData.push({
             name: tableName,
             columns: info.columns.length,
             indexes: info.indexes.length,
             primaryKey: info.primaryKey,
-            foreignKeys: info.foreignKeys?.length || 0,
+            foreignKeys: info.foreignKeys?.length ?? 0,
             rows: stats.rows,
             size: stats.size,
             indexSize: stats.indexSize
@@ -82,7 +82,7 @@ async function listTables(options: TablesOptions): Promise<void> {
         // Verbose output - show detailed info for each table
         for (const tableName of tables) {
           const info = await introspector.getTableInfo(tableName)
-          const stats = await getTableStatistics(db, tableName, config.database!.dialect)
+          const stats = await getTableStatistics(db, tableName, config.database.dialect)
 
           console.log('')
           console.log(prism.bold(`Table: ${tableName}`))
@@ -99,37 +99,37 @@ async function listTables(options: TablesOptions): Promise<void> {
           // Columns
           console.log('')
           console.log(prism.cyan(`Columns (${info.columns.length}):`))
-          const columnData = info.columns.map((col: any) => ({
+          const columnData = info.columns.map(col => ({
             Name: col.name,
             Type: col.dataType,
             Nullable: col.isNullable ? 'Yes' : 'No',
-            Default: col.defaultValue || '-',
+            Default: col.defaultValue ?? '-',
             Key: col.isPrimaryKey ? 'PK' : col.isForeignKey ? 'FK' : '-'
           }))
-          console.log(table(columnData as any))
+          displayTable(columnData)
 
           // Indexes
           if (info.indexes.length > 0) {
             console.log('')
             console.log(prism.cyan(`Indexes (${info.indexes.length}):`))
-            const indexData = info.indexes.map((idx: any) => ({
+            const indexData = info.indexes.map(idx => ({
               Name: idx.name,
               Columns: idx.columns.join(', '),
               Unique: idx.isUnique ? 'Yes' : 'No',
               Primary: idx.isPrimary ? 'Yes' : 'No'
             }))
-            console.log(table(indexData as any))
+            displayTable(indexData)
           }
 
           // Foreign Keys
           if (info.foreignKeys && info.foreignKeys.length > 0) {
             console.log('')
             console.log(prism.cyan(`Foreign Keys (${info.foreignKeys.length}):`))
-            const fkData = info.foreignKeys.map((fk: any) => ({
+            const fkData = info.foreignKeys.map(fk => ({
               Column: fk.column,
               References: `${fk.referencedTable}.${fk.referencedColumn}`
             }))
-            console.log(table(fkData as any))
+            displayTable(fkData)
           }
         }
 
@@ -137,7 +137,7 @@ async function listTables(options: TablesOptions): Promise<void> {
         console.log('')
         console.log(prism.gray('-'.repeat(50)))
         console.log(prism.bold('Database Summary'))
-        const totalStats = await getDatabaseStatistics(db, tables, config.database!.dialect)
+        const totalStats = await getDatabaseStatistics(db, tables, config.database.dialect)
         console.log(`  Total Tables: ${tables.length}`)
         console.log(`  Total Rows: ${formatNumber(totalStats.totalRows)}`)
         console.log(`  Total Size: ${formatBytes(totalStats.totalSize)}`)
@@ -152,7 +152,7 @@ async function listTables(options: TablesOptions): Promise<void> {
         for (const tableName of tables) {
           try {
             const info = await introspector.getTableInfo(tableName)
-            const stats = await getTableStatistics(db, tableName, config.database!.dialect)
+            const stats = await getTableStatistics(db, tableName, config.database.dialect)
 
             tableData.push({
               Table: tableName,
@@ -160,10 +160,10 @@ async function listTables(options: TablesOptions): Promise<void> {
               Size: formatBytes(stats.size),
               Indexes: info.indexes.length,
               Columns: info.columns.length,
-              'Foreign Keys': info.foreignKeys?.length || 0
+              'Foreign Keys': info.foreignKeys?.length ?? 0
             })
           } catch (error) {
-            logger.debug(`Failed to get stats for ${tableName}: ${error}`)
+            logger.debug(`Failed to get stats for ${tableName}: ${String(error)}`)
             tableData.push({
               Table: tableName,
               Rows: '?',
@@ -178,10 +178,10 @@ async function listTables(options: TablesOptions): Promise<void> {
         console.log('')
         console.log(prism.bold('Database Tables'))
         console.log('')
-        console.log(table(tableData as any))
+        displayTable(tableData)
 
         // Summary
-        const totalStats = await getDatabaseStatistics(db, tables, config.database!.dialect)
+        const totalStats = await getDatabaseStatistics(db, tables, config.database.dialect)
         console.log('')
         console.log(
           prism.gray(

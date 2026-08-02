@@ -59,7 +59,7 @@ async function databaseConsole(options: ConsoleOptions): Promise<void> {
       prompt: prism.gray('kysera> ')
     })
 
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any)
+    const introspector = new DatabaseIntrospector(db, config.database.dialect)
     let multilineQuery = ''
     let inMultiline = false
 
@@ -268,34 +268,36 @@ async function executeQuery(
   const queryLower = cleanQuery.toLowerCase()
   const isSelect = queryLower.startsWith('select')
 
-  const result = await db.executeQuery(db.raw(cleanQuery))
+  const { CompiledQuery } = await import('kysely')
+  const result = await db.executeQuery(CompiledQuery.raw(cleanQuery, []))
   const duration = Date.now() - startTime
 
   if (isSelect) {
-    const rows = result.rows as any[]
+    const rows = result.rows as Record<string, unknown>[]
     if (rows.length === 0) {
       console.log(prism.gray('(0 rows)'))
     } else {
       const formattedRows = rows.map(row => {
-        const formatted: any = {}
+        const formatted: Record<string, string> = {}
         for (const [key, value] of Object.entries(row)) {
           if (value === null) {
             formatted[key] = prism.gray('NULL')
           } else if (value instanceof Date) {
             formatted[key] = value.toISOString()
           } else {
-            formatted[key] = String(value)
+            const stringable = value as { toString(): string }
+            formatted[key] = String(stringable)
           }
         }
         return formatted
       })
       console.log('')
-      console.log(displayTable(formattedRows))
+      displayTable(formattedRows)
       console.log('')
       console.log(prism.gray(`(${rows.length} row${rows.length !== 1 ? 's' : ''}, ${duration}ms)`))
     }
   } else {
-    const affected = result.numAffectedRows ?? 0
+    const affected = Number(result.numAffectedRows ?? 0)
     console.log(
       prism.green(`Query OK, ${affected} row${affected !== 1 ? 's' : ''} affected (${duration}ms)`)
     )
@@ -335,14 +337,14 @@ async function describeTable(introspector: DatabaseIntrospector, tableName: stri
   console.log('')
   console.log(prism.bold(`Table: ${tableName}`))
   console.log('')
-  const columns = info.columns.map((col: any) => ({
+  const columns = info.columns.map(col => ({
     Column: col.name,
     Type: col.dataType,
     Nullable: col.isNullable ? 'YES' : 'NO',
     Key: col.isPrimaryKey ? 'PRI' : col.isForeignKey ? 'MUL' : '',
-    Default: col.defaultValue || prism.gray('NULL')
+    Default: col.defaultValue ?? prism.gray('NULL')
   }))
-  console.log(displayTable(columns))
+  displayTable(columns)
   console.log('')
 }
 
@@ -354,12 +356,12 @@ async function showIndexes(introspector: DatabaseIntrospector, tableName: string
     console.log('')
     console.log(prism.bold(`Indexes for table '${tableName}':`))
     console.log('')
-    const indexes = info.indexes.map((idx: any) => ({
+    const indexes = info.indexes.map(idx => ({
       Name: idx.name,
       Columns: idx.columns.join(', '),
       Unique: idx.isUnique ? 'YES' : 'NO'
     }))
-    console.log(displayTable(indexes))
+    displayTable(indexes)
     console.log('')
   }
 }
@@ -369,6 +371,6 @@ async function showCount(db: DatabaseInstance, tableName: string): Promise<void>
     .selectFrom(tableName)
     .select(db.fn.countAll().as('count'))
     .executeTakeFirst()
-  const count = Number(result?.count || 0)
+  const count = Number(result?.count ?? 0)
   console.log(`${tableName}: ${count} row${count !== 1 ? 's' : ''}`)
 }

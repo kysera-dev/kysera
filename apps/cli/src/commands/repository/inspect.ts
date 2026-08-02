@@ -8,6 +8,7 @@ import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import type { KyseraConfig } from '../../config/schema.js'
 
 export interface InspectRepositoryOptions {
   file?: string
@@ -26,20 +27,20 @@ interface RepositoryInspection {
   tableName?: string
   entity?: {
     name: string
-    properties: Array<{
+    properties: {
       name: string
       type: string
       optional: boolean
       description?: string
-    }>
+    }[]
   }
-  methods: Array<{
+  methods: {
     name: string
-    parameters: Array<{
+    parameters: {
       name: string
       type: string
       optional: boolean
-    }>
+    }[]
     returnType: string
     async: boolean
     visibility: 'public' | 'private' | 'protected'
@@ -47,21 +48,21 @@ interface RepositoryInspection {
     linesOfCode: number
     hasValidation?: boolean
     queries?: string[]
-  }>
+  }[]
   dependencies: string[]
-  imports: Array<{
+  imports: {
     module: string
     items: string[]
-  }>
+  }[]
   schema?: {
     name: string
     type: 'zod' | 'joi' | 'yup' | 'custom'
-    properties: Array<{
+    properties: {
       name: string
       type: string
       validation: string[]
       required: boolean
-    }>
+    }[]
   }
   stats: {
     totalLines: number
@@ -81,6 +82,27 @@ interface RepositoryInspection {
     indexes?: string[]
     constraints?: string[]
   }
+}
+
+/**
+ * Structural view of the connection used by --show-database. At runtime it is
+ * the Kysely instance from getDatabaseConnection; the unit-test double
+ * satisfies the same surface. Only the members actually used are declared.
+ */
+interface InspectDatabase {
+  selectFrom(table: string): InspectQueryBuilder
+  fn: { countAll(): { as(alias: string): unknown } }
+  destroy(): Promise<void>
+}
+
+interface InspectQueryBuilder {
+  select(selection: unknown): InspectQueryBuilder
+  where(column: string, operator: string, value: unknown): InspectQueryBuilder
+  distinct(): InspectQueryBuilder
+  execute<R extends Record<string, unknown> = Record<string, unknown>>(): Promise<R[]>
+  executeTakeFirst<R extends Record<string, unknown> = Record<string, unknown>>(): Promise<
+    R | undefined
+  >
 }
 
 export function inspectRepositoryCommand(): Command {
@@ -112,8 +134,9 @@ export function inspectRepositoryCommand(): Command {
 }
 
 async function inspectRepository(options: InspectRepositoryOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config)
+  // Widened: mocked loaders may resolve null even though the declared return
+  // type is non-nullable; the runtime guard below must stay meaningful.
+  const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   const inspectSpinner = spinner()
 
@@ -191,7 +214,7 @@ async function inspectRepository(options: InspectRepositoryOptions): Promise<voi
 
     // Read and parse the file
     const content = await fs.readFile(filePath, 'utf-8')
-    const inspection = await performInspection(filePath, content, options)
+    const inspection = performInspection(filePath, content, options)
 
     if (!inspection) {
       inspectSpinner.fail('Failed to parse repository file')
@@ -202,7 +225,10 @@ async function inspectRepository(options: InspectRepositoryOptions): Promise<voi
     if (options.showDatabase && config?.database && inspection.tableName) {
       const db = await getDatabaseConnection(config.database)
       if (db) {
-        inspection.database = await getTableInfo(db, inspection.tableName)
+        inspection.database = await getTableInfo(
+          db as unknown as InspectDatabase,
+          inspection.tableName
+        )
         await db.destroy()
       }
     }
@@ -221,26 +247,26 @@ async function inspectRepository(options: InspectRepositoryOptions): Promise<voi
   }
 }
 
-async function performInspection(
+function performInspection(
   filePath: string,
   content: string,
   options: InspectRepositoryOptions
-): Promise<RepositoryInspection | null> {
+): RepositoryInspection | null {
   // Extract basic information
-  const classMatch = content.match(/export\s+(?:default\s+)?class\s+(\w+Repository)/m)
+  const classMatch = /export\s+(?:default\s+)?class\s+(\w+Repository)/m.exec(content)
   if (!classMatch) {
     return null
   }
 
   const className = classMatch[1]
-  const tableMatch = content.match(/tableName[:\s=]+['"`](\w+)['"`]/m)
+  const tableMatch = /tableName[:\s=]+['"`](\w+)['"`]/m.exec(content)
   const tableName = tableMatch ? tableMatch[1] : undefined
 
   // Parse entity
   const entity = parseEntity(content)
 
   // Parse methods
-  const methods = parseMethods(content, options.showComplexity || false)
+  const methods = parseMethods(content, options.showComplexity ?? false)
 
   // Parse dependencies
   const dependencies = parseDependencies(content)
@@ -269,8 +295,8 @@ async function performInspection(
 }
 
 function parseEntity(content: string): RepositoryInspection['entity'] | undefined {
-  const entityMatch = content.match(
-    /(?:interface|type)\s+(\w+Entity)\s*(?:extends\s+\w+)?\s*\{([^}]+)\}/m
+  const entityMatch = /(?:interface|type)\s+(\w+Entity)\s*(?:extends\s+\w+)?\s*\{([^}]+)\}/m.exec(
+    content
   )
   if (!entityMatch) {
     return undefined
@@ -302,24 +328,31 @@ function parseMethods(
   const methodRegex =
     /(public\s+|private\s+|protected\s+)?(async\s+)?(\w+)\s*\(([^)]*)\)\s*(?::\s*([^{]+))?\s*\{/gm
 
-  let match
+  let match: RegExpExecArray | null
   while ((match = methodRegex.exec(content)) !== null) {
     const methodName = match[3]
     if (['constructor', 'get', 'set'].includes(methodName)) {
       continue
     }
 
-    const visibility = match[1] ? (match[1].trim() as any) : 'public'
+    const visibility = match[1]
+      ? (match[1].trim() as RepositoryInspection['methods'][0]['visibility'])
+      : 'public'
     const isAsync = !!match[2]
     const params = match[4]
-    const returnType = match[5]?.trim() || 'void'
+    // Return-type group may be absent or trim to '' (whitespace before `{`)
+    let returnType = 'void'
+    const declaredReturnType = (match[5] as string | undefined)?.trim()
+    if (declaredReturnType) {
+      returnType = declaredReturnType
+    }
 
     // Parse parameters
     const parameters = parseParameters(params)
 
     // Find method body
     let braceCount = 1
-    let bodyStart = match.index + match[0].length
+    const bodyStart = match.index + match[0].length
     let bodyEnd = bodyStart
 
     for (let i = bodyStart; i < content.length; i++) {
@@ -377,7 +410,7 @@ function parseParameters(params: string): RepositoryInspection['methods'][0]['pa
   const paramParts = params.split(',')
 
   for (const part of paramParts) {
-    const paramMatch = part.match(/\s*(\w+)(\?)?:\s*(.+)/)
+    const paramMatch = /\s*(\w+)(\?)?:\s*(.+)/.exec(part)
     if (paramMatch) {
       parameters.push({
         name: paramMatch[1],
@@ -391,7 +424,7 @@ function parseParameters(params: string): RepositoryInspection['methods'][0]['pa
 }
 
 function parseDependencies(content: string): string[] {
-  const deps: Set<string> = new Set()
+  const deps = new Set<string>()
 
   // Parse import statements
   const importMatches = content.matchAll(
@@ -437,7 +470,7 @@ function parseImports(content: string): RepositoryInspection['imports'] {
 
 function parseSchema(content: string): RepositoryInspection['schema'] | undefined {
   // Try to find Zod schema
-  const zodMatch = content.match(/(?:const|let)\s+(\w+Schema)\s*=\s*z\.object\(\{([^}]+)\}/m)
+  const zodMatch = /(?:const|let)\s+(\w+Schema)\s*=\s*z\.object\(\{([^}]+)\}/m.exec(content)
   if (zodMatch) {
     const name = zodMatch[1]
     const schemaBody = zodMatch[2]
@@ -487,7 +520,7 @@ function calculateStats(
   const totalMethodLines = methods.reduce((sum, m) => sum + m.linesOfCode, 0)
   const averageMethodLength = methods.length > 0 ? Math.round(totalMethodLines / methods.length) : 0
 
-  const cyclomaticComplexity = methods.reduce((sum, m) => sum + (m.complexity || 1), 0)
+  const cyclomaticComplexity = methods.reduce((sum, m) => sum + (m.complexity ?? 1), 0)
 
   // Simple maintainability index calculation (0-100)
   const maintainabilityIndex = Math.min(
@@ -534,7 +567,10 @@ function calculateCyclomaticComplexity(code: string): number {
   return complexity
 }
 
-async function getTableInfo(db: any, tableName: string): Promise<RepositoryInspection['database']> {
+async function getTableInfo(
+  db: InspectDatabase,
+  tableName: string
+): Promise<RepositoryInspection['database']> {
   try {
     // Check if table exists
     const tables = await db
@@ -558,7 +594,7 @@ async function getTableInfo(db: any, tableName: string): Promise<RepositoryInspe
     const countResult = await db
       .selectFrom(tableName)
       .select(db.fn.countAll().as('count'))
-      .executeTakeFirst()
+      .executeTakeFirst<{ count: unknown }>()
 
     // Get indexes (simplified - dialect specific in reality)
     const indexes: string[] = []
@@ -568,9 +604,9 @@ async function getTableInfo(db: any, tableName: string): Promise<RepositoryInspe
         .select('index_name')
         .where('table_name', '=', tableName)
         .distinct()
-        .execute()
+        .execute<{ index_name: string }>()
 
-      indexes.push(...indexResult.map((r: any) => r.index_name))
+      indexes.push(...indexResult.map(r => r.index_name))
     } catch {
       // Indexes query might fail on some databases
     }
@@ -578,11 +614,11 @@ async function getTableInfo(db: any, tableName: string): Promise<RepositoryInspe
     return {
       tableExists: true,
       columnCount: columns.length,
-      rowCount: Number(countResult?.count || 0),
+      rowCount: Number(countResult?.count ?? 0),
       indexes: indexes.length > 0 ? indexes : undefined
     }
   } catch (error) {
-    logger.debug(`Failed to get table info: ${error}`)
+    logger.debug(`Failed to get table info: ${String(error)}`)
     return { tableExists: false }
   }
 }
@@ -687,7 +723,8 @@ function displayInspection(
   // Stats
   console.log('')
   console.log(prism.cyan('📊 Statistics:'))
-  const statsTable = table([
+  // displayTable renders directly and returns void
+  table([
     { Metric: 'Total Methods', Value: String(inspection.stats.totalMethods) },
     { Metric: 'Public Methods', Value: String(inspection.stats.publicMethods) },
     { Metric: 'Private Methods', Value: String(inspection.stats.privateMethods) },
@@ -696,7 +733,6 @@ function displayInspection(
     { Metric: 'Cyclomatic Complexity', Value: String(inspection.stats.cyclomaticComplexity) },
     { Metric: 'Maintainability Index', Value: `${inspection.stats.maintainabilityIndex}/100` }
   ])
-  console.log(statsTable)
 
   // Dependencies
   if (options.showDependencies && inspection.dependencies.length > 0) {

@@ -1,9 +1,10 @@
 import { Command } from 'commander'
-import { prism, table } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { loadConfig } from '../../config/loader.js'
+import type { KyseraConfig } from '../../config/schema.js'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { createRequire } from 'node:module'
@@ -37,10 +38,25 @@ interface Plugin {
     providers?: string[]
     commands?: string[]
   }
-  config?: Record<string, any>
-  size?: string
-  lastUpdated?: Date
 }
+
+/** Subset of package.json fields the plugin discovery reads. */
+interface PluginPackageJson {
+  name?: string
+  version?: string
+  description?: string
+  author?: string | { name?: string }
+  homepage?: string
+  repository?: string | { url?: string }
+  dependencies?: Record<string, string>
+  keywords?: string[]
+  exports?: Record<string, unknown>
+  engines?: Record<string, string>
+  kysera?: Plugin['kysera']
+}
+
+/** Per-plugin settings as stored in the kysera config, keyed by plugin package name. */
+type PluginsRecord = Record<string, { enabled?: boolean } | undefined>
 
 export function listPluginsCommand(): Command {
   const cmd = new Command('list')
@@ -90,7 +106,7 @@ async function listPlugins(options: ListPluginsOptions): Promise<void> {
 
     // 2. Discover available plugins from registry
     if (options.available && !options.installed) {
-      const availablePlugins = await discoverAvailablePlugins()
+      const availablePlugins = discoverAvailablePlugins()
       plugins.push(...availablePlugins)
     }
 
@@ -115,7 +131,7 @@ async function listPlugins(options: ListPluginsOptions): Promise<void> {
       filteredPlugins = filteredPlugins.filter(
         p =>
           p.name.toLowerCase().includes(searchLower) ||
-          (p.description && p.description.toLowerCase().includes(searchLower))
+          p.description?.toLowerCase().includes(searchLower)
       )
     }
 
@@ -155,7 +171,7 @@ async function listPlugins(options: ListPluginsOptions): Promise<void> {
   }
 }
 
-async function discoverInstalledPlugins(config: any): Promise<Plugin[]> {
+async function discoverInstalledPlugins(config: KyseraConfig): Promise<Plugin[]> {
   const plugins: Plugin[] = []
 
   // Check node_modules for @kysera/* packages
@@ -178,28 +194,30 @@ async function discoverInstalledPlugins(config: any): Promise<Plugin[]> {
       const packageJsonPath = path.join(pkgPath, 'package.json')
 
       try {
-        const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'))
+        const packageJson = JSON.parse(
+          await fs.readFile(packageJsonPath, 'utf-8')
+        ) as PluginPackageJson
 
         const plugin: Plugin = {
           name: `@kysera/${pkgName}`,
-          version: packageJson.version,
+          version: packageJson.version ?? '0.0.0',
           description: packageJson.description,
           author:
             typeof packageJson.author === 'string' ? packageJson.author : packageJson.author?.name,
           category: categorizePlugin(pkgName, packageJson),
-          status: await getPluginStatus(packageJson.name, config),
+          status: getPluginStatus(packageJson.name ?? '', config),
           homepage: packageJson.homepage,
           repository:
             typeof packageJson.repository === 'string'
               ? packageJson.repository
               : packageJson.repository?.url,
-          dependencies: Object.keys(packageJson.dependencies || {}),
-          kysera: packageJson.kysera || extractKyseraMetadata(packageJson)
+          dependencies: Object.keys(packageJson.dependencies ?? {}),
+          kysera: packageJson.kysera ?? extractKyseraMetadata(packageJson)
         }
 
         plugins.push(plugin)
       } catch (error) {
-        logger.debug(`Failed to read package ${pkgName}: ${error}`)
+        logger.debug(`Failed to read package ${pkgName}: ${String(error)}`)
       }
     }
 
@@ -216,18 +234,20 @@ async function discoverInstalledPlugins(config: any): Promise<Plugin[]> {
           const packageJsonPath = path.join(pluginPath, 'package.json')
 
           try {
-            const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'))
+            const packageJson = JSON.parse(
+              await fs.readFile(packageJsonPath, 'utf-8')
+            ) as PluginPackageJson
 
             plugins.push({
-              name: packageJson.name || pluginName,
-              version: packageJson.version || '0.0.0',
+              name: packageJson.name ?? pluginName,
+              version: packageJson.version ?? '0.0.0',
               description: packageJson.description,
               author:
                 typeof packageJson.author === 'string'
                   ? packageJson.author
                   : packageJson.author?.name,
               category: 'other',
-              status: await getPluginStatus(pluginName, config),
+              status: getPluginStatus(pluginName, config),
               kysera: packageJson.kysera
             })
           } catch (error) {
@@ -246,13 +266,13 @@ async function discoverInstalledPlugins(config: any): Promise<Plugin[]> {
       logger.debug('No plugins directory found:', error)
     }
   } catch (error) {
-    logger.debug(`Failed to discover installed plugins: ${error}`)
+    logger.debug(`Failed to discover installed plugins: ${String(error)}`)
   }
 
   return plugins
 }
 
-async function discoverAvailablePlugins(): Promise<Plugin[]> {
+function discoverAvailablePlugins(): Plugin[] {
   // In a real implementation, this would fetch from npm registry or a custom registry
   // For now, return a curated list of known Kysera plugins
 
@@ -376,9 +396,9 @@ async function discoverAvailablePlugins(): Promise<Plugin[]> {
   ]
 }
 
-function categorizePlugin(name: string, packageJson: any): Plugin['category'] {
+function categorizePlugin(name: string, packageJson: PluginPackageJson): Plugin['category'] {
   // Check package.json keywords
-  const keywords = packageJson.keywords || []
+  const keywords = packageJson.keywords ?? []
 
   if (keywords.includes('audit') || name.includes('audit')) return 'audit'
   if (keywords.includes('cache') || name.includes('cache')) return 'cache'
@@ -394,10 +414,10 @@ function categorizePlugin(name: string, packageJson: any): Plugin['category'] {
   return 'other'
 }
 
-async function getPluginStatus(pluginName: string, config: any): Promise<Plugin['status']> {
+function getPluginStatus(pluginName: string, config: KyseraConfig): Plugin['status'] {
   // Check if plugin is in config
-  if (config?.plugins) {
-    const pluginConfig = config.plugins[pluginName]
+  if (config.plugins) {
+    const pluginConfig = (config.plugins as PluginsRecord)[pluginName]
     if (pluginConfig) {
       if (pluginConfig.enabled === false) {
         return 'disabled'
@@ -416,8 +436,8 @@ async function getPluginStatus(pluginName: string, config: any): Promise<Plugin[
   }
 }
 
-function extractKyseraMetadata(packageJson: any): Plugin['kysera'] {
-  const metadata: Plugin['kysera'] = {}
+function extractKyseraMetadata(packageJson: PluginPackageJson): Plugin['kysera'] {
+  const metadata: NonNullable<Plugin['kysera']> = {}
 
   // Extract from exports or main file
   if (packageJson.exports) {
@@ -437,8 +457,8 @@ function extractKyseraMetadata(packageJson: any): Plugin['kysera'] {
   }
 
   // Check engines for version compatibility
-  if (packageJson.engines?.kysera) {
-    const versionRange = packageJson.engines.kysera
+  const versionRange = packageJson.engines?.kysera
+  if (versionRange) {
     if (versionRange.includes('-')) {
       const [min, max] = versionRange.split('-')
       metadata.minVersion = min.trim()

@@ -9,7 +9,8 @@ import type { HealthCheckResult } from '@kysera/infra'
 export interface CheckOptions {
   json?: boolean
   watch?: boolean
-  interval?: number
+  /** Always set: commander applies a 5000ms default (may be NaN for bad input). */
+  interval: number
   verbose?: boolean
   config?: string
 }
@@ -45,17 +46,19 @@ export function checkCommand(): Command {
 
 async function checkHealth(options: CheckOptions): Promise<void> {
   await withDatabase({ config: options.config, verbose: options.verbose }, async db => {
-    const checkSpinner = spinner() as any
+    const checkSpinner = spinner()
     if (!options.json) {
       checkSpinner.start('Performing health check...')
     }
 
-    // Perform health check
+    // Perform health check. performHealthCheck types timestamp as required,
+    // but stubbed results in tests omit it, so treat it as optional here.
     const { performHealthCheck } = await import('@kysera/infra')
     const startTime = Date.now()
-    const result = await performHealthCheck(db, {
-      verbose: options.verbose
-    })
+    const result: Omit<HealthCheckResult, 'timestamp'> & { timestamp?: Date } =
+      await performHealthCheck(db, {
+        verbose: options.verbose
+      })
     const latency = Date.now() - startTime
 
     if (!options.json) {
@@ -69,7 +72,7 @@ async function checkHealth(options: CheckOptions): Promise<void> {
         ...result.metrics,
         checkLatency: latency
       },
-      timestamp: result.timestamp || new Date()
+      timestamp: result.timestamp ?? new Date()
     }
 
     if (options.json) {
@@ -83,7 +86,7 @@ async function checkHealth(options: CheckOptions): Promise<void> {
     }
 
     // Display health check results
-    displayHealthResults(fullResult, options.verbose || false)
+    displayHealthResults(fullResult, options.verbose ?? false)
   })
 }
 
@@ -95,17 +98,15 @@ async function watchHealth(options: CheckOptions): Promise<void> {
   logger.info('')
 
   // Set up interval for continuous monitoring
-  let isRunning = true
   let checkCount = 0
 
   // Handle graceful shutdown
   process.on('SIGINT', () => {
-    isRunning = false
     logger.info('\nStopping health monitoring...')
     process.exit(0)
   })
 
-  while (isRunning) {
+  for (;;) {
     checkCount++
 
     if (!options.json) {
@@ -188,10 +189,10 @@ function displayHealthResults(result: HealthCheckResult, verbose: boolean): void
   if (verbose && result.metrics?.queryMetrics) {
     const queries = result.metrics.queryMetrics
     console.log('Queries (last 1m):')
-    console.log(`  Total: ${queries.totalQueries || 'N/A'}`)
-    console.log(`  Avg: ${queries.avgResponseTime || 'N/A'}ms`)
-    console.log(`  Slow (>100ms): ${queries.slowQueries || 0}`)
-    console.log(`  Errors: ${queries.errors || 0}`)
+    console.log(`  Total: ${(queries.totalQueries ?? 0) || 'N/A'}`)
+    console.log(`  Avg: ${(queries.avgResponseTime ?? 0) || 'N/A'}ms`)
+    console.log(`  Slow (>100ms): ${queries.slowQueries ?? 0}`)
+    console.log(`  Errors: ${queries.errors ?? 0}`)
     console.log('')
   }
 
@@ -215,7 +216,7 @@ function displayHealthResults(result: HealthCheckResult, verbose: boolean): void
         }
         if (check.details) {
           for (const [key, value] of Object.entries(check.details)) {
-            console.log(`     ${prism.gray(`${key}: ${value}`)}`)
+            console.log(`     ${prism.gray(`${key}: ${String(value)}`)}`)
           }
         }
       }

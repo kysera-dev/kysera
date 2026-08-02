@@ -1,12 +1,10 @@
-import type { Kysely, RawBuilder, sql } from 'kysely'
+import type { Kysely, RawBuilder } from 'kysely'
 
 /**
  * Generic database schema type for dynamic table access.
  * Tables are represented as key-value pairs where values are records with unknown columns.
  */
-export interface Database {
-  [key: string]: Record<string, unknown>
-}
+export type Database = Record<string, Record<string, unknown>>
 
 /**
  * Compiled query interface for raw SQL execution.
@@ -202,7 +200,7 @@ export interface MySQLQueryBlock {
   select_id?: number
   cost_info?: MySQLCostInfo
   table?: MySQLTableInfo
-  nested_loop?: Array<{ table: MySQLTableInfo }>
+  nested_loop?: { table: MySQLTableInfo }[]
   ordering_operation?: MySQLOrderingOperation
   grouping_operation?: MySQLGroupingOperation
 }

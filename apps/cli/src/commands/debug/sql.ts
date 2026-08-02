@@ -2,13 +2,11 @@ import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
 import { displayTable as table } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
-import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection, type Database } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
-import { createInterface } from 'node:readline/promises'
-import { stdin, stdout } from 'node:process'
 import type { Kysely, CompiledQuery as KyselyCompiledQuery } from 'kysely'
+import type { KyseraConfig } from '../../config/schema.js'
 
 export interface SqlDebugOptions {
   watch?: boolean
@@ -89,7 +87,9 @@ export function sqlCommand(): Command {
 
 async function debugSql(options: SqlDebugOptions): Promise<void> {
   // Load configuration
-  const config = await loadConfig(options.config)
+  // Widened: mocked loaders may resolve null even though the declared return
+  // type is non-nullable; the runtime guard below must stay meaningful.
+  const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   if (!config?.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
@@ -123,10 +123,11 @@ async function debugSql(options: SqlDebugOptions): Promise<void> {
       const originalExecuteQuery = db.executeQuery.bind(db)
 
       // Override executeQuery to log queries
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(db as any).executeQuery = async function (
-        compiledQuery: CompiledQuery
-      ): Promise<QueryResult> {
+      ;(
+        db as unknown as {
+          executeQuery: (compiledQuery: CompiledQuery) => Promise<QueryResult>
+        }
+      ).executeQuery = async function (compiledQuery: CompiledQuery): Promise<QueryResult> {
         const startTime = Date.now()
         const queryId = ++queryCounter
 
@@ -141,15 +142,18 @@ async function debugSql(options: SqlDebugOptions): Promise<void> {
         if (options.filter) {
           const regex = new RegExp(options.filter, 'i')
           if (!regex.test(queryLog.query)) {
-            return originalExecuteQuery(compiledQuery as KyselyCompiledQuery<unknown>)
+            return originalExecuteQuery(compiledQuery as KyselyCompiledQuery)
           }
         }
 
         try {
-          const result = await originalExecuteQuery(compiledQuery as KyselyCompiledQuery<unknown>)
+          const result = await originalExecuteQuery(compiledQuery as KyselyCompiledQuery)
 
           queryLog.duration = Date.now() - startTime
-          queryLog.rowCount = result.rows?.length || 0
+          // Widened: the declared result type has required rows, but driver
+          // results may omit them at runtime; the guard must stay meaningful.
+          const resultRows = result.rows as readonly unknown[] | undefined
+          queryLog.rowCount = resultRows?.length ?? 0
 
           displayQuery(queryLog, options)
           queryLogs.push(queryLog)
@@ -312,7 +316,7 @@ async function analyzeRecentQueries(db: Kysely<Database>, options: SqlDebugOptio
     }
 
     // Get recent queries
-    const limit = parseInt(options.limit || '50', 10)
+    const limit = parseInt(options.limit ?? '50', 10)
     if (isNaN(limit) || limit <= 0) {
       throw new CLIError('Invalid limit value - must be a positive number')
     }
@@ -353,7 +357,7 @@ async function analyzeRecentQueries(db: Kysely<Database>, options: SqlDebugOptio
       'Max Duration': `${data.maxDuration}ms`
     }))
 
-    console.log(table(patternData))
+    table(patternData)
 
     // Show slow queries
     const slowQueries = (queries as unknown as QueryLogRecord[])
@@ -411,18 +415,19 @@ function analyzeQueryPatterns(queries: unknown[]): Map<string, QueryPattern> {
     // Normalize query to find pattern
     const pattern = normalizeQuery(q.query_text)
 
-    if (!patterns.has(pattern)) {
-      patterns.set(pattern, {
+    let data = patterns.get(pattern)
+    if (!data) {
+      data = {
         count: 0,
         totalDuration: 0,
         maxDuration: 0
-      })
+      }
+      patterns.set(pattern, data)
     }
 
-    const data = patterns.get(pattern)!
     data.count++
-    data.totalDuration += q.duration_ms || 0
-    data.maxDuration = Math.max(data.maxDuration, q.duration_ms || 0)
+    data.totalDuration += q.duration_ms ?? 0
+    data.maxDuration = Math.max(data.maxDuration, q.duration_ms ?? 0)
   }
 
   return patterns
@@ -441,8 +446,8 @@ function normalizeQuery(query: string): string {
 function calculateQueryStats(queries: unknown[]): QueryStats {
   const queryRecords = queries as QueryLogRecord[]
   const durations = queryRecords
-    .filter(q => q.duration_ms !== null)
-    .map(q => q.duration_ms as number)
+    .filter((q): q is QueryLogRecord & { duration_ms: number } => q.duration_ms !== null)
+    .map(q => q.duration_ms)
     .sort((a, b) => a - b)
 
   const total = queries.length
@@ -495,8 +500,8 @@ function showSummary(queryLogs: QueryLog[]): void {
   console.log(`  Failed: ${prism.red(String(failed))}`)
 
   const durations = queryLogs
-    .filter(q => q.duration !== undefined)
-    .map(q => q.duration!)
+    .filter((q): q is QueryLog & { duration: number } => q.duration !== undefined)
+    .map(q => q.duration)
     .sort((a, b) => a - b)
 
   if (durations.length > 0) {
@@ -517,7 +522,7 @@ function showSummary(queryLogs: QueryLog[]): void {
   const queryTypes = new Map<string, number>()
   for (const log of queryLogs) {
     const type = log.query.split(' ')[0].toUpperCase()
-    queryTypes.set(type, (queryTypes.get(type) || 0) + 1)
+    queryTypes.set(type, (queryTypes.get(type) ?? 0) + 1)
   }
 
   console.log('')

@@ -12,6 +12,28 @@ import {
  * PostgreSQL specific utilities
  */
 
+/**
+ * System catalogs these helpers query. Nullable columns reflect what
+ * pg_catalog actually returns (e.g. idle backends have no query).
+ */
+interface PostgresSystemTables {
+  pg_extension: {
+    extname: string
+  }
+  pg_stat_activity: {
+    pid: number
+    datname: string | null
+    state: string | null
+    query: string | null
+    query_start: Date | null
+  }
+  pg_database: {
+    datname: string
+  }
+}
+
+type PostgresDb = Kysely<PostgresSystemTables>
+
 export interface PostgresInfo {
   version: string
   currentDatabase: string
@@ -24,7 +46,7 @@ export interface PostgresInfo {
 /**
  * Get PostgreSQL server info
  */
-export async function getPostgresInfo(db: Kysely<any>): Promise<PostgresInfo> {
+export async function getPostgresInfo(db: PostgresDb): Promise<PostgresInfo> {
   try {
     const result = await db
       .selectNoFrom([
@@ -41,16 +63,18 @@ export async function getPostgresInfo(db: Kysely<any>): Promise<PostgresInfo> {
       throw new CLIDatabaseError('Failed to get PostgreSQL info')
     }
 
-    return result as PostgresInfo
-  } catch (error: any) {
-    throw new CLIDatabaseError(`Failed to get PostgreSQL info: ${error.message}`)
+    return result
+  } catch (error) {
+    throw new CLIDatabaseError(
+      `Failed to get PostgreSQL info: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
 
 /**
  * Check if extension is available
  */
-export async function checkExtension(db: Kysely<any>, extensionName: string): Promise<boolean> {
+export async function checkExtension(db: PostgresDb, extensionName: string): Promise<boolean> {
   try {
     const result = await db
       .selectFrom('pg_extension')
@@ -68,19 +92,21 @@ export async function checkExtension(db: Kysely<any>, extensionName: string): Pr
 /**
  * Create extension if not exists
  */
-export async function createExtension(db: Kysely<any>, extensionName: string): Promise<void> {
+export async function createExtension(db: PostgresDb, extensionName: string): Promise<void> {
   try {
     // Use safe extension creation
     await sql.raw(safeCreateExtension(extensionName)).execute(db)
-  } catch (error: any) {
-    throw new CLIDatabaseError(`Failed to create extension ${extensionName}: ${error.message}`)
+  } catch (error) {
+    throw new CLIDatabaseError(
+      `Failed to create extension ${extensionName}: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
 
 /**
  * Get table size
  */
-export async function getTableSize(db: Kysely<any>, tableName: string): Promise<string> {
+export async function getTableSize(db: PostgresDb, tableName: string): Promise<string> {
   try {
     // Validate table name before using in query
     const validName = validateIdentifier(tableName, 'table')
@@ -88,7 +114,7 @@ export async function getTableSize(db: Kysely<any>, tableName: string): Promise<
       .selectNoFrom(sql<string>`pg_size_pretty(pg_total_relation_size(${validName}))`.as('size'))
       .executeTakeFirst()
 
-    return result?.size || 'Unknown'
+    return result?.size ?? 'Unknown'
   } catch (error) {
     logger.debug(`Failed to get table size for ${tableName}:`, error)
     return 'Unknown'
@@ -98,7 +124,7 @@ export async function getTableSize(db: Kysely<any>, tableName: string): Promise<
 /**
  * Get index size
  */
-export async function getIndexSize(db: Kysely<any>, indexName: string): Promise<string> {
+export async function getIndexSize(db: PostgresDb, indexName: string): Promise<string> {
   try {
     // Validate index name before using in query
     const validName = validateIdentifier(indexName, 'index')
@@ -106,7 +132,7 @@ export async function getIndexSize(db: Kysely<any>, indexName: string): Promise<
       .selectNoFrom(sql<string>`pg_size_pretty(pg_relation_size(${validName}))`.as('size'))
       .executeTakeFirst()
 
-    return result?.size || 'Unknown'
+    return result?.size ?? 'Unknown'
   } catch (error) {
     logger.debug(`Failed to get index size for ${indexName}:`, error)
     return 'Unknown'
@@ -116,7 +142,7 @@ export async function getIndexSize(db: Kysely<any>, indexName: string): Promise<
 /**
  * Get active connections
  */
-export async function getActiveConnections(db: Kysely<any>): Promise<number> {
+export async function getActiveConnections(db: PostgresDb): Promise<number> {
   try {
     const result = await db
       .selectFrom('pg_stat_activity')
@@ -124,7 +150,7 @@ export async function getActiveConnections(db: Kysely<any>): Promise<number> {
       .where('state', '=', 'active')
       .executeTakeFirst()
 
-    return result?.count || 0
+    return result?.count ?? 0
   } catch (error) {
     logger.debug('Failed to get active connections:', error)
     return 0
@@ -135,9 +161,9 @@ export async function getActiveConnections(db: Kysely<any>): Promise<number> {
  * Get slow queries
  */
 export async function getSlowQueries(
-  db: Kysely<any>,
-  thresholdMs: number = 100
-): Promise<Array<{ query: string; duration: number; state: string }>> {
+  db: PostgresDb,
+  thresholdMs = 100
+): Promise<{ query: string | null; duration: number; state: string | null }[]> {
   try {
     const result = await db
       .selectFrom('pg_stat_activity')
@@ -156,7 +182,7 @@ export async function getSlowQueries(
       .limit(10)
       .execute()
 
-    return result as any
+    return result
   } catch (error) {
     logger.debug('Failed to get slow queries:', error)
     return []
@@ -166,7 +192,7 @@ export async function getSlowQueries(
 /**
  * Kill connection
  */
-export async function killConnection(db: Kysely<any>, pid: number): Promise<boolean> {
+export async function killConnection(db: PostgresDb, pid: number): Promise<boolean> {
   try {
     // PID is a number, safe to use directly
     if (!Number.isInteger(pid) || pid < 0) {
@@ -176,7 +202,7 @@ export async function killConnection(db: Kysely<any>, pid: number): Promise<bool
       .selectNoFrom(sql<boolean>`pg_terminate_backend(${pid})`.as('terminated'))
       .executeTakeFirst()
 
-    return result?.terminated || false
+    return result?.terminated ?? false
   } catch (error) {
     logger.debug(`Failed to kill connection ${pid}:`, error)
     return false
@@ -186,32 +212,36 @@ export async function killConnection(db: Kysely<any>, pid: number): Promise<bool
 /**
  * Vacuum table
  */
-export async function vacuumTable(db: Kysely<any>, tableName: string): Promise<void> {
+export async function vacuumTable(db: PostgresDb, tableName: string): Promise<void> {
   try {
     // Use safe VACUUM ANALYZE statement
     await sql.raw(safeVacuumAnalyze(tableName)).execute(db)
-  } catch (error: any) {
-    throw new CLIDatabaseError(`Failed to vacuum table ${tableName}: ${error.message}`)
+  } catch (error) {
+    throw new CLIDatabaseError(
+      `Failed to vacuum table ${tableName}: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
 
 /**
  * Analyze table
  */
-export async function analyzeTable(db: Kysely<any>, tableName: string): Promise<void> {
+export async function analyzeTable(db: PostgresDb, tableName: string): Promise<void> {
   try {
     // Validate and escape table name
     const escapedTable = escapeTypedIdentifier(tableName, 'table', 'postgres')
     await sql.raw(`ANALYZE ${escapedTable}`).execute(db)
-  } catch (error: any) {
-    throw new CLIDatabaseError(`Failed to analyze table ${tableName}: ${error.message}`)
+  } catch (error) {
+    throw new CLIDatabaseError(
+      `Failed to analyze table ${tableName}: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
 
 /**
  * Check if database exists
  */
-export async function databaseExists(db: Kysely<any>, databaseName: string): Promise<boolean> {
+export async function databaseExists(db: PostgresDb, databaseName: string): Promise<boolean> {
   try {
     const result = await db
       .selectFrom('pg_database')
@@ -229,20 +259,22 @@ export async function databaseExists(db: Kysely<any>, databaseName: string): Pro
 /**
  * Create database
  */
-export async function createDatabase(db: Kysely<any>, databaseName: string): Promise<void> {
+export async function createDatabase(db: PostgresDb, databaseName: string): Promise<void> {
   try {
     // Validate and escape database name
     const escapedDb = escapeTypedIdentifier(databaseName, 'database', 'postgres')
     await sql.raw(`CREATE DATABASE ${escapedDb}`).execute(db)
-  } catch (error: any) {
-    throw new CLIDatabaseError(`Failed to create database ${databaseName}: ${error.message}`)
+  } catch (error) {
+    throw new CLIDatabaseError(
+      `Failed to create database ${databaseName}: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
 
 /**
  * Drop database
  */
-export async function dropDatabase(db: Kysely<any>, databaseName: string): Promise<void> {
+export async function dropDatabase(db: PostgresDb, databaseName: string): Promise<void> {
   try {
     // Validate database name
     const validDbName = validateIdentifier(databaseName, 'database')
@@ -257,7 +289,9 @@ export async function dropDatabase(db: Kysely<any>, databaseName: string): Promi
     // Drop the database using escaped identifier
     const escapedDb = escapeTypedIdentifier(databaseName, 'database', 'postgres')
     await sql.raw(`DROP DATABASE IF EXISTS ${escapedDb}`).execute(db)
-  } catch (error: any) {
-    throw new CLIDatabaseError(`Failed to drop database ${databaseName}: ${error.message}`)
+  } catch (error) {
+    throw new CLIDatabaseError(
+      `Failed to drop database ${databaseName}: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }

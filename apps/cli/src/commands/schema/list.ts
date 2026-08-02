@@ -1,8 +1,9 @@
 import { Command } from 'commander'
-import { prism, table } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
+import { displayTable } from '../../utils/table-helper.js'
 
 export interface ListOptions {
   json?: boolean
@@ -74,9 +75,9 @@ async function listSchemas(options: ListOptions): Promise<void> {
           return {
             name: schemaName,
             tables: info.tableCount,
-            owner: info.owner || 'unknown',
+            owner: info.owner ?? 'unknown',
             size: formatBytes(info.sizeBytes),
-            tenant: tenantId || '-'
+            tenant: tenantId ?? '-'
           }
         })
       )
@@ -87,7 +88,7 @@ async function listSchemas(options: ListOptions): Promise<void> {
         console.log('')
         console.log(prism.bold('Database Schemas'))
         console.log('')
-        console.log(table(schemaInfos as any))
+        displayTable(schemaInfos)
       }
     } else {
       if (options.json) {

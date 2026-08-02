@@ -4,7 +4,7 @@
  * @param decimals - Number of decimal places (default: 2)
  * @returns Formatted string like "1.50 MB"
  */
-export function formatBytes(bytes: number, decimals: number = 2): string {
+export function formatBytes(bytes: number, decimals = 2): string {
   if (bytes === 0) return '0 B'
 
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']

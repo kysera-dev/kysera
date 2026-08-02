@@ -1,12 +1,13 @@
 import { Command } from 'commander'
 import { prism, confirm, select } from '@xec-sh/kit'
-import { spinner } from '../../utils/spinner.js'
 import { displayTable as table } from '../../utils/table-helper.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
 import type { CircuitState } from '@kysera/infra'
+import type { KyseraConfig } from '../../config/schema.js'
+import type { KyseraConfigWithDatabase } from '../../utils/with-database.js'
 
 export interface CircuitBreakerOptions {
   action?: 'status' | 'reset' | 'open' | 'close'
@@ -60,7 +61,9 @@ export function circuitBreakerCommand(): Command {
 
 async function manageCircuitBreaker(options: CircuitBreakerOptions): Promise<void> {
   // Load configuration
-  const config = await loadConfig(options.config)
+  // Widened: mocked loaders may resolve null even though the declared return
+  // type is non-nullable; the runtime guard below must stay meaningful.
+  const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   if (!config?.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
@@ -70,7 +73,7 @@ async function manageCircuitBreaker(options: CircuitBreakerOptions): Promise<voi
   }
 
   // Get circuit breaker instance from config or create one
-  const circuitBreakers = await getCircuitBreakers(config)
+  const circuitBreakers = await getCircuitBreakers(config as KyseraConfigWithDatabase)
 
   if (options.action === 'status') {
     await showCircuitBreakerStatus(circuitBreakers, options)
@@ -87,7 +90,9 @@ async function manageCircuitBreaker(options: CircuitBreakerOptions): Promise<voi
   }
 }
 
-async function getCircuitBreakers(config: any): Promise<Map<string, CircuitBreakerStatus>> {
+async function getCircuitBreakers(
+  config: KyseraConfigWithDatabase
+): Promise<Map<string, CircuitBreakerStatus>> {
   const breakers = new Map<string, CircuitBreakerStatus>()
 
   // Check for circuit breaker state in a dedicated table or Redis
@@ -120,7 +125,7 @@ async function getCircuitBreakers(config: any): Promise<Map<string, CircuitBreak
           nextRetry: state.next_retry ? new Date(state.next_retry as string) : undefined,
           errorThreshold: Number(state.error_threshold),
           resetTimeout: Number(state.reset_timeout),
-          halfOpenRequests: Number(state.half_open_requests || 0)
+          halfOpenRequests: Number(state.half_open_requests ?? 0)
         })
       }
     } else {
@@ -158,7 +163,7 @@ async function getCircuitBreakers(config: any): Promise<Map<string, CircuitBreak
 
     await db.destroy()
   } catch (error) {
-    logger.debug(`Failed to load circuit breaker states: ${error}`)
+    logger.debug(`Failed to load circuit breaker states: ${String(error)}`)
 
     // Return default states
     breakers.set('database', {
@@ -259,7 +264,7 @@ function displayCircuitBreakerStatus(breakers: Map<string, CircuitBreakerStatus>
     }
   })
 
-  console.log(table(statusData))
+  table(statusData)
 
   // Show details for each breaker
   for (const breaker of breakers.values()) {
@@ -373,7 +378,8 @@ async function resetCircuitBreaker(
 
   // Reset circuit breakers
   for (const service of servicesToReset) {
-    const breaker = breakers.get(service)!
+    const breaker = breakers.get(service)
+    if (!breaker) continue
     breaker.state = 'closed'
     breaker.failureCount = 0
     breaker.successCount = 0
@@ -463,7 +469,7 @@ async function persistCircuitBreakerState(
 
   // If you have a circuit_breaker_state table, update it here
   try {
-    const config = await loadConfig()
+    const config = (await loadConfig()) as KyseraConfig | null
     if (config?.database) {
       const db = await getDatabaseConnection(config.database)
 
@@ -505,6 +511,6 @@ async function persistCircuitBreakerState(
       await db.destroy()
     }
   } catch (error) {
-    logger.debug(`Failed to persist circuit breaker state: ${error}`)
+    logger.debug(`Failed to persist circuit breaker state: ${String(error)}`)
   }
 }

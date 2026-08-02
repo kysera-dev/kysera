@@ -191,7 +191,9 @@ describe('query explain command', () => {
       })
 
       await command.parseAsync(['node', 'test', '--query', 'SELECT 1', '--analyze'])
-      expect(mockDb.raw).toHaveBeenCalledWith(expect.stringContaining('ANALYZE'))
+      expect(mockDb.executeQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ sql: expect.stringContaining('ANALYZE') })
+      )
     })
 
     it('should output verbose information', async () => {
@@ -253,7 +255,9 @@ describe('query explain command', () => {
       })
 
       await command.parseAsync(['node', 'test', '--query', 'SELECT 1'])
-      expect(mockDb.raw).toHaveBeenCalledWith(expect.stringContaining('EXPLAIN'))
+      expect(mockDb.executeQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ sql: expect.stringContaining('EXPLAIN') })
+      )
     })
 
     it('should handle MySQL dialect', async () => {
@@ -263,7 +267,9 @@ describe('query explain command', () => {
       mockDb.executeQuery.mockResolvedValue({ rows: [{ EXPLAIN: '{}' }] })
 
       await command.parseAsync(['node', 'test', '--query', 'SELECT 1'])
-      expect(mockDb.raw).toHaveBeenCalledWith(expect.stringContaining('EXPLAIN'))
+      expect(mockDb.executeQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ sql: expect.stringContaining('EXPLAIN') })
+      )
     })
 
     it('should handle SQLite dialect', async () => {
@@ -273,7 +279,9 @@ describe('query explain command', () => {
       mockDb.executeQuery.mockResolvedValue({ rows: [{ detail: 'SCAN TABLE users' }] })
 
       await command.parseAsync(['node', 'test', '--query', 'SELECT 1'])
-      expect(mockDb.raw).toHaveBeenCalledWith(expect.stringContaining('EXPLAIN QUERY PLAN'))
+      expect(mockDb.executeQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ sql: expect.stringContaining('EXPLAIN QUERY PLAN') })
+      )
     })
   })
 

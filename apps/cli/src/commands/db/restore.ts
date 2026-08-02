@@ -7,10 +7,17 @@ import { withDatabase } from '../../utils/with-database.js'
 import { safePath, isPathSafe } from '../../utils/fs.js'
 import { readFileSync, existsSync } from 'fs'
 import { resolve } from 'path'
+import type { DatabaseDialect } from '../../utils/database.js'
+import type { DatabaseInstance } from '../../types/index.js'
 
 export interface RestoreOptions {
   force?: boolean
   config?: string
+}
+
+interface JsonDumpTable {
+  schema?: unknown
+  data?: unknown[]
 }
 
 export function restoreCommand(): Command {
@@ -89,54 +96,63 @@ async function restoreDatabase(dumpFile: string, options: RestoreOptions): Promi
   })
 }
 
-async function restoreFromJson(db: any, jsonContent: string, dialect: string): Promise<void> {
-  let dump: any
+async function restoreFromJson(
+  db: DatabaseInstance,
+  jsonContent: string,
+  dialect: DatabaseDialect
+): Promise<void> {
+  let parsed: unknown
   try {
-    dump = JSON.parse(jsonContent)
+    parsed = JSON.parse(jsonContent)
   } catch {
     throw new CLIError('Invalid JSON dump file', 'INVALID_DUMP')
   }
 
+  const dump = parsed as { tables?: unknown }
   if (!dump.tables || typeof dump.tables !== 'object') {
     throw new CLIError('Invalid dump format: missing tables', 'INVALID_DUMP')
   }
+  const dumpTables = dump.tables as Record<string, unknown>
 
-  const trx = await db.transaction().execute(async (trx: any) => {
+  const { CompiledQuery } = await import('kysely')
+
+  await db.transaction().execute(async trx => {
     if (dialect === 'postgres') {
-      await trx.executeQuery(trx.raw('SET session_replication_role = replica'))
+      await trx.executeQuery(CompiledQuery.raw('SET session_replication_role = replica', []))
     } else if (dialect === 'mysql') {
-      await trx.executeQuery(trx.raw('SET FOREIGN_KEY_CHECKS = 0'))
-    } else if (dialect === 'sqlite') {
-      await trx.executeQuery(trx.raw('PRAGMA foreign_keys = OFF'))
+      await trx.executeQuery(CompiledQuery.raw('SET FOREIGN_KEY_CHECKS = 0', []))
+    } else {
+      await trx.executeQuery(CompiledQuery.raw('PRAGMA foreign_keys = OFF', []))
     }
 
-    for (const [tableName, tableData] of Object.entries(dump.tables)) {
-      const table = tableData as any
+    for (const [tableName, tableData] of Object.entries(dumpTables)) {
+      const table = tableData as JsonDumpTable
 
       if (table.data && Array.isArray(table.data) && table.data.length > 0) {
         if (!table.schema) {
           await trx.deleteFrom(tableName).execute()
         }
 
+        const rows: unknown[] = table.data
         const batchSize = 100
-        for (let i = 0; i < table.data.length; i += batchSize) {
-          const batch = table.data.slice(i, i + batchSize)
+        for (let i = 0; i < rows.length; i += batchSize) {
+          const batch = rows.slice(i, i + batchSize) as Record<string, unknown>[]
           await trx.insertInto(tableName).values(batch).execute()
         }
       }
     }
 
     if (dialect === 'postgres') {
-      await trx.executeQuery(trx.raw('SET session_replication_role = DEFAULT'))
+      await trx.executeQuery(CompiledQuery.raw('SET session_replication_role = DEFAULT', []))
     } else if (dialect === 'mysql') {
-      await trx.executeQuery(trx.raw('SET FOREIGN_KEY_CHECKS = 1'))
-    } else if (dialect === 'sqlite') {
-      await trx.executeQuery(trx.raw('PRAGMA foreign_keys = ON'))
+      await trx.executeQuery(CompiledQuery.raw('SET FOREIGN_KEY_CHECKS = 1', []))
+    } else {
+      await trx.executeQuery(CompiledQuery.raw('PRAGMA foreign_keys = ON', []))
     }
   })
 }
 
-async function restoreFromSql(db: any, sqlContent: string): Promise<void> {
+async function restoreFromSql(db: DatabaseInstance, sqlContent: string): Promise<void> {
   const statements = sqlContent
     .split(';')
     .map(s => s.trim())
@@ -146,10 +162,12 @@ async function restoreFromSql(db: any, sqlContent: string): Promise<void> {
     throw new CLIError('No SQL statements found in dump file', 'INVALID_DUMP')
   }
 
-  await db.transaction().execute(async (trx: any) => {
+  const { CompiledQuery } = await import('kysely')
+
+  await db.transaction().execute(async trx => {
     for (const statement of statements) {
       if (statement.trim() && !statement.startsWith('--')) {
-        await trx.executeQuery(trx.raw(statement))
+        await trx.executeQuery(CompiledQuery.raw(statement, []))
       }
     }
   })

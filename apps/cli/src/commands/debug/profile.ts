@@ -77,7 +77,7 @@ async function profileQuery(options: ProfileOptions): Promise<void> {
     if (options.query) {
       queryToProfile = options.query
     } else if (options.table) {
-      queryToProfile = generateQueryForTable(options.table, options.operation || 'select')
+      queryToProfile = generateQueryForTable(options.table, options.operation ?? 'select')
     } else {
       throw new CLIError('No query specified', 'MISSING_QUERY', [
         'Use --query to specify a SQL query',
@@ -116,8 +116,8 @@ async function runProfile(
   options: ProfileOptions,
   dialect: string
 ): Promise<ProfileResult> {
-  const iterations = parseInt(options.iterations || '100', 10)
-  const warmupRuns = parseInt(options.warmup || '10', 10)
+  const iterations = parseInt(options.iterations ?? '100', 10)
+  const warmupRuns = parseInt(options.warmup ?? '10', 10)
 
   if (isNaN(iterations) || iterations <= 0) {
     throw new CLIError('Invalid iterations value - must be a positive number')
@@ -152,8 +152,11 @@ async function runProfile(
 
       timings.push(duration)
 
-      if (i === 0 && result.rows) {
-        rowCount = result.rows.length
+      // Widened: the declared QueryResult type has required rows, but driver
+      // results may omit them at runtime; the guard must stay meaningful.
+      const rows = result.rows as readonly unknown[] | undefined
+      if (i === 0 && rows) {
+        rowCount = rows.length
       }
     } catch (error) {
       throw new CLIError(
@@ -219,7 +222,7 @@ async function getQueryPlan(
     }
     return null
   } catch (error) {
-    logger.debug(`Failed to get query plan: ${error}`)
+    logger.debug(`Failed to get query plan: ${String(error)}`)
     return null
   }
 }
@@ -297,7 +300,7 @@ function displayProfileResults(
     }
   ]
 
-  console.log(table(metricsData))
+  table(metricsData)
 
   console.log('')
   console.log(prism.cyan('Response Time Distribution:'))
@@ -309,10 +312,10 @@ function displayProfileResults(
 
     if (dialect === 'postgres') {
       for (const row of result.queryPlan) {
-        console.log(`  ${row['QUERY PLAN'] || JSON.stringify(row)}`)
+        console.log(`  ${(row as Partial<PostgresExplainTextRow>)['QUERY PLAN'] ?? JSON.stringify(row)}`)
       }
     } else {
-      console.log(table(result.queryPlan as any[]))
+      table(result.queryPlan as Record<string, unknown>[])
     }
   }
 
@@ -376,7 +379,7 @@ function displayHistogram(timings: number[]): void {
   const max = Math.max(...timings)
   const bucketSize = (max - min) / buckets
 
-  const histogram: number[] = new Array(buckets).fill(0)
+  const histogram = new Array<number>(buckets).fill(0)
 
   for (const time of timings) {
     const bucketIndex = Math.min(Math.floor((time - min) / bucketSize), buckets - 1)

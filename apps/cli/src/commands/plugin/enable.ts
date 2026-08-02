@@ -26,9 +26,34 @@ interface EnableResult {
   plugin: string
   status: 'enabled' | 'failed' | 'already_enabled'
   message?: string
-  configuration?: Record<string, any>
+  configuration?: Record<string, unknown>
   hooks?: string[]
   providers?: string[]
+}
+
+/** Per-plugin settings as stored in the kysera config, keyed by plugin package name. */
+type PluginSettings = { enabled?: boolean } & Record<string, unknown>
+type PluginsRecord = Record<string, PluginSettings | undefined>
+
+interface PluginPackageJson {
+  dependencies?: Record<string, string>
+  engines?: Record<string, string>
+  kysera?: {
+    hooks?: string[]
+    providers?: string[]
+    commands?: string[]
+    defaultConfig?: Record<string, unknown>
+  }
+}
+
+interface PluginValidation {
+  valid: boolean
+  error?: string
+  dependencies?: string[]
+  hooks?: string[]
+  providers?: string[]
+  commands?: string[]
+  defaultConfig?: Record<string, unknown>
 }
 
 export function enablePluginCommand(): Command {
@@ -63,13 +88,11 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
 
   try {
     // Load configuration
-    const config = (await loadConfig(options.config)) || {}
+    const config = await loadConfig(options.config)
 
     // Initialize plugins config if not exists
-    if (!config.plugins) {
-      config.plugins = {} as NonNullable<typeof config.plugins>
-    }
-    const pluginsRecord = config.plugins as Record<string, { enabled?: boolean } | undefined>
+    config.plugins ??= {}
+    const pluginsRecord = config.plugins as PluginsRecord
 
     const results: EnableResult[] = []
 
@@ -105,14 +128,14 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
 
       // Enable each plugin
       for (const plugin of installedPlugins) {
-        const result = await enableSinglePlugin(plugin, config, options)
+        const result = await enableSinglePlugin(plugin, pluginsRecord, options)
         results.push(result)
       }
     } else if (name) {
       // Enable specific plugin
       enableSpinner.start(`Enabling plugin: ${name}...`)
 
-      const result = await enableSinglePlugin(name, config, options)
+      const result = await enableSinglePlugin(name, pluginsRecord, options)
       results.push(result)
 
       if (result.status === 'enabled') {
@@ -138,10 +161,7 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
       }
 
       // Filter out already enabled plugins
-      const disabledPlugins = installedPlugins.filter(p => {
-        const pluginConfig = pluginsRecord[p]
-        return !pluginConfig || pluginConfig.enabled !== true
-      })
+      const disabledPlugins = installedPlugins.filter(p => pluginsRecord[p]?.enabled !== true)
 
       if (disabledPlugins.length === 0) {
         console.log(prism.yellow('All installed plugins are already enabled'))
@@ -158,7 +178,7 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
       })
 
       enableSpinner.start(`Enabling plugin: ${selected as string}...`)
-      const result = await enableSinglePlugin(selected as string, config, options)
+      const result = await enableSinglePlugin(selected as string, pluginsRecord, options)
       results.push(result)
 
       if (result.status === 'enabled') {
@@ -188,7 +208,7 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
       console.log(prism.cyan('Configuring enabled plugins...'))
 
       for (const result of results.filter(r => r.status === 'enabled')) {
-        await configurePlugin(result.plugin, config, options)
+        configurePlugin(result.plugin, pluginsRecord)
       }
 
       await saveConfig(config, options.config)
@@ -243,7 +263,7 @@ async function discoverInstalledPlugins(): Promise<string[]> {
       // No plugins directory
     }
   } catch (error) {
-    logger.debug(`Failed to discover installed plugins: ${error}`)
+    logger.debug(`Failed to discover installed plugins: ${String(error)}`)
   }
 
   return plugins
@@ -251,7 +271,7 @@ async function discoverInstalledPlugins(): Promise<string[]> {
 
 async function enableSinglePlugin(
   pluginName: string,
-  config: any,
+  plugins: PluginsRecord,
   options: EnablePluginOptions
 ): Promise<EnableResult> {
   const result: EnableResult = {
@@ -261,14 +281,14 @@ async function enableSinglePlugin(
 
   try {
     // Check if already enabled
-    if (config.plugins[pluginName]?.enabled === true) {
+    if (plugins[pluginName]?.enabled === true) {
       result.status = 'already_enabled'
       result.message = 'Plugin is already enabled'
       return result
     }
 
     // Validate plugin exists
-    const pluginInfo = await validatePlugin(pluginName, options.force || false)
+    const pluginInfo = await validatePlugin(pluginName, options.force ?? false)
 
     if (!pluginInfo.valid) {
       result.message = pluginInfo.error
@@ -277,7 +297,7 @@ async function enableSinglePlugin(
 
     // Check dependencies
     if (pluginInfo.dependencies && !options.force) {
-      const missingDeps = await checkDependencies(pluginInfo.dependencies)
+      const missingDeps = checkDependencies(pluginInfo.dependencies)
 
       if (missingDeps.length > 0) {
         result.message = `Missing dependencies: ${missingDeps.join(', ')}`
@@ -286,17 +306,14 @@ async function enableSinglePlugin(
     }
 
     // Enable the plugin
-    if (!config.plugins[pluginName]) {
-      config.plugins[pluginName] = {}
-    }
-
-    config.plugins[pluginName].enabled = true
+    const settings = (plugins[pluginName] ??= {})
+    settings.enabled = true
 
     // Set default configuration
     if (pluginInfo.defaultConfig) {
-      config.plugins[pluginName] = {
+      plugins[pluginName] = {
         ...pluginInfo.defaultConfig,
-        ...config.plugins[pluginName],
+        ...settings,
         enabled: true
       }
       result.configuration = pluginInfo.defaultConfig
@@ -310,7 +327,7 @@ async function enableSinglePlugin(
     result.message = 'Plugin enabled successfully'
 
     // Register plugin commands if any
-    if (pluginInfo.commands && pluginInfo.commands.length > 0) {
+    if (pluginInfo.commands?.length) {
       logger.debug(`Plugin adds commands: ${pluginInfo.commands.join(', ')}`)
     }
   } catch (error) {
@@ -320,19 +337,8 @@ async function enableSinglePlugin(
   return result
 }
 
-async function validatePlugin(
-  pluginName: string,
-  force: boolean
-): Promise<{
-  valid: boolean
-  error?: string
-  dependencies?: string[]
-  hooks?: string[]
-  providers?: string[]
-  commands?: string[]
-  defaultConfig?: Record<string, any>
-}> {
-  const result: any = {
+async function validatePlugin(pluginName: string, force: boolean): Promise<PluginValidation> {
+  const result: PluginValidation = {
     valid: false
   }
 
@@ -341,7 +347,7 @@ async function validatePlugin(
     const require = testHelpers.createRequire(import.meta.url)
 
     let pluginPath: string
-    let packageJson: any
+    let packageJson: PluginPackageJson | null
 
     if (pluginName.startsWith('@') || pluginName.includes('/')) {
       // npm package
@@ -352,7 +358,7 @@ async function validatePlugin(
           pluginName,
           'package.json'
         )
-        packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'))
+        packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8')) as PluginPackageJson | null
       } catch {
         result.error = `Plugin not installed: ${pluginName}`
         return result
@@ -363,7 +369,7 @@ async function validatePlugin(
 
       try {
         const packageJsonPath = path.join(pluginDir, 'package.json')
-        packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'))
+        packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8')) as PluginPackageJson | null
       } catch {
         // Plugin without package.json
         result.valid = true
@@ -376,7 +382,7 @@ async function validatePlugin(
       result.valid = true
 
       // Dependencies
-      result.dependencies = Object.keys(packageJson.dependencies || {})
+      result.dependencies = Object.keys(packageJson.dependencies ?? {})
 
       // Kysera-specific metadata
       if (packageJson.kysera) {
@@ -388,7 +394,7 @@ async function validatePlugin(
 
       // Check version compatibility
       if (packageJson.engines?.kysera && !force) {
-        const kyseraVersion = process.env['KYSERA_VERSION'] || '1.0.0'
+        const kyseraVersion = process.env.KYSERA_VERSION ?? '1.0.0'
         const requiredVersion = packageJson.engines.kysera
 
         if (!isVersionCompatible(kyseraVersion, requiredVersion)) {
@@ -404,7 +410,7 @@ async function validatePlugin(
   return result
 }
 
-async function checkDependencies(dependencies: string[]): Promise<string[]> {
+function checkDependencies(dependencies: string[]): string[] {
   const missing: string[] = []
   const require = testHelpers.createRequire(import.meta.url)
 
@@ -442,18 +448,14 @@ function isVersionCompatible(current: string, required: string): boolean {
   return current === required
 }
 
-async function configurePlugin(
-  pluginName: string,
-  config: any,
-  options: EnablePluginOptions
-): Promise<void> {
+function configurePlugin(pluginName: string, plugins: PluginsRecord): void {
   console.log(`Configuring ${pluginName}...`)
 
   // Get plugin configuration schema
-  const pluginConfig = config.plugins[pluginName] || {}
+  const pluginConfig = plugins[pluginName] ?? {}
 
   // Basic configuration options
-  const configOptions = {
+  const configOptions: PluginSettings = {
     autoLoad: true,
     priority: 100,
     ...pluginConfig
@@ -471,7 +473,7 @@ async function configurePlugin(
     configOptions.abortEarly = false
   }
 
-  config.plugins[pluginName] = configOptions
+  plugins[pluginName] = configOptions
 
   console.log(prism.gray(`  Configuration applied for ${pluginName}`))
 }
@@ -506,11 +508,11 @@ function displayEnableResults(results: EnableResult[], options: EnablePluginOpti
     for (const result of enabled) {
       console.log(`  • ${result.plugin}`)
 
-      if (result.hooks && result.hooks.length > 0) {
+      if (result.hooks?.length) {
         console.log(prism.gray(`    Hooks: ${result.hooks.join(', ')}`))
       }
 
-      if (result.providers && result.providers.length > 0) {
+      if (result.providers?.length) {
         console.log(prism.gray(`    Providers: ${result.providers.join(', ')}`))
       }
     }

@@ -1,18 +1,29 @@
 import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
-import { spinner } from '../../utils/spinner.js'
 import { createWriteStream } from 'node:fs'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
+import type { HealthCheck, HealthMetrics, HealthStatus } from '@kysera/infra'
 
 export interface WatchOptions {
-  interval?: number
+  /** Always set: commander applies a 5000ms default (may be NaN for bad input). */
+  interval: number
   json?: boolean
   log?: string
   config?: string
   verbose?: boolean
+}
+
+/** Per-check payload rendered and logged by the watch loop. */
+interface MonitoringResult {
+  checkNumber: number
+  status: HealthStatus
+  checks: HealthCheck[]
+  errors?: string[]
+  metrics: HealthMetrics
+  timestamp: string
 }
 
 export function watchCommand(): Command {
@@ -46,7 +57,7 @@ async function watchHealthContinuous(options: WatchOptions): Promise<void> {
   // Load configuration
   const config = await loadConfig(options.config)
 
-  if (!config?.database) {
+  if (!config.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
@@ -65,14 +76,12 @@ async function watchHealthContinuous(options: WatchOptions): Promise<void> {
   logger.info('Press Ctrl+C to stop')
   logger.info('')
 
-  let isRunning = true
   let checkCount = 0
   let consecutiveFailures = 0
   const maxConsecutiveFailures = 5
 
   // Handle graceful shutdown
   process.on('SIGINT', () => {
-    isRunning = false
     logger.info('\nStopping health monitoring...')
     if (logStream) {
       logStream.end()
@@ -91,7 +100,7 @@ async function watchHealthContinuous(options: WatchOptions): Promise<void> {
   }
 
   try {
-    while (isRunning) {
+    for (;;) {
       checkCount++
       const checkTime = new Date()
 
@@ -121,7 +130,7 @@ async function watchHealthContinuous(options: WatchOptions): Promise<void> {
         }
 
         // Format result
-        const fullResult = {
+        const fullResult: MonitoringResult = {
           checkNumber: checkCount,
           ...result,
           metrics: {
@@ -135,7 +144,7 @@ async function watchHealthContinuous(options: WatchOptions): Promise<void> {
         if (options.json) {
           console.log(JSON.stringify(fullResult))
         } else {
-          displayMonitoringResult(fullResult, options.verbose || false, consecutiveFailures)
+          displayMonitoringResult(fullResult, options.verbose ?? false, consecutiveFailures)
         }
 
         // Log to file if specified
@@ -192,7 +201,11 @@ async function watchHealthContinuous(options: WatchOptions): Promise<void> {
   }
 }
 
-function displayMonitoringResult(result: any, verbose: boolean, consecutiveFailures: number): void {
+function displayMonitoringResult(
+  result: MonitoringResult,
+  verbose: boolean,
+  consecutiveFailures: number
+): void {
   // Status with icon
   const statusIcon = result.status === 'healthy' ? '✅' : result.status === 'degraded' ? '⚠️' : '❌'
   const statusColor =
@@ -205,14 +218,14 @@ function displayMonitoringResult(result: any, verbose: boolean, consecutiveFailu
   console.log(`Status: ${statusIcon} ${statusColor(result.status.toUpperCase())}`)
 
   // Show latency
-  if (result.metrics?.checkLatency) {
+  if (result.metrics.checkLatency) {
     const latencyColor =
       result.metrics.checkLatency < 10
         ? prism.green
         : result.metrics.checkLatency < 50
           ? prism.yellow
           : prism.red
-    console.log(`Latency: ${latencyColor(result.metrics.checkLatency + 'ms')}`)
+    console.log(`Latency: ${latencyColor(`${result.metrics.checkLatency}ms`)}`)
   }
 
   // Show consecutive failures if any
@@ -223,16 +236,14 @@ function displayMonitoringResult(result: any, verbose: boolean, consecutiveFailu
   console.log('')
 
   // Connection status
-  if (result.checks) {
-    const connCheck = result.checks.find((c: any) => c.name.toLowerCase().includes('connection'))
-    if (connCheck) {
-      const icon = connCheck.status === 'healthy' ? '🟢' : '🔴'
-      console.log(`${icon} Connection: ${connCheck.status}`)
-    }
+  const connCheck = result.checks.find(c => c.name.toLowerCase().includes('connection'))
+  if (connCheck) {
+    const icon = connCheck.status === 'healthy' ? '🟢' : '🔴'
+    console.log(`${icon} Connection: ${connCheck.status}`)
   }
 
   // Pool metrics
-  if (result.metrics?.poolMetrics) {
+  if (result.metrics.poolMetrics) {
     const pool = result.metrics.poolMetrics
     const usage = Math.round((pool.activeConnections / pool.totalConnections) * 100)
     const usageBar = createProgressBar(usage, 20)
@@ -244,17 +255,17 @@ function displayMonitoringResult(result: any, verbose: boolean, consecutiveFailu
   }
 
   // Query metrics in verbose mode
-  if (verbose && result.metrics?.queryMetrics) {
+  if (verbose && result.metrics.queryMetrics) {
     console.log('')
     console.log('Query Metrics:')
-    console.log(`  Total: ${result.metrics.queryMetrics.totalQueries || 0}`)
-    console.log(`  Avg Response: ${result.metrics.queryMetrics.avgResponseTime || 0}ms`)
-    console.log(`  Slow Queries: ${result.metrics.queryMetrics.slowQueries || 0}`)
-    console.log(`  Errors: ${result.metrics.queryMetrics.errors || 0}`)
+    console.log(`  Total: ${result.metrics.queryMetrics.totalQueries ?? 0}`)
+    console.log(`  Avg Response: ${result.metrics.queryMetrics.avgResponseTime ?? 0}ms`)
+    console.log(`  Slow Queries: ${result.metrics.queryMetrics.slowQueries ?? 0}`)
+    console.log(`  Errors: ${result.metrics.queryMetrics.errors ?? 0}`)
   }
 
   // Show errors if any
-  if (result.errors && result.errors.length > 0) {
+  if (result.errors?.length) {
     console.log('')
     console.log(prism.red('Errors:'))
     for (const error of result.errors) {

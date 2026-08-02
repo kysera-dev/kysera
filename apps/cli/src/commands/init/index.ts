@@ -1,41 +1,41 @@
 import { Command } from 'commander'
 import { prism, text, select, confirm, multiselect, box, group, isCancel } from '@xec-sh/kit'
-import { spinner } from '../../utils/spinner.js'
+import { spinner, type ExtendedSpinnerResult } from '../../utils/spinner.js'
 import { join, resolve, dirname } from 'node:path'
 import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { writeFileSync } from 'node:fs'
 
-// Simple template rendering helper
-function renderTemplate(templateName: string, data: any, outputPath: string): void {
+// Simple template rendering helper: objects are written as JSON, strings as-is
+function renderTemplate(_templateName: string, data: object | string, outputPath: string): void {
   // Ensure directory exists
   mkdirSync(dirname(outputPath), { recursive: true })
 
-  let content: string
-  if (typeof data === 'object' && !Buffer.isBuffer(data)) {
-    // For JSON files
-    if (outputPath.endsWith('.json')) {
-      content = JSON.stringify(data, null, 2)
-    } else {
-      // For other files, data is the content itself
-      content = data
-    }
-  } else {
-    content = String(data)
-  }
+  const content = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
 
   writeFileSync(outputPath, content, 'utf-8')
 }
 
 export interface InitOptions {
-  template?: string
-  database?: string
-  plugins?: string
-  packageManager?: string
-  typescript?: boolean
-  git?: boolean
-  install?: boolean
+  /** Always set: commander applies defaults for these options. */
+  template: string
+  database: string
+  plugins: string
+  packageManager: string
+  typescript: boolean
+  git: boolean
+  install: boolean
+}
+
+/** Resolved project settings passed to the file generators. */
+interface ProjectConfig {
+  name: string
+  template: string
+  database: string
+  plugins: string[]
+  packageManager: string
+  typescript: boolean
 }
 
 const TEMPLATES = {
@@ -159,7 +159,7 @@ export function initCommand(): Command {
 async function initProject(projectName: string | undefined, options: InitOptions): Promise<void> {
   // Check if we're in a non-interactive environment
   const isNonInteractive =
-    process.env['NODE_ENV'] === 'test' || !process.stdin.isTTY || process.env['CI']
+    process.env.NODE_ENV === 'test' || !process.stdin.isTTY || process.env.CI
 
   // Interactive mode if no project name provided (and we're in an interactive environment)
   if (!projectName) {
@@ -240,36 +240,36 @@ async function initProject(projectName: string | undefined, options: InitOptions
       throw new CLIError('Project initialization cancelled', 'CANCELLED')
     }
 
-    projectName = answers.projectName as string
+    projectName = answers.projectName
     options = {
-      template: answers.template as string,
-      database: answers.database as string,
-      plugins: (answers.plugins as string[])?.join(','),
-      packageManager: answers.packageManager as string,
+      template: answers.template,
+      database: answers.database,
+      plugins: answers.plugins.join(','),
+      packageManager: answers.packageManager,
       typescript: true, // Always use TypeScript for now
-      git: answers.git as boolean,
-      install: answers.install as boolean
+      git: answers.git,
+      install: answers.install
     }
   }
 
   // Validate options
   const template = options.template || 'basic'
-  if (!TEMPLATES[template as keyof typeof TEMPLATES]) {
+  if (!(template in TEMPLATES)) {
     throw new CLIError(`Invalid template: ${template}`, 'INVALID_TEMPLATE', [
       'Available templates: basic, api, graphql, monorepo'
     ])
   }
 
   const database = options.database || 'postgres'
-  if (!DATABASES[database as keyof typeof DATABASES]) {
+  if (!(database in DATABASES)) {
     throw new CLIError(`Invalid database: ${database}`, 'INVALID_DATABASE', [
       'Available databases: postgres, mysql, sqlite'
     ])
   }
 
-  const plugins = options.plugins?.split(',').filter(Boolean) || ['timestamps', 'soft-delete']
+  const plugins = options.plugins.split(',').filter(Boolean)
   for (const plugin of plugins) {
-    if (!PLUGINS[plugin as keyof typeof PLUGINS]) {
+    if (!(plugin in PLUGINS)) {
       throw new CLIError(`Invalid plugin: ${plugin}`, 'INVALID_PLUGIN', [
         `Available plugins: ${Object.keys(PLUGINS).join(', ')}`
       ])
@@ -298,7 +298,7 @@ async function initProject(projectName: string | undefined, options: InitOptions
   console.log('')
 
   // Use the previously defined isNonInteractive variable
-  let createSpinner: any = null
+  let createSpinner: ExtendedSpinnerResult | null = null
   if (!isNonInteractive) {
     createSpinner = spinner()
     createSpinner.start(`Creating project ${prism.cyan(projectName)}`)
@@ -313,13 +313,13 @@ async function initProject(projectName: string | undefined, options: InitOptions
     }
 
     // Generate project files based on template
-    await generateProjectFiles(projectPath, {
+    generateProjectFiles(projectPath, {
       name: projectName === '.' ? 'kysera-app' : projectName,
       template,
       database,
       plugins,
       packageManager,
-      typescript: options.typescript !== false
+      typescript: options.typescript
     })
 
     if (createSpinner) {
@@ -329,8 +329,8 @@ async function initProject(projectName: string | undefined, options: InitOptions
     }
 
     // Initialize git if requested
-    if (options.git !== false) {
-      let gitSpinner: any = null
+    if (options.git) {
+      let gitSpinner: ExtendedSpinnerResult | null = null
       if (!isNonInteractive) {
         gitSpinner = spinner()
         gitSpinner.start('Initializing git repository')
@@ -357,13 +357,13 @@ async function initProject(projectName: string | undefined, options: InitOptions
         } else {
           console.log('⚠ Failed to initialize git repository')
         }
-        logger.debug(`Git error: ${error}`)
+        logger.debug(`Git error: ${String(error)}`)
       }
     }
 
     // Install dependencies if requested
-    if (options.install !== false) {
-      let installSpinner: any = null
+    if (options.install) {
+      let installSpinner: ExtendedSpinnerResult | null = null
       if (!isNonInteractive) {
         installSpinner = spinner()
         installSpinner.start('Installing dependencies')
@@ -385,7 +385,7 @@ async function initProject(projectName: string | undefined, options: InitOptions
         } else {
           console.log('⚠ Failed to install dependencies')
         }
-        logger.debug(`Install error: ${error}`)
+        logger.debug(`Install error: ${String(error)}`)
         const installCmd = getInstallCommand(packageManager)
         console.log(
           prism.yellow(`\nRun ${prism.cyan(installCmd)} to install dependencies manually`)
@@ -452,29 +452,16 @@ async function initProject(projectName: string | undefined, options: InitOptions
   }
 }
 
-async function generateProjectFiles(
-  projectPath: string,
-  config: {
-    name: string
-    template: string
-    database: string
-    plugins: string[]
-    packageManager: string
-    typescript: boolean
-  }
-): Promise<void> {
+function generateProjectFiles(projectPath: string, config: ProjectConfig): void {
   const template = TEMPLATES[config.template as keyof typeof TEMPLATES]
   const database = DATABASES[config.database as keyof typeof DATABASES]
 
   // Collect all dependencies
   const dependencies = new Set([...template.dependencies, ...database.dependencies])
 
-  // Add plugin dependencies
+  // Add plugin dependencies (plugin names were validated in initProject)
   for (const plugin of config.plugins) {
-    const pluginConfig = PLUGINS[plugin as keyof typeof PLUGINS]
-    if (pluginConfig) {
-      dependencies.add(pluginConfig.package)
-    }
+    dependencies.add(PLUGINS[plugin as keyof typeof PLUGINS].package)
   }
 
   const devDependencies = new Set([
@@ -516,7 +503,7 @@ async function generateProjectFiles(
   }
 
   // Generate files based on template
-  await renderTemplate('init/package.json', packageJson, join(projectPath, 'package.json'))
+  renderTemplate('init/package.json', packageJson, join(projectPath, 'package.json'))
 
   // Create basic project structure
   const dirs = ['src', 'src/repositories', 'migrations', 'tests']
@@ -542,13 +529,13 @@ async function generateProjectFiles(
   }
 
   // Generate configuration files
-  await generateConfigFiles(projectPath, config)
+  generateConfigFiles(projectPath, config)
 
   // Generate source files based on template
-  await generateSourceFiles(projectPath, config)
+  generateSourceFiles(projectPath, config)
 }
 
-async function generateConfigFiles(projectPath: string, config: any): Promise<void> {
+function generateConfigFiles(projectPath: string, config: ProjectConfig): void {
   // Generate kysera.config.ts
   let databaseConfig = ''
   if (config.database === 'sqlite') {
@@ -587,16 +574,13 @@ ${databaseConfig}
   },
   plugins: {
     ${config.plugins
-      .map(
-        (plugin: string) =>
-          `${PLUGINS[plugin as keyof typeof PLUGINS].configKey}: { enabled: true }`
-      )
+      .map(plugin => `${PLUGINS[plugin as keyof typeof PLUGINS].configKey}: { enabled: true }`)
       .join(',\n    ')}
   }
 }
 `
 
-  await renderTemplate('init/kysera.config.ts', kyseraConfig, join(projectPath, 'kysera.config.ts'))
+  renderTemplate('init/kysera.config.ts', kyseraConfig, join(projectPath, 'kysera.config.ts'))
 
   // Generate tsconfig.json
   const tsConfig = {
@@ -624,7 +608,7 @@ ${databaseConfig}
     exclude: ['node_modules', 'dist', 'tests']
   }
 
-  await renderTemplate('init/tsconfig.json', tsConfig, join(projectPath, 'tsconfig.json'))
+  renderTemplate('init/tsconfig.json', tsConfig, join(projectPath, 'tsconfig.json'))
 
   // Generate .gitignore
   const gitignore = `# Dependencies
@@ -666,7 +650,7 @@ coverage/
 *.db
 `
 
-  await renderTemplate('init/.gitignore', gitignore, join(projectPath, '.gitignore'))
+  renderTemplate('init/.gitignore', gitignore, join(projectPath, '.gitignore'))
 
   // Generate .env.example
   const envExample = `# Database Configuration
@@ -695,7 +679,7 @@ NODE_ENV=development
 PORT=3000
 `
 
-  await renderTemplate('init/.env.example', envExample, join(projectPath, '.env.example'))
+  renderTemplate('init/.env.example', envExample, join(projectPath, '.env.example'))
 
   // Generate security warning if using database with authentication
   if (config.database === 'postgres' || config.database === 'mysql') {
@@ -719,11 +703,11 @@ For PostgreSQL, you can generate a secure password with:
 `
 
     const securityFilePath = join(projectPath, 'SECURITY.md')
-    await renderTemplate('init/SECURITY.md', securityWarning, securityFilePath)
+    renderTemplate('init/SECURITY.md', securityWarning, securityFilePath)
   }
 }
 
-async function generateSourceFiles(projectPath: string, config: any): Promise<void> {
+function generateSourceFiles(projectPath: string, config: ProjectConfig): void {
   // Generate database.ts
   const databaseFile = `import { Kysely${config.database === 'postgres' ? ', PostgresDialect' : config.database === 'mysql' ? ', MysqlDialect' : ', SqliteDialect'} } from 'kysely'
 ${config.database === 'postgres' ? "import { Pool } from 'pg'" : ''}
@@ -767,7 +751,7 @@ export const db = new Kysely<Database>({
 })
 `
 
-  await renderTemplate('init/database.ts', databaseFile, join(projectPath, 'src', 'database.ts'))
+  renderTemplate('init/database.ts', databaseFile, join(projectPath, 'src', 'database.ts'))
 
   // Generate index.ts based on template
   let indexFile = ''
@@ -905,7 +889,7 @@ console.log(\`🚀 GraphQL server ready at \${url}\`)
 `
   }
 
-  await renderTemplate('init/index.ts', indexFile, join(projectPath, 'src', 'index.ts'))
+  renderTemplate('init/index.ts', indexFile, join(projectPath, 'src', 'index.ts'))
 
   // Create README.md
   const readme = `# ${config.name}
@@ -970,7 +954,7 @@ kysera migrate down
 MIT
 `
 
-  await renderTemplate('init/README.md', readme, join(projectPath, 'README.md'))
+  renderTemplate('init/README.md', readme, join(projectPath, 'README.md'))
 }
 
 function detectPackageManager(): string {
@@ -981,7 +965,7 @@ function detectPackageManager(): string {
   if (existsSync('bun.lockb')) return 'bun'
 
   // Check npm_config_user_agent
-  const userAgent = process.env.npm_config_user_agent || ''
+  const userAgent = process.env.npm_config_user_agent ?? ''
   if (userAgent.includes('pnpm')) return 'pnpm'
   if (userAgent.includes('yarn')) return 'yarn'
   if (userAgent.includes('bun')) return 'bun'

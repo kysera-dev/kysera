@@ -1,8 +1,6 @@
 import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
@@ -55,7 +53,7 @@ async function runSeeds(options: SeedOptions): Promise<void> {
   // Load configuration
   const config = await loadConfig(options.config)
 
-  if (!config?.database) {
+  if (!config.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
@@ -72,11 +70,11 @@ async function runSeeds(options: SeedOptions): Promise<void> {
     ])
   }
 
-  const seedSpinner = spinner() as any
+  const seedSpinner = spinner()
 
   try {
     // Determine seeds directory
-    const seedDir = options.directory || config.testing?.seeds || './seeds'
+    const seedDir = options.directory ?? config.testing?.seeds ?? './seeds'
 
     // Fresh option - truncate tables
     if (options.fresh && !options.dryRun) {
@@ -87,7 +85,7 @@ async function runSeeds(options: SeedOptions): Promise<void> {
         let tables: string[] = []
 
         // Determine schema: CLI option > config > default 'public'
-        const schema = options.schema || config.database.schema || 'public'
+        const schema = options.schema ?? config.database.schema ?? 'public'
 
         if (config.database.dialect === 'postgres') {
           const result = (await db
@@ -95,23 +93,23 @@ async function runSeeds(options: SeedOptions): Promise<void> {
             .select('table_name')
             .where('table_schema', '=', schema)
             .where('table_type', '=', 'BASE TABLE')
-            .execute()) as any[]
+            .execute()) as { table_name: string }[]
           tables = result.map(r => r.table_name)
         } else if (config.database.dialect === 'mysql') {
           const result = (await db
             .selectFrom('information_schema.tables')
             .select('table_name')
             .where('table_schema', '=', db.fn('DATABASE'))
-            .execute()) as any[]
-          tables = result.map(r => r.table_name || r.TABLE_NAME)
-        } else if (config.database.dialect === 'sqlite') {
+            .execute()) as { table_name?: string; TABLE_NAME?: string }[]
+          tables = result.map(r => r.table_name ?? r.TABLE_NAME ?? '')
+        } else {
           const result = (await db
             .selectFrom('sqlite_master')
             .select('name')
             .where('type', '=', 'table')
             .where('name', 'not like', 'sqlite_%')
             .where('name', 'not like', 'kysera_%') // Skip migration tables
-            .execute()) as any[]
+            .execute()) as { name: string }[]
           tables = result.map(r => r.name)
         }
 
@@ -140,15 +138,17 @@ async function runSeeds(options: SeedOptions): Promise<void> {
 
     // Create seed hooks for logging
     const hooks: SeedHooks = {
-      beforeAll: async () => {
+      beforeAll: () => {
         if (options.verbose) {
           logger.debug('Starting seed execution...')
         }
+        return Promise.resolve()
       },
-      afterAll: async (_, result) => {
+      afterAll: (_, result) => {
         if (options.verbose && result.executed.length > 0) {
           logger.debug(`Seeds completed: ${result.executed.join(', ')}`)
         }
+        return Promise.resolve()
       }
     }
 

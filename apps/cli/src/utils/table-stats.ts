@@ -1,10 +1,21 @@
+import type { RawBuilder } from 'kysely'
 import { logger } from './logger.js'
 import { validateIdentifier } from './sql-sanitizer.js'
+import type { DatabaseInstance } from '../types/index.js'
 
 export interface TableStatistics {
   rows: number
   size: number
   indexSize: number
+}
+
+/**
+ * Raw-SQL surface the size probes expect on the expression builder.
+ * Structural type only: the probes run inside try/catch and fall back to
+ * zeroed statistics when the runtime does not provide `raw`.
+ */
+interface RawExpressionApi {
+  raw<T>(fragment: string): RawBuilder<T>
 }
 
 /**
@@ -17,7 +28,7 @@ export interface TableStatistics {
  * @returns Table statistics object with row count, size, and index size
  */
 export async function getTableStatistics(
-  db: any,
+  db: DatabaseInstance,
   tableName: string,
   dialect: string
 ): Promise<TableStatistics> {
@@ -30,7 +41,7 @@ export async function getTableStatistics(
       .selectFrom(validatedTableName)
       .select(db.fn.countAll().as('count'))
       .executeTakeFirst()
-    const rows = Number(countResult?.count || 0)
+    const rows = Number(countResult?.count ?? 0)
 
     // Get table size (dialect-specific)
     let size = 0
@@ -38,14 +49,18 @@ export async function getTableStatistics(
 
     if (dialect === 'postgres') {
       const sizeResult = await db
-        .selectNoFrom((eb: any) => [
-          eb.raw(`pg_relation_size('${validatedTableName}')`).as('table_size'),
-          eb.raw(`pg_indexes_size('${validatedTableName}')`).as('index_size')
+        .selectNoFrom(eb => [
+          (eb as unknown as RawExpressionApi)
+            .raw<number | string>(`pg_relation_size('${validatedTableName}')`)
+            .as('table_size'),
+          (eb as unknown as RawExpressionApi)
+            .raw<number | string>(`pg_indexes_size('${validatedTableName}')`)
+            .as('index_size')
         ])
         .executeTakeFirst()
 
-      size = Number(sizeResult?.table_size || 0)
-      indexSize = Number(sizeResult?.index_size || 0)
+      size = Number(sizeResult?.table_size ?? 0)
+      indexSize = Number(sizeResult?.index_size ?? 0)
     } else if (dialect === 'mysql') {
       const sizeResult = await db
         .selectFrom('information_schema.TABLES')
@@ -54,8 +69,8 @@ export async function getTableStatistics(
         .where('TABLE_SCHEMA', '=', db.raw('DATABASE()'))
         .executeTakeFirst()
 
-      size = Number(sizeResult?.DATA_LENGTH || 0)
-      indexSize = Number(sizeResult?.INDEX_LENGTH || 0)
+      size = Number(sizeResult?.DATA_LENGTH ?? 0)
+      indexSize = Number(sizeResult?.INDEX_LENGTH ?? 0)
     } else {
       // SQLite - estimate based on row count
       // SQLite doesn't provide easy access to table sizes
@@ -65,7 +80,7 @@ export async function getTableStatistics(
 
     return { rows, size, indexSize }
   } catch (error) {
-    logger.debug(`Failed to get stats for ${tableName}: ${error}`)
+    logger.debug(`Failed to get stats for ${tableName}: ${String(error)}`)
     return { rows: 0, size: 0, indexSize: 0 }
   }
 }
@@ -79,7 +94,7 @@ export async function getTableStatistics(
  * @returns Map of table name to statistics
  */
 export async function getMultipleTableStatistics(
-  db: any,
+  db: DatabaseInstance,
   tableNames: string[],
   dialect: string
 ): Promise<Map<string, TableStatistics>> {
@@ -102,7 +117,7 @@ export async function getMultipleTableStatistics(
  * @returns Aggregated statistics object
  */
 export async function getDatabaseStatistics(
-  db: any,
+  db: DatabaseInstance,
   tableNames: string[],
   dialect: string
 ): Promise<{ totalRows: number; totalSize: number; totalIndexSize: number }> {
