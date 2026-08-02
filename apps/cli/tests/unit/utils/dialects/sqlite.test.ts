@@ -19,10 +19,10 @@ import {
   type SqliteInfo
 } from '@/utils/dialects/sqlite'
 import { CLIDatabaseError } from '@/utils/errors'
-import * as fsExtra from 'fs-extra'
+import * as fsPromises from 'node:fs/promises'
 
-// Mock fs-extra
-vi.mock('fs-extra', () => ({
+// Mock node:fs/promises (stat is the only member sqlite.ts uses)
+vi.mock('node:fs/promises', () => ({
   stat: vi.fn()
 }))
 
@@ -436,7 +436,7 @@ describe('SQLite Dialect Utilities', () => {
 
   describe('getDatabaseFileSize', () => {
     it('should return formatted file size', async () => {
-      vi.mocked(fsExtra.stat).mockResolvedValue({ size: 1048576 } as any) // 1 MB
+      vi.mocked(fsPromises.stat).mockResolvedValue({ size: 1048576 } as any) // 1 MB
 
       const result = await getDatabaseFileSize('/path/to/database.db')
 
@@ -444,7 +444,7 @@ describe('SQLite Dialect Utilities', () => {
     })
 
     it('should return size in bytes for small files', async () => {
-      vi.mocked(fsExtra.stat).mockResolvedValue({ size: 512 } as any)
+      vi.mocked(fsPromises.stat).mockResolvedValue({ size: 512 } as any)
 
       const result = await getDatabaseFileSize('/path/to/database.db')
 
@@ -452,7 +452,7 @@ describe('SQLite Dialect Utilities', () => {
     })
 
     it('should return size in KB for medium files', async () => {
-      vi.mocked(fsExtra.stat).mockResolvedValue({ size: 51200 } as any) // 50 KB
+      vi.mocked(fsPromises.stat).mockResolvedValue({ size: 51200 } as any) // 50 KB
 
       const result = await getDatabaseFileSize('/path/to/database.db')
 
@@ -460,7 +460,7 @@ describe('SQLite Dialect Utilities', () => {
     })
 
     it('should return size in GB for large files', async () => {
-      vi.mocked(fsExtra.stat).mockResolvedValue({ size: 1073741824 } as any) // 1 GB
+      vi.mocked(fsPromises.stat).mockResolvedValue({ size: 1073741824 } as any) // 1 GB
 
       const result = await getDatabaseFileSize('/path/to/database.db')
 
@@ -468,7 +468,7 @@ describe('SQLite Dialect Utilities', () => {
     })
 
     it('should return "Unknown" on error', async () => {
-      vi.mocked(fsExtra.stat).mockRejectedValue(new Error('File not found'))
+      vi.mocked(fsPromises.stat).mockRejectedValue(new Error('File not found'))
 
       const result = await getDatabaseFileSize('/path/to/nonexistent.db')
 

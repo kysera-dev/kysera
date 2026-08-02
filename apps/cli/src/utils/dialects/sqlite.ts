@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely'
 import { CLIDatabaseError } from '../errors.js'
-import { stat } from 'fs-extra'
+import { stat } from 'node:fs/promises'
 import { logger } from '../logger.js'
 import {
   validateIdentifier,
