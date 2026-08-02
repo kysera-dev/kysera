@@ -34,7 +34,7 @@ for tooling that validates migration configuration.
 
 Create a simple migration.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createMigration(
   name: string,
@@ -80,7 +80,7 @@ const migrations = [
 
 Create a migration with metadata.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createMigrationWithMeta(
   name: string,
@@ -99,7 +99,7 @@ function createMigrationWithMeta(
 
 Define multiple migrations concisely.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function defineMigrations(definitions: MigrationDefinitions): MigrationWithMeta[]
 
@@ -108,7 +108,7 @@ type MigrationDefinitions = Record<string, MigrationDefinition>
 
 ### Example
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const migrations = defineMigrations({
   '001_create_users': {
@@ -138,7 +138,7 @@ Idempotent — safe to run multiple times. The migration runner calls it
 automatically before its first database access, so calling it yourself is only
 needed for custom tooling.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function setupMigrations(db: Kysely<unknown>): Promise<void>
 ```
@@ -149,7 +149,7 @@ async function setupMigrations(db: Kysely<unknown>): Promise<void>
 
 Create a migration runner.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createMigrationRunner(
   db: Kysely<any>,
@@ -189,7 +189,7 @@ after waiting) succeed; `-1` (timeout after `lockTimeoutMs`) throws
 
 ### Runner Methods
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 class MigrationRunner {
   // Run all pending migrations
@@ -266,7 +266,7 @@ await runner.reset()
 
 ### runMigrations
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function runMigrations(
   db: Kysely<any>,
@@ -277,7 +277,7 @@ async function runMigrations(
 
 ### rollbackMigrations
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function rollbackMigrations(
   db: Kysely<any>,
@@ -289,7 +289,7 @@ async function rollbackMigrations(
 
 ### getMigrationStatus
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function getMigrationStatus(
   db: Kysely<any>,
@@ -354,7 +354,7 @@ const metricsPlugin = createMetricsPlugin()
 Async factory that awaits each plugin's `onInit` hook and returns a
 `MigrationRunnerWithPlugins` instance.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function createMigrationRunnerWithPlugins<DB = unknown>(
   db: Kysely<DB>,
@@ -375,7 +375,7 @@ plugin lifecycle hooks (`beforeMigration`, `afterMigration`,
 `onMigrationError`) around each migration. All other runner methods are
 inherited unchanged.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 class MigrationRunnerWithPlugins<DB = unknown> extends MigrationRunner<DB> {
   constructor(db: Kysely<DB>, migrations: Migration<DB>[], options?: MigrationRunnerWithPluginsOptions<DB>)

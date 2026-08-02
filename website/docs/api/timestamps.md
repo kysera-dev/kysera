@@ -24,7 +24,7 @@ npm install @kysera/timestamps
 
 ## Exports
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Main plugin
 export { timestampsPlugin } from './index'
@@ -40,7 +40,7 @@ export { TimestampsOptionsSchema, type TimestampsOptionsSchemaType } from './sch
 
 Creates a timestamps plugin instance.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function timestampsPlugin(options?: TimestampsOptions): Plugin
 ```
@@ -113,7 +113,7 @@ interface TimestampsOptions {
 
 ### Configuration Examples
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { timestampsPlugin } from '@kysera/timestamps'
 
@@ -194,7 +194,7 @@ interface TimestampMethods<T> {
 
 Find records created after a specific date.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async findCreatedAfter(date: Date | string): Promise<T[]>
 ```
@@ -215,7 +215,7 @@ const recentPosts = await postRepo.findCreatedAfter(weekAgo)
 
 Find records created before a specific date.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async findCreatedBefore(date: Date | string): Promise<T[]>
 ```
@@ -230,7 +230,7 @@ const oldPosts = await postRepo.findCreatedBefore('2024-01-01')
 
 Find records created within a date range.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async findCreatedBetween(start: Date | string, end: Date | string): Promise<T[]>
 ```
@@ -245,7 +245,7 @@ const posts = await postRepo.findCreatedBetween('2024-01-01', '2024-01-31')
 
 Find records updated after a specific date.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async findUpdatedAfter(date: Date | string): Promise<T[]>
 ```
@@ -264,7 +264,7 @@ const updatedPosts = await postRepo.findUpdatedAfter(yesterday)
 
 Get the most recently created records.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async findRecentlyCreated(limit?: number): Promise<T[]>
 ```
@@ -275,7 +275,7 @@ async findRecentlyCreated(limit?: number): Promise<T[]>
 
 **Example:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Get 10 most recently created posts
 const latestPosts = await postRepo.findRecentlyCreated()
@@ -288,7 +288,7 @@ const latestPosts = await postRepo.findRecentlyCreated(50)
 
 Get the most recently updated records.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async findRecentlyUpdated(limit?: number): Promise<T[]>
 ```
@@ -309,7 +309,7 @@ When the base repository provides `bulkCreate()` and `bulkUpdate()`, the plugin 
 
 Create multiple records with automatic timestamps.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async createMany(inputs: unknown[]): Promise<T[]>
 ```
@@ -329,7 +329,7 @@ const posts = await postRepo.createMany([
 
 Update multiple records with automatic updated_at. Uses the configured `primaryKeyColumn` for the WHERE clause.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async updateMany(ids: (number | string)[], input: unknown): Promise<T[]>
 ```
@@ -347,7 +347,7 @@ console.log(`Updated ${updated.length} posts`)
 
 Update only timestamps for multiple records. Uses the configured `primaryKeyColumn` for the WHERE clause.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async touchMany(ids: (number | string)[]): Promise<void>
 ```
@@ -368,7 +368,7 @@ await userRepo.touchMany(['uuid-1', 'uuid-2', 'uuid-3'])
 
 Update only the `updated_at` timestamp for a record. Uses the configured `primaryKeyColumn` for the WHERE clause.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async touch(id: number): Promise<void>
 ```
@@ -394,7 +394,7 @@ console.log(`User last active: ${user.updated_at}`)
 
 Create a record bypassing automatic timestamp setting.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async createWithoutTimestamps(input: unknown): Promise<T>
 ```
@@ -414,7 +414,7 @@ const importedPost = await postRepo.createWithoutTimestamps({
 
 Update a record without changing `updated_at`.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async updateWithoutTimestamp(id: number, input: unknown): Promise<T>
 ```
@@ -432,7 +432,7 @@ await postRepo.updateWithoutTimestamp(postId, {
 
 Get the configured column names.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 getTimestampColumns(): { createdAt: string; updatedAt: string }
 ```
@@ -474,7 +474,7 @@ The plugin has **no query interceptor** — it works entirely through the `exten
 - `create()`, `createMany()`, and `bulkCreate()` set `created_at` (and `updated_at` when `setUpdatedAtOnInsert` is true)
 - `update()`, `updateMany()`, and `bulkUpdate()` set `updated_at`
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Plugin implementation (simplified)
 extendRepository(repo) {
@@ -501,7 +501,7 @@ Because the plugin wraps repository methods rather than intercepting queries, wr
 
 ## Usage with Plugin Container
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createORM, createRepositoryFactory } from '@kysera/repository'
 import { timestampsPlugin } from '@kysera/timestamps'

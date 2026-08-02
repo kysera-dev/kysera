@@ -18,7 +18,7 @@ npm install @kysera/timestamps
 
 ### With Repository Pattern
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createORM } from '@kysera/repository'
 import { timestampsPlugin } from '@kysera/timestamps'
@@ -185,7 +185,7 @@ Besides the methods below, the plugin transparently wraps the base repository's 
 
 ### Recent Records
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Get 10 most recently created posts
 const latestPosts = await postRepo.findRecentlyCreated()

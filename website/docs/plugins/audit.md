@@ -18,7 +18,7 @@ npm install @kysera/audit
 
 ### With Repository Pattern
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createORM } from '@kysera/repository'
 import { auditPlugin } from '@kysera/audit'
@@ -91,7 +91,7 @@ interface AuditOptions {
 
 ### Configuration Examples
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Basic setup
 auditPlugin({
@@ -151,7 +151,7 @@ Most query methods return `ParsedAuditLogEntry[]` where `old_values`, `new_value
 
 ## Querying Audit Logs
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Get history for specific entity
 const history = await userRepo.getAuditHistory(userId)
@@ -272,7 +272,7 @@ CREATE INDEX idx_audit_logs_changed_at ON audit_logs(changed_at);
 
 Audit logs are transaction-aware:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 await db.transaction().execute(async (trx) => {
   const repos = createRepos(trx)

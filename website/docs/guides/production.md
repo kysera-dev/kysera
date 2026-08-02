@@ -340,7 +340,7 @@ stop pulling jobs), **await your in-flight work**, and only then call
 
 `getMetrics` from `@kysera/infra/health` aggregates real query statistics — but only from a database wrapped with `withDebug` from [`@kysera/debug`](/docs/api/debug), which is what collects per-query timings.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { withDebug } from '@kysera/debug'
 import { getMetrics, hasDatabaseMetrics } from '@kysera/infra/health'

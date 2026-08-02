@@ -66,7 +66,7 @@ You can mix both patterns using the **CQRS-lite** pattern via `orm.transaction()
 
 Repositories should focus on data access only:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Good: Data access only
 const user = await userRepo.findById(userId)
@@ -77,7 +77,7 @@ const user = await userRepo.findByIdWithValidationAndNotifications(userId)
 
 ### Use Factory Pattern
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Good: Factory pattern with DI
 const createRepos = createRepositoriesFactory({
@@ -116,7 +116,7 @@ const schemas = {
 
 ### Always Use Transactions for Related Operations
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Good: Atomic operations
 await db.transaction().execute(async (trx) => {
@@ -194,7 +194,7 @@ The `KYSERA_VALIDATION_MODE` environment variable (`always` / `never` / `develop
 
 ### Use Typed Errors
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import {
   UniqueConstraintError,
@@ -302,7 +302,7 @@ async function createAppExecutor(db: Kysely<Database>) {
 
 ### Use Cursor Pagination for Large Datasets
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Good: Cursor pagination for large datasets
 const result = await paginateCursor(query, {
@@ -426,7 +426,7 @@ const debugDb = withDebug(db, {
 
 ### Select Only Needed Columns
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Good: Select only needed columns
 const users = await db.selectFrom('users').select(['id', 'name']).execute()
@@ -454,7 +454,7 @@ const createUserSchema = z.object({
 
 Kysera (via Kysely) automatically uses parameterized queries to prevent SQL injection:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { sql } from 'kysely'
 
@@ -539,7 +539,7 @@ logger.info('User data', safeData)
 
 ### Use Transaction-Based Tests
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 it('creates user', async () => {
   await testInTransaction(db, async (trx) => {

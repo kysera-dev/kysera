@@ -363,7 +363,7 @@ const orm = await createORM(db, [
 
 Row-Level Security for multi-tenant applications.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { rlsPlugin, defineRLSSchema, filter, allow, rlsContext } from '@kysera/rls'
 
@@ -419,7 +419,7 @@ Raw Zod schemas do not satisfy the `ValidationSchema` interface expected by `sch
 
 With the Unified Execution Layer, create an executor with plugins that work across both Repository and DAL:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
@@ -524,7 +524,7 @@ const result = await paginateCursor(db.selectFrom('posts').selectAll(), {
 
 Plugins automatically propagate through transactions:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'

@@ -44,7 +44,7 @@ await userRepo.hardDelete(userId)
 
 ### DAL Pattern
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createQuery, createContext } from '@kysera/dal'
 import { createExecutor, withPluginMetadata } from '@kysera/executor'
@@ -192,7 +192,7 @@ interface SoftDeleteMethods<T> {
 
 SELECT queries automatically exclude soft-deleted records in both Repository and DAL patterns:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Repository pattern - automatic filtering
 const users = await userRepo.findAll()
@@ -270,7 +270,7 @@ const user = await userRepo.findWithDeleted(id) // Find by ID including deleted
 
 ### DAL Pattern Examples
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createQuery, createContext, withTransaction } from '@kysera/dal'
 import { createExecutor, withPluginMetadata } from '@kysera/executor'
@@ -413,7 +413,7 @@ await withTransaction(executor, async txCtx => {
 
 For related entities, manually implement cascade soft delete:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 await orm.transaction(async ctx => {
   const userRepo = orm.createRepository(createUserRepository)
@@ -441,7 +441,7 @@ plugin by deriving a metadata-scoped executor.
 
 ### Using withPluginMetadata (Recommended)
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { withPluginMetadata } from '@kysera/executor'
 import { createQuery } from '@kysera/dal'
@@ -507,7 +507,7 @@ CREATE INDEX idx_users_deleted_at ON users(deleted_at);
 
 Hard delete old soft-deleted records to prevent table bloat:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createQuery } from '@kysera/dal'
 import { withPluginMetadata } from '@kysera/executor'
@@ -534,7 +534,7 @@ await cleanupOldDeleted(withDeleted, 90)
 
 Implement cascade soft delete for related entities:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 await orm.transaction(async ctx => {
   const userRepo = orm.createRepository(createUserRepository)
@@ -612,6 +612,8 @@ interface Plugin {
 4. **Cross-Pattern Support**: Works with both Repository and DAL patterns
 
 `restore()`'s existence probe additionally reads through `@kysera/core`'s per-operation row cache (v0.10+): when the audit plugin wraps the same call, its old-values fetch has identical visibility and the probe reuses that SELECT instead of issuing a second one. Behavior is unchanged when the plugin runs alone.
+
+On PostgreSQL and SQLite, `softDelete()` folds its post-update read-back into a single `UPDATE ... RETURNING` statement (v0.10+); MySQL and MSSQL keep the two-statement UPDATE + SELECT path. Results and errors are identical on all dialects.
 
 ### Method Override Pattern
 

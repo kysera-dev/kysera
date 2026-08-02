@@ -45,7 +45,7 @@ await userRepo.create({
 
 Database results can optionally be validated:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { zodAdapter } from '@kysera/repository'
 
@@ -137,7 +137,7 @@ const CreateUserSchema = z.object({
 
 For update operations (partial of create schema):
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const UpdateUserSchema = CreateUserSchema.partial()
 
@@ -153,7 +153,7 @@ const UpdateUserSchema = z.object({
 
 ### Using createValidator
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createValidator } from '@kysera/repository'
 import { zodAdapter } from '@kysera/repository'

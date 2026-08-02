@@ -148,7 +148,7 @@ const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
 
 Cursor pagination also enforces limit bounds for safety:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Limit bounds automatically enforced (internal max = 10,000)
 paginateCursor(query, { orderBy: [...], limit: 0 }) // Uses 0 (special case: no results)
@@ -319,7 +319,7 @@ MSSQL has specific requirements and optimizations for pagination:
 
 MSSQL **requires** an `ORDER BY` clause when using offset pagination. Kysera uses the MSSQL `OFFSET/FETCH NEXT` syntax:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { paginate } from '@kysera/core'
 
@@ -569,7 +569,7 @@ const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
 
 **Tampered cursors throw `BadRequestError`:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 try {
   await paginateCursor(query, {
@@ -666,7 +666,7 @@ app.get('/api/posts', async (req, res) => {
 
 **Best practices:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // ✅ Good: Environment variable
 const secret = process.env.CURSOR_SECRET!
@@ -702,7 +702,7 @@ CURSOR_SECRET=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6
 
 Choose HMAC algorithm based on security requirements:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // SHA-256 (default) - Fast, secure for most use cases
 security: { secret, algorithm: 'sha256' }
@@ -718,7 +718,7 @@ security: { secret, algorithm: 'sha512' }
 
 If you have existing unsigned cursors in client apps:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Option 1: Gradual migration with fallback
 async function paginateWithMigration(query, options) {
@@ -779,7 +779,7 @@ const limit = Math.min(parseInt(req.query.limit) || 20, 100)
 
 ### 3. Use Cursor for Large Datasets
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Large dataset? Use cursor
 if (totalCount > 1000) {
@@ -793,7 +793,7 @@ return paginate(query, options)
 
 For offset pagination, total count query can be expensive:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Cache total count
 const cacheKey = `posts:count:${JSON.stringify(where)}`

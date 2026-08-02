@@ -12,7 +12,7 @@ Offset-based and cursor-based pagination utilities.
 
 Offset-based pagination for queries.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function paginate<DB, TB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -118,7 +118,7 @@ console.log(result)
 
 Cursor-based pagination for efficient large dataset handling.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function paginateCursor<DB, TB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -172,7 +172,7 @@ const page2 = await paginateCursor(db.selectFrom('posts').selectAll(), {
 
 ### Result
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 {
   data: [...],
@@ -243,7 +243,7 @@ CREATE INDEX idx_posts_cursor ON posts (created_at DESC, id DESC);
 
 Simplified cursor pagination that uses `id` column in ascending order. A convenience wrapper around `paginateCursor`.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function paginateCursorSimple<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -392,7 +392,7 @@ const result = await paginate(
 
 The dialect parameter is optional. Kysera typically auto-detects the database type from the Kysely instance, but you can override it:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Auto-detected (recommended)
 const result = await paginate(query, { page: 1, limit: 20 })

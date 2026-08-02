@@ -140,7 +140,7 @@ export async function up(db: Kysely<any>): Promise<void> {
 
 ### Using API
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createMigrationRunner, runMigrations } from '@kysera/migrations'
 import type { Kysely } from 'kysely'
@@ -269,7 +269,7 @@ await runner.markAsExecuted('001_create_users')
 
 `MigrationRunnerWithPlugins` calls lifecycle hooks (`onInit`, `beforeMigration`, `afterMigration`, `onMigrationError`) around each migration. Two plugins ship with the package:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import {
   createMigrationRunnerWithPlugins,
@@ -315,7 +315,7 @@ const slackNotifier: MigrationPlugin = {
 
 Safe to run in production without downtime:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Safe: Add nullable column
 await db.schema
@@ -352,7 +352,7 @@ await db.schema
 
 ### Safe Patterns for Destructive Changes
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Step 1: Add new nullable column
 export async function up(db: Kysely<any>) {

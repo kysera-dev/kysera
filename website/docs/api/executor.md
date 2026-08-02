@@ -95,7 +95,7 @@ like `db.schema`, `db.fn`, `db.dynamic` work correctly through the proxy).
 
 Creates a plugin-aware executor with async plugin initialization.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function createExecutor<DB>(
   db: Kysely<DB>,
@@ -114,7 +114,7 @@ async function createExecutor<DB>(
 
 **Example:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -150,7 +150,7 @@ Plugins are:
 
 Destroy an executor and call cleanup hooks for all plugins.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function destroyExecutor<DB>(executor: KyseraExecutor<DB>): Promise<void>
 ```
@@ -193,7 +193,7 @@ await destroyExecutor(executor)
 
 Synchronous version of `createExecutor` that skips async plugin initialization.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createExecutorSync<DB>(
   db: Kysely<DB>,
@@ -237,7 +237,7 @@ const users = await executor.selectFrom('users').selectAll().execute()
 
 Type guard to check if a value is a `KyseraExecutor`.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function isKyseraExecutor<DB>(value: Kysely<DB> | KyseraExecutor<DB>): value is KyseraExecutor<DB>
 ```
@@ -271,7 +271,7 @@ processDb(db) // "Plain Kysely instance"
 
 Get the list of plugins from a KyseraExecutor.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function getPlugins<DB>(executor: KyseraExecutor<DB>): readonly Plugin[]
 ```
@@ -299,7 +299,7 @@ console.log(plugins.map(p => p.name))
 
 Get the raw Kysely instance from an executor, bypassing plugin interceptors.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function getRawDb<DB>(executor: Kysely<DB>): Kysely<DB>
 ```
@@ -312,7 +312,7 @@ function getRawDb<DB>(executor: Kysely<DB>): Kysely<DB>
 
 **Example:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { getRawDb } from '@kysera/executor'
 
@@ -344,7 +344,7 @@ behavior** — `getRawDb` disables every plugin at once.
 Derive an executor whose plugin contexts start with the given metadata —
 the safe, scoped alternative to `getRawDb`.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function withPluginMetadata<DB>(
   executor: Kysely<DB>,
@@ -359,7 +359,7 @@ function withPluginMetadata<DB>(
 
 **Example:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { withPluginMetadata } from '@kysera/executor'
 
@@ -389,7 +389,7 @@ its only bypasses are context-bound and auditable (`ctx.auth.isSystem`,
 
 Wrap a transaction with plugins from an executor.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function wrapTransaction<DB>(
   trx: Transaction<DB>,
@@ -426,7 +426,7 @@ await db.transaction().execute(async trx => {
 
 Manually apply plugins to a query builder.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function applyPlugins<QB>(qb: QB, plugins: readonly Plugin[], context: QueryBuilderContext): QB
 ```
@@ -468,7 +468,7 @@ const users = await query.execute()
 
 Validate plugins for conflicts, dependencies, and circular dependencies.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function validatePlugins(plugins: readonly Plugin[]): void
 ```
@@ -519,7 +519,7 @@ type PluginValidationErrorType =
 
 Resolve plugin execution order using topological sort with priority.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function resolvePluginOrder(plugins: readonly Plugin[]): Plugin[]
 ```
@@ -566,7 +566,7 @@ console.log(sorted.map(p => p.name))
 Parse a table expression string exactly the way Kysely does. Useful for custom
 plugins and tooling that need to resolve base table names from expressions.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function parseTableReference(expression: string): ParsedTableReference
 
@@ -693,7 +693,7 @@ interface QueryBuilderContext {
 
 When `executor.withSchema()` is used, the `schema` property contains the current schema name. This allows plugins to adjust their behavior based on schema context:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 interceptQuery: (qb, context) => {
   if (context.schema === 'system') {
@@ -706,7 +706,7 @@ interceptQuery: (qb, context) => {
 
 **Example:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 interceptQuery: (qb, context) => {
   // Check operation type
@@ -734,7 +734,7 @@ any authentication context. Plugins may honor *behavioral* opt-outs from it
 
 Plugins can use `context.metadata` to communicate:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Plugin A sets metadata
 const pluginA: Plugin = {
@@ -804,7 +804,7 @@ type KyseraTransaction<DB> = Transaction<DB> & KyseraExecutorMarker<DB>
 
 Transactions created from `KyseraExecutor` automatically inherit plugins:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const executor = await createExecutor(db, [softDeletePlugin()])
 
@@ -831,7 +831,7 @@ interface ExecutorConfig {
 
 **Example:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Disable plugins in development
 const executor = await createExecutor(db, plugins, {
@@ -848,7 +848,7 @@ const executor = await createExecutor(db, plugins, {
 
 Error thrown when plugin validation fails.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 class PluginValidationError extends Error {
   constructor(
@@ -933,7 +933,7 @@ This interface represents the minimum contract that a repository-like object mus
 
 Type guard to check if an object is a repository-like object.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function isRepositoryLike<DB = unknown>(obj: unknown): obj is BaseRepositoryLike<DB>
 ```
@@ -946,7 +946,7 @@ function isRepositoryLike<DB = unknown>(obj: unknown): obj is BaseRepositoryLike
 
 **Example:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { isRepositoryLike } from '@kysera/executor'
 
@@ -1036,7 +1036,7 @@ While the executor provides powerful plugin capabilities, there are some limitat
 
 Raw SQL template strings bypass plugin interception entirely:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const executor = await createExecutor(db, [softDeletePlugin()])
 
@@ -1055,7 +1055,7 @@ const users = await executor.selectFrom('users').selectAll().execute()
 
 CTEs using `.with()` and `.withRecursive()` **are** intercepted. The executor wraps the callback so that queries inside the CTE definition go through the plugin proxy, and the result of `.with()` is also wrapped:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const executor = await createExecutor(db, [softDeletePlugin()])
 
@@ -1082,7 +1082,7 @@ const result = await executor
 
 Queries built outside the executor context don't get plugin interception:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const executor = await createExecutor(db, [softDeletePlugin()])
 
@@ -1100,7 +1100,7 @@ const users = await executor.selectFrom('users').selectAll().execute()
 
 Subqueries created with `.selectFrom()` inside expressions don't trigger interception:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const executor = await createExecutor(db, [softDeletePlugin()])
 
@@ -1148,7 +1148,7 @@ const tables = await executor.introspection.getTables()
 
 ### With Repository Pattern
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
@@ -1221,7 +1221,7 @@ await executor.transaction().execute(async trx => {
 
 Use `getRawDb` to bypass plugin interceptors:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const executor = await createExecutor(db, [softDeletePlugin()])
 
@@ -1237,7 +1237,7 @@ const allUsers = await rawDb.selectFrom('users').selectAll().execute()
 
 ### Custom Plugin Example
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import type { Plugin, QueryBuilderContext } from '@kysera/executor'
 
@@ -1278,7 +1278,7 @@ The executor uses different strategies based on plugin configuration:
 
 **1. Marker-Only Path** (no plugins, or no plugin has `interceptQuery`):
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Returns a lightweight Proxy that answers the marker properties
 // (__kysera, __plugins = the plugins you passed, __rawDb) and skips
@@ -1298,7 +1298,7 @@ query methods are bound to the underlying Kysely instance and passed through.
 
 **2. Proxy Path** (with interceptors):
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Creates Proxy to intercept method calls
 return new Proxy(db, {
@@ -1384,7 +1384,7 @@ The executor uses multiple optimization strategies:
 
 ### Benchmarks
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Plain Kysely
 const db = new Kysely({ ... });
@@ -1415,7 +1415,7 @@ The executor package includes a built-in Schema Plugin for unified schema manage
 
 Create a schema management plugin with validation and resolution capabilities.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { schemaPlugin, getResolvedSchema } from '@kysera/executor'
 
@@ -1532,7 +1532,7 @@ The resolved value is validated against `allowedSchemas` (throwing or falling ba
 
 **With schema validation:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const executor = await createExecutor(db, [
   schemaPlugin({
@@ -1550,7 +1550,7 @@ const executor = await createExecutor(db, [
 
 Utility function to retrieve the resolved schema from query context metadata.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function getResolvedSchema(context: QueryBuilderContext): string | undefined
 ```
@@ -1575,7 +1575,7 @@ const myPlugin: Plugin = {
 
 Error thrown when schema validation fails.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 class SchemaValidationError extends Error {
   constructor(

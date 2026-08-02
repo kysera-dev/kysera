@@ -12,7 +12,7 @@ Utilities for input and output validation with support for multiple validation l
 
 Kysera supports multiple validation libraries through adapters:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { zodAdapter, valibotAdapter, typeboxAdapter, nativeAdapter } from '@kysera/repository'
 
@@ -69,7 +69,7 @@ a Zod-like schema for you, but it is never called automatically.
 Type guard for the `ValidationSchema` interface — checks that a value has
 callable `parse` and `safeParse`:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function isValidationSchema(value: unknown): value is ValidationSchema
 ```
@@ -85,7 +85,7 @@ isValidationSchema({ parse: () => ({}) }) // false — safeParse missing
 
 Get the current validation mode from environment.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function getValidationMode(): ValidationMode
 
@@ -110,7 +110,7 @@ const mode = getValidationMode()
 
 Determine if validation should be enabled.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function shouldValidate(options?: ValidationOptions): boolean
 
@@ -141,7 +141,7 @@ if (shouldValidate({ mode: 'always' })) {
 
 Create a validation wrapper with multiple methods. Works with any `ValidationSchema`-compatible validator.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createValidator<T>(schema: ValidationSchema<T>, options?: ValidationOptions): {
   validate(data: unknown): T          // Throws on error
@@ -153,7 +153,7 @@ function createValidator<T>(schema: ValidationSchema<T>, options?: ValidationOpt
 
 ### Example
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createValidator, zodAdapter } from '@kysera/repository'
 import { z } from 'zod'
@@ -185,7 +185,7 @@ const user = userValidator.validateConditional(data)
 
 Safe parsing with optional error handling. Works with any `ValidationSchema`-compatible validator.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function safeParse<T>(
   schema: ValidationSchema<T>,
@@ -200,7 +200,7 @@ function safeParse<T>(
 
 ### Example
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { safeParse, zodAdapter } from '@kysera/repository'
 
@@ -227,7 +227,7 @@ try {
 
 ### Input Validation (On by Default)
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { zodAdapter } from '@kysera/repository'
 
@@ -253,7 +253,7 @@ for untrusted input.
 
 ### Output Validation (Configurable)
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { zodAdapter } from '@kysera/repository'
 
@@ -317,7 +317,7 @@ types live in `@kysera/repository` (not `@kysera/core`, which only exports
 `ValidationErrorCodes`), and `ValidationError` is an interface — it cannot be
 used with `instanceof`:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import type { ValidationError, ValidationIssue } from '@kysera/repository'
 
@@ -377,7 +377,7 @@ app.post('/users', async (req, res) => {
 For repositories, use per-repository options — environment variables have no
 effect on them:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const userRepo = factory.create({
   tableName: 'users',

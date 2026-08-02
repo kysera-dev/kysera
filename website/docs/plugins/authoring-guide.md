@@ -22,7 +22,7 @@ Plugins can use both interception and method override together, providing flexib
 
 ## Plugin Interface
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import type { Plugin } from '@kysera/executor'
 
@@ -98,7 +98,7 @@ export interface MyPluginOptions {
 
 ### Step 2: Create Plugin Factory
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import type { Plugin } from '@kysera/executor'
 import type { Kysely } from 'kysely'
@@ -194,7 +194,7 @@ export type { MyPluginOptions } from './plugin'
 
 Modify queries before execution. Works in **both Repository and DAL patterns**:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import type { Plugin, QueryBuilderContext } from '@kysera/executor'
 
@@ -235,7 +235,7 @@ const myPlugin = (): Plugin => ({
 
 Add or replace repository methods (Repository pattern only):
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 extendRepository(repo) {
   const baseRepo = repo as any
@@ -265,7 +265,7 @@ extendRepository(repo) {
 
 Extension methods sometimes need to see rows their own plugin normally hides — `findWithDeleted()` must skip the soft-delete filter, for example. Do **not** bypass the executor for this. Derive a metadata-scoped executor with `withPluginMetadata` and make your interceptor honor the flag:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { withPluginMetadata } from '@kysera/executor'
 
@@ -466,7 +466,7 @@ export const myPlugin = (): Plugin => ({
 
 ### 3. Handle Errors Gracefully
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 extendRepository(repo) {
   if (!('tableName' in repo)) {
@@ -478,7 +478,7 @@ extendRepository(repo) {
 
 ### 4. Support Configuration
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
   const config = { ...defaultOptions, ...options }
@@ -488,7 +488,7 @@ export const myPlugin = (options: MyPluginOptions = {}): Plugin => {
 
 ### 5. Use Logging
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { silentLogger, KyseraLogger } from '@kysera/core'
 
@@ -541,7 +541,7 @@ export const myPlugin = (): Plugin => ({
 
 ## Complete Example: Cache Plugin with Lifecycle
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import type { Plugin, QueryBuilderContext } from '@kysera/executor'
 import type { Kysely } from 'kysely'
@@ -691,7 +691,7 @@ export const cachePlugin = (options: CachePluginOptions = {}): Plugin => {
 2. **interceptQuery/extendRepository**: Implement plugin functionality
 3. **onDestroy**: Clean up resources to prevent memory leaks
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 export const myPlugin = (): Plugin => {
   let connection: DatabaseConnection | undefined

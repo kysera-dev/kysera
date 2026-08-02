@@ -18,7 +18,7 @@ This guide covers common issues you might encounter when using Kysera and provid
 
 **Solution:** Always include `.orderBy()` before calling pagination methods:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // ❌ This will fail on MSSQL
 const result = await db
@@ -104,7 +104,7 @@ pnpm update @kysera/core @kysera/executor @kysera/repository @kysera/dal
 
 **Solution:** Create and use an executor with your plugins:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -144,7 +144,7 @@ const ctx = createContext(executor) // Pass executor, not db
 
 **Solution:** Use dialect-specific values or utilities:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // SQLite uses 1/0 for booleans
 const sqliteQuery = db
@@ -232,7 +232,7 @@ CREATE DATABASE kysera_test;
 
 **Solution:** Use cursor-based pagination for large datasets:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { paginateCursor } from '@kysera/core'
 
@@ -363,7 +363,7 @@ For full plugin functionality (soft-delete, RLS, audit, etc.), use `createExecut
 
 **A:** Use dialect-specific values or create abstraction utilities:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { detectDialect } from '@kysera/core'
 
@@ -497,7 +497,7 @@ console.log(result.pagination.limit) // 10000
 
 **To override (not recommended):**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Custom implementation without the cap
 const customPaginate = async (query, { page, limit }) => {
@@ -552,7 +552,7 @@ await orm.transaction(async ctx => {
 
 **A:** The executor enables plugin sharing:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
@@ -604,7 +604,7 @@ const allUsers = await db
 
 Alternatively, use per-query plugin metadata — soft-delete skips its filter when `includeDeleted` is set:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { withPluginMetadata } from '@kysera/executor'
 

@@ -236,7 +236,7 @@ beforeAll(async () => {
 
 Combine multiple seed functions.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { composeSeeders, seedDatabase, type SeedFunction } from '@kysera/testing';
 
@@ -308,7 +308,7 @@ expect(count).toBe(5)
 
 Assert that a row exists.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { assertRowExists } from '@kysera/testing'
 
@@ -367,7 +367,7 @@ await cleanDatabase(db, 'truncate', ['users'])
 
 ### 2. Define Factories Once
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // factories.ts
 export const createUser = createFactory({
@@ -381,7 +381,7 @@ import { createUser } from './factories'
 
 ### 3. Compose Seeders
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // seeders.ts
 export const seedUsers: SeedFunction<DB> = async (trx) => { ... };
@@ -430,7 +430,7 @@ mockPlugin.reset()
 
 **Returns:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Anonymous intersection type — there is no named MockPlugin interface to import
 Plugin & {
@@ -470,7 +470,7 @@ spiedPlugin.reset()
 
 **Returns:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Anonymous intersection type — there is no named SpiedPlugin interface to import
 Plugin & {
@@ -552,7 +552,7 @@ pnpm add -D better-sqlite3
 
 Creates a structured test harness for plugin integration testing with setup, execute, verify, and teardown phases.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createPluginTestHarness, createMockPlugin } from '@kysera/testing'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -637,7 +637,7 @@ expect(operations[0]?.operation).toBe('select')
 await cleanup() // destroys the underlying database
 ```
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createTestExecutor<DB>(
   options: CreateTestExecutorOptions<DB>

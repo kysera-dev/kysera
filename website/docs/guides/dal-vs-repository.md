@@ -31,7 +31,7 @@ Do you need repository extension plugins (audit.restore(), timestamps)?
 
 The Repository pattern provides an **object-oriented** data access abstraction over database tables:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -385,7 +385,7 @@ await softDeleteUser(db, 1)
 
 RLS works seamlessly with Repository (automatic filtering + validation):
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { rlsPlugin, defineRLSSchema, filter, allow, rlsContext } from '@kysera/rls'
 
@@ -481,7 +481,7 @@ Both patterns support transactions, but with different APIs:
 
 ### Repository Transactions
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Method 1: Repository's transaction method
 await userRepo.transaction(async (trx) => {
@@ -616,7 +616,7 @@ Repositories created with `orm.createRepository()` stay bound to the base execut
 
 ### From Repository to DAL
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Before (Repository)
 const user = await userRepo.findById(1)
@@ -637,7 +637,7 @@ const users = await getActiveUsers(db)
 
 ### From DAL to Repository
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Before (DAL)
 const createUser = createQuery((ctx: DbContext<Database>, data: CreateUserInput) =>

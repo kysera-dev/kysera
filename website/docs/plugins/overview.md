@@ -21,7 +21,7 @@ Kysera's plugin system allows you to extend repository functionality without mod
 
 ### Basic Setup with Repository Pattern
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -80,7 +80,7 @@ Kysera's plugin system is built on **@kysera/executor**, which provides a unifie
 
 Modify query builders before execution. Works in **both Repository and DAL patterns**:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 interceptQuery(qb, context) {
   if (context.operation === 'select') {
@@ -104,7 +104,7 @@ interceptQuery(qb, context) {
 
 Add new methods to repositories:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 extendRepository(repo) {
   return {

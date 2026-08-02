@@ -313,7 +313,7 @@ export function createUserRepository(executor: Executor<Database>) {
 
 The blog-app is a **CLI demonstration** showing various Kysera features:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { db, pool } from './db/connection.js'
 import { createUserRepository } from './repositories/user.repository.js'

@@ -104,7 +104,7 @@ Layer 0: Kysely Foundation (Direct usage, no wrapper)
 
 ### Repository Pattern with Plugins
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { Kysely, PostgresDialect, Generated } from 'kysely'
 import { Pool } from 'pg'

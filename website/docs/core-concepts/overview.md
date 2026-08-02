@@ -263,7 +263,7 @@ type Executor<DB> = Kysely<DB> | Transaction<DB>
 
 This pattern is now enhanced by `KyseraExecutor`, which extends it with plugin support:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Modern approach with plugins
 const executor = await createExecutor(db, [softDeletePlugin()])
@@ -286,7 +286,7 @@ Kysera uses a smart validation strategy for optimal performance:
 - **Input validation**: Always enabled (validates user data)
 - **Output validation**: Configurable (development vs production)
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { zodAdapter } from '@kysera/repository'
 

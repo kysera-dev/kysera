@@ -30,7 +30,10 @@ import ts from 'typescript'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DOCS_DIR = join(ROOT, 'website', 'docs')
 const CACHE_DIR = join(ROOT, 'node_modules', '.cache', 'kysera-doc-snippets')
-const SKIP_MARKER = '<!-- doc-snippet: skip -->'
+// MDX form is canonical (docusaurus v3 rejects raw HTML comments);
+// the HTML form is still recognized so stray legacy markers fail loudly
+// in the census rather than silently un-skipping.
+const SKIP_MARKERS = ['{/* doc-snippet: skip */}', '<!-- doc-snippet: skip -->']
 
 // ---------------------------------------------------------------------------
 // Ambient prelude: globals that doc snippets may assume without declaring.
@@ -708,8 +711,9 @@ function extractSnippets(
         inFence = true
         fenceIndent = (m[1] ?? '').length
         const lang = (m[2] ?? '').toLowerCase()
-        isTs = (lang === 'ts' || lang === 'typescript') && lastNonBlank !== SKIP_MARKER
-        if ((lang === 'ts' || lang === 'typescript') && lastNonBlank === SKIP_MARKER) {
+        const skipRequested = SKIP_MARKERS.includes(lastNonBlank)
+        isTs = (lang === 'ts' || lang === 'typescript') && !skipRequested
+        if ((lang === 'ts' || lang === 'typescript') && skipRequested) {
           census.skipped++
         }
         fenceLine = i + 1

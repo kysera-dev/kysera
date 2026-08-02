@@ -393,7 +393,7 @@ export function createUserRepository(executor: Executor<Database>, tenantContext
 
 ### With ORM Pattern (Alternative to Current Implementation)
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createORM } from '@kysera/repository'
 import { rlsPlugin, defineRLSSchema, filter, rlsContext } from '@kysera/rls'
@@ -449,7 +449,7 @@ app.get('/users', async (req, res) => {
 
 ### With DAL Pattern
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createQuery, createContext } from '@kysera/dal'

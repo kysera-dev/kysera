@@ -45,7 +45,7 @@ npm install @kysera/rls
 
 ## Basic Usage
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createORM } from '@kysera/repository'
 import { rlsPlugin, defineRLSSchema, allow, filter, rlsContext } from '@kysera/rls'
@@ -318,7 +318,7 @@ You rarely write these by hand — the [policy builders](#policy-builders) below
 - Set in the table's schema definition
 - Useful for table-specific admin access
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Example: Using both levels
 const orm = await createORM(db, [
@@ -358,7 +358,7 @@ interface PolicyOptions {
 
 Grant permission based on condition. Returns `true` to allow access, `false` to deny.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Authors can update their own posts
 allow('update', ctx => ctx.auth.userId === ctx.row?.author_id)
@@ -379,7 +379,7 @@ allow(['update', 'delete'], ctx => ctx.auth.userId === ctx.row?.author_id, {
 
 Explicitly deny access. Takes precedence over allow policies. Returns `true` to deny access.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Never allow deleting system users
 deny('delete', ctx => ctx.row?.is_system === true)
@@ -434,7 +434,7 @@ filter('read', ctx => ({ organization_id: ctx.auth.organizationIds ?? [] }))
 
 Validate input data before create/update operations. Returns `true` if data is valid, `false` otherwise.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Users can only create posts for themselves
 validate('create', ctx => ctx.data?.author_id === ctx.auth.userId)
@@ -454,7 +454,7 @@ validate('update', ctx => {
 
 ## Schema Definition
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const rlsSchema = defineRLSSchema<Database>({
   // Table-specific policies
@@ -563,7 +563,7 @@ interface RLSAuthContext<TUser = unknown> {
 
 ### Context Helper Methods
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Get current context (throws if not set)
 const ctx = rlsContext.getContext()
@@ -751,7 +751,7 @@ policies as N single-row calls — a bulk mutation is never a policy bypass:
 Per-row evaluation is bounded by `maxBulkRowChecks` (default `1000`). A
 larger batch throws `RLSPolicyEvaluationError` instead of silently degrading:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // RLSPolicyEvaluationError: bulk mutation targets 5000 rows, but value-based
 // policies (...) require per-row evaluation, bounded at maxBulkRowChecks=1000.
@@ -778,7 +778,7 @@ check and the mutation (TOCTOU).
 
 ### Discriminator Column
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const tenantSchema = defineRLSSchema<Database>({
   users: {
@@ -859,7 +859,7 @@ All RLS errors extend `RLSError`, which itself extends `DatabaseError` from `@ky
 
 **Example:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // A policy with a bug
 allow('read', ctx => {
@@ -973,7 +973,7 @@ The RLS plugin implements row-level security at the **application layer** using 
 
 ### Query Interception
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Plugin implementation (simplified)
 interceptQuery(qb, context) {
@@ -1011,7 +1011,7 @@ interceptQuery(qb, context) {
 
 When implementing RLS policies that need to fetch existing rows (e.g., for update/delete validation), the plugin uses `getRawDb()` from `@kysera/executor` to bypass RLS filtering and prevent infinite recursion:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { getRawDb } from '@kysera/executor'
 
@@ -1145,7 +1145,7 @@ describe('Post RLS Policies', () => {
 
 ### 5. Use Named Policies for Debugging
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const rlsSchema = defineRLSSchema<Database>({
   posts: {
@@ -1172,7 +1172,7 @@ Named policies provide better error messages and audit logs.
 
 ### Multi-Tenant SaaS Application
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createORM } from '@kysera/repository'
 import { rlsPlugin, defineRLSSchema, filter, allow, deny, validate, rlsContext } from '@kysera/rls'
@@ -1285,7 +1285,7 @@ app.put('/api/posts/:id', async (req, res) => {
 
 ### Role-Based Access Control (RBAC)
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { defineRLSSchema, allow, deny, filter } from '@kysera/rls'
 
@@ -1531,7 +1531,7 @@ const orm = await createORM(db, [
 
 **Migration:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // ❌ No longer supported (removed in v0.8.0)
 rlsPlugin({
@@ -1656,7 +1656,7 @@ mask columns automatically. Create the registry and processor yourself and call
 `maskRows()` on query results manually.
 :::
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import {
   createFieldAccessRegistry,
@@ -1869,7 +1869,7 @@ it('should apply tenant filter', () => {
 
 Attach activation conditions to policies for environment-, feature-flag-, or time-gated behavior.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import {
   whenEnvironment,
@@ -1962,7 +1962,7 @@ The `@kysera/rls/native` subpath generates PostgreSQL-native RLS from the same s
 - `syncContextToPostgres(db, { userId, tenantId?, roles?, permissions?, isSystem? })` — sets `app.user_id`, `app.tenant_id`, `app.roles`, `app.permissions`, and `app.is_system` via `set_config(..., true)` (transaction-scoped), so native policies can read them with `current_setting()`.
 - `clearPostgresContext(db)` — resets those settings.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { PostgresRLSGenerator, syncContextToPostgres } from '@kysera/rls/native'
 

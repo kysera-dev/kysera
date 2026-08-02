@@ -136,7 +136,7 @@ const executor = await createExecutor(db, [
 
 ### 4. Option A: Repository Pattern
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createORM, createRepositoryFactory, zodAdapter } from '@kysera/repository'
 import { z } from 'zod'
@@ -166,7 +166,7 @@ const userRepo = orm.createRepository(exec => {
 
 ### 4. Option B: Functional DAL Pattern
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createQuery, createContext } from '@kysera/dal'
 
@@ -302,7 +302,7 @@ await withTransaction(executor, async (txCtx) => {
 
 Plugins work with both Repository and DAL patterns through the Unified Execution Layer:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -434,7 +434,7 @@ const nextPage = await paginateCursor(db.selectFrom('users').selectAll(), {
 
 Combine both patterns for commands and queries:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createORM } from '@kysera/repository'
 import { createQuery, createContext } from '@kysera/dal'

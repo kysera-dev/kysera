@@ -42,7 +42,7 @@ interface Database {
 - `deny(operation, condition?, options?)` — blocks access when the condition is true; runs before allows (default priority 100). With no condition, always denies.
 - `validate('create' | 'update' | 'all', condition, options?)` — checks mutation data before execution.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { defineRLSSchema, filter, allow, deny, validate } from '@kysera/rls'
 
@@ -257,7 +257,7 @@ generator.generateDropStatements(nativeSchema) // teardown
 
 At runtime, mirror the application context into PostgreSQL session settings. `syncContextToPostgres` uses `set_config(..., true)`, which is **transaction-scoped** — call it at the start of each transaction (or request, when using a dedicated connection):
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { clearPostgresContext } from '@kysera/rls/native'
 

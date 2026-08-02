@@ -34,7 +34,7 @@ DatabaseError (base)
 
 Base error class for all database errors:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 class DatabaseError extends Error {
   readonly code: string
@@ -83,7 +83,7 @@ class NotFoundError extends DatabaseError {
 
 **Constructor:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 new NotFoundError(entity: string, filters?: Record<string, unknown>)
 ```
@@ -92,7 +92,7 @@ new NotFoundError(entity: string, filters?: Record<string, unknown>)
 
 Thrown when a NOT NULL constraint is violated:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 class NotNullError extends DatabaseError {
   readonly column: string
@@ -106,7 +106,7 @@ class NotNullError extends DatabaseError {
 
 Thrown when a CHECK constraint is violated:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 class CheckConstraintError extends DatabaseError {
   readonly constraint: string
@@ -251,7 +251,7 @@ Kysera provides a unified error code system:
 
 ### In Repositories
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function createUser(data: CreateUserInput): Promise<User> {
   try {
@@ -341,7 +341,7 @@ console.log(error.toJSON())
 
 ### 1. Use Typed Errors
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Good: Specific error handling
 if (error instanceof UniqueConstraintError) {

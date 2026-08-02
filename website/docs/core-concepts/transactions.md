@@ -113,7 +113,7 @@ await withTransaction(executor, async (ctx) => {
 
 ### Example
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import type { Transaction } from 'kysely'
 import { createORM } from '@kysera/repository'
@@ -190,7 +190,7 @@ As of v0.7.3, `BaseRepository.transaction()` delegates to `@kysera/dal`'s `withT
 
 ### Example
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const userRepo = orm.createRepository(createUserRepository)
 
@@ -242,7 +242,7 @@ export function createUserRepository(executor: Executor<Database>) {
 
 ### Method 1: Repository Bundles
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const createRepos = createRepositoriesFactory({
   users: createUserRepository,
@@ -277,7 +277,7 @@ await db.transaction().execute(async trx => {
 
 The cleanest approach using the `ContextAwareRepository` abstract class:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { ContextAwareRepository } from '@kysera/repository'
 
@@ -345,7 +345,7 @@ await withTransaction(db, async (ctx) => {
 
 Since Pattern 3 now delegates to DAL's `withTransaction`, nested calls work correctly:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 await repo.transaction(async (trx1) => {
   const user = await createUser(trx1)
@@ -403,7 +403,7 @@ await withTransaction(executor, async (ctx) => {
 
 ### With Base Repository `transaction()`
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 await repo.transaction(async (trx) => {
   // Plugin filters are applied (delegates to DAL's withTransaction internally)
@@ -419,7 +419,7 @@ await repo.transaction(async (trx) => {
 
 Sometimes you need to bypass plugin interception in a transaction:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createExecutor, getRawDb } from '@kysera/executor'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -448,7 +448,7 @@ await executor.transaction().execute(async (trx) => {
 
 Minimize transaction duration to avoid lock contention:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Good: Preparation outside transaction
 const userData = await validateAndPrepareUserData(input)
@@ -473,7 +473,7 @@ await db.transaction().execute(async trx => {
 
 ### 2. Don't Mix Executors
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Bad: Mixing executors breaks atomicity
 await db.transaction().execute(async (trx) => {
@@ -494,7 +494,7 @@ await db.transaction().execute(async (trx) => {
 
 ### 3. Handle Rollbacks Explicitly
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 try {
   await db.transaction().execute(async trx => {
@@ -520,7 +520,7 @@ try {
 
 ### 4. Use Isolation Levels Appropriately
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Default (read committed) - most cases
 await withTransaction(executor, async (ctx) => { ... })
@@ -554,7 +554,7 @@ await withTransaction(executor, async (ctx) => {
 
 Pick one pattern per transaction scope:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // ✅ GOOD: Consistent pattern
 const userRepo = orm.createRepository(createUserRepository)
@@ -713,7 +713,7 @@ describe('User Repository', () => {
 
 ### From Base Repository Pattern to DAL Pattern
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // BEFORE (base-repository.ts)
 async transaction<R>(fn: (trx: Transaction<DB>) => Promise<R>): Promise<R> {

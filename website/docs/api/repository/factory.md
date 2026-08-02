@@ -12,7 +12,7 @@ Factory functions for creating repositories.
 
 Create a typed repository factory for a database instance.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createRepositoryFactory<DB>(executor: Executor<DB>): {
   executor: Executor<DB>
@@ -47,7 +47,7 @@ const userRepo = factory.create({
 
 Create a factory that produces multiple repositories.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createRepositoriesFactory<DB, Repos extends Record<string, any>>(
   factories: RepositoryFactoryMap<DB, Repos>
@@ -60,7 +60,7 @@ type RepositoryFactoryMap<DB, Repos> = {
 
 ### Usage
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Define factory
 const createRepos = createRepositoriesFactory({
@@ -85,7 +85,7 @@ await db.transaction().execute(async (trx) => {
 
 Create a basic repository without factory pattern. Uses `nativeAdapter` (no validation) by default.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createSimpleRepository<DB, TableName extends keyof DB & string, Entity, PK = number>(
   executor: Executor<DB>,
@@ -143,7 +143,7 @@ The `schemas` property uses the `ValidationSchema` interface, not raw Zod types.
 
 ### Row Mapping
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 interface UserRow {
   id: Generated<number>
@@ -174,7 +174,7 @@ const userRepo = factory.create({
 
 ### Primary Key Configuration
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Numeric ID (default)
 { primaryKey: 'id' }
@@ -201,7 +201,7 @@ const userRepo = factory.create({
 
 Validation is configured per repository, not via environment variables:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const userRepo = factory.create({
   tableName: 'users',
@@ -260,7 +260,7 @@ export type Repositories = ReturnType<typeof createRepositories>
 
 ### 3. Use in Services
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 class UserService {
   constructor(private repos = createRepositories(db)) {}

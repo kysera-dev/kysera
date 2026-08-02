@@ -19,6 +19,8 @@ export default tseslint.config(
       '**/tests/**',
       '**/apps/**',
       '**/tsup.config.ts',
+      // tsup leaves bundled_* artifacts behind when a build is killed mid-run
+      '**/tsup.config.bundled_*',
       '**/vitest.config.ts'
     ]
   },

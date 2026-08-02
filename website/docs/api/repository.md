@@ -144,7 +144,7 @@ the whole table. See [Query Operators](/docs/api/repository/operators#error-hand
 
 Create a typed repository factory that provides methods for creating individual repositories.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createRepositoryFactory<DB>(executor: Executor<DB>): {
   executor: Executor<DB>
@@ -208,7 +208,7 @@ when you need the dialect type itself.
 
 The `schema` option enables PostgreSQL schema support for multi-tenant applications or domain separation:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Multi-tenant pattern
 const tenantUserRepo = factory.create({
@@ -284,7 +284,7 @@ All repository methods are type-safe and integrate with your configured validati
 
 ### Single Record Operations
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Find by ID
 async findById(id: PK): Promise<Entity | null>
@@ -347,7 +347,7 @@ await userRepo.update(user.id, {
 
 ### Batch Operations
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Find multiple
 async findByIds(ids: PK[]): Promise<Entity[]>
@@ -375,7 +375,7 @@ async bulkDelete(ids: PK[]): Promise<number>
 
 ### Query Operations
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Find all
 async findAll(): Promise<Entity[]>
@@ -406,7 +406,7 @@ async findAndCount<Cols extends keyof Entity>(options?: FindOptions<Entity, Cols
 
 The `find()` method supports MongoDB-style query operators for advanced filtering, sorting, and column selection:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import type { FindOptions, WhereClause } from '@kysera/repository'
 
@@ -569,7 +569,7 @@ const complexQuery = await userRepo.find({
 
 ### Pagination
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Offset pagination
 async paginate(options: {
@@ -599,7 +599,7 @@ async paginateCursor<K extends keyof Entity>(options: {
 
 ### Transaction Support
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Execute within transaction
 async transaction<R>(fn: (trx: Transaction<DB>) => Promise<R>): Promise<R>
@@ -612,7 +612,7 @@ withTransaction(trx: Transaction<DB>): Repository<Entity, DB, PK>
 
 Create multiple repositories at once for transaction support. This helper provides a clean pattern for managing multiple repositories with shared executor.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createRepositoriesFactory<DB, Repos extends Record<string, any>>(
   factories: RepositoryFactoryMap<DB, Repos>
@@ -625,7 +625,7 @@ type RepositoryFactoryMap<DB, Repos> = {
 
 ### Example
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createRepositoriesFactory } from '@kysera/repository'
 
@@ -658,7 +658,7 @@ type Repositories = RepositoriesFromFactory<typeof createRepos>
 
 Create a plugin container (repository manager) with plugin support. Despite its name, `createORM` is not a traditional ORM - it's a lightweight plugin container that manages repositories and provides unified plugin execution via `@kysera/executor`.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function createORM<DB>(
   db: Kysely<DB>, // a KyseraExecutor is accepted too — it is a Kysely subtype
@@ -724,7 +724,7 @@ casts. At runtime it is the plugin-aware executor created by
 
 ### Basic Example
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -763,7 +763,7 @@ await userRepo.restore(userId) // from softDeletePlugin
 
 Mix Repository (for writes with validation) and DAL (for complex reads) in the same transaction:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createORM } from '@kysera/repository'
 import { createQuery } from '@kysera/dal'
@@ -797,7 +797,7 @@ await orm.transaction(async ctx => {
 
 For maximum control and reusability, create an executor first and share it across Repository and DAL patterns:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createExecutor } from '@kysera/executor'
 import { createORM } from '@kysera/repository'
@@ -844,7 +844,7 @@ type ValidationResult<T> = { success: true; data: T } | { success: false; error:
 
 ### zodAdapter
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { z } from 'zod'
 import { zodAdapter } from '@kysera/repository'
@@ -866,7 +866,7 @@ schemas: {
 
 ### valibotAdapter
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import * as v from 'valibot'
 import { valibotAdapter } from '@kysera/repository'
@@ -886,7 +886,7 @@ schemas: {
 
 ### typeboxAdapter
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { Type } from '@sinclair/typebox'
 import { Value } from '@sinclair/typebox/value'
@@ -909,7 +909,7 @@ schemas: {
 
 No runtime validation - just type casting. Use when you trust your data sources.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { nativeAdapter } from '@kysera/repository'
 
@@ -929,7 +929,7 @@ schemas: {
 
 Create your own validation adapter from a simple validate function:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { customAdapter } from '@kysera/repository'
 
@@ -953,7 +953,7 @@ schemas: {
 
 Simplified helper function for creating a single repository with plugins. This is a convenience wrapper around `createORM`.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function withPlugins<DB, T extends object>(
   factory: (executor: Kysely<DB>, applyPlugins: ApplyPluginsFunction) => T,
@@ -964,7 +964,7 @@ async function withPlugins<DB, T extends object>(
 
 ### Basic Example
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { withPlugins } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -1016,7 +1016,7 @@ await userRepo.restore(2)
 
 Abstract base class for repositories that need clean transaction handling via executor switching.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 abstract class ContextAwareRepository<DB, Table extends string> {
   constructor(executor: Executor<DB>, tableName: Table)
@@ -1034,7 +1034,7 @@ abstract class ContextAwareRepository<DB, Table extends string> {
 
 ### Example Usage
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { ContextAwareRepository } from '@kysera/repository'
 import type { Executor } from '@kysera/core'
@@ -1080,7 +1080,7 @@ Functions for INSERT ... ON CONFLICT DO UPDATE operations.
 
 Insert a single record, updating on conflict.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function upsert<DB, Table, Row>(
   db: Kysely<DB>,
@@ -1103,7 +1103,7 @@ interface UpsertOptions<T> {
 
 Batch upsert multiple records.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function upsertMany<DB, Table, Row>(
   db: Kysely<DB>,
@@ -1115,7 +1115,7 @@ async function upsertMany<DB, Table, Row>(
 
 ### Upsert Examples
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { upsert, upsertMany } from '@kysera/repository'
 
@@ -1180,7 +1180,7 @@ the expected status, using a single atomic `UPDATE ... WHERE status = ?`.
 Returns the updated record, or `null` when the status didn't match — meaning
 another process already performed the transition.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function atomicStatusTransition<DB, Table extends keyof DB & string, S>(
   db: Executor<DB>,
@@ -1203,7 +1203,7 @@ interface StatusTransitionOptions<T, S> {
 }
 ```
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { atomicStatusTransition } from '@kysera/repository'
 
@@ -1233,7 +1233,7 @@ concurrency.
 
 Low-level interface for database operations. Used internally by `createBaseRepository` but can be used directly for custom repository implementations.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createTableOperations<DB, TableName extends keyof DB & string>(
   db: Executor<DB>,
@@ -1407,7 +1407,7 @@ Plugins can provide two types of functionality:
 
 ### Plugin Execution Flow
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createORM } from '@kysera/repository'
 import { softDeletePlugin } from '@kysera/soft-delete'
@@ -1437,7 +1437,7 @@ await userRepo.softDelete(userId)
 
 You can access the underlying executor from the repository manager:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const orm = await createORM(db, [softDeletePlugin()])
 
@@ -1462,7 +1462,7 @@ if (isKyseraExecutor(executor)) {
 
 Plugins automatically propagate through transactions:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const orm = await createORM(db, [
   rlsPlugin({ schema: rlsSchema }),
@@ -1483,7 +1483,7 @@ await orm.transaction(async (ctx) => {
 
 Kysera Repository supports various primary key configurations:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Single column with auto-increment (default)
 {
@@ -1518,7 +1518,7 @@ Kysera Repository supports various primary key configurations:
 
 ### Working with Composite Keys
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const factory = createRepositoryFactory(db)
 
@@ -1662,7 +1662,7 @@ const result = await orm.transaction(async ctx => {
 Repository validation is controlled **per repository** through config options —
 environment variables never change the behavior of factory-created repositories:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 const userRepo = factory.create({
   tableName: 'users',

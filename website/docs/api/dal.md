@@ -244,7 +244,7 @@ const getUserComplete = chain(
 
 Execute multiple queries concurrently:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { parallel } from '@kysera/dal'
 
@@ -291,7 +291,7 @@ const names = await getUserNames(db) // string[]
 
 Create a database context from any database instance.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createContext<DB>(
   db: Kysely<DB> | Transaction<DB> | KyseraExecutor<DB> | KyseraTransaction<DB>,
@@ -353,7 +353,7 @@ const authUsers = await findUserById(schemaCtx, 1) // queries use 'auth' schema
 
 Convenience function to create a schema-scoped context.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createSchemaContext<DB>(
   db: Kysely<DB> | KyseraExecutor<DB>,
@@ -403,7 +403,7 @@ const settings = await getSettings(adminCtx) // admin.settings
 
 Execute a function with a database context.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function withContext<DB, T>(
   db: Kysely<DB> | KyseraExecutor<DB>,
@@ -427,7 +427,7 @@ const users = await withContext(db, async ctx => {
 
 Check if context is within a transaction.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function isInTransaction<DB>(ctx: DbContext<DB>): boolean
 ```
@@ -447,7 +447,7 @@ const myQuery = createQuery((ctx: DbContext<Database>, id: number) => {
 
 Normalize any accepted input to a `DbContext`.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function toContext<DB>(
   ctxOrDb: DbContext<DB> | Kysely<DB> | KyseraExecutor<DB>
@@ -480,7 +480,7 @@ function withTiming<DB, TArgs extends readonly unknown[], TResult>(
 
 Create a typed query function.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createQuery<DB, TArgs extends readonly unknown[], TResult>(
   queryFn: (ctx: DbContext<DB>, ...args: TArgs) => Promise<TResult>
@@ -507,7 +507,7 @@ const user = await getUserById(db, 1)
 
 Create a query function that requires a transaction.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function createTransactionalQuery<DB, TArgs extends readonly unknown[], TResult>(
   queryFn: (ctx: DbContext<DB>, ...args: TArgs) => Promise<TResult>
@@ -550,7 +550,7 @@ await transferFunds(db, 1, 2, 100) // Error: Query requires transaction
 
 Execute a function within a transaction.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function withTransaction<DB, T>(
   db: Kysely<DB> | KyseraExecutor<DB> | DbContext<DB>,
@@ -645,7 +645,7 @@ const result = await withTransaction(executor, async ctx => {
 
 Compose two query functions sequentially. The result of the first query is passed to the second.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function compose<DB, TArgs extends readonly unknown[], TFirst, TResult>(
   first: QueryFunction<DB, TArgs, TFirst>,
@@ -679,7 +679,7 @@ const result = await getUserWithPosts(db, 1)
 
 Chain multiple operations on a query result.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function chain<DB, TArgs extends readonly unknown[], T1, T2>(
   query: QueryFunction<DB, TArgs, T1>,
@@ -721,7 +721,7 @@ const getUserFull = chain(
 
 Execute multiple queries in parallel. All queries receive the same arguments and are executed concurrently.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function parallel<
   DB,
@@ -738,7 +738,7 @@ function parallel<
 
 **Example:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createQuery, parallel, type DbContext } from '@kysera/dal'
 
@@ -768,7 +768,7 @@ const dashboard = await getDashboardData(db, userId)
 
 Execute a query conditionally.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function conditional<DB, TArgs extends readonly unknown[], TResult, TFallback = undefined>(
   condition: (ctx: DbContext<DB>, ...args: TArgs) => boolean | Promise<boolean>,
@@ -779,7 +779,7 @@ function conditional<DB, TArgs extends readonly unknown[], TResult, TFallback = 
 
 **Example:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { conditional } from '@kysera/dal'
 
@@ -798,7 +798,7 @@ const getFeatures = conditional(
 
 Map over query results.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function mapResult<DB, TArgs extends readonly unknown[], TItem, TResult>(
   query: QueryFunction<DB, TArgs, TItem[]>,
@@ -963,7 +963,7 @@ await withTransaction(
 
 Error thrown when a transactional query is executed outside a transaction context.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 class TransactionRequiredError extends DatabaseError {
   name: 'TransactionRequiredError'
@@ -1468,7 +1468,7 @@ Both approaches ensure consistent plugin behavior across Repository and DAL:
 
 Here's a complete example showing DAL with plugins in a real-world scenario:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { Kysely, PostgresDialect } from 'kysely'
 import { Pool } from 'pg'

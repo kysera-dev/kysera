@@ -314,7 +314,7 @@ interface DateRangeOptions {
 
 Apply limit/offset to a query without counting total. Lightweight alternative to `paginate()`.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function applyOffset<DB, TB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -335,7 +335,7 @@ function applyOffset<DB, TB, O>(
 
 Format a `Date` as a database-compatible timestamp string.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function formatTimestampForDb(date?: Date, dialect?: Dialect): string
 ```
@@ -361,7 +361,7 @@ Use this instead of `new Date().toISOString()` when writing timestamps manually,
 
 Apply date range filter to a query.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function applyDateRange<DB, TB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -380,7 +380,7 @@ function applyDateRange<DB, TB, O>(
 
 Execute a count query and return the numeric result.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function executeCount<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>
@@ -401,7 +401,7 @@ console.log(`Active users: ${count}`)
 
 Execute a grouped count query and return counts by group.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function executeGroupedCount<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -423,7 +423,7 @@ const countsByStatus = await executeGroupedCount(db.selectFrom('users'), 'status
 
 Simple cursor-based pagination that uses `id` column in ascending order. A convenience wrapper around `paginateCursor`.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 async function paginateCursorSimple<DB, TB extends keyof DB, O>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -489,7 +489,7 @@ interface BasePluginOptionsWithPrimaryKey extends BasePluginOptions {
 
 Creates a resolved plugin configuration with defaults applied.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { createPluginConfig, type BasePluginOptionsWithPrimaryKey } from '@kysera/core'
 
@@ -526,7 +526,7 @@ interface ResolvedPluginConfig {
 
 Check whether a plugin should process a given table, honoring whitelist/blacklist configuration. Use this instead of hand-rolling table filtering in custom plugins.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 function shouldApplyToTable(tableName: string, config: TableFilterConfig): boolean
 
@@ -542,7 +542,7 @@ interface TableFilterConfig {
 
 **Example:**
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { shouldApplyToTable, type TableFilterConfig } from '@kysera/core'
 
@@ -590,7 +590,7 @@ interface PluginMetadata {
 
 Recommended priority values for different plugin types. Higher priority = runs first.
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 import { PLUGIN_PRIORITIES, type PluginPriority } from '@kysera/core'
 
@@ -638,7 +638,7 @@ const auditMetadata = createPluginMetadata('audit', '1.0.0', {
 
 If you're upgrading from an earlier version where these utilities were in `@kysera/core`:
 
-<!-- doc-snippet: skip -->
+{/* doc-snippet: skip */}
 ```typescript
 // Before (deprecated)
 import { checkDatabaseHealth, withRetry, testInTransaction } from '@kysera/core'
