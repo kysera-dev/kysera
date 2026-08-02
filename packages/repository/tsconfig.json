@@ -10,6 +10,6 @@
     "noPropertyAccessFromIndexSignature": false,
     "noUncheckedIndexedAccess": false
   },
-  "include": ["src/**/*", "test/**/*", "*.config.ts", "../audit/src/version.ts", "../soft-delete/src/version.ts", "../timestamps/src/version.ts"],
+  "include": ["src/**/*", "test/**/*", "*.config.ts", "../audit/src/version.ts", "../soft-delete/src/version.ts", "../timestamps/src/version.ts", "../testing/src/detection.ts"],
   "exclude": ["node_modules", "dist", "test/multi-db.test.ts", "test/operators.integration.test.ts"]
 }
