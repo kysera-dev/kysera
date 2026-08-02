@@ -44,6 +44,9 @@ from @kysera/rls (named exports 'rlsSchema' or 'schema' also work):
         {
           type: 'allow',
           operation: 'read',
+          // ORM-side predicate (required by defineRLSSchema)
+          condition: ctx => ctx.auth.tenantId != null,
+          // Native DDL expression (used by this generator)
           role: 'app_user',
           using: "tenant_id = current_setting('app.tenant_id')::uuid"
         }
