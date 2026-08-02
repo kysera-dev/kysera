@@ -13,9 +13,7 @@ import { logger } from './logger.js'
 export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite'
 
 // Generic database type - can be extended with specific table schemas
-export interface Database {
-  [key: string]: Record<string, unknown>
-}
+export type Database = Record<string, Record<string, unknown>>;
 
 export interface ConnectionOptions {
   config: DatabaseConfig
@@ -75,9 +73,9 @@ export async function createDatabaseConnection(
   // Support test format where config is passed directly
   if ('dialect' in configOrOptions && !('config' in configOrOptions)) {
     // This is the format expected by tests - return Kysely instance directly
-    const config = configOrOptions as DatabaseConfig
+    const config = configOrOptions
     const connection =
-      (config as { connectionString?: string }).connectionString || config.connection
+      (config as { connectionString?: string }).connectionString ?? config.connection
 
     const { Kysely, PostgresDialect, MysqlDialect, SqliteDialect } = await import('kysely')
 
@@ -126,7 +124,7 @@ export async function createDatabaseConnection(
 
       case 'sqlite': {
         const { default: SqliteDatabase } = await import('better-sqlite3')
-        const database = new SqliteDatabase(config.database || ':memory:')
+        const database = new SqliteDatabase(config.database ?? ':memory:')
         db = new Kysely<Database>({
           dialect: new SqliteDialect({ database })
         })
@@ -157,7 +155,10 @@ export async function createDatabaseConnection(
     ])
   }
 
-  const dialect = config.dialect || detectDialect(config.connection || config.database || '')
+  // The schema requires dialect, but plain-JS callers may omit it
+  const dialect =
+    (config as { dialect?: DatabaseDialect }).dialect ??
+    detectDialect(config.connection ?? config.database ?? '')
   logger.debug(`Creating ${dialect} connection...`)
 
   let db: Kysely<Database>
@@ -187,16 +188,16 @@ export async function createDatabaseConnection(
       }
 
       default:
-        throw new CLIDatabaseError(`Unsupported database dialect: ${dialect}`)
+        throw new CLIDatabaseError(`Unsupported database dialect: ${String(dialect)}`)
     }
   } catch (error) {
     const err = error as Error & { code?: string }
     // Ensure connection errors are properly reported
     if (
-      err.message?.includes('ECONNREFUSED') ||
-      err.message?.includes('ENOTFOUND') ||
-      err.message?.includes('connect') ||
-      err.message?.includes('getaddrinfo') ||
+      err.message.includes('ECONNREFUSED') ||
+      err.message.includes('ENOTFOUND') ||
+      err.message.includes('connect') ||
+      err.message.includes('getaddrinfo') ||
       err.code === 'ECONNREFUSED'
     ) {
       throw new CLIDatabaseError(`Failed to establish database connection: ${err.message}`, [
@@ -216,13 +217,13 @@ export async function createDatabaseConnection(
         const compiler = new DefaultQueryCompiler()
         const compiled = compiler.compileQuery(args.node, args.queryId)
         logger.debug('SQL Query:', compiled.sql)
-        if (compiled.parameters && compiled.parameters.length > 0) {
+        if (compiled.parameters.length > 0) {
           logger.debug('Parameters:', compiled.parameters)
         }
         return args.node
       },
       transformResult(args: PluginTransformResultArgs): Promise<QueryResult<UnknownRow>> {
-        logger.debug(`Query executed in ${args.queryId}`)
+        logger.debug('Query executed', args.queryId)
         return Promise.resolve(args.result)
       }
     })
@@ -252,8 +253,8 @@ async function createPostgresConnection(
   const connectionConfig: PostgresConnectionConfig = config.connection
     ? parsePostgresConnection(config.connection)
     : {
-        host: config.host || 'localhost',
-        port: config.port || 5432,
+        host: config.host ?? 'localhost',
+        port: config.port ?? 5432,
         database: config.database,
         user: config.user,
         password: config.password,
@@ -287,15 +288,15 @@ async function createPostgresConnection(
  */
 async function createMysqlConnection(
   config: DatabaseConfig,
-  readonly: boolean
+  _readonly: boolean
 ): Promise<{ db: Kysely<Database>; close: () => Promise<void> }> {
   // `connection` (string or object) takes precedence; otherwise fall back to
   // the structured top-level fields (host/port/database/user/password)
   const connectionConfig: MysqlConnectionConfig = config.connection
     ? parseMysqlConnection(config.connection)
     : {
-        host: config.host || 'localhost',
-        port: config.port || 3306,
+        host: config.host ?? 'localhost',
+        port: config.port ?? 3306,
         database: config.database,
         user: config.user,
         password: config.password
@@ -310,7 +311,7 @@ async function createMysqlConnection(
     ...connectionConfig,
     ...config.pool,
     waitForConnections: true,
-    connectionLimit: config.pool?.max || 10,
+    connectionLimit: config.pool?.max ?? 10,
     queueLimit: 0
   })
 
@@ -355,8 +356,9 @@ async function createSqliteConnection(
   const dialect = new SqliteDialect({ database })
   const db = new Kysely<Database>({ dialect })
 
-  const close = async () => {
+  const close = (): Promise<void> => {
     database.close()
+    return Promise.resolve()
   }
 
   return { db, close }
@@ -481,11 +483,11 @@ export async function getDatabaseConnection(
   try {
     const connection = await createDatabaseConnection({ config })
     // Check if we got a DatabaseConnection object or a Kysely instance directly
-    if ('db' in connection && connection.db) {
+    if ('db' in connection) {
       return connection.db
-    } else if (connection && typeof (connection as Kysely<Database>).destroy === 'function') {
+    } else if (typeof (connection).destroy === 'function') {
       // We got a Kysely instance directly
-      return connection as Kysely<Database>
+      return connection
     } else {
       logger.error('Unexpected connection result:', connection)
       return null
@@ -649,7 +651,7 @@ interface TableMetadata {
 export async function introspectDatabase(
   db: Kysely<Database>,
   options?: { schema?: string; excludePattern?: string }
-): Promise<{ tables: Array<TableMetadata> }> {
+): Promise<{ tables: TableMetadata[] }> {
   const tables = await db.introspection.getTables()
 
   let filteredTables = tables

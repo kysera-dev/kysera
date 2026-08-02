@@ -68,9 +68,9 @@ ${prism.gray('GitHub:')} ${prism.underline(prism.blue('https://github.com/kysera
   program.hook('preAction', thisCommand => {
     const envOption = thisCommand.opts<{ env?: string }>().env
     if (thisCommand.getOptionValueSource('env') === 'cli' && envOption) {
-      process.env['NODE_ENV'] = envOption
-    } else if (!process.env['NODE_ENV'] && envOption) {
-      process.env['NODE_ENV'] = envOption
+      process.env.NODE_ENV = envOption
+    } else if (!process.env.NODE_ENV && envOption) {
+      process.env.NODE_ENV = envOption
     }
   })
 

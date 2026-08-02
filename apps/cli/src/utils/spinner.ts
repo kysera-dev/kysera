@@ -45,21 +45,21 @@ export function spinner(options?: SpinnerOptions): ExtendedSpinnerResult {
       base.message(msg)
     },
     succeed(msg?: string) {
-      const message = msg || currentText
+      const message = msg ?? currentText
       base.stop(message)
       if (message) {
         logger.success(message)
       }
     },
     warn(msg?: string) {
-      const message = msg || currentText
+      const message = msg ?? currentText
       base.stop(message)
       if (message) {
         logger.warn(message)
       }
     },
     fail(msg?: string) {
-      const message = msg || currentText
+      const message = msg ?? currentText
       base.stop(message)
       if (message) {
         logger.error(message)
@@ -98,15 +98,15 @@ function inertSpinner(): ExtendedSpinnerResult {
       if (msg) currentText = msg
     },
     succeed(msg?: string) {
-      const message = msg || currentText
+      const message = msg ?? currentText
       if (message) logger.success(message)
     },
     warn(msg?: string) {
-      const message = msg || currentText
+      const message = msg ?? currentText
       if (message) logger.warn(message)
     },
     fail(msg?: string) {
-      const message = msg || currentText
+      const message = msg ?? currentText
       if (message) logger.error(message)
     },
     get isCancelled() {

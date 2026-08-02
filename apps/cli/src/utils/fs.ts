@@ -50,7 +50,7 @@ export function isPathSafe(basePath: string, userPath: string): boolean {
  * Returns the resolved path if valid, throws otherwise
  */
 export function validatePath(userPath: string, allowedBase?: string): string {
-  const base = allowedBase || process.cwd()
+  const base = allowedBase ?? process.cwd()
   return safePath(base, userPath)
 }
 
@@ -60,7 +60,7 @@ export function validatePath(userPath: string, allowedBase?: string): string {
 export async function readFile(path: string, encoding: BufferEncoding = 'utf8'): Promise<string> {
   try {
     return await fsReadFile(path, encoding)
-  } catch (error: any) {
+  } catch {
     throw new FileSystemError(`Failed to read file: ${path}`, 'READ_ERROR', undefined, path)
   }
 }
@@ -72,7 +72,7 @@ export async function writeFile(path: string, content: string): Promise<void> {
   try {
     await mkdir(dirname(path), { recursive: true })
     await fsWriteFile(path, content, 'utf8')
-  } catch (error: any) {
+  } catch {
     throw new FileSystemError(`Failed to write file: ${path}`, 'WRITE_ERROR', undefined, path)
   }
 }
@@ -141,7 +141,7 @@ export async function listFiles(
     }
 
     return files
-  } catch (error: any) {
+  } catch {
     throw new FileSystemError(
       `Failed to list files in directory: ${dir}`,
       'LIST_ERROR',
@@ -157,11 +157,11 @@ export async function listFiles(
 export async function findFiles(pattern: string, cwd?: string): Promise<string[]> {
   try {
     return await glob(pattern, {
-      cwd: cwd || process.cwd(),
+      cwd: cwd ?? process.cwd(),
       absolute: true,
       nodir: true
     })
-  } catch (error: any) {
+  } catch {
     throw new FileSystemError(`Failed to find files matching pattern: ${pattern}`, 'GLOB_ERROR')
   }
 }
@@ -172,7 +172,7 @@ export async function findFiles(pattern: string, cwd?: string): Promise<string[]
 export async function createDirectory(path: string): Promise<void> {
   try {
     await mkdir(path, { recursive: true })
-  } catch (error: any) {
+  } catch {
     throw new FileSystemError(`Failed to create directory: ${path}`, 'MKDIR_ERROR', undefined, path)
   }
 }
@@ -183,7 +183,7 @@ export async function createDirectory(path: string): Promise<void> {
 export async function removePath(path: string): Promise<void> {
   try {
     await rm(path, { recursive: true, force: true })
-  } catch (error: any) {
+  } catch {
     throw new FileSystemError(`Failed to remove: ${path}`, 'REMOVE_ERROR', undefined, path)
   }
 }
@@ -194,7 +194,7 @@ export async function removePath(path: string): Promise<void> {
 export async function copyPath(src: string, dest: string): Promise<void> {
   try {
     await cp(src, dest, { recursive: true, force: true })
-  } catch (error: any) {
+  } catch {
     throw new FileSystemError(`Failed to copy from ${src} to ${dest}`, 'COPY_ERROR')
   }
 }
@@ -207,13 +207,13 @@ export async function movePath(src: string, dest: string): Promise<void> {
     await rm(dest, { recursive: true, force: true })
     try {
       await rename(src, dest)
-    } catch (error: any) {
-      if (error?.code !== 'EXDEV') throw error
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error
       // Cross-device move: copy then remove
       await cp(src, dest, { recursive: true, force: true })
       await rm(src, { recursive: true, force: true })
     }
-  } catch (error: any) {
+  } catch {
     throw new FileSystemError(`Failed to move from ${src} to ${dest}`, 'MOVE_ERROR')
   }
 }
@@ -221,10 +221,10 @@ export async function movePath(src: string, dest: string): Promise<void> {
 /**
  * Read JSON file
  */
-export async function readJsonFile<T = any>(path: string): Promise<T> {
+export async function readJsonFile<T = unknown>(path: string): Promise<T> {
   try {
     return JSON.parse(await fsReadFile(path, 'utf8')) as T
-  } catch (error: any) {
+  } catch {
     throw new FileSystemError(
       `Failed to read JSON file: ${path}`,
       'JSON_READ_ERROR',
@@ -237,11 +237,11 @@ export async function readJsonFile<T = any>(path: string): Promise<T> {
 /**
  * Write JSON file
  */
-export async function writeJsonFile(path: string, data: any, spaces: number = 2): Promise<void> {
+export async function writeJsonFile(path: string, data: unknown, spaces = 2): Promise<void> {
   try {
     await mkdir(dirname(path), { recursive: true })
     await fsWriteFile(path, `${JSON.stringify(data, null, spaces)}\n`, 'utf8')
-  } catch (error: any) {
+  } catch {
     throw new FileSystemError(
       `Failed to write JSON file: ${path}`,
       'JSON_WRITE_ERROR',
@@ -257,7 +257,7 @@ export async function writeJsonFile(path: string, data: any, spaces: number = 2)
 export async function getFileStats(path: string) {
   try {
     return await stat(path)
-  } catch (error: any) {
+  } catch {
     throw new FileSystemError(`Failed to get stats for: ${path}`, 'STAT_ERROR', undefined, path)
   }
 }
@@ -325,7 +325,7 @@ export function resolvePaths(...paths: string[]): string {
  * Safe file operations with backup
  */
 export class SafeFileOperations {
-  private backups: Map<string, string> = new Map()
+  private backups = new Map<string, string>()
 
   async writeWithBackup(path: string, content: string): Promise<void> {
     // Create backup if file exists
@@ -366,12 +366,12 @@ export async function watchFile(
   callback: (event: 'change' | 'delete') => void
 ): Promise<() => void> {
   const { watch } = await import('node:fs')
-  const watcher = watch(path, (eventType, filename) => {
+  const watcher = watch(path, (eventType, _filename) => {
     if (eventType === 'change') {
       callback('change')
-    } else if (eventType === 'rename') {
+    } else {
       // rename can mean delete
-      exists(path).then(fileExists => {
+      void exists(path).then(fileExists => {
         if (!fileExists) {
           callback('delete')
         }
@@ -379,5 +379,5 @@ export async function watchFile(
     }
   })
 
-  return () => watcher.close()
+  return () => { watcher.close(); }
 }

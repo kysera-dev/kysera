@@ -62,7 +62,7 @@ export async function withDatabase<T>(
 ): Promise<T> {
   const config = await loadConfig(options.config)
 
-  if (!config?.database) {
+  if (!config.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create kysera.config.ts with database configuration',
       'Or specify config path with --config option'
@@ -82,7 +82,7 @@ export async function withDatabase<T>(
   }
 
   // Determine schema: CLI option > config > default 'public'
-  const schema = options.schema || validatedConfig.database.schema || 'public'
+  const schema = options.schema ?? validatedConfig.database.schema ?? 'public'
 
   try {
     // Cast to DatabaseInstance - the db has these methods at runtime
@@ -133,7 +133,7 @@ export async function withDatabaseOptional<T>(
   }
 
   // Determine schema: CLI option > config > default 'public'
-  const schema = options.schema || config?.database?.schema || 'public'
+  const schema = options.schema ?? config?.database?.schema ?? 'public'
 
   try {
     return await handler(db, config, schema)

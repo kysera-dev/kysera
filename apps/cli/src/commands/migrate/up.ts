@@ -53,8 +53,8 @@ async function runMigrationsUp(options: UpOptions): Promise<void> {
   await withDatabase(
     { config: options.config, verbose: options.verbose, schema: options.schema },
     async (db, config, schema) => {
-      const migrationsDir = config.migrations?.directory || './migrations'
-      const tableName = config.migrations?.tableName || 'migrations'
+      const migrationsDir = config.migrations?.directory ?? './migrations'
+      const tableName = config.migrations?.tableName ?? 'migrations'
 
       if (schema !== 'public') {
         logger.info(`Using schema: ${schema}`)
@@ -84,8 +84,8 @@ async function runMigrationsUp(options: UpOptions): Promise<void> {
         if (!options.dryRun) {
           try {
             releaseLock = await runner.acquireLock()
-          } catch (error: any) {
-            if (error.code === 'MIGRATION_LOCKED') {
+          } catch (error) {
+            if ((error as { code?: unknown }).code === 'MIGRATION_LOCKED') {
               throw new CLIError(
                 'Migrations are already running in another process',
                 'MIGRATION_LOCKED',
@@ -102,20 +102,8 @@ async function runMigrationsUp(options: UpOptions): Promise<void> {
         }
 
         // Get migration status before running
-        let statusBefore: any
-        try {
-          statusBefore = await runner.getMigrationStatus()
-        } catch (error) {
-          logger.error('Failed to get migration status:', error)
-          throw error
-        }
-
-        if (!statusBefore || !Array.isArray(statusBefore)) {
-          logger.debug('Migration status is not an array:', statusBefore)
-          statusBefore = []
-        }
-
-        const pendingCount = statusBefore.filter((m: any) => m.status === 'pending').length
+        const statusBefore = await runner.getMigrationStatus()
+        const pendingCount = statusBefore.filter(m => m.status === 'pending').length
 
         if (pendingCount === 0 && !options.force) {
           if (isJsonMode()) {
@@ -135,7 +123,7 @@ async function runMigrationsUp(options: UpOptions): Promise<void> {
         // Run migrations
         const { executed, duration } = await runner.up({
           to: options.to,
-          steps: options.steps || options.count, // Use count as alias for steps
+          steps: options.steps ?? options.count, // Use count as alias for steps
           dryRun: options.dryRun,
           force: options.force,
           verbose: options.verbose

@@ -14,7 +14,19 @@ export default tseslint.config(
   ...tseslint.configs.stylisticTypeChecked,
   prettier,
   {
-    ignores: ['dist/**', 'node_modules/**', 'tests/**', 'scripts/**', 'tsup.config.ts', 'vitest.config.ts', 'eslint.config.js']
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      'tests/**',
+      'scripts/**',
+      'coverage/**',
+      // Local test runs may write migration/seed artifacts into cwd
+      'migrations/**',
+      'seeds/**',
+      'tsup.config.ts',
+      'vitest.config.ts',
+      'eslint.config.js'
+    ]
   },
   {
     languageOptions: {
@@ -28,6 +40,18 @@ export default tseslint.config(
       complexity: 'off',
       'max-depth': 'off',
       'max-lines-per-function': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          args: 'all',
+          argsIgnorePattern: '^_',
+          caughtErrors: 'all',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          ignoreRestSiblings: true
+        }
+      ],
       '@typescript-eslint/naming-convention': 'off',
       '@typescript-eslint/restrict-template-expressions': [
         'error',

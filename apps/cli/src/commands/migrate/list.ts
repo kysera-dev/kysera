@@ -45,14 +45,14 @@ async function listMigrations(options: ListOptions): Promise<void> {
   // Load configuration
   const config = await loadConfig(options.config)
 
-  if (!config?.database) {
+  if (!config.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
     ])
   }
 
-  const migrationsDir = config.migrations?.directory || './migrations'
+  const migrationsDir = config.migrations?.directory ?? './migrations'
 
   // Check if migrations directory exists
   if (!existsSync(migrationsDir)) {
@@ -81,9 +81,9 @@ async function listMigrations(options: ListOptions): Promise<void> {
   }
 
   try {
-    const tableName = config.migrations?.tableName || 'migrations'
+    const tableName = config.migrations?.tableName ?? 'migrations'
     // Determine schema: CLI option > config > default 'public'
-    const schema = options.schema || config.database?.schema || 'public'
+    const schema = options.schema ?? config.database.schema ?? 'public'
 
     // Create migration runner
     const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
@@ -142,8 +142,8 @@ async function listMigrations(options: ListOptions): Promise<void> {
     const tableData = migrations.map(m => {
       const row: Record<string, string> = {
         Status: m.status === 'executed' ? prism.green('✓') : prism.yellow('○'),
-        Name: String(m.name || ''),
-        Timestamp: String(m.timestamp || '')
+        Name: m.name,
+        Timestamp: m.timestamp
       }
 
       if (m.status === 'executed' && m.executedAt) {
@@ -157,16 +157,8 @@ async function listMigrations(options: ListOptions): Promise<void> {
     logger.debug('tableData:', JSON.stringify(tableData, null, 2))
 
     // Display table
-    if (tableData && Array.isArray(tableData) && tableData.length > 0) {
-      // @xec-sh/kit table expects plain strings, so we need to ensure
-      // prism output is converted to string (it might return objects)
-      const plainTableData = tableData.map(row => {
-        const plainRow: Record<string, string> = {}
-        for (const [key, value] of Object.entries(row)) {
-          plainRow[key] = String(value)
-        }
-        return plainRow
-      })
+    if (tableData.length > 0) {
+      const plainTableData = tableData
 
       try {
         // Configure columns with proper widths to avoid truncation

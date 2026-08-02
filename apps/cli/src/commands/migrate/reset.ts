@@ -79,7 +79,7 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
 
   const config = await loadConfig(options.config)
 
-  if (!config?.database) {
+  if (!config.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
@@ -96,10 +96,10 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
     ])
   }
 
-  const migrationsDir = config.migrations?.directory || './migrations'
-  const tableName = config.migrations?.tableName || 'migrations'
+  const migrationsDir = config.migrations?.directory ?? './migrations'
+  const tableName = config.migrations?.tableName ?? 'migrations'
   // Determine schema: CLI option > config > default 'public'
-  const schema = options.schema || config.database?.schema || 'public'
+  const schema = options.schema ?? config.database.schema ?? 'public'
 
   if (schema !== 'public') {
     logger.info(`Using schema: ${schema}`)
@@ -112,8 +112,8 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
   try {
     try {
       releaseLock = await runner.acquireLock()
-    } catch (error: any) {
-      if (error.code === 'MIGRATION_LOCKED') {
+    } catch (error) {
+      if ((error as { code?: unknown }).code === 'MIGRATION_LOCKED') {
         throw new CLIError(
           'Migrations are already running in another process',
           'MIGRATION_LOCKED',
@@ -160,7 +160,7 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
       logger.info('Running seeds...')
 
       try {
-        const seedsDir = config.testing?.seeds || './seeds'
+        const seedsDir = config.testing?.seeds ?? './seeds'
         const seedRunner = new SeedRunner(db, seedsDir)
 
         const seedResult = await seedRunner.run({
@@ -185,9 +185,9 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
         } else {
           logger.info('No seeds found to run')
         }
-      } catch (seedError: any) {
-        logger.error(`Failed to run seeds: ${seedError.message}`)
-        if (options.verbose) {
+      } catch (seedError) {
+        logger.error(`Failed to run seeds: ${seedError instanceof Error ? seedError.message : String(seedError)}`)
+        if (options.verbose && seedError instanceof Error && seedError.stack) {
           logger.error(seedError.stack)
         }
         logger.warn('Migration reset completed, but seeding failed')
@@ -213,7 +213,7 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
 
   const config = await loadConfig(options.config)
 
-  if (!config?.database) {
+  if (!config.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
@@ -236,7 +236,7 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
     let tables: string[] = []
 
     // Determine schema: CLI option > config > default 'public'
-    const schema = options.schema || config.database?.schema || 'public'
+    const schema = options.schema ?? config.database.schema ?? 'public'
 
     if (schema !== 'public') {
       logger.info(`Using schema: ${schema}`)
@@ -249,22 +249,22 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
         .where('table_schema', '=', schema)
         .where('table_type', '=', 'BASE TABLE')
         .execute()
-      tables = result.map((r: any) => r.table_name)
+      tables = result.map(r => String(r.table_name))
     } else if (config.database.dialect === 'mysql') {
       const result = await db
         .selectFrom('information_schema.tables')
         .select('table_name')
         .where('table_schema', '=', db.fn('DATABASE'))
         .execute()
-      tables = result.map((r: any) => r.table_name)
-    } else if (config.database.dialect === 'sqlite') {
+      tables = result.map(r => String(r.table_name))
+    } else {
       const result = await db
         .selectFrom('sqlite_master')
         .select('name')
         .where('type', '=', 'table')
         .where('name', 'not like', 'sqlite_%')
         .execute()
-      tables = result.map((r: any) => r.name)
+      tables = result.map(r => String(r.name))
     }
 
     for (const table of tables) {
@@ -276,8 +276,8 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
 
     logger.info(`Dropped ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
 
-    const migrationsDir = config.migrations?.directory || './migrations'
-    const tableName = config.migrations?.tableName || 'migrations'
+    const migrationsDir = config.migrations?.directory ?? './migrations'
+    const tableName = config.migrations?.tableName ?? 'migrations'
 
     const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 
@@ -300,7 +300,7 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
       logger.info('Running seeds...')
 
       try {
-        const seedsDir = config.testing?.seeds || './seeds'
+        const seedsDir = config.testing?.seeds ?? './seeds'
         const seedRunner = new SeedRunner(db, seedsDir)
 
         const seedResult = await seedRunner.run({
@@ -325,9 +325,9 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
         } else {
           logger.info('No seeds found to run')
         }
-      } catch (seedError: any) {
-        logger.error(`Failed to run seeds: ${seedError.message}`)
-        if (options.verbose) {
+      } catch (seedError) {
+        logger.error(`Failed to run seeds: ${seedError instanceof Error ? seedError.message : String(seedError)}`)
+        if (options.verbose && seedError instanceof Error && seedError.stack) {
           logger.error(seedError.stack)
         }
         logger.warn('Fresh migration completed, but seeding failed')

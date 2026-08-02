@@ -18,7 +18,7 @@ export async function guardDestructive(
     return true
   }
 
-  const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true
+  const interactive = process.stdin.isTTY && process.stdout.isTTY
 
   if (!interactive || isJsonMode()) {
     throw new CLIError(

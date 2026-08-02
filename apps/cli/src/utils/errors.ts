@@ -8,8 +8,7 @@ import {
   NetworkErrorCodes,
   MigrationErrorCodes,
   PluginErrorCodes,
-  parseDatabaseError,
-  type ErrorCode as UnifiedErrorCode
+  parseDatabaseError
 } from '@kysera/core'
 import { isJsonMode, isVerboseMode } from './output.js'
 
@@ -54,13 +53,15 @@ export const CLIErrorCodes = {
   PLUGIN_NOT_FOUND: PluginErrorCodes.PLUGIN_NOT_FOUND
 } as const
 
-export type CLIErrorCode = (typeof CLIErrorCodes)[keyof typeof CLIErrorCodes] | string
+// Codes come from the CLIErrorCodes map but ad-hoc codes are allowed too,
+// so the public type is plain string.
+export type CLIErrorCode = string
 
 export class CLIError extends Error {
   constructor(
     message: string,
     public readonly code: CLIErrorCode = CLIErrorCodes.CLI_ERROR,
-    public readonly details?: any,
+    public readonly details?: unknown,
     public readonly suggestions: string[] = []
   ) {
     super(message)
@@ -193,8 +194,9 @@ export const ERROR_CODES: Record<string, ErrorCodeInfo> = {
  * Get unified error code from legacy code
  */
 export function getUnifiedErrorCode(legacyCode: string): string {
-  const errorInfo = ERROR_CODES[legacyCode]
-  return errorInfo?.code || legacyCode
+  // Record lookup can miss at runtime (tsconfig has noUncheckedIndexedAccess off)
+  const errorInfo = ERROR_CODES[legacyCode] as ErrorCodeInfo | undefined
+  return errorInfo?.code ?? legacyCode
 }
 
 /**
@@ -227,16 +229,16 @@ export function serializeError(error: unknown): Record<string, unknown> {
       message: error.message,
       code: error.code
     }
-    if (error.details !== undefined) payload['details'] = error.details
-    if (error.suggestions.length > 0) payload['suggestions'] = error.suggestions
-    if (isVerboseMode() && error.stack) payload['stack'] = error.stack
+    if (error.details !== undefined) payload.details = error.details
+    if (error.suggestions.length > 0) payload.suggestions = error.suggestions
+    if (isVerboseMode() && error.stack) payload.stack = error.stack
     return payload
   }
   if (error instanceof Error) {
     const payload: Record<string, unknown> = { name: error.name, message: error.message }
     const hints = databaseHints(error)
-    if (hints.length > 0) payload['suggestions'] = hints
-    if (isVerboseMode() && error.stack) payload['stack'] = error.stack
+    if (hints.length > 0) payload.suggestions = hints
+    if (isVerboseMode() && error.stack) payload.stack = error.stack
     return payload
   }
   return { name: 'UnknownError', message: String(error) }
@@ -260,7 +262,7 @@ function handleCLIError(error: CLIError): void {
     }
   }
 
-  if (error.suggestions && error.suggestions.length > 0) {
+  if (error.suggestions.length > 0) {
     output.push('')
     output.push('Suggestions:')
     for (const suggestion of error.suggestions) {
@@ -406,7 +408,7 @@ function databaseHints(error: Error): string[] {
 /**
  * Assert a condition and throw if false
  */
-export function assert(condition: any, message: string): asserts condition {
+export function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new CLIError(message, 'ASSERTION_ERROR')
   }
@@ -422,17 +424,17 @@ export function formatError(error: unknown): string {
     lines.push(error.message)
     lines.push(error.code)
 
-    if (error.details) {
+    if (error.details !== undefined && error.details !== null) {
       if (typeof error.details === 'object') {
-        for (const [key, value] of Object.entries(error.details)) {
-          lines.push(String(value))
+        for (const value of Object.values(error.details)) {
+          lines.push(stringifyValue(value))
         }
       } else {
-        lines.push(String(error.details))
+        lines.push(stringifyValue(error.details))
       }
     }
 
-    if (error.suggestions && error.suggestions.length > 0) {
+    if (error.suggestions.length > 0) {
       lines.push(...error.suggestions)
     }
   } else if (error instanceof Error) {
@@ -440,10 +442,21 @@ export function formatError(error: unknown): string {
   } else if (error === null || error === undefined) {
     lines.push('Unknown error')
   } else {
-    lines.push(String(error))
+    lines.push(stringifyValue(error))
   }
 
   return lines.join('\n')
+}
+
+function stringifyValue(value: unknown): string {
+  if (typeof value === 'object' && value !== null) {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return '[object]'
+    }
+  }
+  return String(value)
 }
 
 /**

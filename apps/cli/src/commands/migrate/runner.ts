@@ -5,12 +5,13 @@ import { pathToFileURL } from 'node:url'
 import { prism } from '@xec-sh/kit'
 import { logger } from '../../utils/logger.js'
 import { CLIError, isExpectedError, ValidationError } from '../../utils/errors.js'
+import type { Database } from '../../utils/database.js'
 
 export interface Migration {
   name: string
   timestamp: string
-  up: (db: Kysely<any>) => Promise<void>
-  down: (db: Kysely<any>) => Promise<void>
+  up: (db: Kysely<Database>) => Promise<void>
+  down: (db: Kysely<Database>) => Promise<void>
 }
 
 export interface MigrationFile {
@@ -22,18 +23,30 @@ export interface MigrationFile {
 export interface MigrationStatus {
   name: string
   timestamp: string
-  executedAt?: Date
+  /** Date on PostgreSQL/MySQL, string on SQLite */
+  executedAt?: Date | string
   status: 'pending' | 'executed'
 }
 
+interface ExecutedMigrationRow {
+  name: string
+  timestamp: string
+  executed_at: Date | string
+  batch: number
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 export class MigrationRunner {
-  private schemaDb: Kysely<any>
+  private schemaDb: Kysely<Database>
 
   constructor(
-    private db: Kysely<any>,
+    private db: Kysely<Database>,
     private migrationsDir: string,
-    private tableName: string = 'migrations',
-    private schema: string = 'public'
+    private tableName = 'migrations',
+    private schema = 'public'
   ) {
     // Create schema-scoped database instance for PostgreSQL
     this.schemaDb = this.schema !== 'public' ? this.db.withSchema(this.schema) : this.db
@@ -58,7 +71,7 @@ export class MigrationRunner {
         logger.debug(`Ensured schema exists: ${this.schema}`)
       } catch (err) {
         // Schema creation might fail on non-PostgreSQL, ignore
-        logger.debug(`Could not create schema (might not be PostgreSQL): ${err}`)
+        logger.debug(`Could not create schema (might not be PostgreSQL): ${errorMessage(err)}`)
       }
     }
 
@@ -72,9 +85,9 @@ export class MigrationRunner {
       .addColumn('batch', 'integer', col => col.notNull())
       .execute()
       .then(() => true)
-      .catch(err => {
+      .catch((err: unknown) => {
         // Table might already exist, that's fine
-        if (err.message.includes('already exists')) {
+        if (errorMessage(err).includes('already exists')) {
           return false
         }
         throw err
@@ -88,7 +101,7 @@ export class MigrationRunner {
   /**
    * Get all migration files from directory
    */
-  async getMigrationFiles(): Promise<MigrationFile[]> {
+  getMigrationFiles(): MigrationFile[] {
     if (!existsSync(this.migrationsDir)) {
       logger.debug(`Migration directory does not exist: ${this.migrationsDir}`)
       return []
@@ -99,12 +112,6 @@ export class MigrationRunner {
         .filter(file => file.endsWith('.ts') || file.endsWith('.js') || file.endsWith('.mjs'))
         .sort()
 
-      // Ensure files is an array before using map
-      if (!files || !Array.isArray(files)) {
-        logger.debug('No migration files found or files is not an array')
-        return []
-      }
-
       return files.map(file => {
         const timestamp = file.substring(0, 14) // First 14 chars are timestamp
         return {
@@ -114,7 +121,7 @@ export class MigrationRunner {
         }
       })
     } catch (error) {
-      logger.error(`Failed to read migration directory: ${error}`)
+      logger.error(`Failed to read migration directory: ${errorMessage(error)}`)
       return []
     }
   }
@@ -122,9 +129,7 @@ export class MigrationRunner {
   /**
    * Get executed migrations from database
    */
-  async getExecutedMigrations(): Promise<
-    Array<{ name: string; timestamp: string; executed_at: Date; batch: number }>
-  > {
+  async getExecutedMigrations(): Promise<ExecutedMigrationRow[]> {
     try {
       const migrations = await this.schemaDb
         .selectFrom(this.tableName)
@@ -133,19 +138,13 @@ export class MigrationRunner {
         .orderBy('executed_at')
         .execute()
 
-      // Ensure migrations is an array before using map
-      if (!migrations || !Array.isArray(migrations)) {
-        logger.debug('No migrations found in database or migrations is not an array:', migrations)
-        return []
-      }
-
-      return migrations.map((m: any) => ({
-        name: m.name,
-        timestamp: m.timestamp,
-        executed_at: m.executed_at,
-        batch: m.batch
+      return migrations.map(m => ({
+        name: m.name as string,
+        timestamp: m.timestamp as string,
+        executed_at: m.executed_at as Date | string,
+        batch: m.batch as number
       }))
-    } catch (error: any) {
+    } catch (error) {
       // Check if this is the expected "table doesn't exist" error (first migration run)
       if (isExpectedError(error, ['does not exist', 'no such table'])) {
         logger.debug(
@@ -156,9 +155,9 @@ export class MigrationRunner {
 
       // Unexpected error - wrap and re-throw
       throw new CLIError(
-        `Failed to query migrations table: ${error.message}`,
+        `Failed to query migrations table: ${errorMessage(error)}`,
         'DATABASE_ERROR',
-        { tableName: this.tableName, originalError: error.message },
+        { tableName: this.tableName, originalError: errorMessage(error) },
         [
           'Ensure the database is accessible',
           'Check database permissions',
@@ -172,46 +171,17 @@ export class MigrationRunner {
    * Get migration status (pending vs executed)
    */
   async getMigrationStatus(): Promise<MigrationStatus[]> {
-    try {
-      const files = await this.getMigrationFiles()
-      const executed = await this.getExecutedMigrations()
+    const files = this.getMigrationFiles()
+    const executed = await this.getExecutedMigrations()
 
-      if (!files || !Array.isArray(files)) {
-        logger.debug('No migration files found')
-        return []
-      }
+    const executedMap = new Map(executed.map(m => [m.name, m]))
 
-      if (!executed || !Array.isArray(executed)) {
-        // No migrations have been executed yet
-        return files.map(file => ({
-          name: file.name,
-          timestamp: file.timestamp,
-          status: 'pending' as const
-        }))
-      }
-
-      // Extra safety check before creating the Map
-      if (!Array.isArray(executed)) {
-        logger.error('executed is not an array:', executed)
-        return files.map(file => ({
-          name: file.name,
-          timestamp: file.timestamp,
-          status: 'pending' as const
-        }))
-      }
-
-      const executedMap = new Map(executed.map(m => [m.name, m]))
-
-      return files.map(file => ({
-        name: file.name,
-        timestamp: file.timestamp,
-        executedAt: executedMap.get(file.name)?.executed_at,
-        status: executedMap.has(file.name) ? ('executed' as const) : ('pending' as const)
-      }))
-    } catch (error) {
-      logger.error('Error in getMigrationStatus:', error)
-      throw error
-    }
+    return files.map(file => ({
+      name: file.name,
+      timestamp: file.timestamp,
+      executedAt: executedMap.get(file.name)?.executed_at,
+      status: executedMap.has(file.name) ? ('executed' as const) : ('pending' as const)
+    }))
   }
 
   /**
@@ -220,25 +190,25 @@ export class MigrationRunner {
   async loadMigration(file: MigrationFile): Promise<Migration> {
     try {
       const fileUrl = pathToFileURL(file.path).href
-      const module = await import(fileUrl)
+      const module = (await import(fileUrl)) as Record<string, unknown>
 
-      if (!module.up || typeof module.up !== 'function') {
+      if (typeof module.up !== 'function') {
         throw new ValidationError(`Invalid migration ${file.name}: must export an 'up' function`)
       }
 
-      if (!module.down || typeof module.down !== 'function') {
+      if (typeof module.down !== 'function') {
         throw new ValidationError(`Invalid migration ${file.name}: must export a 'down' function`)
       }
 
       return {
         name: file.name,
         timestamp: file.timestamp,
-        up: module.up,
-        down: module.down
+        up: module.up as Migration['up'],
+        down: module.down as Migration['down']
       }
-    } catch (error: any) {
+    } catch (error) {
       throw new CLIError(
-        `Failed to load migration ${file.name}: ${error.message}`,
+        `Failed to load migration ${file.name}: ${errorMessage(error)}`,
         'MIGRATION_LOAD_ERROR'
       )
     }
@@ -262,12 +232,7 @@ export class MigrationRunner {
     const executed: string[] = []
 
     const status = await this.getMigrationStatus()
-    if (!status || !Array.isArray(status)) {
-      logger.warn('getMigrationStatus returned invalid data:', status)
-      return { executed, duration: Date.now() - startTime }
-    }
-
-    let pending = status.filter(m => m && m.status === 'pending')
+    let pending = status.filter(m => m.status === 'pending')
 
     // Apply filters
     if (options.to) {
@@ -294,9 +259,7 @@ export class MigrationRunner {
     logger.info('Running migrations')
 
     for (const migrationStatus of pending) {
-      const file = await this.getMigrationFiles().then(files =>
-        files.find(f => f.name === migrationStatus.name)
-      )
+      const file = this.getMigrationFiles().find(f => f.name === migrationStatus.name)
 
       if (!file) {
         throw new CLIError(`Migration file not found: ${migrationStatus.name}`, 'FILE_NOT_FOUND')
@@ -337,12 +300,12 @@ export class MigrationRunner {
         const duration = Date.now() - migrationStart
         logger.info(`${prism.green('↑')} ${migration.name}... ${prism.green('✓')} (${duration}ms)`)
         executed.push(migration.name)
-      } catch (error: any) {
+      } catch (error) {
         const duration = Date.now() - migrationStart
         logger.error(`${prism.red('↑')} ${migration.name}... ${prism.red('✗')} (${duration}ms)`)
         const remaining = pending.slice(pending.indexOf(migrationStatus) + 1).map(m => m.name)
         throw new CLIError(
-          `Migration ${migration.name} failed: ${error.message}`,
+          `Migration ${migration.name} failed: ${errorMessage(error)}`,
           'MIGRATION_FAILED',
           { migration: migration.name, file: file.path, applied: executed, remaining },
           [
@@ -384,7 +347,7 @@ export class MigrationRunner {
       return { rolledBack, duration: Date.now() - startTime }
     }
 
-    let toRollback: typeof executed = []
+    let toRollback: typeof executed
 
     if (options.all) {
       toRollback = [...executed].reverse()
@@ -395,7 +358,7 @@ export class MigrationRunner {
       }
       toRollback = executed.slice(toIndex + 1).reverse()
     } else {
-      const steps = options.steps || 1
+      const steps = options.steps ?? 1
       const lastBatch = await this.getLastBatch()
       toRollback = executed
         .filter(m => m.batch === lastBatch)
@@ -409,7 +372,7 @@ export class MigrationRunner {
     }
 
     // Show message based on number of migrations
-    if (options.steps && options.steps === 1) {
+    if (options.steps === 1) {
       logger.info('Rolling back 1 migration')
     } else if (options.steps) {
       logger.info(`Rolling back ${options.steps} migration${options.steps > 1 ? 's' : ''}`)
@@ -418,9 +381,7 @@ export class MigrationRunner {
     }
 
     for (const executedMigration of toRollback) {
-      const file = await this.getMigrationFiles().then(files =>
-        files.find(f => f.name === executedMigration.name)
-      )
+      const file = this.getMigrationFiles().find(f => f.name === executedMigration.name)
 
       if (!file) {
         throw new CLIError(`Migration file not found: ${executedMigration.name}`, 'FILE_NOT_FOUND')
@@ -454,14 +415,12 @@ export class MigrationRunner {
         const duration = Date.now() - migrationStart
         logger.info(`${prism.yellow('↓')} ${migration.name}... ${prism.green('✓')} (${duration}ms)`)
         rolledBack.push(migration.name)
-      } catch (error: any) {
+      } catch (error) {
         const duration = Date.now() - migrationStart
         logger.error(`${prism.red('↓')} ${migration.name}... ${prism.red('✗')} (${duration}ms)`)
-        const remaining = toRollback
-          .slice(toRollback.indexOf(executedMigration) + 1)
-          .map(m => m.name)
+        const remaining = toRollback.slice(toRollback.indexOf(executedMigration) + 1).map(m => m.name)
         throw new CLIError(
-          `Rollback of ${migration.name} failed: ${error.message}`,
+          `Rollback of ${migration.name} failed: ${errorMessage(error)}`,
           'ROLLBACK_FAILED',
           { migration: migration.name, file: file.path, rolledBack, remaining },
           [
@@ -490,7 +449,7 @@ export class MigrationRunner {
       seed?: boolean
     } = {}
   ): Promise<{ rolledBack: string[]; duration: number }> {
-    return this.down({ all: true, ...options })
+    return await this.down({ all: true, ...options })
   }
 
   /**
@@ -503,7 +462,7 @@ export class MigrationRunner {
         .select(this.schemaDb.fn.max('batch').as('max_batch'))
         .executeTakeFirst()
 
-      return (result as any)?.max_batch || 0
+      return Number((result as { max_batch?: unknown } | undefined)?.max_batch ?? 0)
     } catch {
       return 0
     }
@@ -514,14 +473,13 @@ export class MigrationRunner {
    */
   async acquireLock(): Promise<() => Promise<void>> {
     // Simple implementation - in production, use database advisory locks
-    let lockAcquired = false
     const lockTableName = 'kysera_migration_lock'
 
     try {
       await this.schemaDb.insertInto(lockTableName).values({ id: 1, locked: true }).execute()
-      lockAcquired = true
-    } catch (error: any) {
-      if (error.message.includes('already exists') || error.message.includes('duplicate')) {
+    } catch (error) {
+      const message = errorMessage(error)
+      if (message.includes('already exists') || message.includes('duplicate')) {
         throw new CLIError('Migrations are already running in another process', 'MIGRATION_LOCKED')
       }
       // Lock table doesn't exist, create it
@@ -533,13 +491,11 @@ export class MigrationRunner {
         .execute()
 
       await this.schemaDb.insertInto(lockTableName).values({ id: 1, locked: true }).execute()
-      lockAcquired = true
     }
 
+    // Lock is held once either insert above succeeded
     return async () => {
-      if (lockAcquired) {
-        await this.schemaDb.deleteFrom(lockTableName).where('id', '=', 1).execute()
-      }
+      await this.schemaDb.deleteFrom(lockTableName).where('id', '=', 1).execute()
     }
   }
 }

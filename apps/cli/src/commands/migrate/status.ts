@@ -1,5 +1,6 @@
 import { Command } from 'commander'
-import { prism, table } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
+import { displayTable } from '../../utils/table-helper.js'
 import { CLIError } from '../../utils/errors.js'
 import { isJsonMode, output, redactConnection, toDate, toIsoDate } from '../../utils/output.js'
 import { MigrationRunner } from './runner.js'
@@ -40,16 +41,16 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
   await withDatabase(
     { config: options.config, verbose: options.verbose, schema: options.schema },
     async (db, config, schema) => {
-      const migrationsDir = config.migrations?.directory || './migrations'
-      const tableName = config.migrations?.tableName || 'migrations'
+      const migrationsDir = config.migrations?.directory ?? './migrations'
+      const tableName = config.migrations?.tableName ?? 'migrations'
 
       // Create migration runner
       const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 
       // Get migration status
       const status = await runner.getMigrationStatus()
-      const executed = status.filter((m: any) => m.status === 'executed')
-      const pending = status.filter((m: any) => m.status === 'pending')
+      const executed = status.filter(m => m.status === 'executed')
+      const pending = status.filter(m => m.status === 'pending')
 
       if (options.json || isJsonMode()) {
         // Connection strings may embed credentials: always redact.
@@ -58,16 +59,16 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
             total: status.length,
             executed: executed.length,
             pending: pending.length,
-            migrations: status.map((m: any) => ({
+            migrations: status.map(m => ({
               name: m.name,
               timestamp: m.timestamp,
               status: m.status,
               executedAt: toIsoDate(m.executedAt)
             })),
             database: {
-              dialect: config.database!.dialect,
+              dialect: config.database.dialect,
               connection: options.verbose
-                ? redactConnection(config.database!.connection)
+                ? redactConnection(config.database.connection)
                 : undefined
             }
           },
@@ -87,7 +88,7 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
 
         if (options.verbose) {
           // Show as table
-          const tableData = executed.map((m: any) => ({
+          const tableData = executed.map(m => ({
             Name: m.name,
             Timestamp: m.timestamp,
             'Executed At': m.executedAt ? formatDate(m.executedAt) : 'Unknown'
@@ -95,7 +96,7 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
 
           console.log('')
           console.log(prism.bold('Executed Migrations'))
-          table(tableData as any)
+          displayTable(tableData)
         } else {
           // Simple list
           for (const migration of executed) {
@@ -117,14 +118,14 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
 
         if (options.verbose) {
           // Show as table
-          const tableData = pending.map((m: any) => ({
+          const tableData = pending.map(m => ({
             Name: m.name,
             Timestamp: m.timestamp
           }))
 
           console.log('')
           console.log(prism.bold('Pending Migrations'))
-          table(tableData as any)
+          displayTable(tableData)
         } else {
           // Simple list
           for (const migration of pending) {
@@ -140,7 +141,7 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
       // Show database info
       if (options.verbose) {
         console.log(prism.gray('Database Information:'))
-        console.log(`  Dialect: ${config.database!.dialect}`)
+        console.log(`  Dialect: ${config.database.dialect}`)
         console.log(`  Schema: ${schema}`)
         console.log(`  Migrations Directory: ${migrationsDir}`)
         console.log(`  Migrations Table: ${tableName}`)

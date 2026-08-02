@@ -66,8 +66,8 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
   await withDatabase(
     { config: options.config, verbose: options.verbose, schema: options.schema },
     async (db, config, schema) => {
-      const migrationsDir = config.migrations?.directory || './migrations'
-      const tableName = config.migrations?.tableName || 'migrations'
+      const migrationsDir = config.migrations?.directory ?? './migrations'
+      const tableName = config.migrations?.tableName ?? 'migrations'
 
       if (schema !== 'public') {
         logger.info(`Using schema: ${schema}`)
@@ -83,8 +83,8 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
         if (!options.dryRun) {
           try {
             releaseLock = await runner.acquireLock()
-          } catch (error: any) {
-            if (error.code === 'MIGRATION_LOCKED') {
+          } catch (error) {
+            if ((error as { code?: unknown }).code === 'MIGRATION_LOCKED') {
               throw new CLIError(
                 'Migrations are already running in another process',
                 'MIGRATION_LOCKED',
@@ -102,7 +102,7 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
 
         // Get migration status before rolling back
         const statusBefore = await runner.getMigrationStatus()
-        const executedCount = statusBefore.filter((m: any) => m.status === 'executed').length
+        const executedCount = statusBefore.filter(m => m.status === 'executed').length
 
         if (executedCount === 0) {
           logger.info('No migrations to rollback')
@@ -118,7 +118,7 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
         // Rollback migrations
         const { rolledBack, duration } = await runner.down({
           to: options.to,
-          steps: options.steps || options.count, // Use count as alias for steps
+          steps: options.steps ?? options.count, // Use count as alias for steps
           all: options.all,
           dryRun: options.dryRun,
           verbose: options.verbose

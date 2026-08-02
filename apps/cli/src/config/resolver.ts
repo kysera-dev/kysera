@@ -7,15 +7,18 @@ import { logger } from '../utils/logger.js'
  * Resolve environment variables in a string
  */
 export function resolveEnvVars(value: string): string {
-  return value.replace(/\$\{([^}]+)\}|\$([A-Z_][A-Z0-9_]*)/g, (match, p1, p2) => {
-    const envVar = p1 || p2
-    const envValue = process.env[envVar]
-    if (envValue === undefined) {
-      // Return original if env var not found
-      return match
+  return value.replace(
+    /\$\{([^}]+)\}|\$([A-Z_][A-Z0-9_]*)/g,
+    (match, p1: string | undefined, p2: string | undefined) => {
+      const envVar = p1 ?? p2 ?? ''
+      const envValue = process.env[envVar]
+      if (envValue === undefined) {
+        // Return original if env var not found
+        return match
+      }
+      return envValue
     }
-    return envValue
-  })
+  )
 }
 
 /**

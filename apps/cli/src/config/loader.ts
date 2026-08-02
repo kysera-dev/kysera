@@ -36,7 +36,7 @@ function dialectFromConnectionUrl(url: string): 'postgres' | 'mysql' | 'sqlite' 
  * DATABASE_URL overrides the connection from the config file.
  */
 function applyEnvOverrides(config: KyseraConfig): KyseraConfig {
-  const databaseUrl = process.env['DATABASE_URL']
+  const databaseUrl = process.env.DATABASE_URL
   if (!databaseUrl) return config
 
   const dialect = config.database?.dialect ?? dialectFromConnectionUrl(databaseUrl)
@@ -65,7 +65,7 @@ function applyEnvOverrides(config: KyseraConfig): KyseraConfig {
  * the working directory upward > built-in defaults.
  */
 export async function loadConfig(configPath?: string): Promise<KyseraConfig> {
-  const requestedPath = configPath ?? process.env['KYSERA_CONFIG']
+  const requestedPath = configPath ?? process.env.KYSERA_CONFIG
 
   let config: Partial<KyseraConfig> = {}
   let resolvedConfigPath: string
@@ -110,12 +110,6 @@ export async function loadConfig(configPath?: string): Promise<KyseraConfig> {
   const validation = KyseraConfigSchema.safeParse(resolved)
   if (!validation.success) {
     logger.debug('Validation failed:', validation.error)
-
-    if (!validation.error || !validation.error.issues || !Array.isArray(validation.error.issues)) {
-      throw new ConfigurationError(
-        `Configuration validation failed: ${JSON.stringify(validation.error)}`
-      )
-    }
 
     const errors = validation.error.issues
       .map(e => `  - ${e.path.join('.')}: ${e.message}`)
@@ -169,7 +163,7 @@ async function loadConfigFile(filePath: string): Promise<Partial<KyseraConfig>> 
 
   try {
     const result = await explorer.load(filePath)
-    if (!result || !result.config) {
+    if (!result?.config) {
       throw new ConfigurationError(`No configuration found in ${filePath}`)
     }
 
@@ -203,10 +197,6 @@ export function validateConfig(config: unknown): { valid: boolean; errors?: stri
     return { valid: true }
   }
 
-  if (!result.error || !result.error.issues || !Array.isArray(result.error.issues)) {
-    return { valid: false, errors: ['Validation failed'] }
-  }
-
   const errors = result.error.issues.map(e => `${e.path.join('.')}: ${e.message}`)
   return { valid: false, errors }
 }
@@ -238,7 +228,7 @@ export function setConfigValue(config: KyseraConfig, path: string, value: unknow
 
   if (!lastKey) return
 
-  let obj: Record<string, unknown> = config as unknown as Record<string, unknown>
+  let obj: Record<string, unknown> = config
   for (const key of keys) {
     if (!(key in obj) || typeof obj[key] !== 'object') {
       obj[key] = {}
@@ -256,17 +246,11 @@ export async function saveConfig(config: KyseraConfig, configPath?: string): Pro
   // Find or use the specified config file path
   const resolvedPath = configPath
     ? resolve(process.cwd(), configPath)
-    : findConfigFile() || resolve(process.cwd(), 'kysera.config.json')
+    : (findConfigFile() ?? resolve(process.cwd(), 'kysera.config.json'))
 
   // Validate configuration before saving
   const validation = KyseraConfigSchema.safeParse(config)
   if (!validation.success) {
-    if (!validation.error || !validation.error.issues || !Array.isArray(validation.error.issues)) {
-      throw new ConfigurationError(
-        `Configuration validation failed: ${JSON.stringify(validation.error)}`
-      )
-    }
-
     const errors = validation.error.issues
       .map(e => `  - ${e.path.join('.')}: ${e.message}`)
       .join('\n')

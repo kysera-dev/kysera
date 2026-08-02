@@ -58,7 +58,7 @@ export interface OutputOptions<T> {
   /** Human-readable rendering; used when not in JSON mode */
   text?: string | ((data: T) => string)
   /** Table rows rendering; used when not in JSON mode */
-  table?: Array<Record<string, string>> | ((data: T) => Array<Record<string, string>>)
+  table?: Record<string, string>[] | ((data: T) => Record<string, string>[])
 }
 
 /**
@@ -119,7 +119,8 @@ export function outputError(payload: Record<string, unknown>, fallback?: () => v
   if (fallback) {
     fallback()
   } else {
-    process.stderr.write(`${String(payload['message'] ?? 'Unknown error')}\n`)
+    const message = payload.message
+    process.stderr.write(`${typeof message === 'string' ? message : 'Unknown error'}\n`)
   }
 }
 
@@ -143,8 +144,8 @@ export function redactConnection(connection: unknown): unknown {
   }
   if (connection && typeof connection === 'object') {
     const record = { ...(connection as Record<string, unknown>) }
-    if ('password' in record && record['password'] !== undefined) {
-      record['password'] = '***'
+    if ('password' in record && record.password !== undefined) {
+      record.password = '***'
     }
     return record
   }

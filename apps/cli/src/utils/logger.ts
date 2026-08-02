@@ -17,9 +17,9 @@ export interface LoggerOptions {
  */
 class Logger {
   public level: LogLevel = 'info'
-  public colors: boolean = true
-  public timestamps: boolean = false
-  public json: boolean = false
+  public colors = true
+  public timestamps = false
+  public json = false
 
   private readonly levels: Record<LogLevel, number> = {
     debug: 0,
@@ -29,10 +29,10 @@ class Logger {
   }
 
   constructor(options: LoggerOptions = {}) {
-    this.level = options.level || 'info'
+    this.level = options.level ?? 'info'
     this.colors = options.colors !== false
-    this.timestamps = options.timestamps || false
-    this.json = options.json || false
+    this.timestamps = options.timestamps ?? false
+    this.json = options.json ?? false
 
     // Disable colors if not in TTY or if NO_COLOR is set
     if (!process.stderr.isTTY || process.env.NO_COLOR) {
@@ -48,7 +48,7 @@ class Logger {
     return new Date().toISOString()
   }
 
-  private write(level: LogLevel | 'success', message: string, ...args: any[]): void {
+  private write(level: LogLevel | 'success', message: string, ...args: unknown[]): void {
     const formatted = format(message, ...args)
 
     if (this.json) {
@@ -87,25 +87,25 @@ class Logger {
     }
   }
 
-  public debug(message: string, ...args: any[]): void {
+  public debug(message: string, ...args: unknown[]): void {
     if (this.shouldLog('debug')) {
       this.write('debug', message, ...args)
     }
   }
 
-  public info(message: string, ...args: any[]): void {
+  public info(message: string, ...args: unknown[]): void {
     if (this.shouldLog('info')) {
       this.write('info', message, ...args)
     }
   }
 
-  public warn(message: string, ...args: any[]): void {
+  public warn(message: string, ...args: unknown[]): void {
     if (this.shouldLog('warn')) {
       this.write('warn', message, ...args)
     }
   }
 
-  public error(message: string | Error, ...args: any[]): void {
+  public error(message: string | Error, ...args: unknown[]): void {
     if (this.shouldLog('error')) {
       const text = message instanceof Error ? message.message : message
       this.write('error', text, ...args)
@@ -115,14 +115,14 @@ class Logger {
     }
   }
 
-  public success(message: string, ...args: any[]): void {
+  public success(message: string, ...args: unknown[]): void {
     // Success is always shown (like info level)
     if (this.shouldLog('info')) {
       this.write('success', message, ...args)
     }
   }
 
-  public log(message: string, ...args: any[]): void {
+  public log(message: string, ...args: unknown[]): void {
     // Raw data output without level prefix (stdout)
     console.log(format(message, ...args))
   }
@@ -148,7 +148,7 @@ class Logger {
     console.groupEnd()
   }
 
-  public table(data: any, columns?: string[]): void {
+  public table(data: unknown, columns?: string[]): void {
     console.table(data, columns)
   }
 
@@ -171,7 +171,7 @@ class Logger {
 
 // Create default logger instance
 export const logger = new Logger({
-  level: (process.env.LOG_LEVEL as LogLevel) || 'info',
+  level: (process.env.LOG_LEVEL as LogLevel | undefined) ?? 'info',
   colors: process.env.FORCE_COLOR !== '0',
   timestamps: process.env.LOG_TIMESTAMPS === 'true',
   json: process.env.LOG_FORMAT === 'json'

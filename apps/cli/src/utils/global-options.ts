@@ -62,9 +62,9 @@ export function applyGlobalOptions(rootCommand: Command, actionCommand: Command)
   configureOutput({ json, quiet, verbose })
   logger.setLevel(verbose ? 'debug' : quiet ? 'error' : 'info')
 
-  if (rootOpts['color'] === false || leafOpts['color'] === false) {
+  if (rootOpts.color === false || leafOpts.color === false) {
     // Standard mechanism understood by color libraries (prism/chalk/etc.)
-    process.env['NO_COLOR'] = '1'
+    process.env.NO_COLOR = '1'
     logger.setColors(false)
   }
 
