@@ -127,7 +127,7 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
   }
 
   const migrationsDir = config.migrations?.directory || './migrations'
-  const tableName = config.migrations?.tableName || 'kysera_migrations'
+  const tableName = config.migrations?.tableName || 'migrations'
   // Determine schema: CLI option > config > default 'public'
   const schema = options.schema || config.database?.schema || 'public'
 
@@ -330,7 +330,7 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
     logger.info(`Dropped ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
 
     const migrationsDir = config.migrations?.directory || './migrations'
-    const tableName = config.migrations?.tableName || 'kysera_migrations'
+    const tableName = config.migrations?.tableName || 'migrations'
 
     const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 

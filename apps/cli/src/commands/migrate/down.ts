@@ -67,7 +67,7 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
 
   await withDatabase({ config: options.config, verbose: options.verbose, schema: options.schema }, async (db, config, schema) => {
     const migrationsDir = config.migrations?.directory || './migrations'
-    const tableName = config.migrations?.tableName || 'kysera_migrations'
+    const tableName = config.migrations?.tableName || 'migrations'
 
     if (schema !== 'public') {
       logger.info(`Using schema: ${schema}`)

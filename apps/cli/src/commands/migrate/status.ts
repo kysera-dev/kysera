@@ -38,7 +38,7 @@ export function statusCommand(): Command {
 async function showMigrationStatus(options: StatusOptions): Promise<void> {
   await withDatabase({ config: options.config, verbose: options.verbose, schema: options.schema }, async (db, config, schema) => {
     const migrationsDir = config.migrations?.directory || './migrations'
-    const tableName = config.migrations?.tableName || 'kysera_migrations'
+    const tableName = config.migrations?.tableName || 'migrations'
 
     // Create migration runner
     const runner = new MigrationRunner(db, migrationsDir, tableName, schema)

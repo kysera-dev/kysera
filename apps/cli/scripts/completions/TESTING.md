@@ -2,266 +2,122 @@
 
 This document provides testing instructions for the shell completion scripts.
 
+The scripts are generated from the CLI source by `generate.mjs`; if a completion looks wrong, first regenerate (`node generate.mjs`) and check whether the CLI command tree changed.
+
 ## Quick Test (Without Installation)
 
 ### Bash
 
 ```bash
-# Source the completion script in your current shell
-cd /Users/taaliman/projects/luxquant/omnitron-dev/omni/apps/kysera-cli
-source scripts/completions/kysera.bash
+# Source the completion script in your current shell (requires bash-completion)
+cd apps/cli/scripts/completions
+source kysera.bash
 
 # Test completions
-kysera <TAB>              # Should show: init migrate generate db health audit debug query repository test plugin help
-kysera migrate <TAB>      # Should show: create up down status list reset fresh rollback
-kysera init --dialect <TAB>  # Should show: postgres mysql sqlite
+kysera <TAB>                 # init migrate generate db health audit debug query repository test plugin schema hello stats help
+kysera migrate <TAB>         # create up down status list reset fresh
+kysera init --database <TAB> # postgres mysql sqlite
 ```
 
 ### Zsh
 
 ```zsh
 # Load the completion in your current shell
-cd /Users/taaliman/projects/luxquant/omnitron-dev/omni/apps/kysera-cli
-fpath=(scripts/completions $fpath)
+cd apps/cli/scripts/completions
+fpath=($PWD $fpath)
 autoload -U compinit && compinit
-source scripts/completions/kysera.zsh
 
 # Test completions
-kysera <TAB>              # Should show commands with descriptions
-kysera migrate <TAB>      # Should show migrate subcommands
-kysera generate --validation <TAB>  # Should show: zod yup joi none
+kysera <TAB>                 # commands with descriptions
+kysera schema <TAB>          # list create drop info clone compare
+kysera audit logs --action <TAB>  # INSERT UPDATE DELETE
 ```
 
 ### Fish
 
 ```fish
 # Copy to Fish completions directory
-cp scripts/completions/kysera.fish ~/.config/fish/completions/
+cp kysera.fish ~/.config/fish/completions/
 
 # Test completions (Fish loads automatically)
-kysera <TAB>              # Should show commands with descriptions
-kysera db <TAB>           # Should show db subcommands
-kysera test --strategy <TAB>  # Should show: realistic minimal random faker
+kysera <TAB>                 # commands with descriptions
+kysera db <TAB>              # seed reset tables dump restore introspect console
+kysera debug circuit-breaker --action <TAB>  # status reset open close
 ```
 
 ## Comprehensive Test Cases
 
-### 1. Main Commands Completion
+### 1. Main Commands
 
-```bash
-kysera <TAB>
-```
+`kysera <TAB>` should offer exactly:
 
-**Expected output:**
+init, migrate, generate, db, health, audit, debug, query, repository, test, plugin, schema, hello, stats, help
 
-- init
-- migrate
-- generate
-- db
-- health
-- audit
-- debug
-- query
-- repository
-- test
-- plugin
-- help
+### 2. Subcommands
 
-### 2. Subcommands Completion
-
-#### Migrate Subcommands
-
-```bash
-kysera migrate <TAB>
-```
-
-**Expected output:**
-
-- create
-- up
-- down
-- status
-- list
-- reset
-- fresh
-- rollback
-
-#### Generate Subcommands
-
-```bash
-kysera generate <TAB>
-```
-
-**Expected output:**
-
-- model
-- repository
-- schema
-- crud
-- migration
+| Input | Expected |
+| ----- | -------- |
+| `kysera migrate <TAB>` | create up down status list reset fresh |
+| `kysera generate <TAB>` | model repository schema crud |
+| `kysera db <TAB>` | seed reset tables dump restore introspect console |
+| `kysera health <TAB>` | check watch metrics |
+| `kysera audit <TAB>` | logs history restore stats cleanup compare diff |
+| `kysera debug <TAB>` | sql profile errors circuit-breaker analyzer |
+| `kysera query <TAB>` | by-timestamp soft-deleted analyze explain |
+| `kysera repository <TAB>` | list inspect validate methods |
+| `kysera test <TAB>` | setup teardown seed fixtures |
+| `kysera plugin <TAB>` | list enable disable config |
+| `kysera schema <TAB>` | list create drop info clone compare |
 
 ### 3. Option Value Completion
 
-#### Database Dialects
-
-```bash
-kysera init --dialect <TAB>
-```
-
-**Expected output:**
-
-- postgres
-- mysql
-- sqlite
-
-#### Validation Libraries
-
-```bash
-kysera generate model User --validation <TAB>
-```
-
-**Expected output:**
-
-- zod
-- yup
-- joi
-- none
-
-#### Output Formats
-
-```bash
-kysera db dump --format <TAB>
-```
-
-**Expected output:**
-
-- sql
-- json
-- yaml
-
-#### Environments
-
-```bash
-kysera test setup --env <TAB>
-```
-
-**Expected output:**
-
-- development
-- test
-- production
-
-#### Seeding Strategies
-
-```bash
-kysera test seed --strategy <TAB>
-```
-
-**Expected output:**
-
-- realistic
-- minimal
-- random
-- faker
+| Input | Expected |
+| ----- | -------- |
+| `kysera init --database <TAB>` | postgres mysql sqlite |
+| `kysera init --template <TAB>` | basic api graphql monorepo |
+| `kysera init --package-manager <TAB>` | npm pnpm yarn bun |
+| `kysera --env <TAB>` | development production test |
+| `kysera audit logs --action <TAB>` | INSERT UPDATE DELETE (zsh/fish) |
+| `kysera debug circuit-breaker --action <TAB>` | status reset open close (zsh/fish) |
 
 ### 4. Global Options
 
-```bash
-kysera --<TAB>
-```
+`kysera --<TAB>` should offer:
 
-**Expected output:**
-
-- --help
-- --version
-- --verbose
-- --quiet
-- --dry-run
-- --json
-- --config
-- --no-color
+--verbose, --quiet, --dry-run, --config, --no-color, --json, --env, --stats, --version, --help
 
 ### 5. File Path Completion
 
-```bash
-kysera --config <TAB>
-```
+- `kysera --config <TAB>` completes config file paths (.ts/.mts/.cts/.js/.mjs/.cjs/.json)
+- `kysera migrate create foo --dir <TAB>` completes directory paths (zsh)
 
-**Expected behavior:** Should complete file paths, filtering for .ts, .js, .json files
+### 6. Per-Subcommand Options
 
-```bash
-kysera generate model User --output <TAB>
-```
+- `kysera migrate up --<TAB>` → --to --steps --count --dry-run --force --verbose --config --schema --help
+- `kysera plugin config --<TAB>` → --get --set --value --reset --show --edit --validate --export --import --json --config --help
+- `kysera query soft-deleted --<TAB>` → --table --column --restore --purge --force --limit --json --config --schema --help
 
-**Expected behavior:** Should complete directory paths
+### 7. Alias
 
-### 6. Command-Specific Options
-
-#### Init Command
-
-```bash
-kysera init --<TAB>
-```
-
-**Expected output:**
-
-- --dialect
-- --typescript
-- --javascript
-- --with-examples
-- --skip-git
-- (plus global options)
-
-#### Generate Command
-
-```bash
-kysera generate model User --<TAB>
-```
-
-**Expected output:**
-
-- --table
-- --output
-- --with-validation
-- --with-tests
-- --api
-- --crud
-- --validation
-- (plus global options)
-
-#### Test Command
-
-```bash
-kysera test seed --<TAB>
-```
-
-**Expected output:**
-
-- --env
-- --count
-- --strategy
-- --force
-- (plus global options)
+- `kysera g <TAB>` behaves like `kysera generate <TAB>` (bash/zsh/fish)
 
 ## Verification Checklist
 
-- [ ] Main commands complete correctly
-- [ ] Subcommands complete for all main commands
-- [ ] Global options work with all commands
-- [ ] Command-specific options complete correctly
+- [ ] Main commands complete correctly (including schema, hello, stats)
+- [ ] Subcommands complete for all command groups
+- [ ] No removed/nonexistent commands are offered
+- [ ] Per-subcommand options complete correctly
 - [ ] Option values complete with predefined choices
 - [ ] File path completion works for --config
-- [ ] Directory path completion works for --output
+- [ ] `g` alias completes generate subcommands
 - [ ] No errors or warnings when using completions
-- [ ] Completions work after typing partial text
-- [ ] Case sensitivity works as expected
 
 ## Common Issues and Solutions
 
 ### Bash
 
 **Issue:** Completions not working after sourcing
-**Solution:** Ensure bash-completion package is installed
+**Solution:** Ensure bash-completion 2.0+ is installed (`_init_completion` is required)
 
 ```bash
 # macOS
@@ -270,9 +126,6 @@ brew install bash-completion
 # Linux (Debian/Ubuntu)
 sudo apt-get install bash-completion
 ```
-
-**Issue:** \_init_completion command not found
-**Solution:** Install bash-completion 2.0 or later
 
 ### Zsh
 
@@ -284,81 +137,39 @@ rm ~/.zcompdump
 autoload -U compinit && compinit
 ```
 
-**Issue:** Completions not updating after changes
-**Solution:** Force reload
-
-```zsh
-unfunction _kysera
-autoload -U compinit && compinit
-```
-
 ### Fish
 
 **Issue:** Completions not working
-**Solution:** Verify file location
+**Solution:** Verify file location and reload
 
 ```fish
-# Check Fish completion search paths
 echo $fish_complete_path
-
-# Manually reload (if needed)
-complete -c kysera -e  # Clear old completions
+complete -c kysera -e
 source ~/.config/fish/completions/kysera.fish
 ```
 
-## Performance Testing
-
-Test completion performance with large command sets:
-
-```bash
-# Time the completion function
-time kysera <TAB>
-
-# Should complete in < 100ms for good user experience
-```
-
-## Edge Cases to Test
-
-1. Partial command completion: `kysera mi<TAB>` → `kysera migrate`
-2. Multiple options: `kysera init --typescript --dialect <TAB>` → shows dialects
-3. Short aliases: `kysera m <TAB>` → shows migrate subcommands
-4. Case sensitivity: Test with different case variations
-5. Special characters in file paths: Test completion with spaces, quotes, etc.
-
-## Automated Testing
-
-For CI/CD integration, create test scripts:
+## Automated Smoke Test (Bash)
 
 ```bash
 #!/bin/bash
-# test-completions.sh
+# Stub bash-completion helpers, then exercise the completion function directly
+_init_completion() {
+    cur=${COMP_WORDS[COMP_CWORD]}
+    prev=${COMP_WORDS[COMP_CWORD-1]}
+    return 0
+}
+_filedir() { COMPREPLY=(); }
+source kysera.bash
 
-source scripts/completions/kysera.bash
-
-# Mock COMP_WORDS and COMP_CWORD to test completion function
 test_completion() {
-    COMP_WORDS=("$@")
-    COMP_CWORD=$((${#COMP_WORDS[@]} - 1))
+    COMP_WORDS=("$@" "")
+    COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))
+    COMPREPLY=()
     _kysera_completions
     echo "${COMPREPLY[@]}"
 }
 
-# Test cases
-test_completion kysera | grep -q "migrate" && echo "✓ Main commands" || echo "✗ Main commands"
-test_completion kysera migrate | grep -q "up" && echo "✓ Migrate subcommands" || echo "✗ Migrate subcommands"
-test_completion kysera --dialect | grep -q "postgres" && echo "✓ Dialect values" || echo "✗ Dialect values"
+test_completion kysera | grep -qw migrate && echo "OK main commands"
+test_completion kysera migrate | grep -qw fresh && echo "OK migrate subcommands"
+test_completion kysera schema | grep -qw clone && echo "OK schema subcommands"
 ```
-
-## Reporting Issues
-
-If you find any issues with completions:
-
-1. Specify your shell and version: `bash --version`, `zsh --version`, or `fish --version`
-2. Describe the expected vs actual behavior
-3. Provide the exact command and tab sequence
-4. Check if the issue occurs in a clean shell session
-5. Submit an issue with all details
-
----
-
-Last updated: 2025-12-07

@@ -32,7 +32,7 @@ export class MigrationRunner {
   constructor(
     private db: Kysely<any>,
     private migrationsDir: string,
-    private tableName: string = 'kysera_migrations',
+    private tableName: string = 'migrations',
     private schema: string = 'public'
   ) {
     // Create schema-scoped database instance for PostgreSQL

@@ -103,21 +103,25 @@ const PLUGINS = {
   timestamps: {
     name: 'Timestamps',
     package: '@kysera/timestamps',
+    configKey: 'timestamps',
     description: 'Automatic created/updated timestamps'
   },
   'soft-delete': {
     name: 'Soft Delete',
     package: '@kysera/soft-delete',
+    configKey: 'softDelete',
     description: 'Soft delete functionality'
   },
   audit: {
     name: 'Audit Logging',
     package: '@kysera/audit',
+    configKey: 'audit',
     description: 'Comprehensive audit logging'
   },
   rls: {
     name: 'Row-Level Security',
     package: '@kysera/rls',
+    configKey: 'rls',
     description: 'Declarative row-level security policies for multi-tenant applications'
   }
 }
@@ -573,14 +577,20 @@ async function generateConfigFiles(projectPath: string, config: any): Promise<vo
   },`
   }
 
+  // Plugin keys must match PluginsConfigSchema (e.g. 'soft-delete' -> softDelete);
+  // tableName is omitted so the schema default ('migrations') applies
   const kyseraConfig = `export default {
 ${databaseConfig}
   migrations: {
-    directory: './migrations',
-    tableName: 'kysera_migrations'
+    directory: './migrations'
   },
   plugins: {
-    ${config.plugins.map((plugin: string) => `'${plugin}': { enabled: true }`).join(',\n    ')}
+    ${config.plugins
+      .map(
+        (plugin: string) =>
+          `${PLUGINS[plugin as keyof typeof PLUGINS].configKey}: { enabled: true }`
+      )
+      .join(',\n    ')}
   }
 }
 `
@@ -772,7 +782,7 @@ console.log('🚀 Kysera application starting...')
 async function main() {
   try {
     // Test connection
-    await db.selectFrom('kysera_migrations')
+    await db.selectFrom('migrations')
       .select('version')
       .limit(1)
       .execute()
@@ -813,7 +823,7 @@ app.use(express.urlencoded({ extended: true }))
 app.get('/health', async (req, res) => {
   try {
     // Test database connection
-    await db.selectFrom('kysera_migrations')
+    await db.selectFrom('migrations')
       .select('version')
       .limit(1)
       .execute()
@@ -859,7 +869,7 @@ const resolvers = {
     health: async () => {
       try {
         // Test database connection
-        await db.selectFrom('kysera_migrations')
+        await db.selectFrom('migrations')
           .select('version')
           .limit(1)
           .execute()

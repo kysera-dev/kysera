@@ -1,6 +1,14 @@
 # Kysera CLI Shell Completions
 
-This directory contains shell completion scripts for Kysera CLI to enable tab completion for commands, subcommands, and options.
+This directory contains shell completion scripts for the Kysera CLI, providing tab completion for commands, subcommands, and options.
+
+The scripts are **generated** from the actual CLI command tree (`apps/cli/src/commands`) by `generate.mjs`. Do not edit `kysera.bash`, `kysera.zsh`, or `kysera.fish` by hand — regenerate them instead:
+
+```bash
+node generate.mjs
+```
+
+Run this whenever commands, subcommands, or options change in `src/commands` or `src/cli.ts`.
 
 ## Quick Installation
 
@@ -40,135 +48,79 @@ cp kysera.fish ~/.config/fish/completions/
 sudo cp kysera.fish /usr/share/fish/vendor_completions.d/
 ```
 
-## Features
+## What Gets Completed
 
 ### Main Commands
 
 - `init` - Initialize a new Kysera project
 - `migrate` - Database migration management
-- `generate` - Code generation utilities
-- `db` - Database management tools
-- `health` - Health monitoring and metrics
+- `generate` (alias `g`) - Code generation utilities
+- `db` - Database management utilities
+- `health` - Database health monitoring
 - `audit` - Audit logging and history
-- `debug` - Debug and diagnostic tools
-- `query` - Query analysis and utilities
+- `debug` - Debug and diagnostic utilities
+- `query` - Query utilities and analysis
 - `repository` - Repository pattern utilities
 - `test` - Test environment management
 - `plugin` - Plugin management
-- `help` - Show help information
+- `schema` - PostgreSQL schema management
+- `hello` - Test command to verify CLI setup
+- `stats` - Show CLI performance statistics
+- `help` - Display help for command
 
-### Subcommand Completion
-
-Each main command has intelligent subcommand completion:
+### Subcommands
 
 - `migrate`: create, up, down, status, list, reset, fresh
-- `generate`: model, repository, schema, crud, migration
+- `generate`: model, repository, schema, crud
 - `db`: seed, reset, tables, dump, restore, introspect, console
 - `health`: check, watch, metrics
 - `audit`: logs, history, restore, stats, cleanup, compare, diff
-- `debug`: connection, schema, queries, slow-queries, explain
-- `query`: analyze, explain, optimize, index, suggest
-- `repository`: list, create, scaffold, validate, test
-- `test`: setup, teardown, seed, fixtures, run
-- `plugin`: list, install, uninstall, enable, disable, info
+- `debug`: sql, profile, errors, circuit-breaker, analyzer
+- `query`: by-timestamp, soft-deleted, analyze, explain
+- `repository`: list, inspect, validate, methods
+- `test`: setup, teardown, seed, fixtures
+- `plugin`: list, enable, disable, config
+- `schema`: list, create, drop, info, clone, compare
 
 ### Global Options
 
-All commands support these global options:
+Accepted at the program level (before a command):
 
-- `--help` - Show help information
-- `--version` - Show version number
-- `--verbose` / `-v` - Detailed output
-- `--quiet` / `-q` - Minimal output
-- `--dry-run` - Preview without executing
-- `--json` - JSON output format
-- `--config` - Custom config file (with file path completion)
+- `--verbose` - Enable verbose output
+- `-q, --quiet` - Suppress non-essential output
+- `--dry-run` - Preview changes without executing
+- `--config <path>` - Path to configuration file (with file path completion)
 - `--no-color` - Disable colored output
+- `--json` - Output results as JSON
+- `--env <environment>` - Environment (development/production/test)
+- `--stats` - Show performance statistics
+- `-v, --version` - Show CLI version
+- `-h, --help` - Display help
 
-### Command-Specific Options
+### Per-Subcommand Options
 
-The completion scripts include context-aware option completion for each command:
+Every subcommand completes its own real option set (extracted from the command registrations). Value completion is provided where the CLI defines an enumerated set, for example:
 
-#### init
-
-- `--dialect` (postgres, mysql, sqlite)
-- `--typescript`
-- `--javascript`
-- `--with-examples`
-- `--skip-git`
-
-#### migrate
-
-- `--name`
-- `--table`
-- `--all`
-- `--step`
-- `--to`
-
-#### generate
-
-- `--table`
-- `--output` (with directory completion)
-- `--with-validation`
-- `--crud`
-- `--validation` (zod, yup, joi, none)
-
-#### db
-
-- `--force`
-- `--output` (with file completion)
-- `--format` (sql, json, yaml)
-- `--env` (development, test, production)
-
-#### health
-
-- `--interval`
-- `--format` (table, json)
-- `--threshold`
-
-#### audit
-
-- `--from`
-- `--to`
-- `--entity`
-- `--limit`
-- `--format` (table, json)
-
-#### test
-
-- `--env` (development, test, production)
-- `--count`
-- `--strategy` (realistic, minimal, random, faker)
-- `--force`
-
-#### plugin
-
-- `--global`
-- `--save`
+```bash
+kysera init --database <TAB>          # postgres mysql sqlite
+kysera init --template <TAB>          # basic api graphql monorepo
+kysera audit logs --action <TAB>      # INSERT UPDATE DELETE
+kysera debug circuit-breaker -a <TAB> # status reset open close
+```
 
 ## Testing Completions
 
-After installation, test the completions:
+See [TESTING.md](./TESTING.md). Quick check:
 
 ```bash
-# Type and press TAB to see available commands
-kysera <TAB>
-
-# Type and press TAB to see migrate subcommands
-kysera migrate <TAB>
-
-# Type and press TAB to see available dialects
-kysera init --dialect <TAB>
-
-# Type and press TAB to see validation libraries
-kysera generate model User --validation <TAB>
+kysera <TAB>            # main commands
+kysera migrate <TAB>    # create up down status list reset fresh
+kysera schema <TAB>     # list create drop info clone compare
 ```
 
 ## Troubleshooting
 
 ### Bash
-
-If completions don't work:
 
 1. Ensure bash-completion is installed: `brew install bash-completion` (macOS)
 2. Check if bash-completion is sourced in your shell config
@@ -176,15 +128,11 @@ If completions don't work:
 
 ### Zsh
 
-If completions don't work:
-
 1. Ensure the completion function is in your `$fpath`
 2. Check if `compinit` is being called
 3. Try rebuilding the completion cache: `rm ~/.zcompdump && compinit`
 
 ### Fish
-
-If completions don't work:
 
 1. Ensure the file is in the correct location: `~/.config/fish/completions/`
 2. Fish loads completions automatically, no reload needed

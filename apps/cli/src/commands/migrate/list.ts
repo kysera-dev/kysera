@@ -81,7 +81,7 @@ async function listMigrations(options: ListOptions): Promise<void> {
   }
 
   try {
-    const tableName = config.migrations?.tableName || 'kysera_migrations'
+    const tableName = config.migrations?.tableName || 'migrations'
     // Determine schema: CLI option > config > default 'public'
     const schema = options.schema || config.database?.schema || 'public'
 

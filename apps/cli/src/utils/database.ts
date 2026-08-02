@@ -243,7 +243,18 @@ async function createPostgresConnection(
   config: DatabaseConfig,
   readonly: boolean
 ): Promise<{ db: Kysely<Database>; close: () => Promise<void> }> {
-  const connectionConfig = parsePostgresConnection(config.connection)
+  // `connection` (string or object) takes precedence; otherwise fall back to
+  // the structured top-level fields (host/port/database/user/password/ssl)
+  const connectionConfig: PostgresConnectionConfig = config.connection
+    ? parsePostgresConnection(config.connection)
+    : {
+        host: config.host || 'localhost',
+        port: config.port || 5432,
+        database: config.database,
+        user: config.user,
+        password: config.password,
+        ssl: config.ssl
+      }
 
   const pool = new Pool({
     ...connectionConfig,
@@ -269,7 +280,17 @@ async function createMysqlConnection(
   config: DatabaseConfig,
   readonly: boolean
 ): Promise<{ db: Kysely<Database>; close: () => Promise<void> }> {
-  const connectionConfig = parseMysqlConnection(config.connection)
+  // `connection` (string or object) takes precedence; otherwise fall back to
+  // the structured top-level fields (host/port/database/user/password)
+  const connectionConfig: MysqlConnectionConfig = config.connection
+    ? parseMysqlConnection(config.connection)
+    : {
+        host: config.host || 'localhost',
+        port: config.port || 3306,
+        database: config.database,
+        user: config.user,
+        password: config.password
+      }
 
   const pool = createPool({
     ...connectionConfig,

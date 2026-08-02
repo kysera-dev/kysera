@@ -6,7 +6,7 @@ import { TimestampsOptionsSchema } from '@kysera/timestamps/schema'
 // Database connection schema
 const DatabaseConnectionObjectSchema = z.object({
   host: z.string(),
-  port: z.number(),
+  port: z.number().int().min(0).max(65535),
   database: z.string(),
   user: z.string(),
   password: z.string(),
@@ -40,9 +40,10 @@ const DatabaseConfigSchema = z
     schema: z.string().optional(),
     // Additional database-specific options
     host: z.string().optional(),
-    port: z.number().optional(),
+    port: z.number().int().min(0).max(65535).optional(),
     user: z.string().optional(),
-    password: z.string().optional()
+    password: z.string().optional(),
+    ssl: z.union([z.boolean(), z.record(z.string(), z.unknown())]).optional()
   })
   .refine(
     data => {

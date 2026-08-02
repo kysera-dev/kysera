@@ -115,7 +115,7 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
     resetSpinner.start('Running migrations...')
 
     const migrationsDir = config.migrations?.directory || './migrations'
-    const tableName = config.migrations?.tableName || 'kysera_migrations'
+    const tableName = config.migrations?.tableName || 'migrations'
 
     const runner = new MigrationRunner(db, migrationsDir, tableName, schema)
 

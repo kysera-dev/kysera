@@ -370,8 +370,8 @@ describe('init command', () => {
       const writeFileCalls = (writeFileSync as Mock).mock.calls
       const kyseraConfigCall = writeFileCalls.find(c => c[0].includes('kysera.config.ts'))
 
-      expect(kyseraConfigCall[1]).toContain("'timestamps': { enabled: true }")
-      expect(kyseraConfigCall[1]).toContain("'soft-delete': { enabled: true }")
+      expect(kyseraConfigCall[1]).toContain('timestamps: { enabled: true }')
+      expect(kyseraConfigCall[1]).toContain('softDelete: { enabled: true }')
     })
 
     it('should configure specified plugins only', async () => {
@@ -388,7 +388,7 @@ describe('init command', () => {
       const writeFileCalls = (writeFileSync as Mock).mock.calls
       const kyseraConfigCall = writeFileCalls.find(c => c[0].includes('kysera.config.ts'))
 
-      expect(kyseraConfigCall[1]).toContain("'audit': { enabled: true }")
+      expect(kyseraConfigCall[1]).toContain('audit: { enabled: true }')
     })
   })
 
