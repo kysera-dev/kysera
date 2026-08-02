@@ -5,10 +5,12 @@ import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
+import { executeSqlScript, type Database } from '../../utils/database.js'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import * as yaml from 'js-yaml'
 import { createHash } from 'node:crypto'
+import type { Kysely } from 'kysely'
 
 export interface FixtureOptions {
   load?: string[]
@@ -47,27 +49,8 @@ interface LoadResult {
   duration: number
 }
 
-/**
- * Structural view of the connection used by fixture load/save. At runtime it
- * is the Kysely instance from withDatabase; test doubles extend it with a
- * knex-style promise-returning `raw`. Only the members used here are declared.
- */
-interface FixtureDatabase {
-  selectFrom(table: string): FixtureQueryBuilder
-  insertInto(table: string): {
-    values(rows: Record<string, unknown> | Record<string, unknown>[]): {
-      execute(): Promise<unknown>
-    }
-  }
-  raw<R = unknown>(sql: string): Promise<R>
-}
-
-interface FixtureQueryBuilder {
-  select(columns: string | string[]): FixtureQueryBuilder
-  selectAll(): FixtureQueryBuilder
-  where(column: string, operator: string, value: unknown): FixtureQueryBuilder
-  execute<R extends Record<string, unknown> = Record<string, unknown>>(): Promise<R[]>
-}
+/** Connection type used by fixture load/save. */
+type FixtureDatabase = Kysely<Database>
 
 /** Shape of the metadata block inside JSON/YAML fixture files. */
 interface FixtureFileMetadata {
@@ -179,7 +162,7 @@ async function saveFixture(options: FixtureOptions): Promise<void> {
     const saveSpinner = spinner()
     saveSpinner.start('Reading database schema...')
 
-    const fixtureDb = db as unknown as FixtureDatabase
+    const fixtureDb: FixtureDatabase = db
     const tables = await getAllTables(fixtureDb, config.database.dialect)
 
     if (tables.length === 0) {
@@ -262,10 +245,7 @@ async function validateFixtures(options: FixtureOptions): Promise<void> {
       return
     }
 
-    const existingTables = await getAllTables(
-      db as unknown as FixtureDatabase,
-      config.database.dialect
-    )
+    const existingTables = await getAllTables(db, config.database.dialect)
     const results: { fixture: string; valid: boolean; issues: string[] }[] = []
 
     for (const fixture of fixtures) {
@@ -373,7 +353,7 @@ async function loadFixtures(options: FixtureOptions): Promise<void> {
       fixtureSpinner.start(`Loading ${fixture.name}...`)
 
       try {
-        const loadedData = await loadFixtureFile(db as unknown as FixtureDatabase, fixture, options)
+        const loadedData = await loadFixtureFile(db, fixture, options)
 
         result.loaded.push(fixture.name)
         result.totalRecords += loadedData.recordCount
@@ -590,7 +570,7 @@ async function loadFixtureFile(
     }
   } else if (fixture.format === 'sql') {
     const content = await fs.readFile(fixture.path, 'utf-8')
-    await db.raw(content)
+    await executeSqlScript(db, content)
 
     const tableMatches = content.match(/INSERT INTO\s+`?(\w+)`?/gi) ?? []
     for (const match of tableMatches) {
@@ -619,20 +599,33 @@ async function getAllTables(db: FixtureDatabase, dialect: string): Promise<strin
   const tables: string[] = []
 
   try {
+    const { CompiledQuery } = await import('kysely')
     if (dialect === 'postgres') {
       const result = await db
         .selectFrom('information_schema.tables')
         .select('table_name')
         .where('table_schema', '=', 'public')
         .where('table_type', '=', 'BASE TABLE')
-        .execute<{ table_name: string }>()
+        .execute()
 
-      tables.push(...result.map(r => r.table_name))
-    } else if (dialect === 'sqlite') {
-      const result = await db.raw<{ name: string }[]>(
-        `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`
+      tables.push(...result.map(r => r.table_name as string))
+    } else if (dialect === 'mysql') {
+      const result = await db.executeQuery<{ table_name: string }>(
+        CompiledQuery.raw(
+          `SELECT TABLE_NAME AS table_name FROM information_schema.tables
+           WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'`,
+          []
+        )
       )
-      tables.push(...result.map(r => r.name))
+      tables.push(...result.rows.map(r => r.table_name))
+    } else {
+      const result = await db.executeQuery<{ name: string }>(
+        CompiledQuery.raw(
+          `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`,
+          []
+        )
+      )
+      tables.push(...result.rows.map(r => r.name))
     }
   } catch (error) {
     logger.debug(`Failed to get tables: ${String(error)}`)

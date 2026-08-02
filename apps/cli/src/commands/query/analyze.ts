@@ -6,6 +6,7 @@ import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 import { formatBytes } from '../../utils/formatting.js'
 import { displayTable } from '../../utils/table-helper.js'
+import { getTableStatistics as getSharedTableStatistics } from '../../utils/table-stats.js'
 import type { DatabaseDialect } from '../../utils/database.js'
 import type {
   DatabaseInstance,
@@ -53,17 +54,6 @@ interface TableStatistics {
 
 interface PostgresExplainJsonRow {
   'QUERY PLAN': string | PostgresExplainOutput[]
-}
-
-interface PostgresTableStatsRow {
-  data_length: string | number
-  index_length: string | number
-}
-
-interface MysqlTableStatsRow {
-  DATA_LENGTH: string | number
-  INDEX_LENGTH: string | number
-  AVG_ROW_LENGTH: string | number
 }
 
 async function executeRaw(db: DatabaseInstance, sql: string): Promise<QueryResult> {
@@ -314,13 +304,12 @@ async function analyzeSqlite(
         }
       }
 
-      // Check for full table scans
-      if (detail.includes('SCAN TABLE')) {
-        const tableMatch = /SCAN TABLE (\w+)/.exec(detail)
-        if (tableMatch) {
-          analysis.warnings.push(`Full table scan on ${tableMatch[1]}`)
-          analysis.missingIndexes.push(`${tableMatch[1]} (consider adding index)`)
-        }
+      // Check for full table scans.
+      // SQLite <3.36 emits 'SCAN TABLE users', newer versions 'SCAN users'.
+      const scanMatch = /^SCAN (?:TABLE )?(\w+)/.exec(detail) ?? /SCAN TABLE (\w+)/.exec(detail)
+      if (scanMatch) {
+        analysis.warnings.push(`Full table scan on ${scanMatch[1]}`)
+        analysis.missingIndexes.push(`${scanMatch[1]} (consider adding index)`)
       }
     }
   } catch (error) {
@@ -385,56 +374,15 @@ async function getTableStatistics(
 
   for (const tableName of tables) {
     try {
-      const stat: TableStatistics = {
+      // Shared dialect-aware probes (utils/table-stats) provide row count
+      // and data/index sizes for all dialects.
+      const shared = await getSharedTableStatistics(db, tableName, dialect)
+      stats.push({
         table: tableName,
-        rowCount: 0
-      }
-
-      // Get row count
-      const countResult = await db
-        .selectFrom(tableName)
-        .select(db.fn.countAll().as('count'))
-        .executeTakeFirst()
-      stat.rowCount = Number(countResult?.count ?? 0)
-
-      // Get additional statistics based on dialect
-      if (dialect === 'postgres') {
-        const statsResult = await executeRaw(
-          db,
-          `
-          SELECT
-            pg_relation_size('${tableName}') as data_length,
-            pg_indexes_size('${tableName}') as index_length
-        `
-        )
-
-        const statsRow = statsResult.rows[0] as PostgresTableStatsRow | undefined
-        if (statsRow) {
-          stat.dataLength = Number(statsRow.data_length)
-          stat.indexLength = Number(statsRow.index_length)
-        }
-      } else if (dialect === 'mysql') {
-        const statsResult = await executeRaw(
-          db,
-          `
-          SELECT
-            DATA_LENGTH,
-            INDEX_LENGTH,
-            AVG_ROW_LENGTH
-          FROM information_schema.TABLES
-          WHERE TABLE_NAME = '${tableName}'
-        `
-        )
-
-        const statsRow = statsResult.rows[0] as MysqlTableStatsRow | undefined
-        if (statsRow) {
-          stat.dataLength = Number(statsRow.DATA_LENGTH)
-          stat.indexLength = Number(statsRow.INDEX_LENGTH)
-          stat.averageRowLength = Number(statsRow.AVG_ROW_LENGTH)
-        }
-      }
-
-      stats.push(stat)
+        rowCount: shared.rows,
+        dataLength: shared.size,
+        indexLength: shared.indexSize
+      })
     } catch (error) {
       logger.debug(`Failed to get statistics for table ${tableName}: ${String(error)}`)
     }

@@ -2,9 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vite
 import { Command } from 'commander'
 
 // Mock external dependencies before importing the module under test
-vi.mock('../../../../src/utils/database.js', () => ({
-  getDatabaseConnection: vi.fn()
-}))
+vi.mock('../../../../src/utils/database.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../src/utils/database.js')>()
+  return {
+    ...actual,
+    getDatabaseConnection: vi.fn()
+  }
+})
 
 vi.mock('../../../../src/config/loader.js', () => ({
   loadConfig: vi.fn()
@@ -77,6 +81,10 @@ describe('audit history command', () => {
       limit: vi.fn().mockReturnThis(),
       execute: vi.fn().mockResolvedValue([]),
       executeTakeFirst: vi.fn().mockResolvedValue(null),
+      // the audit commands verify table existence via Kysely introspection
+      introspection: {
+        getTables: vi.fn().mockResolvedValue([{ name: 'audit_logs', schema: 'public' }])
+      },
       destroy: vi.fn().mockResolvedValue(undefined)
     }
 
@@ -182,10 +190,10 @@ describe('audit history command', () => {
         {
           id: 1,
           table_name: 'users',
-          action: 'INSERT',
+          operation: 'INSERT',
           entity_id: '123',
-          user_id: 'user1',
-          created_at: new Date()
+          changed_by: 'user1',
+          changed_at: new Date().toISOString()
         }
       ])
 
@@ -224,10 +232,11 @@ describe('audit history command', () => {
   })
 
   describe('edge cases', () => {
-    it('should handle missing audit_logs table', async () => {
-      mockDb.execute.mockResolvedValue([])
+    it('should point at audit init when the audit table is missing', async () => {
+      mockDb.introspection.getTables.mockResolvedValue([])
 
       await expect(command.parseAsync(['node', 'test', 'users', '123'])).resolves.not.toThrow()
+      expect(mockDb.selectFrom).not.toHaveBeenCalled()
     })
 
     it('should close database connection after execution', async () => {
@@ -252,10 +261,10 @@ describe('audit history command', () => {
           {
             id: 1,
             table_name: 'users',
-            action: 'INSERT',
+            operation: 'INSERT',
             entity_id: '123',
-            user_id: 'user1',
-            created_at: new Date(),
+            changed_by: 'user1',
+            changed_at: new Date().toISOString(),
             old_values: null,
             new_values: '{"name":"test"}'
           }
@@ -280,10 +289,10 @@ describe('audit history command', () => {
           {
             id: 1,
             table_name: 'users',
-            action: 'UPDATE',
+            operation: 'UPDATE',
             entity_id: '123',
-            user_id: 'user1',
-            created_at: new Date(),
+            changed_by: 'user1',
+            changed_at: new Date().toISOString(),
             old_values: '{"name":"old"}',
             new_values: '{"name":"new"}'
           }
@@ -301,10 +310,10 @@ describe('audit history command', () => {
           {
             id: 1,
             table_name: 'users',
-            action: 'DELETE',
+            operation: 'DELETE',
             entity_id: '123',
-            user_id: 'user1',
-            created_at: new Date(),
+            changed_by: 'user1',
+            changed_at: new Date().toISOString(),
             old_values: '{"name":"deleted"}',
             new_values: null
           }

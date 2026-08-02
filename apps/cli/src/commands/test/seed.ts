@@ -3,11 +3,17 @@ import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError, ValidationError } from '../../utils/errors.js'
-import { getDatabaseConnection } from '../../utils/database.js'
+import {
+  getDatabaseConnection,
+  normalizeDialect,
+  type Database,
+  type DatabaseDialect
+} from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
 import { validateIdentifier, safeTruncate } from '../../utils/sql-sanitizer.js'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import type { Kysely } from 'kysely'
 import type { Faker } from '@faker-js/faker'
 import type { KyseraConfig } from '../../config/schema.js'
 
@@ -56,40 +62,8 @@ interface TableSchema {
   }[]
 }
 
-/**
- * Structural view of the connection these helpers receive. At runtime it is
- * the Kysely instance from getDatabaseConnection; test doubles extend it with
- * a `dialectName` marker and a knex-style promise-returning `raw`. Only the
- * members actually used in this command are declared.
- */
-interface SeedDatabase {
-  dialectName?: string
-  selectFrom(table: string): SeedQueryBuilder
-  insertInto(table: string): {
-    values(rows: Record<string, unknown> | Record<string, unknown>[]): {
-      execute(): Promise<unknown>
-    }
-  }
-  deleteFrom(table: string): { execute(): Promise<unknown> }
-  raw<R = unknown>(sql: string, parameters?: unknown[]): Promise<R>
-  fn(name: string): unknown
-  destroy(): Promise<void>
-}
-
-interface SeedQueryBuilder {
-  select(columns: string | string[]): SeedQueryBuilder
-  leftJoin(table: string, callback: (join: SeedJoinBuilder) => SeedJoinBuilder): SeedQueryBuilder
-  leftJoin(table: string, leftColumn: string, rightColumn: string): SeedQueryBuilder
-  where(column: string, operator: string, value: unknown): SeedQueryBuilder
-  orderBy(expression: unknown): SeedQueryBuilder
-  limit(count: number): SeedQueryBuilder
-  execute<R extends Record<string, unknown> = Record<string, unknown>>(): Promise<R[]>
-  executeTakeFirst(): Promise<Record<string, unknown> | undefined>
-}
-
-interface SeedJoinBuilder {
-  on(leftColumn: string, operator: string, rightColumn: string): SeedJoinBuilder
-}
+/** Connection type used by the seeding helpers. */
+type SeedDatabase = Kysely<Database>
 
 /** Module shape expected from a --custom seeder file. */
 interface CustomSeederModule {
@@ -138,7 +112,7 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
   const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
+    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
     ])
@@ -169,7 +143,10 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
       throw new CLIError('Failed to connect to database', 'DATABASE_ERROR')
     }
 
-    const db = connection as unknown as SeedDatabase
+    const db: SeedDatabase = connection
+    // Table auto-discovery is dialect-specific; the dialect comes from the
+    // validated configuration (a Kysely instance does not expose one).
+    const dialect = normalizeDialect(config.database.dialect)
 
     if (options.custom) {
       seedSpinner.text = 'Running custom seeder...'
@@ -180,7 +157,7 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
     }
 
     seedSpinner.text = 'Analyzing database schema...'
-    const schemas = await getTableSchemas(db, options.tables)
+    const schemas = await getTableSchemas(db, dialect, options.tables)
 
     if (schemas.length === 0) {
       seedSpinner.warn('No tables found to seed')
@@ -195,7 +172,7 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
       cleanSpinner.start('Cleaning tables...')
 
       for (const schema of schemas) {
-        await cleanTable(db, schema.name)
+        await cleanTable(db, dialect, schema.name)
       }
 
       cleanSpinner.succeed('Tables cleaned')
@@ -214,6 +191,7 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
 
       const tableResult = await seedTable(
         db,
+        dialect,
         schema,
         count,
         options.strategy ?? 'realistic',
@@ -254,7 +232,11 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
   }
 }
 
-async function getTableSchemas(db: SeedDatabase, tables?: string[]): Promise<TableSchema[]> {
+async function getTableSchemas(
+  db: SeedDatabase,
+  dialect: DatabaseDialect,
+  tables?: string[]
+): Promise<TableSchema[]> {
   const schemas: TableSchema[] = []
 
   try {
@@ -263,7 +245,8 @@ async function getTableSchemas(db: SeedDatabase, tables?: string[]): Promise<Tab
     if (tables && tables.length > 0) {
       tableList = tables
     } else {
-      if (db.dialectName === 'postgres') {
+      const { CompiledQuery } = await import('kysely')
+      if (dialect === 'postgres') {
         const result = await db
           .selectFrom('information_schema.tables')
           .select('table_name')
@@ -272,26 +255,28 @@ async function getTableSchemas(db: SeedDatabase, tables?: string[]): Promise<Tab
           .execute()
 
         tableList = result.map(r => r.table_name as string)
-      } else if (db.dialectName === 'mysql') {
-        // mysql2 returns [rows, fields]; column case varies by server version
-        const result = await db.raw<[{ TABLE_NAME?: string; table_name: string }[], unknown]>(`
-          SELECT table_name FROM information_schema.tables
-          WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'
-        `)
-
-        tableList = result[0].map(r => r.TABLE_NAME ?? r.table_name)
-      } else if (db.dialectName === 'sqlite') {
-        const result = await db.raw<{ name: string }[]>(`
-          SELECT name FROM sqlite_master
-          WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-        `)
-
-        tableList = result.map(r => r.name)
+      } else if (dialect === 'mysql') {
+        const result = await db.executeQuery<{ table_name: string }>(
+          CompiledQuery.raw(
+            `SELECT TABLE_NAME AS table_name FROM information_schema.tables
+             WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'`,
+            []
+          )
+        )
+        tableList = result.rows.map(r => r.table_name)
+      } else {
+        const result = await db.executeQuery<{ name: string }>(
+          CompiledQuery.raw(
+            `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`,
+            []
+          )
+        )
+        tableList = result.rows.map(r => r.name)
       }
     }
 
     for (const tableName of tableList) {
-      const columns = await getTableColumns(db, tableName)
+      const columns = await getTableColumns(db, dialect, tableName)
       schemas.push({ name: tableName, columns })
     }
   } catch (error) {
@@ -303,6 +288,7 @@ async function getTableSchemas(db: SeedDatabase, tables?: string[]): Promise<Tab
 
 async function getTableColumns(
   db: SeedDatabase,
+  dialect: DatabaseDialect,
   tableName: string
 ): Promise<TableSchema['columns']> {
   const columns: TableSchema['columns'] = []
@@ -311,7 +297,8 @@ async function getTableColumns(
   validateIdentifier(tableName, 'table')
 
   try {
-    if (db.dialectName === 'postgres') {
+    const { CompiledQuery } = await import('kysely')
+    if (dialect === 'postgres') {
       const result = await db
         .selectFrom('information_schema.columns as c')
         .leftJoin('information_schema.key_column_usage as k', join =>
@@ -331,14 +318,14 @@ async function getTableColumns(
         ])
         .where('c.table_name', '=', tableName)
         .where('c.table_schema', '=', 'public')
-        .execute<{
-          column_name: string
-          data_type: string
-          is_nullable: string
-          constraint_type: string | null
-        }>()
+        .execute()
 
-      for (const col of result) {
+      for (const col of result as {
+        column_name: string
+        data_type: string
+        is_nullable: string
+        constraint_type: string | null
+      }[]) {
         columns.push({
           name: col.column_name,
           type: col.data_type,
@@ -346,28 +333,23 @@ async function getTableColumns(
           primaryKey: col.constraint_type === 'PRIMARY KEY'
         })
       }
-    } else if (db.dialectName === 'mysql') {
-      const result = await db.raw<
-        [
-          {
-            column_name: string
-            data_type: string
-            is_nullable: string
-            column_key: string
-          }[],
-          unknown
-        ]
-      >(
-        `
-        SELECT COLUMN_NAME as column_name, DATA_TYPE as data_type,
-               IS_NULLABLE as is_nullable, COLUMN_KEY as column_key
-        FROM information_schema.columns
-        WHERE table_name = ? AND table_schema = DATABASE()
-      `,
-        [tableName]
+    } else if (dialect === 'mysql') {
+      const result = await db.executeQuery<{
+        column_name: string
+        data_type: string
+        is_nullable: string
+        column_key: string
+      }>(
+        CompiledQuery.raw(
+          `SELECT COLUMN_NAME as column_name, DATA_TYPE as data_type,
+                  IS_NULLABLE as is_nullable, COLUMN_KEY as column_key
+           FROM information_schema.columns
+           WHERE table_name = ? AND table_schema = DATABASE()`,
+          [tableName]
+        )
       )
 
-      for (const col of result[0]) {
+      for (const col of result.rows) {
         columns.push({
           name: col.column_name,
           type: col.data_type,
@@ -375,14 +357,17 @@ async function getTableColumns(
           primaryKey: col.column_key === 'PRI'
         })
       }
-    } else if (db.dialectName === 'sqlite') {
-      // Use parameterized approach for SQLite PRAGMA
+    } else {
+      // PRAGMA cannot be parameterized; the identifier is validated above
       const validTableName = validateIdentifier(tableName, 'table')
-      const result = await db.raw<{ name: string; type: string; notnull: number; pk: number }[]>(
-        `PRAGMA table_info('${validTableName}')`
-      )
+      const result = await db.executeQuery<{
+        name: string
+        type: string
+        notnull: number
+        pk: number
+      }>(CompiledQuery.raw(`PRAGMA table_info('${validTableName}')`, []))
 
-      for (const col of result) {
+      for (const col of result.rows) {
         columns.push({
           name: col.name,
           type: col.type,
@@ -426,13 +411,17 @@ function sortTablesByDependencies(schemas: TableSchema[]): TableSchema[] {
   return sorted
 }
 
-async function cleanTable(db: SeedDatabase, tableName: string): Promise<void> {
+async function cleanTable(
+  db: SeedDatabase,
+  dialect: DatabaseDialect,
+  tableName: string
+): Promise<void> {
   try {
     // Validate and use safe truncate
     validateIdentifier(tableName, 'table')
-    if (db.dialectName === 'postgres' || db.dialectName === 'mysql') {
-      const dialect = db.dialectName === 'postgres' ? 'postgres' : 'mysql'
-      await db.raw(safeTruncate(tableName, dialect, true))
+    if (dialect === 'postgres' || dialect === 'mysql') {
+      const { CompiledQuery } = await import('kysely')
+      await db.executeQuery(CompiledQuery.raw(safeTruncate(tableName, dialect, true), []))
     } else {
       await db.deleteFrom(tableName).execute()
     }
@@ -443,6 +432,7 @@ async function cleanTable(db: SeedDatabase, tableName: string): Promise<void> {
 
 async function seedTable(
   db: SeedDatabase,
+  dialect: DatabaseDialect,
   schema: TableSchema,
   count: number,
   strategy: string,
@@ -459,7 +449,7 @@ async function seedTable(
   }
 
   for (let i = 0; i < actualCount; i++) {
-    const record = await generateRecord(db, schema, strategy, createRelationships)
+    const record = await generateRecord(db, dialect, schema, strategy, createRelationships)
 
     if (record) {
       records.push(record)
@@ -485,6 +475,7 @@ async function seedTable(
 
 async function generateRecord(
   db: SeedDatabase,
+  dialect: DatabaseDialect,
   schema: TableSchema,
   strategy: string,
   createRelationships: boolean
@@ -503,6 +494,7 @@ async function generateRecord(
     if (column.foreignKey && createRelationships) {
       const foreignValue = await getRandomForeignKey(
         db,
+        dialect,
         column.foreignKey.table,
         column.foreignKey.column
       )
@@ -625,14 +617,18 @@ function generateColumnValue(column: TableSchema['columns'][0], strategy: string
 
 async function getRandomForeignKey(
   db: SeedDatabase,
+  dialect: DatabaseDialect,
   tableName: string,
   columnName: string
 ): Promise<unknown> {
   try {
+    const { sql } = await import('kysely')
+    // Random ordering is spelled differently per dialect
+    const randomFn = dialect === 'mysql' ? sql`RAND()` : sql`random()`
     const result = await db
       .selectFrom(tableName)
       .select(columnName)
-      .orderBy(db.fn('random'))
+      .orderBy(randomFn)
       .limit(1)
       .executeTakeFirst()
 

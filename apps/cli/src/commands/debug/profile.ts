@@ -8,10 +8,16 @@ import { withDatabase } from '../../utils/with-database.js'
 import type {
   DatabaseInstance,
   QueryPlan,
+  QueryResult,
   PostgresExplainTextRow,
   MySQLPlan,
   SQLitePlan
 } from '../../types/index.js'
+
+async function executeRaw(db: DatabaseInstance, sql: string): Promise<QueryResult> {
+  const { CompiledQuery } = await import('kysely')
+  return db.executeQuery(CompiledQuery.raw(sql, []))
+}
 
 export interface ProfileOptions {
   query?: string
@@ -79,7 +85,7 @@ async function profileQuery(options: ProfileOptions): Promise<void> {
     } else if (options.table) {
       queryToProfile = generateQueryForTable(options.table, options.operation ?? 'select')
     } else {
-      throw new CLIError('No query specified', 'MISSING_QUERY', [
+      throw new CLIError('No query specified', 'MISSING_QUERY', undefined, [
         'Use --query to specify a SQL query',
         'Or use --table to profile a table'
       ])
@@ -130,7 +136,7 @@ async function runProfile(
 
   for (let i = 0; i < warmupRuns; i++) {
     try {
-      await db.executeQuery(db.raw(query))
+      await executeRaw(db, query)
     } catch (error) {
       throw new CLIError(
         `Query failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -145,7 +151,7 @@ async function runProfile(
     const startTime = process.hrtime.bigint()
 
     try {
-      const result = await db.executeQuery(db.raw(query))
+      const result = await executeRaw(db, query)
 
       const endTime = process.hrtime.bigint()
       const duration = Number(endTime - startTime) / 1000000
@@ -211,13 +217,13 @@ async function getQueryPlan(
 ): Promise<QueryPlan[] | PostgresExplainTextRow[] | MySQLPlan[] | SQLitePlan[] | null> {
   try {
     if (dialect === 'postgres') {
-      const result = await db.executeQuery(db.raw(`EXPLAIN ANALYZE ${query}`))
+      const result = await executeRaw(db, `EXPLAIN ANALYZE ${query}`)
       return result.rows as PostgresExplainTextRow[]
     } else if (dialect === 'mysql') {
-      const result = await db.executeQuery(db.raw(`EXPLAIN ${query}`))
+      const result = await executeRaw(db, `EXPLAIN ${query}`)
       return result.rows as MySQLPlan[]
     } else if (dialect === 'sqlite') {
-      const result = await db.executeQuery(db.raw(`EXPLAIN QUERY PLAN ${query}`))
+      const result = await executeRaw(db, `EXPLAIN QUERY PLAN ${query}`)
       return result.rows as SQLitePlan[]
     }
     return null

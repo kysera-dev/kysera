@@ -1,10 +1,12 @@
 import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
+import { formatTimestampForDb } from '@kysera/core'
 import { guardDestructive } from '../../utils/guard.js'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
+import { auditTableExists, auditTableMissingHint, resolveAuditTable } from './shared.js'
 
 export interface CleanupOptions {
   olderThan?: string
@@ -45,7 +47,7 @@ export function cleanupCommand(): Command {
 async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
   // Validate options
   if (!options.olderThan) {
-    throw new CLIError('Duration is required', 'MISSING_DURATION', [
+    throw new CLIError('Duration is required', 'MISSING_DURATION', undefined, [
       'Specify --older-than with a duration (e.g., 30d, 3m, 1y)'
     ])
   }
@@ -62,7 +64,7 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
   const config = await loadConfig(options.config)
 
   if (!config.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
+    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
     ])
@@ -72,35 +74,34 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
   const db = await getDatabaseConnection(config.database)
 
   if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
+    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
       'Check your database configuration',
       'Ensure the database server is running'
     ])
   }
 
+  const auditTable = resolveAuditTable(config)
+  const dialect = config.database.dialect
+  // changed_at is stored as text in the plugin's own format
+  const cutoff = formatTimestampForDb(cutoffDate, dialect)
   const analyzeSpinner = spinner()
   analyzeSpinner.start('Analyzing audit logs to clean up...')
 
   try {
-    // Check if audit_logs table exists
-    const tables = await db
-      .selectFrom('information_schema.tables')
-      .select('table_name')
-      .where('table_name', '=', 'audit_logs')
-      .execute()
-
-    if (tables.length === 0) {
-      analyzeSpinner.fail('Audit logs table not found')
+    if (!(await auditTableExists(db, auditTable))) {
+      analyzeSpinner.fail('Audit table not found')
       console.log('')
-      console.log(prism.yellow('The audit_logs table does not exist.'))
+      for (const line of auditTableMissingHint(auditTable)) {
+        console.log(prism.yellow(line))
+      }
       return
     }
 
     // Build query to count logs to delete
     let countQuery = db
-      .selectFrom('audit_logs')
+      .selectFrom(auditTable)
       .select(db.fn.countAll().as('count'))
-      .where('created_at', '<', cutoffDate)
+      .where('changed_at', '<', cutoff)
 
     if (options.table) {
       countQuery = countQuery.where('table_name', '=', options.table)
@@ -115,7 +116,7 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
     }
 
     // Get statistics about logs to delete
-    let statsQuery = db.selectFrom('audit_logs').where('created_at', '<', cutoffDate)
+    let statsQuery = db.selectFrom(auditTable).where('changed_at', '<', cutoff)
 
     if (options.table) {
       statsQuery = statsQuery.where('table_name', '=', options.table)
@@ -128,16 +129,16 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
       .execute()) as { table_name: string; count: unknown }[]
 
     const oldestLog = (await statsQuery
-      .select('created_at')
-      .orderBy('created_at', 'asc')
+      .select('changed_at')
+      .orderBy('changed_at', 'asc')
       .limit(1)
-      .executeTakeFirst()) as { created_at: string | Date } | undefined
+      .executeTakeFirst()) as { changed_at: string | Date } | undefined
 
     const newestLog = (await statsQuery
-      .select('created_at')
-      .orderBy('created_at', 'desc')
+      .select('changed_at')
+      .orderBy('changed_at', 'desc')
       .limit(1)
-      .executeTakeFirst()) as { created_at: string | Date } | undefined
+      .executeTakeFirst()) as { changed_at: string | Date } | undefined
 
     analyzeSpinner.succeed(`Found ${totalToDelete.toLocaleString()} audit logs to clean up`)
 
@@ -148,7 +149,7 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
     console.log(`  Cutoff Date: ${cutoffDate.toLocaleString()}`)
     console.log(`  Logs to Delete: ${totalToDelete.toLocaleString()}`)
     console.log(
-      `  Date Range: ${formatDate(oldestLog?.created_at)} → ${formatDate(newestLog?.created_at)}`
+      `  Date Range: ${formatDate(oldestLog?.changed_at)} → ${formatDate(newestLog?.changed_at)}`
     )
 
     if (tableStats.length > 0) {
@@ -196,9 +197,9 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
     while (deletedCount < totalToDelete) {
       // Get IDs to delete in this batch
       let batchQuery = db
-        .selectFrom('audit_logs')
+        .selectFrom(auditTable)
         .select('id')
-        .where('created_at', '<', cutoffDate)
+        .where('changed_at', '<', cutoff)
         .limit(batchSize)
 
       if (options.table) {
@@ -213,7 +214,7 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
 
       // Delete the batch
       const ids = batchIds.map(row => row.id)
-      await db.deleteFrom('audit_logs').where('id', 'in', ids).execute()
+      await db.deleteFrom(auditTable).where('id', 'in', ids).execute()
 
       deletedCount += batchIds.length
       batchCount++
@@ -242,11 +243,11 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
     if (config.database.dialect === 'postgres') {
       console.log('')
       console.log(prism.gray('💡 Tip: Run VACUUM to reclaim disk space:'))
-      console.log(prism.gray('   VACUUM ANALYZE audit_logs;'))
+      console.log(prism.gray(`   VACUUM ANALYZE ${auditTable};`))
     } else if (config.database.dialect === 'mysql') {
       console.log('')
       console.log(prism.gray('💡 Tip: Run OPTIMIZE TABLE to reclaim disk space:'))
-      console.log(prism.gray('   OPTIMIZE TABLE audit_logs;'))
+      console.log(prism.gray(`   OPTIMIZE TABLE ${auditTable};`))
     }
   } finally {
     // Close database connection
@@ -257,7 +258,7 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
 function parseDuration(duration: string): Date {
   const match = /^(\d+)([dmy])$/.exec(duration)
   if (!match) {
-    throw new CLIError(`Invalid duration format: ${duration}`, 'INVALID_DURATION', [
+    throw new CLIError(`Invalid duration format: ${duration}`, 'INVALID_DURATION', undefined, [
       'Use format like: 30d (days), 3m (months), 1y (years)'
     ])
   }

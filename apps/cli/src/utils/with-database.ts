@@ -86,7 +86,7 @@ export async function withDatabase<T>(
 
   try {
     // Cast to DatabaseInstance - the db has these methods at runtime
-    return await handler(db as DatabaseInstance, validatedConfig, schema)
+    return await handler(db, validatedConfig, schema)
   } finally {
     await db.destroy()
   }
@@ -129,7 +129,7 @@ export async function withDatabaseOptional<T>(
 
   if (config?.database) {
     const { getDatabaseConnection } = await import('./database.js')
-    db = (await getDatabaseConnection(config.database)) as DatabaseInstance | null
+    db = (await getDatabaseConnection(config.database))
   }
 
   // Determine schema: CLI option > config > default 'public'

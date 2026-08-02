@@ -66,7 +66,7 @@ async function manageCircuitBreaker(options: CircuitBreakerOptions): Promise<voi
   const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
+    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
     ])
@@ -84,7 +84,7 @@ async function manageCircuitBreaker(options: CircuitBreakerOptions): Promise<voi
   } else if (options.action === 'close') {
     await closeCircuitBreaker(circuitBreakers, options)
   } else {
-    throw new CLIError(`Invalid action: ${options.action}`, 'INVALID_ACTION', [
+    throw new CLIError(`Invalid action: ${options.action}`, 'INVALID_ACTION', undefined, [
       'Valid actions are: status, reset, open, close'
     ])
   }
@@ -187,7 +187,7 @@ async function showCircuitBreakerStatus(
   if (options.service) {
     const breaker = breakers.get(options.service)
     if (!breaker) {
-      throw new CLIError(`Service not found: ${options.service}`, 'SERVICE_NOT_FOUND', [
+      throw new CLIError(`Service not found: ${options.service}`, 'SERVICE_NOT_FOUND', undefined, [
         `Available services: ${Array.from(breakers.keys()).join(', ')}`
       ])
     }
@@ -400,7 +400,7 @@ async function openCircuitBreaker(
   options: CircuitBreakerOptions
 ): Promise<void> {
   if (!options.service) {
-    throw new CLIError('Service name required', 'MISSING_SERVICE', [
+    throw new CLIError('Service name required', 'MISSING_SERVICE', undefined, [
       'Use --service to specify which circuit breaker to open'
     ])
   }
@@ -432,7 +432,7 @@ async function closeCircuitBreaker(
   options: CircuitBreakerOptions
 ): Promise<void> {
   if (!options.service) {
-    throw new CLIError('Service name required', 'MISSING_SERVICE', [
+    throw new CLIError('Service name required', 'MISSING_SERVICE', undefined, [
       'Use --service to specify which circuit breaker to close'
     ])
   }

@@ -79,7 +79,9 @@ export function applyGlobalOptions(rootCommand: Command, actionCommand: Command)
 export function addGlobalOptions(command: Command): Command {
   return command
     .option('--verbose', 'Enable verbose output')
-    .option('-q, --quiet', 'Suppress non-essential output')
+    // Long form only: a root -q short would swallow subcommand -q flags
+    // (e.g. `kysera query analyze -q "SELECT 1"`).
+    .option('--quiet', 'Suppress non-essential output')
     .option('--dry-run', 'Preview changes without executing')
     .option('--config <path>', 'Path to configuration file')
     .option('--no-color', 'Disable colored output')

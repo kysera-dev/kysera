@@ -114,7 +114,7 @@ async function validateRepositories(options: ValidateRepositoryOptions): Promise
   const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
+    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
     ])
@@ -128,7 +128,7 @@ async function validateRepositories(options: ValidateRepositoryOptions): Promise
     const connection = await getDatabaseConnection(config.database)
 
     if (!connection) {
-      throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
+      throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
         'Check your database configuration',
         'Ensure the database server is running'
       ])

@@ -1,4 +1,4 @@
-import type { Kysely, RawBuilder } from 'kysely'
+import type { Kysely } from 'kysely'
 
 /**
  * Generic database schema type for dynamic table access.
@@ -7,15 +7,7 @@ import type { Kysely, RawBuilder } from 'kysely'
 export type Database = Record<string, Record<string, unknown>>
 
 /**
- * Compiled query interface for raw SQL execution.
- */
-export interface CompiledQuery {
-  sql: string
-  parameters: readonly unknown[]
-}
-
-/**
- * Query execution result.
+ * Query execution result (structural view of Kysely's QueryResult).
  */
 export interface QueryResult<T = unknown> {
   rows: T[]
@@ -25,25 +17,11 @@ export interface QueryResult<T = unknown> {
 }
 
 /**
- * Extended Kysely instance with helper methods for CLI usage.
- * Includes executeQuery and raw methods for convenient raw SQL execution.
- *
- * Note: These methods are dynamically available on Kysely instances at runtime,
- * but we declare them explicitly for type safety in the CLI.
+ * Kysely instance over the dynamic CLI schema. Raw SQL goes through
+ * `db.executeQuery(CompiledQuery.raw(...))` — no non-Kysely members exist
+ * on the runtime instance, so none are declared here.
  */
-export type DatabaseInstance = Kysely<Database> & {
-  /**
-   * Execute a raw SQL query.
-   * @param query - Raw SQL string or CompiledQuery
-   */
-  executeQuery(query: CompiledQuery | RawBuilder<unknown>): Promise<QueryResult>
-
-  /**
-   * Create a raw SQL builder.
-   * @param sql - SQL template string
-   */
-  raw<T = unknown>(sql: string): RawBuilder<T>
-}
+export type DatabaseInstance = Kysely<Database>
 
 /**
  * Base interface for query execution plans across all dialects.

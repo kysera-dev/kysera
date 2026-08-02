@@ -1,4 +1,3 @@
-import type { RawBuilder } from 'kysely'
 import { logger } from './logger.js'
 import { validateIdentifier } from './sql-sanitizer.js'
 import type { DatabaseInstance } from '../types/index.js'
@@ -10,12 +9,25 @@ export interface TableStatistics {
 }
 
 /**
- * Raw-SQL surface the size probes expect on the expression builder.
- * Structural type only: the probes run inside try/catch and fall back to
- * zeroed statistics when the runtime does not provide `raw`.
+ * SQL for the PostgreSQL size probe. The table is matched by name in the
+ * current schema via pg_class so exact case is honored ($1 is used for
+ * both relation and index sizes).
  */
-interface RawExpressionApi {
-  raw<T>(fragment: string): RawBuilder<T>
+export const PG_TABLE_SIZE_SQL = `SELECT pg_relation_size(c.oid) AS table_size, pg_indexes_size(c.oid) AS index_size
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relname = $1 AND n.nspname = current_schema()`
+
+/**
+ * SQL for the MySQL size probe against information_schema.
+ */
+export const MYSQL_TABLE_SIZE_SQL = `SELECT DATA_LENGTH AS table_size, INDEX_LENGTH AS index_size
+FROM information_schema.TABLES
+WHERE TABLE_NAME = ? AND TABLE_SCHEMA = DATABASE()`
+
+interface TableSizeRow {
+  table_size: number | string | bigint | null
+  index_size: number | string | bigint | null
 }
 
 /**
@@ -35,6 +47,7 @@ export async function getTableStatistics(
   try {
     // Validate table name to prevent SQL injection
     const validatedTableName = validateIdentifier(tableName, 'table')
+    const { CompiledQuery } = await import('kysely')
 
     // Get row count
     const countResult = await db
@@ -48,29 +61,19 @@ export async function getTableStatistics(
     let indexSize = 0
 
     if (dialect === 'postgres') {
-      const sizeResult = await db
-        .selectNoFrom(eb => [
-          (eb as unknown as RawExpressionApi)
-            .raw<number | string>(`pg_relation_size('${validatedTableName}')`)
-            .as('table_size'),
-          (eb as unknown as RawExpressionApi)
-            .raw<number | string>(`pg_indexes_size('${validatedTableName}')`)
-            .as('index_size')
-        ])
-        .executeTakeFirst()
-
-      size = Number(sizeResult?.table_size ?? 0)
-      indexSize = Number(sizeResult?.index_size ?? 0)
+      const sizeResult = await db.executeQuery(
+        CompiledQuery.raw(PG_TABLE_SIZE_SQL, [validatedTableName])
+      )
+      const row = sizeResult.rows[0] as TableSizeRow | undefined
+      size = Number(row?.table_size ?? 0)
+      indexSize = Number(row?.index_size ?? 0)
     } else if (dialect === 'mysql') {
-      const sizeResult = await db
-        .selectFrom('information_schema.TABLES')
-        .select(['DATA_LENGTH', 'INDEX_LENGTH'])
-        .where('TABLE_NAME', '=', validatedTableName)
-        .where('TABLE_SCHEMA', '=', db.raw('DATABASE()'))
-        .executeTakeFirst()
-
-      size = Number(sizeResult?.DATA_LENGTH ?? 0)
-      indexSize = Number(sizeResult?.INDEX_LENGTH ?? 0)
+      const sizeResult = await db.executeQuery(
+        CompiledQuery.raw(MYSQL_TABLE_SIZE_SQL, [validatedTableName])
+      )
+      const row = sizeResult.rows[0] as TableSizeRow | undefined
+      size = Number(row?.table_size ?? 0)
+      indexSize = Number(row?.index_size ?? 0)
     } else {
       // SQLite - estimate based on row count
       // SQLite doesn't provide easy access to table sizes

@@ -165,4 +165,33 @@ describe('CLI', () => {
       expect(consoleCmd.options.map(o => o.short)).not.toContain('-q')
     })
   })
+
+  describe('root short flags do not shadow subcommand flags', () => {
+    it('registers --version without a -v short', () => {
+      const versionOpt = program.options.find(o => o.long === '--version')!
+      expect(versionOpt.short).toBeUndefined()
+    })
+
+    it('registers --quiet without a -q short', () => {
+      const quietOpt = program.options.find(o => o.long === '--quiet')!
+      expect(quietOpt.short).toBeUndefined()
+    })
+
+    it('rejects a bare -v instead of printing the version', async () => {
+      // Before the fix, `kysera migrate status -v` printed the VERSION and
+      // exited; -v must no longer be a root flag at all.
+      await expect(program.parseAsync(['node', 'kysera', '-v'])).rejects.toMatchObject({
+        code: 'commander.unknownOption'
+      })
+    })
+
+    it('leaves -q available to query analyze/explain', () => {
+      const query = program.commands.find(cmd => cmd.name() === 'query')!
+      for (const sub of ['analyze', 'explain']) {
+        const cmd = query.commands.find(c => c.name() === sub)!
+        const queryOpt = cmd.options.find(o => o.long === '--query')
+        expect(queryOpt?.short, `${sub} should keep its -q short`).toBe('-q')
+      }
+    })
+  })
 })

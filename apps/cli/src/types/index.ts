@@ -5,7 +5,6 @@
 export type {
   Database,
   DatabaseInstance,
-  CompiledQuery,
   QueryResult,
   QueryPlan,
   PostgresPlan,

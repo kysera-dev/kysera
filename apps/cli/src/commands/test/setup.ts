@@ -3,7 +3,13 @@ import { prism } from '@xec-sh/kit'
 import { guardDestructive } from '../../utils/guard.js'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
-import { getDatabaseConnection } from '../../utils/database.js'
+import {
+  getDatabaseConnection,
+  normalizeDialect,
+  executeSqlScript,
+  type DatabaseDialect
+} from '../../utils/database.js'
+import { escapeTypedIdentifier } from '../../utils/sql-sanitizer.js'
 import { loadConfig } from '../../config/loader.js'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
@@ -35,19 +41,6 @@ interface SetupResult {
   duration: number
 }
 
-/**
- * Database target as this command consumes it. Kept loose on purpose:
- * schema-validated configs carry dialect 'postgres', but the branches below
- * (and test doubles) historically compare against 'postgresql', so the
- * dialect stays a plain string.
- */
-interface TestDatabaseTarget {
-  dialect?: string
-  database: string
-  host?: string
-  port?: number
-}
-
 /** Module shape expected from a migration file. */
 interface TestMigrationModule {
   up?: (db: Kysely<Database>) => unknown
@@ -56,17 +49,6 @@ interface TestMigrationModule {
 /** Module shape expected from a seeder file. */
 interface TestSeederModule {
   seed?: (db: Kysely<Database>) => unknown
-}
-
-/**
- * Structural view of the connection used by loadFixture: test doubles provide
- * a knex-style promise-returning `raw` alongside the insert builder.
- */
-interface FixtureLoadDatabase {
-  insertInto(table: string): {
-    values(row: Record<string, unknown>): { execute(): Promise<unknown> }
-  }
-  raw(sql: string): Promise<unknown>
 }
 
 export function testSetupCommand(): Command {
@@ -108,7 +90,7 @@ async function setupTestEnvironment(options: TestSetupOptions): Promise<void> {
   const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
+    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
     ])
@@ -135,7 +117,7 @@ async function setupTestEnvironment(options: TestSetupOptions): Promise<void> {
 
     const testConfig = {
       ...config,
-      database: { ...config.database, database: testDbName }
+      database: withDatabaseName(config.database, testDbName)
     }
 
     const dbExists = await checkDatabaseExists(testConfig.database)
@@ -190,7 +172,7 @@ async function setupTestEnvironment(options: TestSetupOptions): Promise<void> {
       setupSpinner.text = 'Loading fixtures...'
 
       for (const fixturePath of options.fixtures) {
-        await loadFixture(db as unknown as FixtureLoadDatabase, fixturePath, options.verbose ?? false)
+        await loadFixture(db, fixturePath, options.verbose ?? false)
         result.status.fixturesLoaded++
       }
     }
@@ -229,64 +211,186 @@ function generateTestDatabaseName(baseName: string, environment?: string): strin
   return `${baseName}_test`
 }
 
+/**
+ * Rebuild a database config to point at a different database. Connection
+ * strings are rewritten too: without this, drivers that prefer `connection`
+ * over the structured `database` field would silently keep operating on the
+ * ORIGINAL database while this command reports the test one.
+ */
+function withDatabaseName(config: DatabaseConfig, dbName: string): DatabaseConfig {
+  const next: DatabaseConfig = { ...config, database: dbName }
+  const dialect = normalizeDialect(config.dialect)
+
+  if (dialect === 'sqlite') {
+    // SQLite targets are plain file paths; the connection string (if any)
+    // points at the original file, so drop it in favor of `database`.
+    delete next.connection
+    return next
+  }
+
+  const connection = config.connection
+  if (typeof connection === 'string' && connection.includes('://')) {
+    const url = new URL(connection)
+    url.pathname = `/${dbName}`
+    next.connection = url.toString()
+  } else if (connection && typeof connection === 'object') {
+    next.connection = { ...connection, database: dbName }
+  }
+  return next
+}
+
+/**
+ * Connect to the server-level maintenance database (postgres /
+ * information_schema) so CREATE/DROP DATABASE can run for a database that
+ * does not exist yet.
+ */
+async function connectToAdminDatabase(
+  config: DatabaseConfig,
+  dialect: DatabaseDialect
+): Promise<Kysely<Database> | null> {
+  const adminName = dialect === 'postgres' ? 'postgres' : 'information_schema'
+  return getDatabaseConnection(withDatabaseName(config, adminName))
+}
+
 async function checkDatabaseExists(config: DatabaseConfig): Promise<boolean> {
-  try {
-    const db = await getDatabaseConnection(config)
-    if (db) {
-      await db.destroy()
+  const dialect = normalizeDialect(config.dialect)
+  const dbName = config.database
+  if (!dbName) return false
+
+  if (dialect === 'sqlite') {
+    try {
+      await fs.access(dbName)
       return true
+    } catch {
+      return false
     }
-    return false
+  }
+
+  const adminDb = await connectToAdminDatabase(config, dialect)
+  if (!adminDb) return false
+
+  try {
+    const { CompiledQuery } = await import('kysely')
+    const result =
+      dialect === 'postgres'
+        ? await adminDb.executeQuery(
+            CompiledQuery.raw('SELECT 1 FROM pg_database WHERE datname = $1', [dbName])
+          )
+        : await adminDb.executeQuery(
+            CompiledQuery.raw(
+              'SELECT 1 FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?',
+              [dbName]
+            )
+          )
+    return result.rows.length > 0
   } catch {
     return false
+  } finally {
+    await adminDb.destroy()
   }
 }
 
-async function createDatabase(config: TestDatabaseTarget): Promise<void> {
-  const { sql } = await import('kysely')
-  const dialect = config.dialect ?? 'postgresql'
+async function createDatabase(config: DatabaseConfig): Promise<void> {
+  const dialect = normalizeDialect(config.dialect)
   const dbName = config.database
+  if (!dbName) {
+    throw new CLIError('No test database name resolved', 'TEST_SETUP_ERROR')
+  }
 
-  if (dialect === 'postgresql') {
-    const adminConfig = { ...config, database: 'postgres' }
-    const db = await getDatabaseConnection(adminConfig as unknown as DatabaseConfig)
-    if (db) {
-      // Pre-existing: sql.id() interpolates as "[object Object]" in this raw
-      // string; kept as-is (behavior-neutral sweep), cast only silences lint.
-      await sql
-        .raw(`CREATE DATABASE IF NOT EXISTS ${sql.id(dbName) as unknown as string}`)
-        .execute(db)
-      await db.destroy()
+  if (dialect === 'sqlite') {
+    const parent = path.dirname(dbName)
+    if (parent && parent !== '.') {
+      await fs.mkdir(parent, { recursive: true })
     }
-  } else if (dialect === 'sqlite') {
-    const dbPath = config.database
-    await fs.mkdir(path.dirname(dbPath), { recursive: true })
-    await fs.writeFile(dbPath, '', { flag: 'a' })
+    await fs.writeFile(dbName, '', { flag: 'a' })
+    return
+  }
+
+  const adminDb = await connectToAdminDatabase(config, dialect)
+  if (!adminDb) {
+    throw new CLIError(
+      `Cannot connect to the ${dialect} server to create database '${dbName}'`,
+      'DATABASE_ERROR'
+    )
+  }
+
+  try {
+    const { CompiledQuery } = await import('kysely')
+    if (dialect === 'postgres') {
+      // PostgreSQL has no CREATE DATABASE IF NOT EXISTS: probe pg_database
+      // first, then create with a validated, quoted identifier (CREATE
+      // DATABASE cannot be parameterized).
+      const exists = await adminDb.executeQuery(
+        CompiledQuery.raw('SELECT 1 FROM pg_database WHERE datname = $1', [dbName])
+      )
+      if (exists.rows.length === 0) {
+        await adminDb.executeQuery(
+          CompiledQuery.raw(
+            `CREATE DATABASE ${escapeTypedIdentifier(dbName, 'database', 'postgres')}`,
+            []
+          )
+        )
+      }
+    } else {
+      await adminDb.executeQuery(
+        CompiledQuery.raw(
+          `CREATE DATABASE IF NOT EXISTS ${escapeTypedIdentifier(dbName, 'database', 'mysql')}`,
+          []
+        )
+      )
+    }
+  } finally {
+    await adminDb.destroy()
   }
 }
 
-async function dropDatabase(config: TestDatabaseTarget): Promise<void> {
-  const { sql } = await import('kysely')
-  const dialect = config.dialect ?? 'postgresql'
+async function dropDatabase(config: DatabaseConfig): Promise<void> {
+  const dialect = normalizeDialect(config.dialect)
   const dbName = config.database
+  if (!dbName) return
 
-  if (dialect === 'postgresql') {
-    const adminConfig = { ...config, database: 'postgres' }
-    const db = await getDatabaseConnection(adminConfig as unknown as DatabaseConfig)
-    if (db) {
-      // Pre-existing: sql.id() interpolates as "[object Object]" in this raw
-      // string; kept as-is (behavior-neutral sweep), cast only silences lint.
-      await sql
-        .raw(`DROP DATABASE IF EXISTS ${sql.id(dbName) as unknown as string}`)
-        .execute(db)
-      await db.destroy()
-    }
-  } else if (dialect === 'sqlite') {
+  if (dialect === 'sqlite') {
     try {
-      await fs.unlink(config.database)
+      await fs.unlink(dbName)
     } catch {
       /* nothing to remove */
     }
+    return
+  }
+
+  const adminDb = await connectToAdminDatabase(config, dialect)
+  if (!adminDb) {
+    throw new CLIError(
+      `Cannot connect to the ${dialect} server to drop database '${dbName}'`,
+      'DATABASE_ERROR'
+    )
+  }
+
+  try {
+    const { CompiledQuery } = await import('kysely')
+    if (dialect === 'postgres') {
+      await adminDb.executeQuery(
+        CompiledQuery.raw(
+          'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
+          [dbName]
+        )
+      )
+      await adminDb.executeQuery(
+        CompiledQuery.raw(
+          `DROP DATABASE IF EXISTS ${escapeTypedIdentifier(dbName, 'database', 'postgres')}`,
+          []
+        )
+      )
+    } else {
+      await adminDb.executeQuery(
+        CompiledQuery.raw(
+          `DROP DATABASE IF EXISTS ${escapeTypedIdentifier(dbName, 'database', 'mysql')}`,
+          []
+        )
+      )
+    }
+  } finally {
+    await adminDb.destroy()
   }
 }
 
@@ -339,7 +443,7 @@ async function runSeeders(db: Kysely<Database>, files: string[], verbose: boolea
 }
 
 async function loadFixture(
-  db: FixtureLoadDatabase,
+  db: Kysely<Database>,
   fixturePath: string,
   verbose: boolean
 ): Promise<void> {
@@ -356,7 +460,7 @@ async function loadFixture(
       }
     }
   } else if (fixturePath.endsWith('.sql')) {
-    await db.raw(content)
+    await executeSqlScript(db, content)
   }
 
   if (verbose) {
@@ -365,7 +469,7 @@ async function loadFixture(
 }
 
 async function createTestHelpers(
-  config: { database: { dialect: string; database: string; host?: string; port?: number } },
+  config: { database: DatabaseConfig },
   options: TestSetupOptions
 ): Promise<void> {
   const helperContent = `// Auto-generated test configuration

@@ -153,7 +153,7 @@ async function configurePlugin(
     // Handle set
     if (options.set) {
       if (options.value === undefined) {
-        throw new CLIError('Value required when setting configuration', 'CONFIG_ERROR', [
+        throw new CLIError('Value required when setting configuration', 'CONFIG_ERROR', undefined, [
           'Use --value <value> to specify the value'
         ])
       }
@@ -645,7 +645,7 @@ async function importPluginConfig(filename: string, config: KyseraConfig): Promi
   }
 
   if (!importData.plugin || !importData.config) {
-    throw new CLIError('Invalid import file format', 'IMPORT_ERROR', [
+    throw new CLIError('Invalid import file format', 'IMPORT_ERROR', undefined, [
       'File must contain "plugin" and "config" fields'
     ])
   }

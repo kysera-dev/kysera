@@ -4,25 +4,19 @@ import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
+import {
+  auditTableExists,
+  auditTableMissingHint,
+  parseJsonColumn,
+  resolveAuditTable,
+  type AuditLogRow
+} from './shared.js'
 
 export interface DiffOptions {
   json?: boolean
   unified?: boolean
   color?: boolean
   config?: string
-}
-
-/** Row shape of the audit_logs table as queried by the audit commands. */
-interface AuditLogRow {
-  id: number
-  table_name: string
-  entity_id: string
-  action: string
-  old_values: unknown
-  new_values: unknown
-  user_id: string | null
-  created_at: string | Date
-  metadata: unknown
 }
 
 /** Reconstructed entity state; null means the entity was deleted at that point. */
@@ -82,7 +76,7 @@ async function showEntityDiff(
   const config = await loadConfig(options.config)
 
   if (!config.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
+    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
     ])
@@ -92,23 +86,33 @@ async function showEntityDiff(
   const db = await getDatabaseConnection(config.database)
 
   if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
+    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
       'Check your database configuration',
       'Ensure the database server is running'
     ])
   }
 
+  const auditTable = resolveAuditTable(config)
   const diffSpinner = spinner()
   diffSpinner.start('Fetching entity history...')
 
   try {
-    // Get all audit logs for the entity
+    if (!(await auditTableExists(db, auditTable))) {
+      diffSpinner.fail('Audit table not found')
+      console.log('')
+      for (const line of auditTableMissingHint(auditTable)) {
+        console.log(prism.yellow(line))
+      }
+      return
+    }
+
+    // Get all audit logs for the entity (id order = insertion order)
     const history = (await db
-      .selectFrom('audit_logs')
+      .selectFrom(auditTable)
       .selectAll()
       .where('table_name', '=', tableName)
       .where('entity_id', '=', entityId)
-      .orderBy('created_at', 'asc')
+      .orderBy('id', 'asc')
       .execute()) as unknown as AuditLogRow[]
 
     if (history.length === 0) {
@@ -158,12 +162,12 @@ async function showEntityDiff(
           {
             from: {
               id: fromLog.id,
-              timestamp: fromLog.created_at,
+              timestamp: fromLog.changed_at,
               state: fromState
             },
             to: {
               id: toLog.id,
-              timestamp: toLog.created_at,
+              timestamp: toLog.changed_at,
               state: toState
             },
             diff: calculateDiff(fromState, toState)
@@ -179,8 +183,8 @@ async function showEntityDiff(
     console.log('')
     console.log(prism.bold(`🔄 Entity Diff: ${tableName} #${entityId}`))
     console.log(prism.gray('─'.repeat(60)))
-    console.log(`  From: Audit #${fromLog.id} (${formatDate(fromLog.created_at)})`)
-    console.log(`  To:   Audit #${toLog.id} (${formatDate(toLog.created_at)})`)
+    console.log(`  From: Audit #${fromLog.id} (${formatDate(fromLog.changed_at)})`)
+    console.log(`  To:   Audit #${toLog.id} (${formatDate(toLog.changed_at)})`)
     console.log(prism.gray('─'.repeat(60)))
 
     if (options.unified) {
@@ -203,10 +207,12 @@ async function showEntityDiff(
     console.log(`  Changed fields: ${diff.changed.length}`)
     console.log(`  Unchanged fields: ${diff.unchanged.length}`)
   } catch (error) {
-    if (error instanceof Error && error.message.includes('audit_logs')) {
-      diffSpinner.fail('Audit logs table not found')
+    if (error instanceof Error && error.message.includes(auditTable)) {
+      diffSpinner.fail('Audit table not found')
       console.log('')
-      console.log(prism.yellow('The audit_logs table does not exist.'))
+      for (const line of auditTableMissingHint(auditTable)) {
+        console.log(prism.yellow(line))
+      }
       return
     }
     throw error
@@ -228,10 +234,10 @@ function findLogByIdOrTime(history: AuditLogRow[], idOrTime: string): AuditLogRo
   if (!isNaN(asDate.getTime())) {
     // Find closest log to this timestamp
     let closest = history[0]
-    let minDiff = Math.abs(new Date(closest.created_at).getTime() - asDate.getTime())
+    let minDiff = Math.abs(new Date(closest.changed_at).getTime() - asDate.getTime())
 
     for (const log of history) {
-      const diff = Math.abs(new Date(log.created_at).getTime() - asDate.getTime())
+      const diff = Math.abs(new Date(log.changed_at).getTime() - asDate.getTime())
       if (diff < minDiff) {
         minDiff = diff
         closest = log
@@ -249,15 +255,15 @@ function buildStateAtPoint(history: AuditLogRow[], upToId: number): EntityState 
   for (const log of history) {
     if (log.id > upToId) break
 
-    const newValues = parseJson(log.new_values)
+    const newValues = parseJsonColumn(log.new_values)
 
-    if (log.action === 'INSERT') {
+    if (log.operation === 'INSERT') {
       // Set initial state
       state = { ...newValues }
-    } else if (log.action === 'UPDATE') {
+    } else if (log.operation === 'UPDATE') {
       // Apply updates
       state = { ...state, ...newValues }
-    } else if (log.action === 'DELETE') {
+    } else if (log.operation === 'DELETE') {
       // Entity was deleted at this point
       state = null
     }
@@ -375,7 +381,7 @@ function showUnifiedDiff(
   console.log(`--- ${table}/${entityId} (Audit #${fromLog.id})`)
   console.log(`+++ ${table}/${entityId} (Audit #${toLog.id})`)
   console.log(
-    `@@ -${fromLog.id},${String(fromLog.created_at)} +${toLog.id},${String(toLog.created_at)} @@`
+    `@@ -${fromLog.id},${String(fromLog.changed_at)} +${toLog.id},${String(toLog.changed_at)} @@`
   )
 
   if (!fromState) {
@@ -419,17 +425,6 @@ function showUnifiedDiff(
       console.log(` ${key}: ${formatValue(fromState[key])}`)
     }
   }
-}
-
-function parseJson(value: unknown): Record<string, unknown> {
-  if (typeof value === 'string') {
-    try {
-      return (JSON.parse(value) ?? {}) as Record<string, unknown>
-    } catch {
-      return {}
-    }
-  }
-  return (value ?? {}) as Record<string, unknown>
 }
 
 function formatDate(date: string | Date): string {

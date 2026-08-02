@@ -4,7 +4,7 @@ import { spinner } from '../../utils/spinner.js'
 import { guardDestructive } from '../../utils/guard.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError, CLIDatabaseError } from '../../utils/errors.js'
-import { getDatabaseConnection } from '../../utils/database.js'
+import { getDatabaseConnection, normalizeDialect } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
 import { validateIdentifier, safeTruncate, safeDropDatabase } from '../../utils/sql-sanitizer.js'
 import * as fs from 'node:fs/promises'
@@ -32,9 +32,9 @@ interface TeardownResult {
 }
 
 /**
- * Database config as consumed here. Kept loose on purpose: schema-validated
- * configs carry dialect 'postgres', but the branches below (and test doubles)
- * compare against 'postgresql', so the dialect stays a plain string.
+ * Database config as consumed here. Dialect stays a loose string on input
+ * ('postgresql' from plain-JS configs is tolerated); every branch decision
+ * goes through normalizeDialect.
  */
 interface TeardownDatabaseConfig {
   dialect?: string
@@ -78,7 +78,7 @@ async function teardownTestEnvironment(options: TestTeardownOptions): Promise<vo
   const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
+    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
     ])
@@ -201,9 +201,9 @@ async function findTestDatabases(
     pattern = '_test'
   }
 
-  const dialect = config.dialect ?? 'postgresql'
+  const dialect = normalizeDialect(config.dialect)
 
-  if (dialect === 'postgresql') {
+  if (dialect === 'postgres') {
     const adminConfig = { ...config, database: 'postgres' }
     const db = await getDatabaseConnection(adminConfig as unknown as DatabaseConfig)
     if (db) {
@@ -215,7 +215,19 @@ async function findTestDatabases(
       databases.push(...result.map(r => r.datname as string))
       await db.destroy()
     }
-  } else if (dialect === 'sqlite') {
+  } else if (dialect === 'mysql') {
+    const adminConfig = { ...config, database: 'information_schema' }
+    const db = await getDatabaseConnection(adminConfig as unknown as DatabaseConfig)
+    if (db) {
+      const result = await db
+        .selectFrom('information_schema.SCHEMATA')
+        .select('SCHEMA_NAME as schema_name')
+        .where('SCHEMA_NAME', 'like', `%${pattern}%`)
+        .execute()
+      databases.push(...result.map(r => r.schema_name as string))
+      await db.destroy()
+    }
+  } else {
     const testDir = process.cwd()
     const files = await fs.readdir(testDir)
     for (const file of files) {
@@ -244,9 +256,9 @@ async function truncateDatabase(
 
   try {
     let tables: string[] = []
-    const dialect = config.dialect ?? 'postgresql'
+    const dialect = normalizeDialect(config.dialect)
 
-    if (dialect === 'postgresql') {
+    if (dialect === 'postgres') {
       const result = await db
         .selectFrom('information_schema.tables')
         .select('table_name')
@@ -255,7 +267,16 @@ async function truncateDatabase(
         .execute()
       tables = result.map(r => r.table_name as string)
       await sql.raw('SET session_replication_role = replica').execute(db)
-    } else if (dialect === 'sqlite') {
+    } else if (dialect === 'mysql') {
+      const result = await db
+        .selectFrom('information_schema.tables')
+        .select('table_name')
+        .where('table_schema', '=', sql<string>`DATABASE()`)
+        .where('table_type', '=', 'BASE TABLE')
+        .execute()
+      tables = result.map(r => r.table_name as string)
+      await sql.raw('SET FOREIGN_KEY_CHECKS = 0').execute(db)
+    } else {
       const result = await sql
         .raw<{ name: string }>(
           `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`
@@ -271,8 +292,8 @@ async function truncateDatabase(
       }
       try {
         validateIdentifier(table, 'table')
-        if (dialect === 'postgresql') {
-          await sql.raw(safeTruncate(table, 'postgres', true)).execute(db)
+        if (dialect === 'postgres' || dialect === 'mysql') {
+          await sql.raw(safeTruncate(table, dialect, true)).execute(db)
         } else {
           await db.deleteFrom(table).execute()
         }
@@ -281,9 +302,11 @@ async function truncateDatabase(
       }
     }
 
-    if (dialect === 'postgresql') {
+    if (dialect === 'postgres') {
       await sql.raw('SET session_replication_role = DEFAULT').execute(db)
-    } else if (dialect === 'sqlite') {
+    } else if (dialect === 'mysql') {
+      await sql.raw('SET FOREIGN_KEY_CHECKS = 1').execute(db)
+    } else {
       await sql.raw('PRAGMA foreign_keys = ON').execute(db)
     }
   } finally {
@@ -293,10 +316,10 @@ async function truncateDatabase(
 
 async function dropTestDatabase(config: TeardownDatabaseConfig, dbName: string): Promise<void> {
   const { sql } = await import('kysely')
-  const dialect = config.dialect ?? 'postgresql'
-  const validDbName = validateIdentifier(dbName, 'database')
+  const dialect = normalizeDialect(config.dialect)
 
-  if (dialect === 'postgresql') {
+  if (dialect === 'postgres') {
+    const validDbName = validateIdentifier(dbName, 'database')
     const adminConfig = { ...config, database: 'postgres' }
     const db = await getDatabaseConnection(adminConfig as unknown as DatabaseConfig)
     if (db) {
@@ -306,7 +329,15 @@ async function dropTestDatabase(config: TeardownDatabaseConfig, dbName: string):
       await sql.raw(safeDropDatabase(dbName, 'postgres')).execute(db)
       await db.destroy()
     }
-  } else if (dialect === 'sqlite') {
+  } else if (dialect === 'mysql') {
+    validateIdentifier(dbName, 'database')
+    const adminConfig = { ...config, database: 'information_schema' }
+    const db = await getDatabaseConnection(adminConfig as unknown as DatabaseConfig)
+    if (db) {
+      await sql.raw(safeDropDatabase(dbName, 'mysql')).execute(db)
+      await db.destroy()
+    }
+  } else {
     try {
       await fs.unlink(dbName)
     } catch {

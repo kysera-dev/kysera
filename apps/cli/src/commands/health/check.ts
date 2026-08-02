@@ -4,12 +4,13 @@ import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
+import { parsePositiveIntOption } from '../../utils/option-parsers.js'
 import type { HealthCheckResult } from '@kysera/infra'
 
 export interface CheckOptions {
   json?: boolean
   watch?: boolean
-  /** Always set: commander applies a 5000ms default (may be NaN for bad input). */
+  /** Always set: commander applies a 5000ms default. */
   interval: number
   verbose?: boolean
   config?: string
@@ -20,7 +21,7 @@ export function checkCommand(): Command {
     .description('Perform a health check')
     .option('--json', 'Output as JSON')
     .option('--watch', 'Watch mode (continuous monitoring)')
-    .option('--interval <ms>', 'Check interval in ms', parseInt, 5000)
+    .option('--interval <ms>', 'Check interval in ms', parsePositiveIntOption, 5000)
     .option('-v, --verbose', 'Show detailed metrics')
     .option('-c, --config <path>', 'Path to configuration file')
     .action(async (options: CheckOptions) => {

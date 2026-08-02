@@ -51,7 +51,7 @@ async function dropSchema(name: string, options: DropOptions): Promise<void> {
     // Prevent dropping protected schemas
     const protectedSchemas = ['public', 'pg_catalog', 'information_schema']
     if (protectedSchemas.includes(name)) {
-      throw new CLIError(`Cannot drop protected schema: ${name}`, 'PROTECTED_SCHEMA', [
+      throw new CLIError(`Cannot drop protected schema: ${name}`, 'PROTECTED_SCHEMA', undefined, [
         'The public, pg_catalog, and information_schema schemas cannot be dropped'
       ])
     }

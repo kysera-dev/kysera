@@ -59,6 +59,12 @@ vi.mock('@kysera/infra', async importOriginal => {
   }
 })
 
+// metrics wraps the connection with the debug plugin before collecting;
+// identity-wrap here so the mock db passes through unchanged.
+vi.mock('@kysera/debug', () => ({
+  withDebug: vi.fn((db: unknown) => db)
+}))
+
 import { loadConfig } from '../../../src/config/loader.js'
 import { getDatabaseConnection } from '../../../src/utils/database.js'
 import { performHealthCheck, getMetrics } from '@kysera/infra'

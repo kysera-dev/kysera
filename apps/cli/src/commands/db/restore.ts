@@ -51,7 +51,7 @@ async function restoreDatabase(dumpFile: string, options: RestoreOptions): Promi
     dumpPath = dumpFile
   } else {
     if (!isPathSafe(baseDir, dumpFile)) {
-      throw new CLIError('Invalid file path: path traversal detected', 'INVALID_PATH', [
+      throw new CLIError('Invalid file path: path traversal detected', 'INVALID_PATH', undefined, [
         'Use an absolute path or a path within the current directory'
       ])
     }
@@ -153,10 +153,8 @@ async function restoreFromJson(
 }
 
 async function restoreFromSql(db: DatabaseInstance, sqlContent: string): Promise<void> {
-  const statements = sqlContent
-    .split(';')
-    .map(s => s.trim())
-    .filter(s => s.length > 0 && !s.startsWith('--'))
+  const { splitSqlStatements } = await import('../../utils/database.js')
+  const statements = splitSqlStatements(sqlContent)
 
   if (statements.length === 0) {
     throw new CLIError('No SQL statements found in dump file', 'INVALID_DUMP')
@@ -166,9 +164,7 @@ async function restoreFromSql(db: DatabaseInstance, sqlContent: string): Promise
 
   await db.transaction().execute(async trx => {
     for (const statement of statements) {
-      if (statement.trim() && !statement.startsWith('--')) {
-        await trx.executeQuery(CompiledQuery.raw(statement, []))
-      }
+      await trx.executeQuery(CompiledQuery.raw(statement, []))
     }
   })
 }

@@ -43,7 +43,10 @@ export function buildProgram(): Command {
   program
     .name('kysera')
     .description('Comprehensive command-line interface for Kysera toolkit')
-    .version(cliVersion(), '-v, --version', 'Show CLI version')
+    // Long form only: a root -v short would swallow subcommand -v flags
+    // (e.g. `kysera migrate status -v` printed the version instead of
+    // running the command with --verbose).
+    .version(cliVersion(), '--version', 'Show CLI version')
     .helpCommand('help [command]', 'Display help for command')
     .helpOption('-h, --help', 'Display help')
     .addHelpText(

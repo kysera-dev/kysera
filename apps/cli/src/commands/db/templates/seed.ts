@@ -35,7 +35,7 @@ import type { SeedContext } from '@kysera/cli';
  */
 export async function seed(db: Kysely<any>, context?: SeedContext): Promise<void> {
   if (!context) {
-    throw new ValidationError('SeedContext is required for factory-based seeding');
+    throw new Error('SeedContext is required for factory-based seeding');
   }
 
   const { factory, logger, verbose } = context;
@@ -126,7 +126,7 @@ export async function seed(db: Kysely<any>, context?: SeedContext): Promise<void
   const userIds = users.map((u) => u.id);
 
   if (userIds.length === 0) {
-    throw new ValidationError('No users found - ensure 01_users seed has run');
+    throw new Error('No users found - ensure 01_users seed has run');
   }
 
   // Create orders for users

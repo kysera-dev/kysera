@@ -65,7 +65,7 @@ async function cloneSchema(source: string, target: string, options: CloneOptions
     // Check if target schema already exists
     const targetExists = await adapter.schemaExists(db, targetSchema)
     if (targetExists) {
-      throw new CLIError(`Target schema '${targetSchema}' already exists`, 'TARGET_EXISTS', [
+      throw new CLIError(`Target schema '${targetSchema}' already exists`, 'TARGET_EXISTS', undefined, [
         'Use a different target name or drop the existing schema first'
       ])
     }

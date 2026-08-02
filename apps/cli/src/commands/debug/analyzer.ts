@@ -5,9 +5,11 @@ import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
+import { getTableStatistics as getSharedTableStatistics } from '../../utils/table-stats.js'
 import { loadConfig } from '../../config/loader.js'
 import type {
   DatabaseInstance,
+  QueryResult,
   PostgresPlan,
   PostgresExplainOutput,
   MySQLPlan,
@@ -15,6 +17,15 @@ import type {
   IndexInfo
 } from '../../types/index.js'
 import type { KyseraConfig } from '../../config/schema.js'
+
+async function executeRaw(
+  db: DatabaseInstance,
+  sql: string,
+  parameters: unknown[] = []
+): Promise<QueryResult> {
+  const { CompiledQuery } = await import('kysely')
+  return db.executeQuery(CompiledQuery.raw(sql, parameters))
+}
 
 export interface AnalyzerOptions {
   query?: string
@@ -90,17 +101,17 @@ async function analyzeQuery(options: AnalyzerOptions): Promise<void> {
   const config = (await loadConfig(options.config)) as KyseraConfig | null
 
   if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
+    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
     ])
   }
 
   // Get database connection
-  const db = (await getDatabaseConnection(config.database)) as DatabaseInstance | null
+  const db = (await getDatabaseConnection(config.database))
 
   if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
+    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
       'Check your database configuration',
       'Ensure the database server is running'
     ])
@@ -118,7 +129,7 @@ async function analyzeQuery(options: AnalyzerOptions): Promise<void> {
       // Generate a sample query for the table
       queryToAnalyze = `SELECT * FROM ${options.table} LIMIT 100`
     } else {
-      throw new CLIError('No query specified', 'MISSING_QUERY', [
+      throw new CLIError('No query specified', 'MISSING_QUERY', undefined, [
         'Use --query to specify a SQL query',
         'Or use --table to analyze a table'
       ])
@@ -197,7 +208,7 @@ async function analyzePostgresQuery(
       ? `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query}`
       : `EXPLAIN (FORMAT JSON) ${query}`
 
-    const result = await db.executeQuery(db.raw(explainQuery))
+    const result = await executeRaw(db, explainQuery)
 
     // Widened: the declared QueryResult type has required rows, but driver
     // results may omit them at runtime; the guard must stay meaningful.
@@ -255,7 +266,7 @@ async function analyzeMysqlQuery(
 ): Promise<void> {
   try {
     // Get EXPLAIN output
-    const explainResult = await db.executeQuery(db.raw(`EXPLAIN ${query}`))
+    const explainResult = await executeRaw(db, `EXPLAIN ${query}`)
 
     // Widened: the declared QueryResult type has required rows, but driver
     // results may omit them at runtime; the guard must stay meaningful.
@@ -307,7 +318,7 @@ async function analyzeSqliteQuery(
 ): Promise<void> {
   try {
     // Get EXPLAIN QUERY PLAN output
-    const explainResult = await db.executeQuery(db.raw(`EXPLAIN QUERY PLAN ${query}`))
+    const explainResult = await executeRaw(db, `EXPLAIN QUERY PLAN ${query}`)
 
     // Widened: the declared QueryResult type has required rows, but driver
     // results may omit them at runtime; the guard must stay meaningful.
@@ -327,7 +338,8 @@ async function analyzeSqliteQuery(
           }
         }
 
-        if (detail.includes('SCAN TABLE')) {
+        // SQLite <3.36 emits 'SCAN TABLE users', newer versions 'SCAN users'
+        if (detail.includes('SCAN TABLE') || detail.startsWith('SCAN ')) {
           analysis.warnings.push(`Full table scan detected: ${detail}`)
         }
       }
@@ -440,29 +452,22 @@ async function getTableStatistics(
 
   for (const tableName of tables) {
     try {
+      // Row count and sizes come from the shared dialect-aware probes
+      const shared = await getSharedTableStatistics(db, tableName, dialect)
       const tableStats: TableStatistics = {
         tableName,
-        rowCount: 0,
-        dataSize: 0,
-        indexSize: 0,
+        rowCount: shared.rows,
+        dataSize: shared.size,
+        indexSize: shared.indexSize,
         indexes: []
       }
 
-      // Get row count
-      const countResult = await db
-        .selectFrom(tableName)
-        .select(db.fn.countAll().as('count'))
-        .executeTakeFirst()
-      tableStats.rowCount = Number(countResult?.count ?? 0)
-
       // Get indexes
       if (dialect === 'postgres') {
-        const indexResult = await db.executeQuery(
-          db.raw(`
-          SELECT indexname, indexdef
-          FROM pg_indexes
-          WHERE tablename = '${tableName}'
-        `)
+        const indexResult = await executeRaw(
+          db,
+          'SELECT indexname, indexdef FROM pg_indexes WHERE tablename = $1',
+          [tableName]
         )
 
         for (const idx of indexResult.rows) {
@@ -499,7 +504,9 @@ function extractColumnsFromIndexDef(indexDef: string): string[] {
 
 function generateOptimizationSuggestions(analysis: QueryAnalysis): void {
   // Check for missing indexes
-  if (analysis.warnings.some(w => w.includes('Sequential scan') || w.includes('SCAN TABLE'))) {
+  if (
+    analysis.warnings.some(w => w.includes('Sequential scan') || w.includes('Full table scan'))
+  ) {
     analysis.suggestions.push('Consider adding indexes on filtered/joined columns')
   }
 

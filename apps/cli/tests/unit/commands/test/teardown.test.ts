@@ -12,9 +12,13 @@ vi.mock('node:fs/promises', () => ({
   rm: vi.fn().mockResolvedValue(undefined)
 }))
 
-vi.mock('../../../../src/utils/database.js', () => ({
-  getDatabaseConnection: vi.fn()
-}))
+vi.mock('../../../../src/utils/database.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../src/utils/database.js')>()
+  return {
+    ...actual,
+    getDatabaseConnection: vi.fn()
+  }
+})
 
 vi.mock('../../../../src/config/loader.js', () => ({
   loadConfig: vi.fn()

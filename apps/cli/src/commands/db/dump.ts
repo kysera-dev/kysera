@@ -134,7 +134,7 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
       } else {
         // Relative path - validate no traversal
         if (!isPathSafe(baseDir, outputFile)) {
-          throw new CLIError(`Invalid output path: ${outputFile}`, 'PATH_TRAVERSAL', [
+          throw new CLIError(`Invalid output path: ${outputFile}`, 'PATH_TRAVERSAL', undefined, [
             'Output path must not contain path traversal sequences',
             'Use a path within the current directory'
           ])
@@ -261,8 +261,9 @@ async function generateSqlDump(
     if (!options.dataOnly) {
       const tableInfo = await introspector.getTableInfo(tableName)
 
-      // Drop table if exists
-      lines.push(`DROP TABLE IF EXISTS "${tableName}" CASCADE;`)
+      // Drop table if exists (CASCADE is PostgreSQL-only syntax)
+      const dropSuffix = dialect === 'postgres' ? ' CASCADE' : ''
+      lines.push(`DROP TABLE IF EXISTS "${tableName}"${dropSuffix};`)
       lines.push(``)
 
       // Create table
@@ -307,9 +308,12 @@ async function generateSqlDump(
                 return `'${value.toISOString()}'`
               } else if (typeof value === 'boolean') {
                 return value ? 'TRUE' : 'FALSE'
+              } else if (typeof value === 'object') {
+                // JSON/array columns: String() would emit "[object Object]"
+                // and corrupt the dump; store the serialized JSON instead.
+                return `'${JSON.stringify(value).replace(/'/g, "''")}'`
               } else {
-                // Numbers, bigints and exotic values (buffers, json objects)
-                // keep their default stringification in SQL dumps
+                // Numbers and bigints keep their default stringification
                 const stringable = value as { toString(): string }
                 return String(stringable)
               }

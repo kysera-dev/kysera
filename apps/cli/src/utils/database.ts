@@ -12,6 +12,21 @@ import { logger } from './logger.js'
 
 export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite'
 
+/**
+ * Map loosely-specified dialect values to runtime dialects. Schema-validated
+ * configs always carry 'postgres', but plain-JS callers historically pass
+ * 'postgresql'; treating them differently made whole commands silent no-ops.
+ */
+export function normalizeDialect(dialect: string | undefined): DatabaseDialect {
+  if (dialect === 'postgresql' || dialect === 'postgres' || dialect === undefined) {
+    return 'postgres'
+  }
+  if (dialect === 'mysql' || dialect === 'sqlite') {
+    return dialect
+  }
+  throw new CLIDatabaseError(`Unsupported database dialect: ${dialect}`)
+}
+
 // Generic database type - can be extended with specific table schemas
 export type Database = Record<string, Record<string, unknown>>;
 
@@ -679,4 +694,36 @@ export async function runQuery(
   const { CompiledQuery } = await import('kysely')
   const result = await db.executeQuery(CompiledQuery.raw(query, params ?? []))
   return result.rows
+}
+
+/**
+ * Split an SQL script into individual statements.
+ *
+ * Strips `--` comment lines per statement instead of discarding whole
+ * chunks: a chunk like "-- Table: users\nDROP TABLE users" must yield the
+ * DROP statement, not be dropped because it starts with a comment.
+ */
+export function splitSqlStatements(script: string): string[] {
+  return script
+    .split(';')
+    .map(chunk =>
+      chunk
+        .split('\n')
+        .filter(line => !line.trim().startsWith('--'))
+        .join('\n')
+        .trim()
+    )
+    .filter(statement => statement.length > 0)
+}
+
+/**
+ * Execute a multi-statement SQL script statement by statement.
+ * Drivers generally reject multi-statement strings in a single prepared
+ * call, so scripts (fixtures, dumps) must be split first.
+ */
+export async function executeSqlScript(db: Kysely<Database>, script: string): Promise<void> {
+  const { CompiledQuery } = await import('kysely')
+  for (const statement of splitSqlStatements(script)) {
+    await db.executeQuery(CompiledQuery.raw(statement, []))
+  }
 }

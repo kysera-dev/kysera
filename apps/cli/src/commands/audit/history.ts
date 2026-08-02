@@ -3,7 +3,13 @@ import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
-import { logger } from '../../utils/logger.js'
+import {
+  auditTableExists,
+  auditTableMissingHint,
+  parseJsonColumn,
+  resolveAuditTable,
+  type AuditLogRow
+} from './shared.js'
 
 export interface HistoryOptions {
   /** Always set: commander applies a '20' default. */
@@ -13,19 +19,6 @@ export interface HistoryOptions {
   reverse?: boolean
   config?: string
   schema?: string
-}
-
-/** Row shape of the audit_logs table as queried by the audit commands. */
-interface AuditLogRow {
-  id: number
-  table_name: string
-  entity_id: string
-  action: string
-  old_values: unknown
-  new_values: unknown
-  user_id: string | null
-  created_at: string | Date
-  metadata: unknown
 }
 
 export function historyCommand(): Command {
@@ -63,25 +56,19 @@ async function showEntityHistory(
 ): Promise<void> {
   await withDatabase(
     { config: options.config, schema: options.schema },
-    async (db, _config, schema) => {
+    async (db, config, schema) => {
       // Use schema-aware db for PostgreSQL
       const schemaDb = schema !== 'public' ? db.withSchema(schema) : db
+      const auditTable = resolveAuditTable(config)
       const historySpinner = spinner()
       historySpinner.start(`Fetching history for ${tableName} #${entityId}...`)
 
-      // Check if audit_logs table exists
-      const tables = await schemaDb
-        .selectFrom('information_schema.tables')
-        .select('table_name')
-        .where('table_schema', '=', schema)
-        .where('table_name', '=', 'audit_logs')
-        .execute()
-
-      if (tables.length === 0) {
-        historySpinner.fail('Audit logs table not found')
+      if (!(await auditTableExists(db, auditTable, schema))) {
+        historySpinner.fail('Audit table not found')
         console.log('')
-        console.log(prism.yellow('The audit_logs table does not exist.'))
-        console.log(prism.gray('Audit logging is not enabled for this database.'))
+        for (const line of auditTableMissingHint(auditTable)) {
+          console.log(prism.yellow(line))
+        }
         return
       }
 
@@ -90,12 +77,12 @@ async function showEntityHistory(
       if (isNaN(limit) || limit <= 0) {
         throw new CLIError('Invalid limit value - must be a positive number')
       }
-      const query = db
-        .selectFrom('audit_logs')
+      const query = schemaDb
+        .selectFrom(auditTable)
         .selectAll()
         .where('table_name', '=', tableName)
         .where('entity_id', '=', entityId)
-        .orderBy('created_at', options.reverse ? 'asc' : 'desc')
+        .orderBy('id', options.reverse ? 'asc' : 'desc')
         .limit(limit)
 
       const history = (await query.execute()) as unknown as AuditLogRow[]
@@ -147,11 +134,11 @@ async function showEntityHistory(
           const line = isLast ? '  ' : '| '
 
           // Format timestamp
-          const timestamp = new Date(log.created_at).toLocaleString()
+          const timestamp = new Date(log.changed_at).toLocaleString()
 
-          // Format action with color
+          // Format operation with color
           let actionColor = prism.white
-          switch (log.action) {
+          switch (log.operation) {
             case 'INSERT':
               actionColor = prism.green
               break
@@ -165,7 +152,7 @@ async function showEntityHistory(
 
           // Main timeline entry
           console.log(
-            `${connector} ${prism.gray(timestamp)} | ${actionColor(log.action)} | ${log.user_id ?? prism.gray('system')}`
+            `${connector} ${prism.gray(timestamp)} | ${actionColor(log.operation)} | ${log.changed_by ?? prism.gray('system')}`
           )
 
           // Show audit ID if verbose
@@ -175,18 +162,18 @@ async function showEntityHistory(
 
           // Show changes if requested
           if (options.showValues) {
-            if (log.action === 'INSERT') {
+            if (log.operation === 'INSERT') {
               console.log(`${line}   ${prism.green('Created with:')}`)
               if (log.new_values) {
-                const values = parseJson(log.new_values)
+                const values = parseJsonColumn(log.new_values)
                 for (const [key, value] of Object.entries(values)) {
                   console.log(`${line}     ${key}: ${formatValue(value)}`)
                 }
               }
-            } else if (log.action === 'UPDATE') {
+            } else if (log.operation === 'UPDATE') {
               console.log(`${line}   ${prism.yellow('Changed fields:')}`)
-              const oldValues = parseJson(log.old_values)
-              const newValues = parseJson(log.new_values)
+              const oldValues = parseJsonColumn(log.old_values)
+              const newValues = parseJsonColumn(log.new_values)
 
               for (const key of new Set([...Object.keys(oldValues), ...Object.keys(newValues)])) {
                 if (oldValues[key] !== newValues[key]) {
@@ -195,10 +182,10 @@ async function showEntityHistory(
                   )
                 }
               }
-            } else if (log.action === 'DELETE') {
+            } else if (log.operation === 'DELETE') {
               console.log(`${line}   ${prism.red('Deleted with:')}`)
               if (log.old_values) {
-                const values = parseJson(log.old_values)
+                const values = parseJsonColumn(log.old_values)
                 for (const [key, value] of Object.entries(values)) {
                   console.log(`${line}     ${key}: ${formatValue(value)}`)
                 }
@@ -207,7 +194,7 @@ async function showEntityHistory(
 
             // Show metadata if available
             if (log.metadata) {
-              const metadata = parseJson(log.metadata)
+              const metadata = parseJsonColumn(log.metadata)
               if (Object.keys(metadata).length > 0) {
                 console.log(`${line}   ${prism.gray('Metadata:')}`)
                 for (const [key, value] of Object.entries(metadata)) {
@@ -230,8 +217,9 @@ async function showEntityHistory(
         // Calculate time span
         const firstEntry = history[history.length - 1]
         const lastEntry = history[0]
-        const timeSpan =
-          new Date(lastEntry.created_at).getTime() - new Date(firstEntry.created_at).getTime()
+        const timeSpan = Math.abs(
+          new Date(lastEntry.changed_at).getTime() - new Date(firstEntry.changed_at).getTime()
+        )
         const days = Math.floor(timeSpan / (1000 * 60 * 60 * 24))
         const hours = Math.floor((timeSpan % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
 
@@ -239,14 +227,14 @@ async function showEntityHistory(
         console.log(`  Total Changes: ${history.length}`)
         console.log(`  Time Span: ${days} days, ${hours} hours`)
 
-        // Count by action type
+        // Count by operation type
         const actionCounts: Record<string, number> = {}
         for (const log of history) {
-          const action = log.action
+          const action = log.operation
           actionCounts[action] = (actionCounts[action] || 0) + 1
         }
         console.log(
-          `  Actions: ${Object.entries(actionCounts)
+          `  Operations: ${Object.entries(actionCounts)
             .map(([a, c]) => `${a} (${c})`)
             .join(', ')}`
         )
@@ -254,7 +242,7 @@ async function showEntityHistory(
         // Count by user
         const userCounts: Record<string, number> = {}
         for (const log of history) {
-          const userId = log.user_id ?? 'system'
+          const userId = log.changed_by ?? 'system'
           userCounts[userId] = (userCounts[userId] || 0) + 1
         }
         const topUsers = Object.entries(userCounts)
@@ -273,18 +261,6 @@ async function showEntityHistory(
       }
     }
   )
-}
-
-function parseJson(value: unknown): Record<string, unknown> {
-  if (typeof value === 'string') {
-    try {
-      return (JSON.parse(value) ?? {}) as Record<string, unknown>
-    } catch (error) {
-      logger.debug('Failed to parse JSON value:', error)
-      return value as unknown as Record<string, unknown>
-    }
-  }
-  return (value ?? {}) as Record<string, unknown>
 }
 
 function formatValue(value: unknown): string {

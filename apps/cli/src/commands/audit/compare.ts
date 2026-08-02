@@ -4,24 +4,18 @@ import { spinner } from '../../utils/spinner.js'
 import { CLIError, ValidationError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
+import {
+  auditTableExists,
+  auditTableMissingHint,
+  parseJsonColumn,
+  resolveAuditTable,
+  type AuditLogRow
+} from './shared.js'
 
 export interface CompareOptions {
   json?: boolean
   showValues?: boolean
   config?: string
-}
-
-/** Row shape of the audit_logs table as queried by the audit commands. */
-interface AuditLogRow {
-  id: number
-  table_name: string
-  entity_id: string
-  action: string
-  old_values: unknown
-  new_values: unknown
-  user_id: string | null
-  created_at: string | Date
-  metadata: unknown
 }
 
 interface ObjectDiff {
@@ -60,7 +54,7 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
   const config = await loadConfig(options.config)
 
   if (!config.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
+    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
     ])
@@ -70,12 +64,13 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
   const db = await getDatabaseConnection(config.database)
 
   if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
+    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
       'Check your database configuration',
       'Ensure the database server is running'
     ])
   }
 
+  const auditTable = resolveAuditTable(config)
   const compareSpinner = spinner()
   compareSpinner.start('Fetching audit logs...')
 
@@ -91,10 +86,19 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
       throw new ValidationError('Invalid second audit log ID - must be a number')
     }
 
+    if (!(await auditTableExists(db, auditTable))) {
+      compareSpinner.fail('Audit table not found')
+      console.log('')
+      for (const line of auditTableMissingHint(auditTable)) {
+        console.log(prism.yellow(line))
+      }
+      return
+    }
+
     // Fetch both audit logs
     const [log1, log2] = (await Promise.all([
-      db.selectFrom('audit_logs').selectAll().where('id', '=', parsedId1).executeTakeFirst(),
-      db.selectFrom('audit_logs').selectAll().where('id', '=', parsedId2).executeTakeFirst()
+      db.selectFrom(auditTable).selectAll().where('id', '=', parsedId1).executeTakeFirst(),
+      db.selectFrom(auditTable).selectAll().where('id', '=', parsedId2).executeTakeFirst()
     ])) as unknown as [AuditLogRow | undefined, AuditLogRow | undefined]
 
     if (!log1) {
@@ -110,10 +114,10 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
     compareSpinner.succeed('Audit logs fetched successfully')
 
     // Parse values
-    const oldValues1 = parseJson(log1.old_values)
-    const newValues1 = parseJson(log1.new_values)
-    const oldValues2 = parseJson(log2.old_values)
-    const newValues2 = parseJson(log2.new_values)
+    const oldValues1 = parseJsonColumn(log1.old_values)
+    const newValues1 = parseJsonColumn(log1.new_values)
+    const oldValues2 = parseJsonColumn(log2.old_values)
+    const newValues2 = parseJsonColumn(log2.new_values)
 
     if (options.json) {
       console.log(
@@ -159,22 +163,22 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
     )
 
     // Action
-    const action1 = log1.action
-    const action2 = log2.action
+    const action1 = log1.operation
+    const action2 = log2.operation
     console.log(
       `  ${'Action'.padEnd(15)} | ${formatAction(action1).padEnd(20)} | ${formatAction(action2).padEnd(20)} ${action1 !== action2 ? prism.yellow('⚠') : ''}`
     )
 
     // User
-    const user1 = log1.user_id ?? 'system'
-    const user2 = log2.user_id ?? 'system'
+    const user1 = log1.changed_by ?? 'system'
+    const user2 = log2.changed_by ?? 'system'
     console.log(
       `  ${'User'.padEnd(15)} | ${user1.padEnd(20)} | ${user2.padEnd(20)} ${user1 !== user2 ? prism.yellow('⚠') : ''}`
     )
 
     // Timestamp
-    const time1 = new Date(log1.created_at)
-    const time2 = new Date(log2.created_at)
+    const time1 = new Date(log1.changed_at)
+    const time2 = new Date(log2.changed_at)
     console.log(
       `  ${'Timestamp'.padEnd(15)} | ${time1.toLocaleString().padEnd(20)} | ${time2.toLocaleString().padEnd(20)}`
     )
@@ -266,10 +270,12 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
       }
     }
   } catch (error) {
-    if (error instanceof Error && error.message.includes('audit_logs')) {
-      compareSpinner.fail('Audit logs table not found')
+    if (error instanceof Error && error.message.includes(auditTable)) {
+      compareSpinner.fail('Audit table not found')
       console.log('')
-      console.log(prism.yellow('The audit_logs table does not exist.'))
+      for (const line of auditTableMissingHint(auditTable)) {
+        console.log(prism.yellow(line))
+      }
       return
     }
     throw error
@@ -277,17 +283,6 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
     // Close database connection
     await db.destroy()
   }
-}
-
-function parseJson(value: unknown): Record<string, unknown> {
-  if (typeof value === 'string') {
-    try {
-      return (JSON.parse(value) ?? {}) as Record<string, unknown>
-    } catch {
-      return {}
-    }
-  }
-  return (value ?? {}) as Record<string, unknown>
 }
 
 function compareObjects(obj1: Record<string, unknown>, obj2: Record<string, unknown>): ObjectDiff {

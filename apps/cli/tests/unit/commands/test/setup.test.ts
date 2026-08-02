@@ -11,9 +11,13 @@ vi.mock('node:fs/promises', () => ({
   unlink: vi.fn().mockResolvedValue(undefined)
 }))
 
-vi.mock('../../../../src/utils/database.js', () => ({
-  getDatabaseConnection: vi.fn()
-}))
+vi.mock('../../../../src/utils/database.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../src/utils/database.js')>()
+  return {
+    ...actual,
+    getDatabaseConnection: vi.fn()
+  }
+})
 
 vi.mock('../../../../src/config/loader.js', () => ({
   loadConfig: vi.fn()
@@ -98,7 +102,7 @@ describe('test setup command', () => {
         ifNotExists: vi.fn().mockReturnThis(),
         ifExists: vi.fn().mockReturnThis()
       },
-      raw: vi.fn().mockResolvedValue([]),
+      executeQuery: vi.fn().mockResolvedValue({ rows: [] }),
       destroy: vi.fn().mockResolvedValue(undefined)
     }
 
@@ -205,6 +209,23 @@ describe('test setup command', () => {
 
       await command.parseAsync(['node', 'test'])
       expect(writeFile).toHaveBeenCalled()
+    })
+
+    it('should probe pg_database and emit valid PostgreSQL CREATE DATABASE', async () => {
+      await command.parseAsync(['node', 'test'])
+
+      const executed = (mockDb.executeQuery as Mock).mock.calls.map(
+        (call: [{ sql: string }]) => call[0].sql
+      )
+
+      // Existence probe goes through pg_database (CREATE DATABASE IF NOT
+      // EXISTS is not valid PostgreSQL)
+      expect(executed.some((sql: string) => sql.includes('FROM pg_database'))).toBe(true)
+
+      const createSql = executed.find((sql: string) => sql.startsWith('CREATE DATABASE'))
+      expect(createSql).toBe('CREATE DATABASE "myapp_test"')
+      expect(executed.every((sql: string) => !sql.includes('IF NOT EXISTS'))).toBe(true)
+      expect(executed.every((sql: string) => !sql.includes('[object'))).toBe(true)
     })
 
     it('should output JSON when --json is used', async () => {

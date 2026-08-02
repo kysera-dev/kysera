@@ -86,7 +86,7 @@ async function explainQuery(options: ExplainOptions): Promise<void> {
       )
     }
   } else {
-    throw new CLIError('No query specified', 'MISSING_QUERY', [
+    throw new CLIError('No query specified', 'MISSING_QUERY', undefined, [
       'Use --query to specify a SQL query',
       'Or use --file to read from a file'
     ])

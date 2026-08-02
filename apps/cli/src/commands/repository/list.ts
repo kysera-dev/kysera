@@ -1,5 +1,6 @@
 import { Command } from 'commander'
-import { prism, table, type TableOptions } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
+import { displayTable } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
@@ -303,10 +304,7 @@ function displayRepositories(
     }))
 
     console.log('')
-    // kit's `table` renders directly and returns void; it has always been
-    // handed the row array here even though its signature says TableOptions —
-    // runtime argument shape preserved.
-    table(tableData as unknown as TableOptions<Record<string, string>>)
+    displayTable(tableData)
   }
 
   // Summary

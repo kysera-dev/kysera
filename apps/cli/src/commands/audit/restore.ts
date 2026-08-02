@@ -1,28 +1,23 @@
 import { Command } from 'commander'
 import { prism, confirm } from '@xec-sh/kit'
+import { formatTimestampForDb } from '@kysera/core'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError, ValidationError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
+import {
+  auditTableExists,
+  auditTableMissingHint,
+  parseJsonColumn,
+  resolveAuditTable,
+  type AuditLogRow
+} from './shared.js'
 
 export interface RestoreOptions {
   dryRun?: boolean
   force?: boolean
   json?: boolean
   config?: string
-}
-
-/** Row shape of the audit_logs table as queried by the audit commands. */
-interface AuditLogRow {
-  id: number
-  table_name: string
-  entity_id: string
-  action: string
-  old_values: unknown
-  new_values: unknown
-  user_id: string | null
-  created_at: string | Date
-  metadata: unknown
 }
 
 export function restoreCommand(): Command {
@@ -55,7 +50,7 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
   const config = await loadConfig(options.config)
 
   if (!config.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
+    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
     ])
@@ -65,12 +60,14 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
   const db = await getDatabaseConnection(config.database)
 
   if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
+    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
       'Check your database configuration',
       'Ensure the database server is running'
     ])
   }
 
+  const auditTable = resolveAuditTable(config)
+  const dialect = config.database.dialect
   const restoreSpinner = spinner()
   restoreSpinner.start(`Fetching audit log #${auditLogId}...`)
 
@@ -81,9 +78,18 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
       throw new ValidationError('Invalid audit log ID - must be a number')
     }
 
+    if (!(await auditTableExists(db, auditTable))) {
+      restoreSpinner.fail('Audit table not found')
+      console.log('')
+      for (const line of auditTableMissingHint(auditTable)) {
+        console.log(prism.yellow(line))
+      }
+      return
+    }
+
     // Fetch the audit log entry
     const auditLog = (await db
-      .selectFrom('audit_logs')
+      .selectFrom(auditTable)
       .selectAll()
       .where('id', '=', id)
       .executeTakeFirst()) as unknown as AuditLogRow | undefined
@@ -98,9 +104,9 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     // Parse the audit log data
     const tableName = auditLog.table_name
     const entityId = auditLog.entity_id
-    const action = auditLog.action
-    const oldValues = parseJson(auditLog.old_values)
-    const createdAt = new Date(auditLog.created_at)
+    const action = auditLog.operation
+    const oldValues = parseJsonColumn(auditLog.old_values)
+    const createdAt = new Date(auditLog.changed_at)
 
     // Determine what to restore
     let restoreData: Record<string, unknown> | null = null
@@ -126,9 +132,9 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     console.log(`  ID: ${auditLogId}`)
     console.log(`  Table: ${tableName}`)
     console.log(`  Entity ID: ${entityId}`)
-    console.log(`  Action: ${formatAction(action)}`)
+    console.log(`  Operation: ${formatAction(action)}`)
     console.log(`  Timestamp: ${createdAt.toLocaleString()}`)
-    console.log(`  User: ${auditLog.user_id ?? 'system'}`)
+    console.log(`  User: ${auditLog.changed_by ?? 'system'}`)
 
     console.log('')
     console.log(prism.bold('🔄 Restore Plan:'))
@@ -209,6 +215,14 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     const executeSpinner = spinner()
     executeSpinner.start('Executing restore...')
 
+    // Restore entries are written in the plugin's own schema so they show
+    // up in `audit logs` / plugin queries like any other entry.
+    const restoreMetadata = JSON.stringify({
+      restored_from: auditLogId,
+      restore_timestamp: new Date().toISOString()
+    })
+    const changedAt = formatTimestampForDb(new Date(), dialect)
+
     await db.transaction().execute(async trx => {
       if (restoreAction === 'INSERT') {
         // Recreate deleted entity
@@ -221,18 +235,15 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
 
         // Create audit log for the restore
         await trx
-          .insertInto('audit_logs')
+          .insertInto(auditTable)
           .values({
             table_name: tableName,
             entity_id: entityId,
-            action: 'INSERT',
+            operation: 'INSERT',
             new_values: JSON.stringify(restoreData),
-            user_id: 'system',
-            metadata: JSON.stringify({
-              restored_from: auditLogId,
-              restore_timestamp: new Date().toISOString()
-            }),
-            created_at: new Date()
+            changed_by: 'system',
+            metadata: restoreMetadata,
+            changed_at: changedAt
           })
           .execute()
       } else if (restoreAction === 'UPDATE') {
@@ -254,19 +265,16 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
 
         // Create audit log for the restore
         await trx
-          .insertInto('audit_logs')
+          .insertInto(auditTable)
           .values({
             table_name: tableName,
             entity_id: entityId,
-            action: 'UPDATE',
+            operation: 'UPDATE',
             old_values: JSON.stringify(currentEntity),
             new_values: JSON.stringify(restoreData),
-            user_id: 'system',
-            metadata: JSON.stringify({
-              restored_from: auditLogId,
-              restore_timestamp: new Date().toISOString()
-            }),
-            created_at: new Date()
+            changed_by: 'system',
+            metadata: restoreMetadata,
+            changed_at: changedAt
           })
           .execute()
       } else if (restoreAction === 'DELETE') {
@@ -284,18 +292,15 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
 
         // Create audit log for the restore
         await trx
-          .insertInto('audit_logs')
+          .insertInto(auditTable)
           .values({
             table_name: tableName,
             entity_id: entityId,
-            action: 'DELETE',
+            operation: 'DELETE',
             old_values: JSON.stringify(currentEntity),
-            user_id: 'system',
-            metadata: JSON.stringify({
-              restored_from: auditLogId,
-              restore_timestamp: new Date().toISOString()
-            }),
-            created_at: new Date()
+            changed_by: 'system',
+            metadata: restoreMetadata,
+            changed_at: changedAt
           })
           .execute()
       }
@@ -323,11 +328,12 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
       )
     }
   } catch (error) {
-    if (error instanceof Error && error.message.includes('audit_logs')) {
-      restoreSpinner.fail('Audit logs table not found')
+    if (error instanceof Error && error.message.includes(auditTable)) {
+      restoreSpinner.fail('Audit table not found')
       console.log('')
-      console.log(prism.yellow('The audit_logs table does not exist.'))
-      console.log(prism.gray('Audit logging is not enabled for this database.'))
+      for (const line of auditTableMissingHint(auditTable)) {
+        console.log(prism.yellow(line))
+      }
       return
     }
     throw error
@@ -335,17 +341,6 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     // Close database connection
     await db.destroy()
   }
-}
-
-function parseJson(value: unknown): Record<string, unknown> {
-  if (typeof value === 'string') {
-    try {
-      return (JSON.parse(value) ?? {}) as Record<string, unknown>
-    } catch {
-      return value as unknown as Record<string, unknown>
-    }
-  }
-  return (value ?? {}) as Record<string, unknown>
 }
 
 function formatAction(action: string): string {

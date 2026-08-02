@@ -48,7 +48,7 @@ export function softDeletedCommand(): Command {
 
 async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
   if (!options.table) {
-    throw new CLIError('Table name is required', 'MISSING_TABLE', [
+    throw new CLIError('Table name is required', 'MISSING_TABLE', undefined, [
       'Use --table to specify a table name'
     ])
   }

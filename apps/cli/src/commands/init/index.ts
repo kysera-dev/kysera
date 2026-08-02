@@ -255,14 +255,14 @@ async function initProject(projectName: string | undefined, options: InitOptions
   // Validate options
   const template = options.template || 'basic'
   if (!(template in TEMPLATES)) {
-    throw new CLIError(`Invalid template: ${template}`, 'INVALID_TEMPLATE', [
+    throw new CLIError(`Invalid template: ${template}`, 'INVALID_TEMPLATE', undefined, [
       'Available templates: basic, api, graphql, monorepo'
     ])
   }
 
   const database = options.database || 'postgres'
   if (!(database in DATABASES)) {
-    throw new CLIError(`Invalid database: ${database}`, 'INVALID_DATABASE', [
+    throw new CLIError(`Invalid database: ${database}`, 'INVALID_DATABASE', undefined, [
       'Available databases: postgres, mysql, sqlite'
     ])
   }
@@ -270,7 +270,7 @@ async function initProject(projectName: string | undefined, options: InitOptions
   const plugins = options.plugins.split(',').filter(Boolean)
   for (const plugin of plugins) {
     if (!(plugin in PLUGINS)) {
-      throw new CLIError(`Invalid plugin: ${plugin}`, 'INVALID_PLUGIN', [
+      throw new CLIError(`Invalid plugin: ${plugin}`, 'INVALID_PLUGIN', undefined, [
         `Available plugins: ${Object.keys(PLUGINS).join(', ')}`
       ])
     }

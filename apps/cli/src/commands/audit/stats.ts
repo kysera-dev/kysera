@@ -1,11 +1,13 @@
 import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
 import type { SelectQueryBuilder } from 'kysely'
+import { formatTimestampForDb } from '@kysera/core'
 import { displayTable } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection, type Database } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
+import { auditTableExists, auditTableMissingHint, resolveAuditTable } from './shared.js'
 
 export interface StatsOptions {
   table?: string
@@ -17,11 +19,11 @@ export interface StatsOptions {
   config?: string
 }
 
-/** Base audit_logs query with period/table/user filters applied. */
-type AuditLogsQuery = SelectQueryBuilder<Database, 'audit_logs', object>
+/** Base audit query with period/table/user filters applied. */
+type AuditLogsQuery = SelectQueryBuilder<Database, string, object>
 
 interface ActionCountRow {
-  action: string
+  operation: string
   count: unknown
 }
 
@@ -31,7 +33,7 @@ interface TableCountRow {
 }
 
 interface UserCountRow {
-  user_id: string | null
+  changed_by: string | null
   count: unknown
 }
 
@@ -65,7 +67,7 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
   const config = await loadConfig(options.config)
 
   if (!config.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
+    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
     ])
@@ -75,28 +77,24 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
   const db = await getDatabaseConnection(config.database)
 
   if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
+    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
       'Check your database configuration',
       'Ensure the database server is running'
     ])
   }
 
+  const auditTable = resolveAuditTable(config)
+  const dialect = config.database.dialect
   const statsSpinner = spinner()
   statsSpinner.start('Calculating audit statistics...')
 
   try {
-    // Check if audit_logs table exists
-    const tables = await db
-      .selectFrom('information_schema.tables')
-      .select('table_name')
-      .where('table_name', '=', 'audit_logs')
-      .execute()
-
-    if (tables.length === 0) {
-      statsSpinner.fail('Audit logs table not found')
+    if (!(await auditTableExists(db, auditTable))) {
+      statsSpinner.fail('Audit table not found')
       console.log('')
-      console.log(prism.yellow('The audit_logs table does not exist.'))
-      console.log(prism.gray('Audit logging is not enabled for this database.'))
+      for (const line of auditTableMissingHint(auditTable)) {
+        console.log(prism.yellow(line))
+      }
       return
     }
 
@@ -104,8 +102,10 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
     const periodMs = parsePeriod(options.period || '1d')
     const startDate = new Date(Date.now() - periodMs)
 
-    // Build base query
-    let query = db.selectFrom('audit_logs').where('created_at', '>=', startDate)
+    // Build base query (changed_at is stored as text in the plugin's format)
+    let query = db
+      .selectFrom(auditTable)
+      .where('changed_at', '>=', formatTimestampForDb(startDate, dialect))
 
     // Apply filters
     if (options.table) {
@@ -113,7 +113,7 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
     }
 
     if (options.user) {
-      query = query.where('user_id', '=', options.user)
+      query = query.where('changed_by', '=', options.user)
     }
 
     // Get total count
@@ -125,11 +125,11 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
       return
     }
 
-    // Get statistics by action type
+    // Get statistics by operation type
     const actionStats = (await query
-      .select(['action'])
-      .select(db.fn.count('action').as('count'))
-      .groupBy('action')
+      .select(['operation'])
+      .select(db.fn.count('operation').as('count'))
+      .groupBy('operation')
       .execute()) as unknown as ActionCountRow[]
 
     // Get statistics by table
@@ -143,15 +143,15 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
 
     // Get statistics by user
     const userStats = (await query
-      .select(['user_id'])
-      .select(db.fn.count('user_id').as('count'))
-      .groupBy('user_id')
-      .orderBy(db.fn.count('user_id'), 'desc')
+      .select(['changed_by'])
+      .select(db.fn.count('changed_by').as('count'))
+      .groupBy('changed_by')
+      .orderBy(db.fn.count('changed_by'), 'desc')
       .limit(10)
       .execute()) as unknown as UserCountRow[]
 
     // Get time-based statistics
-    const timeStats = await getTimeBasedStats(query, options.period || '1d')
+    const timeStats = await getTimeBasedStats(query, options.period || '1d', dialect)
 
     statsSpinner.succeed('Statistics calculated successfully')
 
@@ -186,9 +186,9 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
         const percentage = Math.round((count / totalCount) * 100)
         const barLength = Math.round((count / maxActionCount) * 30)
         const bar = '█'.repeat(barLength) + '░'.repeat(30 - barLength)
-        const actionColor = getActionColor(stat.action)
+        const actionColor = getActionColor(stat.operation)
         console.log(
-          `  ${actionColor(stat.action.padEnd(8))}: ${count.toString().padStart(6)} (${percentage.toString().padStart(3)}%) ${prism.gray(bar)}`
+          `  ${actionColor(stat.operation.padEnd(8))}: ${count.toString().padStart(6)} (${percentage.toString().padStart(3)}%) ${prism.gray(bar)}`
         )
       }
 
@@ -213,7 +213,7 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
         const count = Number(stat.count)
         const barLength = Math.round((count / maxUserCount) * 30)
         const bar = '█'.repeat(barLength) + '░'.repeat(30 - barLength)
-        const userId = stat.user_id ?? 'system'
+        const userId = stat.changed_by ?? 'system'
         console.log(
           `  ${userId.padEnd(20)}: ${count.toString().padStart(6)} changes ${prism.gray(bar)}`
         )
@@ -239,7 +239,7 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
       // Operations by type
       console.log(prism.cyan('Operations by Type:'))
       const actionData = actionStats.map(stat => ({
-        Action: getActionColor(stat.action)(stat.action),
+        Action: getActionColor(stat.operation)(stat.operation),
         Count: Number(stat.count).toLocaleString(),
         Percentage: `${Math.round((Number(stat.count) / totalCount) * 100)}%`
       }))
@@ -259,7 +259,7 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
       console.log('')
       console.log(prism.cyan('Top Users:'))
       const userData = userStats.map(stat => ({
-        User: stat.user_id ?? 'system',
+        User: stat.changed_by ?? 'system',
         Changes: Number(stat.count).toLocaleString(),
         Percentage: `${Math.round((Number(stat.count) / totalCount) * 100)}%`
       }))
@@ -287,7 +287,8 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
 
 async function getTimeBasedStats(
   baseQuery: AuditLogsQuery,
-  period: string
+  period: string,
+  dialect: 'postgres' | 'mysql' | 'sqlite'
 ): Promise<{ period: string; count: number }[]> {
   const periodMs = parsePeriod(period)
   const intervals = getTimeIntervals(periodMs)
@@ -295,8 +296,8 @@ async function getTimeBasedStats(
   const stats: { period: string; count: number }[] = []
   for (const interval of intervals) {
     const count = (await baseQuery
-      .where('created_at', '>=', interval.start)
-      .where('created_at', '<', interval.end)
+      .where('changed_at', '>=', formatTimestampForDb(interval.start, dialect))
+      .where('changed_at', '<', formatTimestampForDb(interval.end, dialect))
       .select(eb => eb.fn.countAll().as('count'))
       .executeTakeFirst()) as { count: unknown } | undefined
 

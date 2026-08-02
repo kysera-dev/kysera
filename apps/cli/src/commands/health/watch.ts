@@ -5,10 +5,11 @@ import { logger } from '../../utils/logger.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
+import { parsePositiveIntOption } from '../../utils/option-parsers.js'
 import type { HealthCheck, HealthMetrics, HealthStatus } from '@kysera/infra'
 
 export interface WatchOptions {
-  /** Always set: commander applies a 5000ms default (may be NaN for bad input). */
+  /** Always set: commander applies a 5000ms default. */
   interval: number
   json?: boolean
   log?: string
@@ -29,7 +30,7 @@ interface MonitoringResult {
 export function watchCommand(): Command {
   const cmd = new Command('watch')
     .description('Continuous health monitoring')
-    .option('--interval <ms>', 'Check interval in ms', parseInt, 5000)
+    .option('--interval <ms>', 'Check interval in ms', parsePositiveIntOption, 5000)
     .option('--json', 'Output as JSON')
     .option('--log <file>', 'Log to file')
     .option('-c, --config <path>', 'Path to configuration file')
@@ -58,7 +59,7 @@ async function watchHealthContinuous(options: WatchOptions): Promise<void> {
   const config = await loadConfig(options.config)
 
   if (!config.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
+    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
     ])
@@ -93,7 +94,7 @@ async function watchHealthContinuous(options: WatchOptions): Promise<void> {
   const db = await getDatabaseConnection(config.database)
 
   if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
+    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
       'Check your database configuration',
       'Ensure the database server is running'
     ])

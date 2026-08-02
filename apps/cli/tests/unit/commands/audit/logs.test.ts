@@ -2,9 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vite
 import { Command } from 'commander'
 
 // Mock external dependencies before importing the module under test
-vi.mock('../../../../src/utils/database.js', () => ({
-  getDatabaseConnection: vi.fn()
-}))
+vi.mock('../../../../src/utils/database.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../src/utils/database.js')>()
+  return {
+    ...actual,
+    getDatabaseConnection: vi.fn()
+  }
+})
 
 vi.mock('../../../../src/config/loader.js', () => ({
   loadConfig: vi.fn()
@@ -76,6 +80,10 @@ describe('audit logs command', () => {
       orderBy: vi.fn().mockReturnThis(),
       limit: vi.fn().mockReturnThis(),
       execute: vi.fn().mockResolvedValue([]),
+      // the audit commands verify table existence via Kysely introspection
+      introspection: {
+        getTables: vi.fn().mockResolvedValue([{ name: 'audit_logs', schema: 'public' }])
+      },
       destroy: vi.fn().mockResolvedValue(undefined)
     }
 
@@ -177,32 +185,60 @@ describe('audit logs command', () => {
       expect(mockDb.where).toHaveBeenCalled()
     })
 
-    it('should filter by user id', async () => {
+    it('should filter by user id via the plugin changed_by column', async () => {
       mockDb.execute.mockResolvedValue([])
 
       await command.parseAsync(['node', 'test', '--user', 'user123'])
-      expect(mockDb.where).toHaveBeenCalled()
+      expect(mockDb.where).toHaveBeenCalledWith('changed_by', '=', 'user123')
     })
 
-    it('should filter by action type', async () => {
+    it('should filter by action type via the plugin operation column', async () => {
       mockDb.execute.mockResolvedValue([])
 
       await command.parseAsync(['node', 'test', '--action', 'INSERT'])
-      expect(mockDb.where).toHaveBeenCalled()
+      expect(mockDb.where).toHaveBeenCalledWith('operation', '=', 'INSERT')
+    })
+
+    it('should order by the plugin changed_at column', async () => {
+      mockDb.execute.mockResolvedValue([])
+
+      await command.parseAsync(['node', 'test'])
+      expect(mockDb.orderBy).toHaveBeenCalledWith('changed_at', 'desc')
+    })
+
+    it('should query the configured audit table name', async () => {
+      ;(loadConfig as Mock).mockResolvedValue({
+        database: { dialect: 'postgres', connection: 'postgres://localhost/test' },
+        plugins: { audit: { auditTable: 'custom_audit' } }
+      })
+      mockDb.introspection.getTables.mockResolvedValue([{ name: 'custom_audit', schema: 'public' }])
+      mockDb.execute.mockResolvedValue([])
+
+      await command.parseAsync(['node', 'test'])
+      expect(mockDb.selectFrom).toHaveBeenCalledWith('custom_audit')
     })
 
     it('should apply limit', async () => {
-      // Mock that table exists
-      mockDb.execute
-        .mockResolvedValueOnce([{ table_name: 'audit_logs' }]) // First call: check table exists
-        .mockResolvedValueOnce([]) // Second call: query results
+      mockDb.execute.mockResolvedValue([])
 
       await command.parseAsync(['node', 'test', '--limit', '100'])
       expect(mockDb.limit).toHaveBeenCalledWith(100)
     })
 
     it('should output JSON when --json is used', async () => {
-      mockDb.execute.mockResolvedValue([{ table_name: 'audit_logs' }])
+      mockDb.execute.mockResolvedValue([
+        {
+          id: 1,
+          table_name: 'users',
+          operation: 'UPDATE',
+          entity_id: '1',
+          changed_by: null,
+          changed_at: new Date().toISOString(),
+          old_values: '{"name":"a"}',
+          new_values: '{"name":"b"}',
+          metadata: null
+        }
+      ])
 
       await command.parseAsync(['node', 'test', '--json'])
       expect(consoleSpy.log).toHaveBeenCalled()
@@ -246,10 +282,13 @@ describe('audit logs command', () => {
   })
 
   describe('edge cases', () => {
-    it('should handle missing audit_logs table', async () => {
-      mockDb.execute.mockResolvedValue([])
+    it('should point at audit init when the audit table is missing', async () => {
+      mockDb.introspection.getTables.mockResolvedValue([])
 
       await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow()
+      expect(mockDb.selectFrom).not.toHaveBeenCalled()
+      const output = consoleSpy.log.mock.calls.map(call => String(call[0])).join('\n')
+      expect(output).toContain('kysera audit init')
     })
 
     it('should close database connection after execution', async () => {
@@ -273,32 +312,25 @@ describe('audit logs command', () => {
       await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow()
     })
 
-    it('should display verbose output when --verbose is used', async () => {
-      // First call for table check returns a row, second call for logs returns audit entries
-      let callCount = 0
-      mockDb.execute.mockImplementation(() => {
-        callCount++
-        if (callCount === 1) {
-          // Table exists check
-          return Promise.resolve([{ table_name: 'audit_logs' }])
+    it('should display verbose output for plugin-schema rows', async () => {
+      mockDb.execute.mockResolvedValue([
+        {
+          id: 1,
+          table_name: 'users',
+          operation: 'INSERT',
+          entity_id: '1',
+          changed_by: 'user1',
+          changed_at: new Date().toISOString(),
+          old_values: null,
+          new_values: '{"name":"test"}',
+          metadata: null
         }
-        // Return audit logs
-        return Promise.resolve([
-          {
-            id: 1,
-            table_name: 'users',
-            action: 'INSERT',
-            entity_id: '1',
-            user_id: 'user1',
-            created_at: new Date(),
-            old_values: null,
-            new_values: '{"name":"test"}'
-          }
-        ])
-      })
+      ])
 
       await command.parseAsync(['node', 'test', '--verbose'])
-      expect(consoleSpy.log).toHaveBeenCalled()
+      const output = consoleSpy.log.mock.calls.map(call => String(call[0])).join('\n')
+      expect(output).toContain('INSERT')
+      expect(output).toContain('user1')
     })
   })
 })
