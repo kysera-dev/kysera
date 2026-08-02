@@ -18,7 +18,7 @@ Starting from v0.8.0, the RLS plugin requires an RLS context by default. If you'
 ```typescript
 // Option 1: Use system context for privileged operations (recommended)
 await rlsContext.asSystemAsync(async () => {
-  await orm.posts.findAll() // Runs with full access
+  await postRepo.findAll() // Runs with full access
 })
 
 // Option 2: Disable requireContext and allow unfiltered queries (use with caution)
@@ -40,6 +40,8 @@ See [Migration from v0.7](#migration-from-v07) for details.
 ```bash
 npm install @kysera/rls
 ```
+
+`kysely` and `@kysera/executor` are **required** peer dependencies. `@kysera/repository` is an optional peer — install it when you use the Repository pattern (`createORM`), which unlocks the value-level policy checks and repository extensions described below. `zod` is optional and only needed for the `@kysera/rls/schema` validation subpath.
 
 ## Basic Usage
 
@@ -66,6 +68,7 @@ const rlsSchema = defineRLSSchema<Database>({
 
 // Create repository manager with RLS
 const orm = await createORM(db, [rlsPlugin({ schema: rlsSchema })])
+const postRepo = orm.createRepository(createPostRepository)
 
 // Use within RLS context
 await rlsContext.runAsync({ auth: { userId: 1, tenantId: 'acme', roles: ['user'] } }, async () => {
@@ -102,6 +105,8 @@ interface RLSPluginOptions<DB = unknown> {
   primaryKeyColumn?: string  // Primary key column name (default: 'id')
 }
 ```
+
+To validate these options at runtime, the optional `@kysera/rls/schema` subpath (requires `zod`) exports `RLSPluginOptionsSchema` together with its `RLSPluginOptionsInput` / `RLSPluginOptionsOutput` types.
 
 ### Security Configuration (v0.8.0+)
 
@@ -147,7 +152,7 @@ const plugin = rlsPlugin({
 ```typescript
 await rlsContext.asSystemAsync(async () => {
   // Full access with explicit intent
-  await orm.posts.findAll()
+  await postRepo.findAll()
 })
 ```
 
@@ -220,6 +225,7 @@ app.use(async (req, res, next) => {
 const orm = await createORM(db, [
   rlsPlugin({ schema: rlsSchema }) // Keep secure defaults
 ])
+const postRepo = orm.createRepository(createPostRepository)
 
 // In your cron job
 async function cleanupExpiredPosts() {
@@ -234,7 +240,7 @@ async function cleanupExpiredPosts() {
     },
     async () => {
       // Full access with clear intent
-      const expired = await orm.posts.findAll()
+      const expired = await postRepo.findAll()
       // ... cleanup logic
     }
   )
@@ -251,11 +257,12 @@ const orm = await createORM(db, [
     allowUnfilteredQueries: true
   })
 ])
+const postRepo = orm.createRepository(createPostRepository)
 
 // No context needed but less explicit
 async function cleanupExpiredPosts() {
   // Runs without RLS filtering
-  const expired = await orm.posts.findAll()
+  const expired = await postRepo.findAll()
   // ... cleanup logic
 }
 ```
@@ -269,6 +276,24 @@ interface TableRLSConfig {
   skipFor?: string[] // Roles that bypass RLS for this table only
 }
 ```
+
+Each element of `policies` is a `PolicyDefinition` — a single interface shared by all policy types (there are no per-type interfaces):
+
+```typescript
+interface PolicyDefinition {
+  type: PolicyType // 'allow' | 'deny' | 'filter' | 'validate'
+  operation: Operation | Operation[] // 'read' | 'create' | 'update' | 'delete' | 'all'
+  condition: PolicyCondition // returns boolean for allow/deny/validate, a conditions object for filter
+  name?: string // Used in error messages, audit logs, and overridePolicy()
+  priority?: number // Higher runs first (default 0; deny defaults to 100)
+  using?: string // Native RLS only: SQL for the USING clause
+  withCheck?: string // Native RLS only: SQL for the WITH CHECK clause
+  role?: string // Native RLS only: target database role
+  hints?: PolicyHints // Performance optimization hints
+}
+```
+
+You rarely write these by hand — the [policy builders](#policy-builders) below return them.
 
 ### Bypass Options Comparison
 
@@ -307,6 +332,17 @@ const rlsSchema = defineRLSSchema<Database>({
 ```
 
 ## Policy Builders
+
+All four builders take an optional final argument `options?: PolicyOptions` and return a `ConditionalPolicyDefinition` (a `PolicyDefinition` that may additionally carry an activation condition):
+
+```typescript
+interface PolicyOptions {
+  name?: string // Policy name for debugging and audit logs
+  priority?: number // Higher runs first (deny defaults to 100, others to 0)
+  hints?: PolicyHints // Performance optimization hints
+  condition?: PolicyActivationCondition // Activation gate — see Conditional Policy Activation
+}
+```
 
 ### allow
 
@@ -373,9 +409,14 @@ filter('read', ctx => ({
   deleted_at: null,
   status: 'published'
 }))
+
+// Arrays become IN (...) clauses — there is no $in operator
+filter('read', ctx => ({ organization_id: ctx.auth.organizationIds ?? [] }))
 ```
 
 **Operations:** Only `'read'` or `'all'` (which becomes `'read'`).
+
+**Condition values:** plain values compile to `=` comparisons and `null` to `IS NULL`. Pass an array directly to get a SQL `IN` clause — an empty array produces an impossible condition, so the query matches no rows. `undefined` values are skipped.
 
 ### validate
 
@@ -428,13 +469,16 @@ const rlsSchema = defineRLSSchema<Database>({
     defaultDeny: true
   },
 
-  // No policies = full access
-  public_content: {}
+  // To leave a table without RLS, omit it from the schema entirely
+  // (or list it in excludeTables). To keep it listed with full access:
+  public_content: { policies: [], defaultDeny: false }
 })
 
 // Merge multiple schemas
 const fullSchema = mergeRLSSchemas(tenantSchema, roleSchema, customSchema)
 ```
+
+`defineRLSSchema<DB>(schema: RLSSchema<DB>)` validates the schema and returns it; the table keys are type-constrained to the tables of `DB`. Every listed table must provide `policies` as an **array** — anything else (e.g. `public_content: {}`) throws `RLSSchemaError`. An empty `policies: []` array alone is not full access either: with the default `defaultDeny: true`, mutations on that table are denied because no allow policy can ever match. Full, unfiltered access is expressed by omitting the table from the schema (or via `excludeTables`), or — to keep the table listed explicitly — `{ policies: [], defaultDeny: false }`, which applies no filters and allows all mutations.
 
 ## Context Management
 
@@ -484,7 +528,7 @@ interface RLSContext<TUser = unknown, TMeta = unknown> {
   auth: RLSAuthContext<TUser> // Required authentication context
   request?: RLSRequestContext // Optional request info (for audit)
   meta?: TMeta // Optional custom metadata
-  timestamp: Date // Context creation timestamp
+  timestamp?: Date // Context creation timestamp (auto-set to new Date() when omitted)
 }
 ```
 
@@ -585,7 +629,7 @@ interface PolicyEvaluationContext {
 
 ### Policy Evaluation Flow
 
-Policies are evaluated differently depending on operation type:
+At initialization the plugin compiles the schema into a `PolicyRegistry` (also exported for advanced use), which groups each table's policies into allows, denies, filters, and validates. Policies are then evaluated differently depending on operation type:
 
 **For SELECT queries (`interceptQuery`):**
 
@@ -739,10 +783,13 @@ try {
 
 ### Error Types
 
+All RLS errors extend `RLSError`, which itself extends `DatabaseError` from `@kysera/core` — so existing `instanceof DatabaseError` handling catches them alongside other Kysera database errors.
+
 **`RLSPolicyViolation`**
 
 - Thrown when access is legitimately denied by a policy
 - User doesn't have permission for the operation
+- Carries `operation`, `table`, `reason`, and optionally `policyName` (no user information)
 - Should result in a 403 response
 
 **`RLSPolicyEvaluationError`**
@@ -772,6 +819,7 @@ allow('read', ctx => {
 
 - Thrown when RLS context is missing
 - Operation requires authentication but no context was set
+- Default message: `"No RLS context found. Ensure code runs within withRLSContext()"` (a custom message can be passed)
 - Should result in a 401 response
 
 ## DAL Pattern Support
@@ -920,17 +968,7 @@ const existingRow = await rawDb
 This ensures that internal queries used for policy evaluation don't trigger RLS filtering themselves.
 
 :::tip PostgreSQL Native RLS
-If you need PostgreSQL's native RLS for database-level security, you can use it alongside or instead of this plugin. Native RLS policies are enforced at the database level using `current_setting()`:
-
-```sql
-ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY tenant_isolation ON posts
-  FOR ALL
-  USING (tenant_id = current_setting('app.tenant_id')::int);
-```
-
-Set the context before queries: `SET app.tenant_id = '123'`
+For database-level enforcement — defense in depth, or coverage of code paths that bypass the executor entirely — combine this plugin with PostgreSQL's native RLS. You don't need to hand-write `CREATE POLICY` SQL: the [`@kysera/rls/native` subpath](#database-native-rls-kyserarlsnative) generates the statements from the same schema and syncs the RLS context to `current_setting()` values.
 :::
 
 ## Best Practices
@@ -976,6 +1014,8 @@ await rlsContext.runAsync(
 ```
 
 ### 3. Validate Context Requirements
+
+`createRLSContext(options: CreateRLSContextOptions)` accepts `{ auth, request?, meta? }`, validates the auth context, and sets `timestamp` for you:
 
 ```typescript
 // Use createRLSContext for validation
@@ -1132,6 +1172,7 @@ const rlsSchema = defineRLSSchema<Database>({
 
 // Create repository manager with RLS
 const orm = await createORM(db, [rlsPlugin({ schema: rlsSchema })])
+const postRepo = orm.createRepository(createPostRepository)
 
 // Express middleware
 app.use(async (req, res, next) => {
@@ -1154,21 +1195,21 @@ app.use(async (req, res, next) => {
 // Usage in routes
 app.get('/api/posts', async (req, res) => {
   // Automatically filtered by tenant_id
-  const posts = await orm.posts.findAll()
+  const posts = await postRepo.findAll()
   res.json(posts)
 })
 
 app.put('/api/posts/:id', async (req, res) => {
   try {
-    const post = await orm.posts.findById(req.params.id)
+    const post = await postRepo.findById(req.params.id)
 
     // Check access before updating
-    const canUpdate = await orm.posts.canAccess('update', post)
+    const canUpdate = await postRepo.canAccess('update', post)
     if (!canUpdate) {
       return res.status(403).json({ error: 'Permission denied' })
     }
 
-    const updated = await orm.posts.update(req.params.id, req.body)
+    const updated = await postRepo.update(req.params.id, req.body)
     res.json(updated)
   } catch (error) {
     if (error instanceof RLSPolicyViolation) {
@@ -1304,7 +1345,8 @@ await rlsContext.runAsync(
   async () => {
     await orm.transaction(async ctx => {
       // Repository for writes
-      const post = await orm.posts.create({
+      const postRepo = orm.createRepository(createPostRepository)
+      const post = await postRepo.create({
         title: 'New Post',
         user_id: 1,
         tenant_id: 'acme',
@@ -1339,7 +1381,7 @@ Update your application to always provide RLS context:
 
 ```typescript
 // Before v0.8.0 (worked without context)
-const posts = await orm.posts.findAll()
+const posts = await postRepo.findAll()
 
 // After v0.8.0 (requires context)
 await rlsContext.runAsync(
@@ -1352,7 +1394,7 @@ await rlsContext.runAsync(
     timestamp: new Date()
   },
   async () => {
-    const posts = await orm.posts.findAll()
+    const posts = await postRepo.findAll()
   }
 )
 ```
@@ -1369,11 +1411,12 @@ Keep secure defaults but use system context for privileged operations:
 const orm = await createORM(db, [
   rlsPlugin({ schema: rlsSchema })
 ])
+const postRepo = orm.createRepository(createPostRepository)
 
 // User requests (require context)
 app.get('/api/posts', async (req, res) => {
   await rlsContext.runAsync(userContext, async () => {
-    const posts = await orm.posts.findAll()
+    const posts = await postRepo.findAll()
     res.json(posts)
   })
 })
@@ -1386,7 +1429,7 @@ async function cleanupJob() {
       timestamp: new Date()
     },
     async () => {
-      const expired = await orm.posts.findAll()
+      const expired = await postRepo.findAll()
       // ... cleanup logic
     }
   )
@@ -1452,7 +1495,7 @@ After upgrading to v0.8.0, test these scenarios:
 ```typescript
 // Should throw RLSContextError (if requireContext: true)
 try {
-  await orm.posts.findAll() // ❌ No context
+  await postRepo.findAll() // ❌ No context
 } catch (error) {
   if (error instanceof RLSContextError) {
     console.log('✅ Correctly requires context')
@@ -1464,7 +1507,7 @@ try {
 ```typescript
 // Should allow full access
 await rlsContext.asSystemAsync(async () => {
-  const allPosts = await orm.posts.findAll() // ✅ System access
+  const allPosts = await postRepo.findAll() // ✅ System access
   console.log('✅ System context works')
 })
 ```
@@ -1472,7 +1515,8 @@ await rlsContext.asSystemAsync(async () => {
 **3. Excluded Tables Bypass RLS**
 ```typescript
 // Should work without context (if in excludeTables)
-const migrations = await orm.migrations.findAll() // ✅ Excluded table
+const migrationRepo = orm.createRepository(createMigrationRepository)
+const migrations = await migrationRepo.findAll() // ✅ Excluded table
 console.log('✅ Excluded tables work')
 ```
 
@@ -1484,7 +1528,7 @@ await rlsContext.runAsync(
     timestamp: new Date()
   },
   async () => {
-    const posts = await orm.posts.findAll()
+    const posts = await postRepo.findAll()
     // Should only return posts for tenant 'acme'
     console.log('✅ RLS filtering works', posts.every(p => p.tenant_id === 'acme'))
   }
@@ -1493,7 +1537,7 @@ await rlsContext.runAsync(
 
 ## Advanced Features
 
-The RLS plugin includes enterprise-grade features for complex authorization scenarios.
+The RLS plugin includes enterprise-grade features for complex authorization scenarios. The sections below cover the primary surface; see the package's index export for the full set of helper types and utilities.
 
 ### Context Resolvers
 
@@ -1531,9 +1575,11 @@ const enhancedCtx = await manager.resolve(baseCtx)
 
 await rlsContext.runAsync(enhancedCtx, async () => {
   // Policies can access ctx.auth.resolved.organizationIds synchronously
-  const posts = await orm.posts.findAll()
+  const posts = await postRepo.findAll()
 })
 ```
+
+`cacheKey` may return `undefined` to disable caching for a given context; `cacheTtl` is in seconds (default 300).
 
 ### Field-Level Access Control
 
@@ -1559,13 +1605,17 @@ const fieldSchema = {
     fields: {
       email: ownerOnly('id'),
       salary: rolesOnly(['hr', 'admin']),
-      ssn: maskedField('***-**-****', ownerOnly('id'))
-    },
-    defaultMask: '[REDACTED]'
+      // maskedField takes a masking FUNCTION and a read condition
+      ssn: maskedField(
+        () => '***-**-****',
+        ctx => String(ctx.auth.userId) === String(ctx.row?.id)
+      )
+    }
   }
 }
 
 const registry = createFieldAccessRegistry(fieldSchema)
+// Optional second argument: defaultMaskValue used for inaccessible fields (default: null)
 const processor = createFieldAccessProcessor(registry)
 
 // Reads the active RLS context — call inside rlsContext.runAsync(...)
@@ -1575,11 +1625,26 @@ const masked = await processor.maskRows('users', rows, { includeMetadata: true }
 const safeRows = masked.map(m => m.data)
 ```
 
+Per-field config is `{ read?, write?, maskedValue?, omitWhenHidden? }` (conditions may be async); per-table config supports `default: 'allow' | 'deny'` for unconfigured fields and `skipFor` bypass roles.
+
+**Processor methods** (the context always comes from AsyncLocalStorage, never as a parameter):
+
+- `maskRow(table, row, options?)` / `maskRows(table, rows, options?)` → `Promise<MaskedRow<T>>` (or an array of them)
+- `validateWrite(table, data, existingRow?)` — throws `RLSPolicyViolation` if any field in `data` is not writable
+- `filterWritableFields(table, data, existingRow?)` → `{ data, removedFields }` — strips unwritable fields instead of throwing
+- `getReadableFields(table, row)` / `getWritableFields(table, row)` → `Promise<string[]>`
+
+The registry exposes `canReadField(table, field, ctx)` and `canWriteField(table, field, ctx)` — both async, taking a `PolicyEvaluationContext` and returning `Promise<boolean>` — plus `getFieldConfig`, `getTableConfig`, `getConfiguredFields`, and `clear()`.
+
 **Predefined Patterns:**
-- `ownerOnly(field)` - Only row owner can access
+
+- `ownerOnly(ownerField = 'id')` - Only the row owner can read/write
+- `ownerOrRoles(roles, ownerField = 'id')` - Owner or the listed roles
 - `rolesOnly(roles)` - Only specified roles
-- `maskedField(mask, condition)` - Shows mask unless condition passes
-- `publicReadRestrictedWrite(roles)` - Anyone reads, roles write
+- `readOnly(readCondition?)` - Readable (optionally gated), never writable
+- `neverAccessible()` - Never readable or writable (field omitted from results)
+- `maskedField(maskFn, readCondition)` - Applies `maskFn(value)` unless the read condition passes
+- `publicReadRestrictedWrite(writeCondition)` - Anyone reads, the condition gates writes
 
 ### Relationship-Based Access Control (ReBAC)
 
@@ -1588,7 +1653,7 @@ Define access based on relationships using EXISTS subqueries.
 :::caution Standalone API
 ReBAC is **not wired into `rlsPlugin()`** — relationship policies are not
 applied to intercepted queries. Create the registry and transformer yourself
-and run queries through `transformSelect()` manually.
+and run queries through `transform()` manually.
 :::
 
 ```typescript
@@ -1614,15 +1679,18 @@ const rebacSchema = {
 }
 
 const registry = createReBAcRegistry(rebacSchema)
-const transformer = createReBAcTransformer(registry)
+const transformer = createReBAcTransformer(registry) // options?: { dialect?, qualifyColumns?, mainTableAlias? }
 
-// Transforms SELECT to add EXISTS subquery for relationship check
-const products = await transformer.transformSelect(
-  db.selectFrom('products').selectAll(),
-  'products',
-  'read'
-).execute()
+// Adds an EXISTS subquery for the relationship check
+// (reads the RLS context from AsyncLocalStorage)
+const products = await transformer
+  .transform(db.selectFrom('products').selectAll(), 'products', 'read')
+  .execute()
 ```
+
+`transform(qb, table, operation = 'read')` applies every matching relationship policy to the query builder. For debugging or manual SQL assembly, `generateExistsSql(policy, ctx, mainTable, mainTableAlias?)` returns the raw `{ sql, params }` for one policy's EXISTS condition.
+
+`allowRelation(operation, relationshipPath, endCondition, options?)` and `denyRelation(...)` take the end condition as either a plain object or a function `(ctx) => Record<string, unknown>` — there is no dedicated end-condition type — plus optional `{ name?, priority? }`. Deny policies default to priority 100 and generate `NOT EXISTS`.
 
 ### Policy Composition
 
@@ -1638,9 +1706,9 @@ import {
 
 const tenantPolicy = createTenantIsolationPolicy({ tenantColumn: 'tenant_id' })
 const ownerPolicy = createOwnershipPolicy({ ownerColumn: 'user_id' })
-const softDeletePolicy = createSoftDeletePolicy({ deletedAtColumn: 'deleted_at' })
+const softDeletePolicy = createSoftDeletePolicy({ deletedColumn: 'deleted_at' })
 
-const combinedPolicy = composePolicies(tenantPolicy, ownerPolicy, softDeletePolicy)
+const combinedPolicy = composePolicies('post-access', [tenantPolicy, ownerPolicy, softDeletePolicy])
 
 const schema = defineRLSSchema({
   posts: {
@@ -1649,6 +1717,26 @@ const schema = defineRLSSchema({
   }
 })
 ```
+
+**Prebuilt templates** (each returns a `ReusablePolicy` whose `policies` array plugs into the schema):
+
+- `createTenantIsolationPolicy({ tenantColumn?, operations?, validateOnMutation? })` — filters reads by `tenantColumn` (default `'tenant_id'`); with `validateOnMutation: true` (default) also validates that creates set the caller's tenant and updates don't change it
+- `createOwnershipPolicy({ ownerColumn?, ownerOperations?, canDelete? })` — allows `ownerOperations` (default `['read', 'update', 'delete']`) when the row's `ownerColumn` (default `'owner_id'`) matches the caller; `canDelete: false` (default `true`) adds an explicit delete deny
+- `createSoftDeletePolicy({ deletedColumn?, filterOnRead?, preventHardDelete? })` — with `filterOnRead: true` (default) filters reads to rows where `deletedColumn` (default `'deleted_at'`) is null; `preventHardDelete: true` (default) denies deletes
+- `createStatusAccessPolicy({ statusColumn?, publicStatuses?, editableStatuses?, deletableStatuses? })` — allows public reads for `publicStatuses` and denies updates/deletes outside `editableStatuses`/`deletableStatuses` on `statusColumn` (default `'status'`)
+- `createAdminPolicy(roles: string[])` — allows all operations for the given roles
+
+**Building your own templates:**
+
+- `definePolicy({ name, description?, tags? }, policies: PolicyDefinition[])` — wrap raw policy definitions into a named `ReusablePolicy`
+- `defineFilterPolicy(name, filterFn, options?)`, `defineAllowPolicy(name, operation, condition, options?)`, `defineDenyPolicy(name, operation, condition?, options?)`, `defineValidatePolicy(name, operation, condition, options?)`
+- `defineCombinedPolicy(name, { filter?, allow?, deny?, validate? })` — several policy types in one call; `allow`/`deny` take operation-keyed condition maps and `validate` takes `{ create?, update? }`
+
+**Composing and adapting:**
+
+- `composePolicies(name: string, policies: ReusablePolicy[])` — concatenates the policies of several templates under a new name
+- `extendPolicy(base, additional: PolicyDefinition[])` — appends policies to a template
+- `overridePolicy(base, overrides: Record<string, PolicyDefinition>)` — replaces a template's policies by their `name`
 
 ### Audit Trail
 
@@ -1713,47 +1801,93 @@ it('should apply tenant filter', () => {
 
 ### Conditional Policy Activation
 
-Activate policies based on environment, feature flags, or time.
+Attach activation conditions to policies for environment-, feature-flag-, or time-gated behavior.
 
 ```typescript
 import {
   whenEnvironment,
   whenFeature,
-  whenTimeRange
+  whenTimeRange,
+  whenCondition
 } from '@kysera/rls'
 
 const schema = defineRLSSchema({
   posts: {
     policies: [
-      // Only in production
-      whenEnvironment('production', () =>
+      // Only in these environments (takes an ARRAY of environment names)
+      whenEnvironment(['production'], () =>
         filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
       ),
 
-      // Feature flag controlled
+      // Feature flag controlled (features can be a Set, array, or object map)
       whenFeature('strict-rls', () =>
         deny('delete', ctx => ctx.row?.status === 'published')
       ),
 
-      // Business hours (9-18) or overnight (22-6)
+      // Time window: start hour inclusive, end hour exclusive;
+      // supports overnight ranges (e.g. 22 → 6)
       whenTimeRange(9, 18, () =>
         allow('create', ctx => ctx.auth.roles.includes('user'))
+      ),
+
+      // Arbitrary activation condition
+      whenCondition(ctx => ctx.meta?.['betaUser'] === true, () =>
+        allow('read', () => true)
       )
     ]
   }
 })
+```
 
-// Set activation context
-await rlsContext.runAsync({
-  auth: { userId: user.id, roles: user.roles },
-  meta: {
-    environment: 'production',
-    features: new Set(['strict-rls'])
-  },
-  timestamp: new Date()
-}, async () => {
-  // Policies check activation conditions
+Each helper wraps the policy returned by `policyFn` and sets its `activationCondition` — the same field the builders accept directly via `options.condition`:
+
+```typescript
+// Equivalent: set the activation condition directly on any builder
+filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }), {
+  condition: actx => actx.environment === 'production'
 })
+```
+
+Activation conditions receive a `PolicyActivationContext`, a standalone type (it does **not** extend `PolicyEvaluationContext`):
+
+```typescript
+interface PolicyActivationContext {
+  environment?: string // e.g. 'production'
+  features?: Set<string> | string[] | Record<string, unknown>
+  timestamp?: Date
+  meta?: Record<string, unknown>
+  auth?: { userId?: string; roles?: string[]; isSystem?: boolean; [key: string]: unknown }
+}
+```
+
+:::caution Standalone API
+`rlsPlugin()` does not evaluate `activationCondition` during query interception.
+The condition is metadata on the returned `ConditionalPolicyDefinition` — evaluate
+it yourself when assembling the schema (e.g. at startup) and drop inactive policies:
+
+```typescript
+const activationCtx = { environment: process.env['NODE_ENV'], features: enabledFlags }
+const activePolicies = allPolicies.filter(p => p.activationCondition?.(activationCtx) ?? true)
+```
+:::
+
+### Database-Native RLS (`@kysera/rls/native`)
+
+The `@kysera/rls/native` subpath generates PostgreSQL-native RLS from the same schema, so the database enforces isolation even for connections that bypass the executor:
+
+- `PostgresRLSGenerator` — `generateStatements(schema, options?)` emits `ALTER TABLE ... ENABLE/FORCE ROW LEVEL SECURITY` plus `CREATE POLICY` statements; `generateDropStatements(schema, options?)` produces the teardown. Only `allow`/`deny` policies that carry `using` / `withCheck` SQL are translated (deny becomes `AS RESTRICTIVE`, `role` becomes the `TO` clause) — `filter`/`validate` policies stay application-side. Options: `{ force?, schemaName?, policyPrefix? }`.
+- `RLSMigrationGenerator` — `generateMigration(schema, { name?, includeContextFunctions?, ...PostgresRLSOptions })` wraps the generator into a complete up/down migration script.
+- `syncContextToPostgres(db, { userId, tenantId?, roles?, permissions?, isSystem? })` — sets `app.user_id`, `app.tenant_id`, `app.roles`, `app.permissions`, and `app.is_system` via `set_config(..., true)` (transaction-scoped), so native policies can read them with `current_setting()`.
+- `clearPostgresContext(db)` — resets those settings.
+
+```typescript
+import { PostgresRLSGenerator, syncContextToPostgres } from '@kysera/rls/native'
+
+const generator = new PostgresRLSGenerator()
+const statements = generator.generateStatements(rlsSchema, { schemaName: 'public' })
+
+// Per request/transaction, before running queries:
+await syncContextToPostgres(trx, { userId: user.id, tenantId: user.tenantId })
 ```
 
 ## See Also

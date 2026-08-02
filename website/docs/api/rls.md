@@ -20,7 +20,7 @@ npm install @kysera/rls
 | --------------------- | ------------------------------------------------------ |
 | **Bundle Size**       | ~10 KB (minified)                                      |
 | **Dependencies**      | @kysera/core (workspace)                               |
-| **Peer Dependencies** | kysely >=0.29.0, @kysera/executor (optional), @kysera/repository (optional), zod ^4.3.6 (optional) |
+| **Peer Dependencies** | kysely >=0.29.0, @kysera/executor (**required**), @kysera/repository (optional), zod ^4.3.6 (optional) |
 
 ## Exports
 
@@ -159,8 +159,10 @@ const plugin = rlsPlugin({
 Define RLS policies for your tables.
 
 ```typescript
-function defineRLSSchema<DB>(config: Record<string, TableRLSConfig>): RLSSchema<DB>
+function defineRLSSchema<DB>(schema: RLSSchema<DB>): RLSSchema<DB>
 ```
+
+Table keys are type-constrained to the tables of `DB`. The schema is validated at definition time — every listed table must provide `policies` as an **array**, otherwise `RLSSchemaError` is thrown.
 
 ### TableRLSConfig
 
@@ -218,8 +220,11 @@ const rlsSchema = defineRLSSchema<Database>({
     defaultDeny: true
   },
 
-  // No policies = full access
-  public_content: {}
+  // Full access while staying listed: no filters, no default deny.
+  // (`public_content: {}` throws RLSSchemaError — policies must be an array;
+  // `policies: []` alone still denies mutations because defaultDeny defaults
+  // to true. Alternatively, omit the table or use excludeTables.)
+  public_content: { policies: [], defaultDeny: false }
 })
 ```
 
@@ -249,18 +254,30 @@ const fullSchema = mergeRLSSchemas(tenantSchema, roleSchema, customSchema)
 
 ## Policy Builders
 
+All four builders accept an optional final `options?: PolicyOptions` argument and return a `ConditionalPolicyDefinition`:
+
+```typescript
+interface PolicyOptions {
+  name?: string // Policy name for debugging and audit logs
+  priority?: number // Higher runs first (deny defaults to 100, others to 0)
+  hints?: PolicyHints // Performance optimization hints
+  condition?: PolicyActivationCondition // Activation gate — see Conditional Policy Activation
+}
+```
+
 ### allow
 
 Grant permission based on a condition.
 
 ```typescript
 function allow(
-  operations: Operation | Operation[],
-  condition: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>
-): PolicyDefinition
+  operation: Operation | Operation[],
+  condition: PolicyCondition, // (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>
+  options?: PolicyOptions
+): ConditionalPolicyDefinition
 ```
 
-**Operations:** `'read'`, `'create'`, `'update'`, `'delete'`
+**Operations:** `'read'`, `'create'`, `'update'`, `'delete'`, `'all'`, or an array of operations
 
 **Examples:**
 
@@ -281,10 +298,13 @@ Explicitly deny access based on a condition.
 
 ```typescript
 function deny(
-  operations: Operation | Operation[],
-  condition: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>
-): PolicyDefinition
+  operation: Operation | Operation[],
+  condition?: PolicyCondition, // optional — omitting it means "always deny"
+  options?: PolicyOptions
+): ConditionalPolicyDefinition
 ```
+
+Deny policies default to priority `100`, so they run before allow policies. `deny('all')` with no condition unconditionally blocks the operations.
 
 **Examples:**
 
@@ -306,10 +326,13 @@ Add WHERE conditions to queries automatically. Filter predicates apply to SELECT
 
 ```typescript
 function filter(
-  operations: Operation | Operation[],
-  getFilter: (ctx: PolicyEvaluationContext) => Record<string, unknown>
-): PolicyDefinition
+  operation: 'read' | 'all', // 'all' normalizes to 'read'
+  condition: FilterCondition, // (ctx: PolicyEvaluationContext) => Record<string, unknown>
+  options?: PolicyOptions
+): ConditionalPolicyDefinition
 ```
+
+**Condition values:** plain values compile to `=`, `null` to `IS NULL`, arrays to `IN (...)` (an empty array yields an impossible condition — no rows), and `undefined` values are skipped.
 
 **Examples:**
 
@@ -324,9 +347,9 @@ filter('read', ctx =>
     : { status: 'active', visibility: 'public' }
 )
 
-// Multi-org support
+// Multi-org support — pass the array directly; there is no $in operator
 filter('read', ctx => ({
-  organization_id: { $in: ctx.auth.organizationIds }
+  organization_id: ctx.auth.organizationIds ?? []
 }))
 ```
 
@@ -336,9 +359,10 @@ Validate input data before operations.
 
 ```typescript
 function validate(
-  operations: Operation | Operation[],
-  validator: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>
-): PolicyDefinition
+  operation: 'create' | 'update' | 'all', // 'all' expands to both create and update
+  condition: PolicyCondition,
+  options?: PolicyOptions
+): ConditionalPolicyDefinition
 ```
 
 **Examples:**
@@ -406,8 +430,9 @@ interface RLSContext<TUser = unknown, TMeta = unknown> {
 
   /**
    * Context creation timestamp
+   * Auto-set to new Date() when omitted
    */
-  timestamp: Date
+  timestamp?: Date
 }
 
 interface RLSAuthContext<TUser = unknown> {
@@ -517,6 +542,24 @@ const result = await withRLSContextAsync(
 )
 ```
 
+### createRLSContext
+
+Build and validate a context object without entering a scope.
+
+```typescript
+function createRLSContext<TUser = unknown, TMeta = unknown>(
+  options: CreateRLSContextOptions<TUser, TMeta>
+): RLSContext<TUser, TMeta>
+
+interface CreateRLSContextOptions<TUser = unknown, TMeta = unknown> {
+  auth: RLSAuthContext<TUser>
+  request?: Partial<RLSRequestContext>
+  meta?: TMeta
+}
+```
+
+Validates the auth context (throws `RLSContextValidationError` on invalid input), defaults `isSystem` to `false`, and sets `timestamp` automatically.
+
 ### System Context (Bypass)
 
 ```typescript
@@ -585,18 +628,21 @@ interface PolicyEvaluationContext<TAuth = unknown, TRow = unknown, TData = unkno
   table?: string
 
   /**
-   * Current operation
+   * Current operation (e.g. 'create', 'update', 'delete')
    */
-  operation?: 'read' | 'create' | 'update' | 'delete'
+  operation?: string
 }
 ```
 
 ## Policy Precedence
 
-Policies are evaluated differently based on the operation type.
+At initialization the schema is compiled into a `PolicyRegistry` (also exported for advanced use), which groups each table's policies into allows, denies, filters, and validates. Policies are evaluated differently based on the operation type.
 
 **For SELECT queries (via `interceptQuery`):**
 - **`filter`** policies add WHERE conditions to the query builder
+
+**For UPDATE/DELETE statements (via `interceptQuery`, v0.9+):**
+- **`filter`** predicates are appended to the statement's WHERE clause, narrowing which rows the mutation can touch
 
 **For mutations (create/update/delete via `extendRepository`):**
 
@@ -618,7 +664,8 @@ const rlsSchema = defineRLSSchema({
       // 3. Allow evaluated last (at least one must match)
       allow(['update', 'delete'], ctx => ctx.auth.userId === ctx.row?.author_id),
 
-      // Filter is only for SELECT queries (not part of mutation evaluation)
+      // Filter adds WHERE to SELECT and narrows UPDATE/DELETE row scope
+      // (not part of the value-level mutation evaluation above)
       filter('read', ctx => ({ tenant_id: ctx.auth.tenantId }))
     ],
     defaultDeny: true // 4. Deny if no allow policies match
@@ -669,9 +716,10 @@ import {
   RLSContextError
 } from '@kysera/rls'
 
-// Base error class
-class RLSError extends Error {
-  code: string
+// Base error class — extends DatabaseError from @kysera/core,
+// so `instanceof DatabaseError` also catches all RLS errors
+class RLSError extends DatabaseError {
+  constructor(message: string, code: RLSErrorCode)
 }
 
 // Policy violation (legitimate access denial)
@@ -690,11 +738,14 @@ class RLSPolicyEvaluationError extends RLSError {
   originalError?: Error
 }
 
-// Missing context
+// Missing context — default message:
+// "No RLS context found. Ensure code runs within withRLSContext()"
 class RLSContextError extends RLSError {
-  message: 'RLS context not set'
+  constructor(message?: string)
 }
 ```
+
+Also exported: `RLSSchemaError` (invalid schema definition, carries `details`) and `RLSContextValidationError` (invalid context, carries `field`).
 
 ### RLSPolicyViolation
 
@@ -872,11 +923,14 @@ try {
 rlsPlugin({
   schema: rlsSchema,
   onViolation: violation => {
+    // RLSPolicyViolation carries operation/table/reason/policyName only —
+    // read the user from rlsContext if you need it
     logger.warn('RLS violation', {
-      user: violation.userId,
       table: violation.table,
       operation: violation.operation,
-      reason: violation.reason
+      reason: violation.reason,
+      policyName: violation.policyName,
+      userId: rlsContext.getContextOrNull()?.auth.userId
     })
 
     // Send to monitoring
@@ -1023,8 +1077,10 @@ app.use(async (req, res, next) => {
 ### Multi-Organization
 
 ```typescript
+// Pass the array directly — it compiles to an IN (...) clause;
+// an empty array yields an impossible condition (no rows match)
 filter('read', ctx => ({
-  organization_id: { $in: ctx.auth.organizationIds }
+  organization_id: ctx.auth.organizationIds ?? []
 }))
 ```
 
@@ -1127,7 +1183,7 @@ await rlsContext.runAsync(
   },
   async () => {
     // RLS filter automatically applied
-    const posts = await getAllPosts(executor)
+    const posts = await getAllPosts(createContext(executor))
 
     // Works in transactions too
     await withTransaction(executor, async txCtx => {
@@ -1247,20 +1303,15 @@ describe('Post RLS Policies', () => {
 
 ### 4. Combine with Database RLS
 
-For maximum security, combine application-level RLS with PostgreSQL native RLS:
-
-```sql
--- PostgreSQL native RLS
-ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY tenant_isolation ON posts
-  FOR ALL
-  USING (tenant_id = current_setting('app.tenant_id')::int);
-```
+For maximum security, combine application-level RLS with PostgreSQL native RLS. You don't need to hand-write `CREATE POLICY` SQL — the [`@kysera/rls/native` subpath](#native-postgresql-rls-kyserarlsnative) generates the statements from your schema and syncs the RLS context to `current_setting()` values:
 
 ```typescript
-// Set PostgreSQL config before queries
-await db.executeQuery(sql`SET app.tenant_id = ${tenantId}`)
+import { RLSMigrationGenerator, syncContextToPostgres } from '@kysera/rls/native'
+
+const migrationSql = new RLSMigrationGenerator().generateMigration(rlsSchema)
+
+// Per request/transaction, before running queries:
+await syncContextToPostgres(trx, { userId: user.id, tenantId: user.tenantId })
 ```
 
 ## TypeScript Types
@@ -1270,38 +1321,27 @@ await db.executeQuery(sql`SET app.tenant_id = ${tenantId}`)
 ```typescript
 type Operation = 'read' | 'create' | 'update' | 'delete' | 'all'
 
-type PolicyDefinition = AllowPolicy | DenyPolicy | FilterPolicy | ValidatePolicy
+type PolicyType = 'allow' | 'deny' | 'filter' | 'validate'
 
-interface AllowPolicy {
-  type: 'allow'
-  operation: Operation | Operation[]
-  condition: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>
+// ONE shared interface for all policy types — there are no per-type interfaces
+interface PolicyDefinition<
+  TOperation extends Operation = Operation,
+  TCondition = PolicyCondition
+> {
+  type: PolicyType
+  operation: TOperation | TOperation[]
+  condition: TCondition // boolean-returning for allow/deny/validate; conditions object for filter
   name?: string
-  priority?: number
+  priority?: number // Higher runs first (default 0; deny defaults to 100)
+  using?: string // Native RLS only: SQL for the USING clause
+  withCheck?: string // Native RLS only: SQL for the WITH CHECK clause
+  role?: string // Native RLS only: target database role
+  hints?: PolicyHints // Performance hints (e.g. indexColumns)
 }
 
-interface DenyPolicy {
-  type: 'deny'
-  operation: Operation | Operation[]
-  condition: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>
-  name?: string
-  priority?: number
-}
-
-interface FilterPolicy {
-  type: 'filter'
-  operation: Operation | Operation[]
-  condition: (ctx: PolicyEvaluationContext) => Record<string, unknown>
-  name?: string
-  priority?: number
-}
-
-interface ValidatePolicy {
-  type: 'validate'
-  operation: Operation | Operation[]
-  condition: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>
-  name?: string
-  priority?: number
+// What the policy builders actually return
+interface ConditionalPolicyDefinition extends PolicyDefinition {
+  activationCondition?: PolicyActivationCondition
 }
 ```
 
@@ -1341,7 +1381,7 @@ function createResolver<TResolved extends ResolvedData>(
 interface ContextResolver<TResolved = ResolvedData> {
   name: string
   resolve: (ctx: BaseResolverContext) => Promise<TResolved>
-  cacheKey?: (ctx: BaseResolverContext) => string | null
+  cacheKey?: (ctx: BaseResolverContext) => string | undefined // undefined disables caching
   cacheTtl?: number
   dependsOn?: string[]
   required?: boolean
@@ -1366,64 +1406,104 @@ interface ResolverManagerOptions {
 ### FieldAccessRegistry
 
 ```typescript
-class FieldAccessRegistry {
-  constructor(schema?: FieldAccessSchema, options?: { logger?: KyseraLogger })
+class FieldAccessRegistry<DB = unknown> {
+  constructor(schema?: FieldAccessSchema<DB>, options?: { logger?: KyseraLogger })
 
-  loadSchema(schema: FieldAccessSchema): void
+  loadSchema(schema: FieldAccessSchema<DB>): void
   registerTable(table: string, config: TableFieldAccessConfig): void
 
-  canReadField(table: string, field: string, ctx: FieldAccessContext): boolean
-  canWriteField(table: string, field: string, ctx: FieldAccessContext): boolean
-  getFieldMask(table: string, field: string): unknown
+  // Both async; conditions take the standard PolicyEvaluationContext
+  // (there is no separate FieldAccessContext type)
+  canReadField(table: string, field: string, ctx: PolicyEvaluationContext): Promise<boolean>
+  canWriteField(table: string, field: string, ctx: PolicyEvaluationContext): Promise<boolean>
+
+  getFieldConfig(table: string, field: string): CompiledFieldAccess | undefined
+  getTableConfig(table: string): CompiledTableFieldAccess | undefined
+  getConfiguredFields(table: string): string[]
 
   hasTable(table: string): boolean
   getTables(): string[]
+  clear(): void
 }
 ```
 
 ### FieldAccessProcessor
 
 ```typescript
-class FieldAccessProcessor {
-  constructor(registry: FieldAccessRegistry, options?: FieldAccessOptions)
+class FieldAccessProcessor<DB = unknown> {
+  constructor(registry: FieldAccessRegistry<DB>, defaultMaskValue?: unknown) // default: null
 
+  // The RLS context comes from AsyncLocalStorage (rlsContext), never as a parameter —
+  // call these inside rlsContext.runAsync(...)
   maskRow<T extends Record<string, unknown>>(
     table: string,
     row: T,
-    ctx: FieldAccessContext
-  ): MaskedRow<T>
+    options?: FieldAccessOptions
+  ): Promise<MaskedRow<T>>
 
   maskRows<T extends Record<string, unknown>>(
     table: string,
     rows: T[],
-    ctx: FieldAccessContext
-  ): MaskedRow<T>[]
+    options?: FieldAccessOptions
+  ): Promise<MaskedRow<T>[]>
 
-  getWritableFields(table: string, ctx: FieldAccessContext): string[]
-  filterWritableData<T>(table: string, data: T, ctx: FieldAccessContext): Partial<T>
+  // Throws RLSPolicyViolation if any field in data is not writable
+  validateWrite(
+    table: string,
+    data: Record<string, unknown>,
+    existingRow?: Record<string, unknown>
+  ): Promise<void>
+
+  // Strips unwritable fields instead of throwing
+  filterWritableFields(
+    table: string,
+    data: Record<string, unknown>,
+    existingRow?: Record<string, unknown>
+  ): Promise<{ data: Record<string, unknown>; removedFields: string[] }>
+
+  getReadableFields(table: string, row: Record<string, unknown>): Promise<string[]>
+  getWritableFields(table: string, row: Record<string, unknown>): Promise<string[]>
+}
+
+interface MaskedRow<T = Record<string, unknown>> {
+  data: Partial<T> // Row with field access applied
+  maskedFields: string[]
+  omittedFields: string[]
+}
+
+interface FieldAccessOptions {
+  throwOnDenied?: boolean // Default: false
+  includeMetadata?: boolean // Default: false
+  includeFields?: string[] // Whitelist
+  excludeFields?: string[] // Blacklist
 }
 ```
 
 ### Predefined Access Patterns
 
 ```typescript
-// Only row owner can read/write
-function ownerOnly(ownerField?: string): FieldAccessConfig
+type FieldAccessCondition = (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>
+
+// Only row owner can read/write (compares ctx.auth.userId to row[ownerField])
+function ownerOnly(ownerField?: string): FieldAccessConfig // ownerField default: 'id'
 
 // Only specified roles can access
 function rolesOnly(roles: string[]): FieldAccessConfig
 
-// Anyone can read, no one can write
-function readOnly(): FieldAccessConfig
+// Readable (optionally gated by a condition), never writable
+function readOnly(readCondition?: FieldAccessCondition): FieldAccessConfig
 
-// Always hidden
+// Never readable or writable; field omitted from results
 function neverAccessible(): FieldAccessConfig
 
-// Anyone reads, specified roles write
-function publicReadRestrictedWrite(writeRoles: string[]): FieldAccessConfig
+// Anyone reads, the condition gates writes
+function publicReadRestrictedWrite(writeCondition: FieldAccessCondition): FieldAccessConfig
 
-// Shows mask unless condition passes
-function maskedField(mask: unknown, accessConfig: FieldAccessConfig): FieldAccessConfig
+// Applies maskFn(value) unless the read condition passes
+function maskedField(
+  maskFn: (value: unknown) => unknown,
+  readCondition: FieldAccessCondition
+): FieldAccessConfig & { maskFn: (value: unknown) => unknown }
 
 // Owner or specified roles
 function ownerOrRoles(roles: string[], ownerField?: string): FieldAccessConfig
@@ -1456,18 +1536,28 @@ class ReBAcRegistry<DB = unknown> {
 class ReBAcTransformer<DB = unknown> {
   constructor(registry: ReBAcRegistry<DB>, options?: ReBAcQueryOptions)
 
-  transformSelect<T extends SelectQueryBuilder<DB, any, any>>(
-    qb: T,
+  // Applies every matching relationship policy as an EXISTS / NOT EXISTS
+  // condition. Reads the RLS context from AsyncLocalStorage; returns the
+  // query unchanged when there is no context or the caller is a system user.
+  transform<TB extends keyof DB & string, O>(
+    qb: SelectQueryBuilder<DB, TB, O>,
     table: string,
-    operation: Operation
-  ): T
+    operation?: Operation // default: 'read'
+  ): SelectQueryBuilder<DB, TB, O>
 
-  buildExistsSubquery(
-    db: Kysely<DB>,
-    path: CompiledRelationshipPath,
-    sourceTable: string,
-    endConditions: Record<string, unknown>
-  ): RawBuilder<unknown>
+  // Raw SQL for one policy's EXISTS condition (debugging / manual assembly)
+  generateExistsSql(
+    policy: CompiledReBAcPolicy,
+    ctx: RLSContext,
+    mainTable: string,
+    mainTableAlias?: string
+  ): { sql: string; params: unknown[] }
+}
+
+interface ReBAcQueryOptions {
+  qualifyColumns?: boolean // Default: true
+  dialect?: 'postgres' | 'mysql' | 'sqlite' // Default: 'postgres'
+  mainTableAlias?: string
 }
 ```
 
@@ -1496,16 +1586,21 @@ function teamHierarchyPath(
 ### Policy Builders
 
 ```typescript
+// The end condition is a plain object or a context function —
+// there is no dedicated end-condition type
 function allowRelation(
   operation: Operation | Operation[],
   relationshipPath: string,
-  endCondition: ReBAcEndCondition
+  endCondition: ((ctx: PolicyEvaluationContext) => Record<string, unknown>) | Record<string, unknown>,
+  options?: { name?: string; priority?: number }
 ): ReBAcPolicyDefinition
 
+// Same signature; generates NOT EXISTS and defaults to priority 100
 function denyRelation(
   operation: Operation | Operation[],
   relationshipPath: string,
-  endCondition: ReBAcEndCondition
+  endCondition: ((ctx: PolicyEvaluationContext) => Record<string, unknown>) | Record<string, unknown>,
+  options?: { name?: string; priority?: number }
 ): ReBAcPolicyDefinition
 ```
 
@@ -1514,11 +1609,11 @@ function denyRelation(
 ### Predefined Policy Templates
 
 ```typescript
-function createTenantIsolationPolicy(config: TenantIsolationConfig): ReusablePolicy
-function createOwnershipPolicy(config: OwnershipConfig): ReusablePolicy
-function createSoftDeletePolicy(config: SoftDeleteConfig): ReusablePolicy
+function createTenantIsolationPolicy(config?: TenantIsolationConfig): ReusablePolicy
+function createOwnershipPolicy(config?: OwnershipConfig): ReusablePolicy
+function createSoftDeletePolicy(config?: SoftDeleteConfig): ReusablePolicy
 function createStatusAccessPolicy(config: StatusAccessConfig): ReusablePolicy
-function createAdminPolicy(config: { adminRoles: string[] }): ReusablePolicy
+function createAdminPolicy(roles: string[]): ReusablePolicy
 ```
 
 ### Configuration Types
@@ -1526,39 +1621,56 @@ function createAdminPolicy(config: { adminRoles: string[] }): ReusablePolicy
 ```typescript
 interface TenantIsolationConfig {
   tenantColumn?: string // Default: 'tenant_id'
-  validateOnCreate?: boolean // Default: true
-  validateOnUpdate?: boolean // Default: false
+  operations?: Operation[] // Default: ['read', 'create', 'update', 'delete']
+  validateOnMutation?: boolean // Default: true — validates create sets the caller's
+                               // tenant and update doesn't change it
 }
 
 interface OwnershipConfig {
-  ownerColumn?: string // Default: 'user_id'
-  allowedOperations?: Operation[] // Default: ['update', 'delete']
+  ownerColumn?: string // Default: 'owner_id'
+  ownerOperations?: Operation[] // Default: ['read', 'update', 'delete']
+  canDelete?: boolean // Default: true — false adds an explicit delete deny
 }
 
 interface SoftDeleteConfig {
-  deletedAtColumn?: string // Default: 'deleted_at'
-  includeDeleted?: boolean // Default: false
+  deletedColumn?: string // Default: 'deleted_at'
+  filterOnRead?: boolean // Default: true — filters rows where deletedColumn is not null
+  preventHardDelete?: boolean // Default: true — denies delete operations
 }
 
 interface StatusAccessConfig {
   statusColumn?: string // Default: 'status'
-  publicStatuses?: string[]
-  draftStatuses?: string[]
-  archivedStatuses?: string[]
+  publicStatuses?: string[] // Statuses that are publicly readable
+  editableStatuses?: string[] // Statuses that can be updated
+  deletableStatuses?: string[] // Statuses that can be deleted
 }
 ```
 
 ### Composition Functions
 
 ```typescript
-function composePolicies(...policies: ReusablePolicy[]): ReusablePolicy
-function extendPolicy(base: ReusablePolicy, options: { additionalPolicies?: PolicyDefinition[] }): ReusablePolicy
-function overridePolicy(base: ReusablePolicy, overrides: Partial<ReusablePolicy>): ReusablePolicy
+// Concatenates the policies of several templates under a new name
+function composePolicies(name: string, policies: ReusablePolicy[]): ReusablePolicy
+
+// Appends policy definitions to a template (name becomes `${base.name}_extended`)
+function extendPolicy(base: ReusablePolicy, additional: PolicyDefinition[]): ReusablePolicy
+
+// Replaces a template's policies by their `name` (name becomes `${base.name}_overridden`)
+function overridePolicy(
+  base: ReusablePolicy,
+  overrides: Record<string, PolicyDefinition>
+): ReusablePolicy
 ```
 
 ### Policy Definition Builders
 
 ```typescript
+// Wrap raw policy definitions into a named ReusablePolicy
+function definePolicy(
+  config: { name: string; description?: string; tags?: string[] },
+  policies: PolicyDefinition[]
+): ReusablePolicy
+
 function defineFilterPolicy(
   name: string,
   filterFn: (ctx: PolicyEvaluationContext) => Record<string, unknown>,
@@ -1567,28 +1679,38 @@ function defineFilterPolicy(
 
 function defineAllowPolicy(
   name: string,
-  operations: Operation | Operation[],
+  operation: Operation | Operation[],
   condition: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>,
   options?: { priority?: number }
 ): ReusablePolicy
 
 function defineDenyPolicy(
   name: string,
-  operations: Operation | Operation[],
-  condition: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>,
+  operation: Operation | Operation[],
+  condition?: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>, // omit = always deny
   options?: { priority?: number }
 ): ReusablePolicy
 
 function defineValidatePolicy(
   name: string,
-  operations: Operation | Operation[],
+  operation: 'create' | 'update' | 'all',
   condition: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>,
   options?: { priority?: number }
 ): ReusablePolicy
 
+// Several policy types in one call — allow/deny take operation-keyed
+// condition maps; validate takes { create?, update? }
 function defineCombinedPolicy(
   name: string,
-  policies: PolicyDefinition[]
+  config: {
+    filter?: (ctx: PolicyEvaluationContext) => Record<string, unknown>
+    allow?: Record<string, (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>>
+    deny?: Record<string, (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>>
+    validate?: {
+      create?: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>
+      update?: (ctx: PolicyEvaluationContext) => boolean | Promise<boolean>
+    }
+  }
 ): ReusablePolicy
 ```
 
@@ -1600,17 +1722,34 @@ function defineCombinedPolicy(
 class AuditLogger {
   constructor(config: AuditConfig)
 
-  // Log decisions
+  // Log decisions — per-call options are inline object types
+  // (there is no AuditLogOptions type)
   logDecision(
     operation: Operation,
     table: string,
     decision: AuditDecision,
     policyName?: string,
-    options?: AuditLogOptions
+    options?: {
+      reason?: string
+      rowIds?: (string | number)[]
+      queryHash?: string
+      durationMs?: number
+      context?: Record<string, unknown>
+    }
   ): Promise<void>
 
-  logAllow(operation: Operation, table: string, policyName?: string, options?: AuditLogOptions): Promise<void>
-  logDeny(operation: Operation, table: string, policyName?: string, options?: AuditLogOptions): Promise<void>
+  logAllow(
+    operation: Operation,
+    table: string,
+    policyName?: string,
+    options?: { reason?: string; rowIds?: (string | number)[]; context?: Record<string, unknown> }
+  ): Promise<void>
+  logDeny(
+    operation: Operation,
+    table: string,
+    policyName?: string,
+    options?: { reason?: string; rowIds?: (string | number)[]; context?: Record<string, unknown> }
+  ): Promise<void>
   logFilter(table: string, policyName?: string, options?: { context?: Record<string, unknown> }): Promise<void>
 
   // Buffer management
@@ -1776,36 +1915,110 @@ const policyAssertions: {
 ### Activation Wrappers
 
 ```typescript
+// Takes an ARRAY of environment names
 function whenEnvironment(
-  env: string,
-  policyFn: () => PolicyDefinition
+  environments: string[],
+  policyFn: () => ConditionalPolicyDefinition
 ): ConditionalPolicyDefinition
 
 function whenFeature(
   feature: string,
-  policyFn: () => PolicyDefinition
+  policyFn: () => ConditionalPolicyDefinition
 ): ConditionalPolicyDefinition
 
+// Start hour inclusive, end hour exclusive; supports overnight ranges (e.g. 22 → 6)
 function whenTimeRange(
   startHour: number,
   endHour: number,
-  policyFn: () => PolicyDefinition
+  policyFn: () => ConditionalPolicyDefinition
 ): ConditionalPolicyDefinition
 
 function whenCondition(
-  condition: (ctx: PolicyActivationContext) => boolean,
-  policyFn: () => PolicyDefinition
+  condition: PolicyActivationCondition, // (ctx: PolicyActivationContext) => boolean
+  policyFn: () => ConditionalPolicyDefinition
 ): ConditionalPolicyDefinition
 ```
+
+Each wrapper sets the policy's `activationCondition` — the same field the policy builders accept via `options.condition`. Note that `rlsPlugin()` does not evaluate activation conditions during query interception; filter your policy list yourself (e.g. at startup) with `policy.activationCondition?.(activationCtx) ?? true`.
 
 ### PolicyActivationContext
 
 ```typescript
-interface PolicyActivationContext extends PolicyEvaluationContext {
+// Standalone type — does NOT extend PolicyEvaluationContext
+interface PolicyActivationContext {
   environment?: string
   features?: Set<string> | string[] | Record<string, unknown>
   timestamp?: Date
+  meta?: Record<string, unknown>
+  auth?: { userId?: string; roles?: string[]; isSystem?: boolean; [key: string]: unknown }
 }
+```
+
+## Native PostgreSQL RLS (`@kysera/rls/native`)
+
+Generates database-native RLS from the same schema, for defense in depth or connections that bypass the executor.
+
+```typescript
+import {
+  PostgresRLSGenerator,
+  RLSMigrationGenerator,
+  syncContextToPostgres,
+  clearPostgresContext,
+  type PostgresRLSOptions,
+  type MigrationOptions
+} from '@kysera/rls/native'
+
+interface PostgresRLSOptions {
+  force?: boolean // FORCE ROW LEVEL SECURITY (default: true)
+  schemaName?: string // Default: 'public'
+  policyPrefix?: string // Prefix for generated policy names (default: 'rls')
+}
+
+class PostgresRLSGenerator {
+  // ALTER TABLE ... ENABLE/FORCE ROW LEVEL SECURITY + CREATE POLICY statements.
+  // Only allow/deny policies that carry `using` / `withCheck` SQL are translated
+  // (deny → AS RESTRICTIVE, `role` → TO clause); filter/validate stay application-side.
+  generateStatements<DB>(schema: RLSSchema<DB>, options?: PostgresRLSOptions): string[]
+  generateDropStatements<DB>(schema: RLSSchema<DB>, options?: PostgresRLSOptions): string[]
+}
+
+interface MigrationOptions extends PostgresRLSOptions {
+  name?: string // Default: 'rls_policies'
+  includeContextFunctions?: boolean // Default: true
+}
+
+class RLSMigrationGenerator {
+  // Complete up/down migration script
+  generateMigration<DB>(schema: RLSSchema<DB>, options?: MigrationOptions): string
+}
+
+// Sets app.user_id / app.tenant_id / app.roles / app.permissions / app.is_system
+// via set_config(..., true) — transaction-scoped, readable with current_setting()
+function syncContextToPostgres<DB>(
+  db: Kysely<DB>,
+  context: {
+    userId: string | number
+    tenantId?: string | number
+    roles?: string[]
+    permissions?: string[]
+    isSystem?: boolean
+  }
+): Promise<void>
+
+// Resets those settings
+function clearPostgresContext<DB>(db: Kysely<DB>): Promise<void>
+```
+
+## Plugin Options Validation (`@kysera/rls/schema`)
+
+Optional runtime validation of `RLSPluginOptions` (requires `zod`):
+
+```typescript
+import {
+  RLSPluginOptionsSchema,
+  type RLSPluginOptionsInput,
+  type RLSPluginOptionsOutput
+} from '@kysera/rls/schema'
 ```
 
 ## Complete Exports
@@ -1829,10 +2042,13 @@ export { orgMembershipPath, shopOrgMembershipPath, teamHierarchyPath, allowRelat
 export { FieldAccessRegistry, FieldAccessProcessor, createFieldAccessRegistry, createFieldAccessProcessor } from '@kysera/rls'
 export { ownerOnly, rolesOnly, readOnly, neverAccessible, publicReadRestrictedWrite, maskedField, ownerOrRoles } from '@kysera/rls'
 
+// Policy registry (advanced — compiled schema, exported for tooling)
+export { PolicyRegistry } from '@kysera/rls'
+
 // Policy Composition
 export { createTenantIsolationPolicy, createOwnershipPolicy, createSoftDeletePolicy, createStatusAccessPolicy, createAdminPolicy } from '@kysera/rls'
 export { composePolicies, extendPolicy, overridePolicy } from '@kysera/rls'
-export { defineFilterPolicy, defineAllowPolicy, defineDenyPolicy, defineValidatePolicy, defineCombinedPolicy } from '@kysera/rls'
+export { definePolicy, defineFilterPolicy, defineAllowPolicy, defineDenyPolicy, defineValidatePolicy, defineCombinedPolicy } from '@kysera/rls'
 
 // Audit Trail
 export { AuditLogger, createAuditLogger, ConsoleAuditAdapter, InMemoryAuditAdapter } from '@kysera/rls'
@@ -1842,7 +2058,13 @@ export { PolicyTester, createPolicyTester, createTestAuthContext, createTestRow,
 
 // Errors
 export { RLSError, RLSContextError, RLSPolicyViolation, RLSPolicyEvaluationError, RLSSchemaError, RLSContextValidationError, RLSErrorCodes } from '@kysera/rls'
+
+// Subpaths
+export { PostgresRLSGenerator, RLSMigrationGenerator, syncContextToPostgres, clearPostgresContext } from '@kysera/rls/native'
+export { RLSPluginOptionsSchema } from '@kysera/rls/schema'
 ```
+
+Supporting types (`PolicyOptions`, `CreateRLSContextOptions`, `PolicyActivationContext`, resolver/audit/field-access/ReBAC types, ...) are re-exported from the package root — see the package's `index.ts` for the full type surface.
 
 ## See Also
 
