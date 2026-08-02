@@ -362,13 +362,29 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         async softDelete(id: number | string): Promise<unknown> {
           logger.info(`Soft deleting record ${id} from ${baseRepo.tableName}`)
 
+          const dialect = getDialect()
+
           // Opt out of the deleted_at narrowing: softDelete is documented as
           // idempotent (re-deleting refreshes the timestamp). RLS still applies.
-          const result = await withDeletedDb
+          const updateQuery = withDeletedDb
             .updateTable(baseRepo.tableName)
-            .set({ [deletedAtColumn]: formatTimestampForDb(undefined, getDialect()) } as never)
+            .set({ [deletedAtColumn]: formatTimestampForDb(undefined, dialect) } as never)
             .where(primaryKeyColumn as never, '=', id as never)
-            .executeTakeFirst()
+
+          // Dialects with UPDATE ... RETURNING get the post-image atomically:
+          // one statement instead of UPDATE + read-back SELECT. Visibility is
+          // identical — the UPDATE is already narrowed by every other
+          // plugin's filters (RLS, ...) exactly like the read-back was, and
+          // the not-found condition (no row matched) maps to no returned row.
+          if (dialect === 'postgres' || dialect === 'sqlite') {
+            const row = await updateQuery.returningAll().executeTakeFirst()
+            if (!row) {
+              throw new NotFoundError('Record', { id })
+            }
+            return row
+          }
+
+          const result = await updateQuery.executeTakeFirst()
 
           if (Number((result as { numUpdatedRows?: bigint })?.numUpdatedRows ?? 0) === 0) {
             throw new NotFoundError('Record', { id })

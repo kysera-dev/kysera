@@ -181,6 +181,40 @@ describe('shared per-operation row fetch (rls + audit + soft-delete)', () => {
     expect(postsSelects()).toHaveLength(2)
   })
 
+  it('rls + soft-delete + audit softDelete: ONE SELECT total (pre-image only; post-image via UPDATE RETURNING)', async () => {
+    // soft-delete scoped to the entity table so audit_logs (no deleted_at
+    // column) is not narrowed when reading the audit trail below
+    const repo = await stackedRepo([
+      rlsPlugin({ schema }),
+      softDeletePlugin({ tables: ['posts'] }),
+      auditPlugin()
+    ])
+
+    await rlsContext.runAsync(userCtx(1), async () => {
+      statements.length = 0
+      await repo.softDelete(1)
+    })
+
+    // The two SELECTs this path used to issue were different snapshots:
+    // audit's PRE-image fetch and soft-delete's POST-update read-back — not
+    // shareable through the pre-mutation cache. On sqlite/postgres the
+    // read-back is folded into UPDATE ... RETURNING instead, leaving only
+    // audit's cache-backed pre-fetch.
+    expect(postsSelects()).toHaveLength(1)
+    const updates = statements.filter(s => s.toLowerCase().startsWith('update') && s.includes('"posts"'))
+    expect(updates).toHaveLength(1)
+    expect(updates[0]!.toLowerCase()).toContain('returning')
+
+    // Audit captured both snapshots correctly
+    const history = await rlsContext.runAsync(userCtx(1), async () =>
+      repo.getAuditHistory(1)
+    )
+    expect(history).toHaveLength(1)
+    expect(history[0]!.operation).toBe('UPDATE')
+    expect(history[0]!.old_values?.['deleted_at']).toBeNull()
+    expect(history[0]!.new_values?.['deleted_at']).not.toBeNull()
+  })
+
   it('no sharing ACROSS operations: two updates fetch twice', async () => {
     const repo = await stackedRepo([rlsPlugin({ schema }), auditPlugin()])
 
