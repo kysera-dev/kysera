@@ -393,8 +393,15 @@ describe('CircuitBreaker', () => {
 
     expect((await breaker.getState()).state).toBe('open')
 
-    // Wait for reset time to allow transition to half-open
-    await new Promise(resolve => setTimeout(resolve, 101))
+    // Wait for the reset window ON THE BREAKER'S CLOCK. A fixed
+    // setTimeout(101) flaked on CI: timers fire on libuv's clock while the
+    // breaker compares Date.now() with a STRICT `>`, so with a 1ms margin
+    // the elapsed wall-clock time could land exactly on resetTimeMs and the
+    // open->half-open transition never happened (both calls then reject).
+    const openedAt = Date.now()
+    while (Date.now() - openedAt <= 110) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
 
     // Create two concurrent calls that arrive at the same time
     fn.mockImplementation(async () => {
