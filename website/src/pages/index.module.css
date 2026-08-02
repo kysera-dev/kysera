@@ -1,98 +1,397 @@
-.heroBanner {
-  padding: 4rem 0;
-  text-align: center;
-  position: relative;
-  overflow: hidden;
+/* ============================================================================
+ * Landing page. Theme-aware via Infima vars + [data-theme='dark'] overrides
+ * (attribute selectors stay global in CSS modules; only classes are hashed).
+ * ========================================================================== */
+
+/* ---- Hero ---------------------------------------------------------------- */
+
+.hero {
+  padding: 4.5rem 0 4rem;
+  background:
+    radial-gradient(ellipse 80% 60% at 70% -10%, rgba(13, 148, 136, 0.18), transparent),
+    radial-gradient(ellipse 60% 50% at 10% 110%, rgba(13, 148, 136, 0.1), transparent);
 }
 
-.logo {
-  width: 120px;
-  height: 120px;
-  margin-bottom: 1.5rem;
+[data-theme='dark'] .hero {
+  background:
+    radial-gradient(ellipse 80% 60% at 70% -10%, rgba(45, 212, 191, 0.14), transparent),
+    radial-gradient(ellipse 60% 50% at 10% 110%, rgba(45, 212, 191, 0.07), transparent);
 }
 
-.buttons {
-  display: flex;
+.heroInner {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 3rem;
   align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  flex-wrap: wrap;
 }
 
-.quickStart {
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--ifm-color-primary);
+  color: var(--ifm-color-primary);
+  background: transparent;
+}
+
+.heroTitle {
+  font-size: 3rem;
+  line-height: 1.12;
+  margin-bottom: 1rem;
+}
+
+.kyselyLink {
+  color: var(--ifm-color-primary);
+  text-decoration: none;
+  border-bottom: 3px solid var(--ifm-color-primary);
+}
+
+.kyselyLink:hover {
+  text-decoration: none;
+  opacity: 0.85;
+}
+
+.heroSubtitle {
+  font-size: 1.15rem;
+  color: var(--ifm-color-emphasis-700);
+  margin-bottom: 1.75rem;
+  max-width: 34rem;
+}
+
+.heroButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: flex-start;
+}
+
+.worksWith {
+  margin: 1.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ifm-color-emphasis-600);
+}
+
+.heroCode {
+  min-width: 0;
+}
+
+.heroCode :global(.theme-code-block) {
+  margin-bottom: 0;
+  box-shadow: var(--ifm-global-shadow-md);
+}
+
+/* ---- Shared section chrome ---------------------------------------------- */
+
+.sectionTitle {
+  text-align: center;
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.sectionLead {
+  text-align: center;
+  max-width: 44rem;
+  margin: 0 auto 2.5rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+/* ---- Positioning --------------------------------------------------------- */
+
+.positioning {
+  padding: 4rem 0;
+}
+
+.positionGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.positionCard {
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  background: var(--ifm-background-surface-color);
+}
+
+.positionCard h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.6rem;
+}
+
+.positionCard p {
+  margin: 0;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.95rem;
+}
+
+/* ---- Patterns ------------------------------------------------------------ */
+
+.patterns {
   padding: 4rem 0;
   background: var(--ifm-background-surface-color);
 }
 
-.quickStart h2 {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.codeBlocks {
+.patternGrid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 2rem;
-  max-width: 900px;
-  margin: 0 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
 }
 
-.codeBlock h3 {
-  margin-bottom: 0.5rem;
-  font-size: 1rem;
-  color: var(--ifm-color-primary);
+.patternCol {
+  min-width: 0;
 }
+
+.patternLabel {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ifm-color-primary);
+  margin-bottom: 0.6rem;
+}
+
+.patternFooter {
+  text-align: center;
+  margin: 1.5rem auto 0;
+  color: var(--ifm-color-emphasis-700);
+}
+
+/* ---- Plugins ------------------------------------------------------------- */
+
+.plugins {
+  padding: 4rem 0;
+}
+
+.pluginGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.pluginCard {
+  display: block;
+  padding: 1.25rem;
+  border-radius: 12px;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  background: var(--ifm-background-surface-color);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.pluginCard:hover {
+  border-color: var(--ifm-color-primary);
+  color: inherit;
+  text-decoration: none;
+  transform: translateY(-2px);
+}
+
+.pluginHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.pluginName {
+  font-weight: 700;
+}
+
+.pluginSize {
+  font-size: 0.75rem;
+  color: var(--ifm-color-emphasis-600);
+  font-family: var(--ifm-font-family-monospace);
+}
+
+.pluginCard p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+/* ---- Toolkit ------------------------------------------------------------- */
+
+.toolkit {
+  padding: 4rem 0;
+  background: var(--ifm-background-surface-color);
+}
+
+.toolkitGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.toolkitCard {
+  display: block;
+  padding: 1.25rem 1.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  background: var(--ifm-background-color);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.toolkitCard:hover {
+  border-color: var(--ifm-color-primary);
+  color: inherit;
+  text-decoration: none;
+  transform: translateY(-2px);
+}
+
+.toolkitCard h3 {
+  font-size: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.toolkitCard p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+/* ---- Stats ---------------------------------------------------------------- */
 
 .stats {
-  padding: 3rem 0;
-  background: var(--ifm-color-primary);
-  color: white;
+  padding: 3.5rem 0;
+  background: linear-gradient(120deg, var(--ifm-color-primary-darkest), var(--ifm-color-primary));
+  color: #fff;
 }
 
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 2rem;
   text-align: center;
 }
 
-.stat {
-  padding: 1rem;
-}
-
 .statValue {
-  font-size: 2.5rem;
-  font-weight: bold;
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1;
   margin-bottom: 0.5rem;
 }
 
 .statLabel {
   font-size: 0.9rem;
-  opacity: 0.9;
+  opacity: 0.92;
 }
 
+.statsFootnote {
+  text-align: center;
+  margin: 2rem auto 0;
+  max-width: 40rem;
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+/* ---- Quick start ----------------------------------------------------------- */
+
+.quickStart {
+  padding: 4rem 0;
+}
+
+.quickStartGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 2rem;
+  margin-top: 2rem;
+  align-items: start;
+}
+
+.quickStartLabel {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ifm-color-primary);
+  margin: 1.25rem 0 0.6rem;
+}
+
+.quickStartLabel:first-child {
+  margin-top: 0;
+}
+
+.quickStartNote {
+  font-size: 0.88rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+/* ---- Final CTA ------------------------------------------------------------- */
+
+.finalCta {
+  padding: 4rem 0 5rem;
+  text-align: center;
+}
+
+.finalCta h2 {
+  margin-bottom: 1.5rem;
+}
+
+.finalCta .heroButtons {
+  justify-content: center;
+}
+
+/* ---- Responsive ------------------------------------------------------------ */
+
 @media screen and (max-width: 996px) {
-  .heroBanner {
-    padding: 2rem;
+  .heroInner {
+    grid-template-columns: 1fr;
+    gap: 2rem;
   }
 
-  .logo {
-    width: 80px;
-    height: 80px;
+  .heroTitle {
+    font-size: 2.4rem;
   }
 
+  .positionGrid,
+  .toolkitGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .patternGrid,
+  .quickStartGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .pluginGrid,
   .statsGrid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media screen and (max-width: 576px) {
+  .hero {
+    padding: 3rem 0 2.5rem;
+  }
+
+  .heroTitle {
+    font-size: 2rem;
+  }
+
+  .pluginGrid,
   .statsGrid {
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
+    grid-template-columns: 1fr;
   }
 
   .statValue {
-    font-size: 1.8rem;
+    font-size: 2rem;
   }
 }
