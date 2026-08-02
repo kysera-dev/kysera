@@ -12,6 +12,19 @@ export interface RestoreOptions {
   config?: string
 }
 
+/** Row shape of the audit_logs table as queried by the audit commands. */
+interface AuditLogRow {
+  id: number
+  table_name: string
+  entity_id: string
+  action: string
+  old_values: unknown
+  new_values: unknown
+  user_id: string | null
+  created_at: string | Date
+  metadata: unknown
+}
+
 export function restoreCommand(): Command {
   const cmd = new Command('restore')
     .description('Restore entity from audit log')
@@ -41,7 +54,7 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
   // Load configuration
   const config = await loadConfig(options.config)
 
-  if (!config?.database) {
+  if (!config.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
@@ -58,7 +71,7 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     ])
   }
 
-  const restoreSpinner = spinner() as any
+  const restoreSpinner = spinner()
   restoreSpinner.start(`Fetching audit log #${auditLogId}...`)
 
   try {
@@ -69,11 +82,11 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     }
 
     // Fetch the audit log entry
-    const auditLog = await db
+    const auditLog = (await db
       .selectFrom('audit_logs')
       .selectAll()
       .where('id', '=', id)
-      .executeTakeFirst()
+      .executeTakeFirst()) as unknown as AuditLogRow | undefined
 
     if (!auditLog) {
       restoreSpinner.fail(`Audit log #${auditLogId} not found`)
@@ -83,15 +96,15 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     restoreSpinner.succeed('Audit log found')
 
     // Parse the audit log data
-    const tableName = auditLog['table_name'] as string
-    const entityId = auditLog['entity_id'] as string
-    const action = auditLog['action'] as string
-    const oldValues = parseJson(auditLog['old_values'])
-    const createdAt = new Date(auditLog['created_at'] as string)
+    const tableName = auditLog.table_name
+    const entityId = auditLog.entity_id
+    const action = auditLog.action
+    const oldValues = parseJson(auditLog.old_values)
+    const createdAt = new Date(auditLog.created_at)
 
     // Determine what to restore
-    let restoreData: any = null
-    let restoreAction: string = ''
+    let restoreData: Record<string, unknown> | null = null
+    let restoreAction = ''
 
     if (action === 'DELETE') {
       // Restore deleted entity
@@ -115,7 +128,7 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     console.log(`  Entity ID: ${entityId}`)
     console.log(`  Action: ${formatAction(action)}`)
     console.log(`  Timestamp: ${createdAt.toLocaleString()}`)
-    console.log(`  User: ${auditLog['user_id'] || 'system'}`)
+    console.log(`  User: ${auditLog.user_id ?? 'system'}`)
 
     console.log('')
     console.log(prism.bold('🔄 Restore Plan:'))
@@ -145,7 +158,7 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
       }
 
       // Show changes
-      for (const [key, value] of Object.entries(restoreData || {})) {
+      for (const [key, value] of Object.entries(restoreData ?? {})) {
         const currentValue = currentEntity[key]
         if (currentValue !== value) {
           console.log(`    ${key}: ${formatValue(currentValue)} → ${formatValue(value)}`)
@@ -193,13 +206,16 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     }
 
     // Execute restore
-    const executeSpinner = spinner() as any
+    const executeSpinner = spinner()
     executeSpinner.start('Executing restore...')
 
     await db.transaction().execute(async trx => {
       if (restoreAction === 'INSERT') {
         // Recreate deleted entity
-        await trx.insertInto(tableName).values(restoreData).execute()
+        await trx
+          .insertInto(tableName)
+          .values(restoreData ?? {})
+          .execute()
 
         executeSpinner.succeed('Entity restored successfully')
 
@@ -227,18 +243,12 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
           .where('id', '=', entityId)
           .executeTakeFirst()
 
-        // Update to previous state
-        const updateQuery = trx.updateTable(tableName).where('id', '=', entityId)
+        // Update to previous state, excluding the id column
+        const updateValues = Object.fromEntries(
+          Object.entries(restoreData ?? {}).filter(([key]) => key !== 'id')
+        )
 
-        // Build SET clause dynamically
-        let setClause = updateQuery
-        for (const [key, value] of Object.entries(restoreData || {})) {
-          if (key !== 'id') {
-            setClause = setClause.set(key as any, value)
-          }
-        }
-
-        await setClause.execute()
+        await trx.updateTable(tableName).where('id', '=', entityId).set(updateValues).execute()
 
         executeSpinner.succeed('Entity restored to previous state')
 
@@ -327,42 +337,41 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
   }
 }
 
-function parseJson(value: any): any {
+function parseJson(value: unknown): Record<string, unknown> {
   if (typeof value === 'string') {
     try {
-      return JSON.parse(value)
+      return (JSON.parse(value) ?? {}) as Record<string, unknown>
     } catch {
-      return value
+      return value as unknown as Record<string, unknown>
     }
   }
-  return value || {}
+  return (value ?? {}) as Record<string, unknown>
 }
 
 function formatAction(action: string): string {
-  const colors: Record<string, (text: string) => string> = {
+  const colors: Record<string, ((text: string) => string) | undefined> = {
     INSERT: prism.green,
     UPDATE: prism.yellow,
     DELETE: prism.red
   }
 
-  const color = colors[action] || prism.white
+  const color = colors[action] ?? prism.white
   return color(action)
 }
 
-function formatValue(value: any): string {
-  if (value === null) {
-    return prism.gray('NULL')
-  } else if (value === undefined) {
-    return prism.gray('undefined')
-  } else if (typeof value === 'string') {
-    return `"${value}"`
-  } else if (typeof value === 'boolean') {
-    return value ? prism.green('true') : prism.red('false')
-  } else if (value instanceof Date) {
-    return value.toISOString()
-  } else if (typeof value === 'object') {
-    return prism.gray(JSON.stringify(value))
-  } else {
-    return String(value)
+function formatValue(value: unknown): string {
+  switch (typeof value) {
+    case 'undefined':
+      return prism.gray('undefined')
+    case 'string':
+      return `"${value}"`
+    case 'boolean':
+      return value ? prism.green('true') : prism.red('false')
+    case 'object':
+      if (value === null) return prism.gray('NULL')
+      if (value instanceof Date) return value.toISOString()
+      return prism.gray(JSON.stringify(value))
+    default:
+      return String(value)
   }
 }

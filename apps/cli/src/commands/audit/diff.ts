@@ -12,6 +12,29 @@ export interface DiffOptions {
   config?: string
 }
 
+/** Row shape of the audit_logs table as queried by the audit commands. */
+interface AuditLogRow {
+  id: number
+  table_name: string
+  entity_id: string
+  action: string
+  old_values: unknown
+  new_values: unknown
+  user_id: string | null
+  created_at: string | Date
+  metadata: unknown
+}
+
+/** Reconstructed entity state; null means the entity was deleted at that point. */
+type EntityState = Record<string, unknown> | null
+
+interface EntityDiff {
+  added: string[]
+  removed: string[]
+  changed: { field: string; from: unknown; to: unknown }[]
+  unchanged: string[]
+}
+
 export function diffCommand(): Command {
   const cmd = new Command('diff')
     .description('Show entity diff between audit entries')
@@ -58,7 +81,7 @@ async function showEntityDiff(
   // Load configuration
   const config = await loadConfig(options.config)
 
-  if (!config?.database) {
+  if (!config.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
@@ -75,18 +98,18 @@ async function showEntityDiff(
     ])
   }
 
-  const diffSpinner = spinner() as any
+  const diffSpinner = spinner()
   diffSpinner.start('Fetching entity history...')
 
   try {
     // Get all audit logs for the entity
-    const history = await db
+    const history = (await db
       .selectFrom('audit_logs')
       .selectAll()
       .where('table_name', '=', tableName)
       .where('entity_id', '=', entityId)
       .orderBy('created_at', 'asc')
-      .execute()
+      .execute()) as unknown as AuditLogRow[]
 
     if (history.length === 0) {
       diffSpinner.fail(`No audit history found for ${tableName} #${entityId}`)
@@ -96,8 +119,8 @@ async function showEntityDiff(
     diffSpinner.succeed(`Found ${history.length} audit entries`)
 
     // Determine the range to diff
-    let fromLog: any
-    let toLog: any
+    let fromLog: AuditLogRow | undefined
+    let toLog: AuditLogRow | undefined
 
     if (from && to) {
       // Both specified
@@ -193,7 +216,7 @@ async function showEntityDiff(
   }
 }
 
-function findLogByIdOrTime(history: any[], idOrTime: string): any {
+function findLogByIdOrTime(history: AuditLogRow[], idOrTime: string): AuditLogRow | undefined {
   // Try as ID first
   const asId = parseInt(idOrTime, 10)
   if (!isNaN(asId)) {
@@ -217,11 +240,11 @@ function findLogByIdOrTime(history: any[], idOrTime: string): any {
     return closest
   }
 
-  return null
+  return undefined
 }
 
-function buildStateAtPoint(history: any[], upToId: number): any {
-  let state: any = {}
+function buildStateAtPoint(history: AuditLogRow[], upToId: number): EntityState {
+  let state: EntityState = {}
 
   for (const log of history) {
     if (log.id > upToId) break
@@ -243,25 +266,24 @@ function buildStateAtPoint(history: any[], upToId: number): any {
   return state
 }
 
-function calculateDiff(fromState: any, toState: any): any {
-  const diff = {
-    added: [] as string[],
-    removed: [] as string[],
-    changed: [] as any[],
-    unchanged: [] as string[]
+function calculateDiff(fromState: EntityState, toState: EntityState): EntityDiff {
+  const diff: EntityDiff = {
+    added: [],
+    removed: [],
+    changed: [],
+    unchanged: []
   }
 
-  if (!fromState && !toState) {
-    return diff
-  }
-
-  if (!fromState && toState) {
+  if (!fromState) {
+    if (!toState) {
+      return diff
+    }
     // Entity was created
     diff.added = Object.keys(toState)
     return diff
   }
 
-  if (fromState && !toState) {
+  if (!toState) {
     // Entity was deleted
     diff.removed = Object.keys(fromState)
     return diff
@@ -288,13 +310,13 @@ function calculateDiff(fromState: any, toState: any): any {
   return diff
 }
 
-function showSideBySideDiff(fromState: any, toState: any, useColor: boolean): void {
-  if (!fromState && !toState) {
-    console.log(prism.gray('No state at either point'))
-    return
-  }
-
+function showSideBySideDiff(fromState: EntityState, toState: EntityState, useColor: boolean): void {
   if (!fromState) {
+    if (!toState) {
+      console.log(prism.gray('No state at either point'))
+      return
+    }
+
     console.log(prism.green('Entity created with:'))
     for (const [key, value] of Object.entries(toState)) {
       console.log(`  + ${key}: ${formatValue(value)}`)
@@ -343,18 +365,25 @@ function showSideBySideDiff(fromState: any, toState: any, useColor: boolean): vo
 }
 
 function showUnifiedDiff(
-  fromState: any,
-  toState: any,
-  fromLog: any,
-  toLog: any,
+  fromState: EntityState,
+  toState: EntityState,
+  fromLog: AuditLogRow,
+  toLog: AuditLogRow,
   table: string,
   entityId: string
 ): void {
   console.log(`--- ${table}/${entityId} (Audit #${fromLog.id})`)
   console.log(`+++ ${table}/${entityId} (Audit #${toLog.id})`)
-  console.log(`@@ -${fromLog.id},${fromLog.created_at} +${toLog.id},${toLog.created_at} @@`)
+  console.log(
+    `@@ -${fromLog.id},${String(fromLog.created_at)} +${toLog.id},${String(toLog.created_at)} @@`
+  )
 
-  if (!fromState && toState) {
+  if (!fromState) {
+    if (!toState) {
+      // No state at either point: nothing beyond the headers to print
+      return
+    }
+
     console.log(prism.green('+Entity created'))
     for (const [key, value] of Object.entries(toState)) {
       console.log(prism.green(`+${key}: ${formatValue(value)}`))
@@ -362,7 +391,7 @@ function showUnifiedDiff(
     return
   }
 
-  if (fromState && !toState) {
+  if (!toState) {
     console.log(prism.red('-Entity deleted'))
     for (const [key, value] of Object.entries(fromState)) {
       console.log(prism.red(`-${key}: ${formatValue(value)}`))
@@ -373,7 +402,7 @@ function showUnifiedDiff(
   const diff = calculateDiff(fromState, toState)
   const allKeys = [
     ...diff.unchanged,
-    ...diff.changed.map((c: any) => c.field),
+    ...diff.changed.map(c => c.field),
     ...diff.added,
     ...diff.removed
   ]
@@ -383,7 +412,7 @@ function showUnifiedDiff(
       console.log(prism.red(`-${key}: ${formatValue(fromState[key])}`))
     } else if (diff.added.includes(key)) {
       console.log(prism.green(`+${key}: ${formatValue(toState[key])}`))
-    } else if (diff.changed.find((c: any) => c.field === key)) {
+    } else if (diff.changed.find(c => c.field === key)) {
       console.log(prism.red(`-${key}: ${formatValue(fromState[key])}`))
       console.log(prism.green(`+${key}: ${formatValue(toState[key])}`))
     } else {
@@ -392,35 +421,34 @@ function showUnifiedDiff(
   }
 }
 
-function parseJson(value: any): any {
+function parseJson(value: unknown): Record<string, unknown> {
   if (typeof value === 'string') {
     try {
-      return JSON.parse(value)
+      return (JSON.parse(value) ?? {}) as Record<string, unknown>
     } catch {
       return {}
     }
   }
-  return value || {}
+  return (value ?? {}) as Record<string, unknown>
 }
 
-function formatDate(date: any): string {
+function formatDate(date: string | Date): string {
   return new Date(date).toLocaleString()
 }
 
-function formatValue(value: any): string {
-  if (value === null) {
-    return 'NULL'
-  } else if (value === undefined) {
-    return 'undefined'
-  } else if (typeof value === 'string') {
-    return `"${value}"`
-  } else if (typeof value === 'boolean') {
-    return value ? 'true' : 'false'
-  } else if (value instanceof Date) {
-    return value.toISOString()
-  } else if (typeof value === 'object') {
-    return JSON.stringify(value)
-  } else {
-    return String(value)
+function formatValue(value: unknown): string {
+  switch (typeof value) {
+    case 'undefined':
+      return 'undefined'
+    case 'string':
+      return `"${value}"`
+    case 'boolean':
+      return value ? 'true' : 'false'
+    case 'object':
+      if (value === null) return 'NULL'
+      if (value instanceof Date) return value.toISOString()
+      return JSON.stringify(value)
+    default:
+      return String(value)
   }
 }

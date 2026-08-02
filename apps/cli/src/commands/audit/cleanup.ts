@@ -11,7 +11,8 @@ export interface CleanupOptions {
   table?: string
   dryRun?: boolean
   force?: boolean
-  batchSize?: string
+  /** Always set: commander applies a '1000' default. */
+  batchSize: string
   config?: string
 }
 
@@ -60,7 +61,7 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
   // Load configuration
   const config = await loadConfig(options.config)
 
-  if (!config?.database) {
+  if (!config.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
@@ -77,7 +78,7 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
     ])
   }
 
-  const analyzeSpinner = spinner() as any
+  const analyzeSpinner = spinner()
   analyzeSpinner.start('Analyzing audit logs to clean up...')
 
   try {
@@ -106,7 +107,7 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
     }
 
     const countResult = await countQuery.executeTakeFirst()
-    const totalToDelete = Number(countResult?.count || 0)
+    const totalToDelete = Number(countResult?.count ?? 0)
 
     if (totalToDelete === 0) {
       analyzeSpinner.succeed('No audit logs to clean up')
@@ -120,23 +121,23 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
       statsQuery = statsQuery.where('table_name', '=', options.table)
     }
 
-    const tableStats = await statsQuery
+    const tableStats = (await statsQuery
       .select(['table_name'])
       .select(db.fn.count('table_name').as('count'))
       .groupBy('table_name')
-      .execute()
+      .execute()) as { table_name: string; count: unknown }[]
 
-    const oldestLog = await statsQuery
+    const oldestLog = (await statsQuery
       .select('created_at')
       .orderBy('created_at', 'asc')
       .limit(1)
-      .executeTakeFirst()
+      .executeTakeFirst()) as { created_at: string | Date } | undefined
 
-    const newestLog = await statsQuery
+    const newestLog = (await statsQuery
       .select('created_at')
       .orderBy('created_at', 'desc')
       .limit(1)
-      .executeTakeFirst()
+      .executeTakeFirst()) as { created_at: string | Date } | undefined
 
     analyzeSpinner.succeed(`Found ${totalToDelete.toLocaleString()} audit logs to clean up`)
 
@@ -154,9 +155,7 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
       console.log('')
       console.log(prism.cyan('  By Table:'))
       for (const stat of tableStats) {
-        console.log(
-          `    ${(stat as any).table_name}: ${Number((stat as any).count).toLocaleString()} logs`
-        )
+        console.log(`    ${stat.table_name}: ${Number(stat.count).toLocaleString()} logs`)
       }
     }
 
@@ -183,7 +182,7 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
     }
 
     // Execute cleanup
-    const deleteSpinner = spinner() as any
+    const deleteSpinner = spinner()
     deleteSpinner.start('Deleting audit logs...')
 
     const batchSize = parseInt(options.batchSize || '1000', 10)
@@ -195,13 +194,6 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
 
     // Delete in batches for better performance
     while (deletedCount < totalToDelete) {
-      // Build delete query
-      let deleteQuery = db.deleteFrom('audit_logs').where('created_at', '<', cutoffDate)
-
-      if (options.table) {
-        deleteQuery = deleteQuery.where('table_name', '=', options.table)
-      }
-
       // Get IDs to delete in this batch
       let batchQuery = db
         .selectFrom('audit_logs')
@@ -213,14 +205,14 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
         batchQuery = batchQuery.where('table_name', '=', options.table)
       }
 
-      const batchIds = await batchQuery.execute()
+      const batchIds = (await batchQuery.execute()) as { id: unknown }[]
 
       if (batchIds.length === 0) {
         break
       }
 
       // Delete the batch
-      const ids = batchIds.map((row: any) => row.id)
+      const ids = batchIds.map(row => row.id)
       await db.deleteFrom('audit_logs').where('id', 'in', ids).execute()
 
       deletedCount += batchIds.length
@@ -263,7 +255,7 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
 }
 
 function parseDuration(duration: string): Date {
-  const match = duration.match(/^(\d+)([dmy])$/)
+  const match = /^(\d+)([dmy])$/.exec(duration)
   if (!match) {
     throw new CLIError(`Invalid duration format: ${duration}`, 'INVALID_DURATION', [
       'Use format like: 30d (days), 3m (months), 1y (years)'
@@ -280,20 +272,24 @@ function parseDuration(duration: string): Date {
   switch (unit) {
     case 'd': // days
       return new Date(now.getTime() - value * 24 * 60 * 60 * 1000)
-    case 'm': // months
+    case 'm': {
+      // months
       const monthsAgo = new Date(now)
       monthsAgo.setMonth(monthsAgo.getMonth() - value)
       return monthsAgo
-    case 'y': // years
+    }
+    case 'y': {
+      // years
       const yearsAgo = new Date(now)
       yearsAgo.setFullYear(yearsAgo.getFullYear() - value)
       return yearsAgo
+    }
     default:
       throw new CLIError(`Invalid duration unit: ${unit}`, 'INVALID_DURATION')
   }
 }
 
-function formatDate(date: any): string {
+function formatDate(date: string | Date | undefined): string {
   if (!date) return 'N/A'
   return new Date(date).toLocaleDateString()
 }

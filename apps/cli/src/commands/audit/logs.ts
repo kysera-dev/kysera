@@ -1,5 +1,6 @@
 import { Command } from 'commander'
-import { prism, table } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
+import { displayTable as table } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
@@ -8,7 +9,8 @@ export interface LogsOptions {
   table?: string
   user?: string
   action?: 'INSERT' | 'UPDATE' | 'DELETE'
-  limit?: string
+  /** Always set: commander applies a '50' default. */
+  limit: string
   since?: string
   until?: string
   entityId?: string
@@ -16,6 +18,20 @@ export interface LogsOptions {
   verbose?: boolean
   config?: string
   schema?: string
+}
+
+/** Row shape of the audit_logs table as queried by the audit commands. */
+interface AuditLogRow {
+  id: number
+  table_name: string
+  entity_id: string
+  action: string
+  old_values: unknown
+  new_values: unknown
+  user_id: string | null
+  created_at: string | Date
+  metadata: unknown
+  changes_count?: number
 }
 
 export function logsCommand(): Command {
@@ -52,10 +68,10 @@ export function logsCommand(): Command {
 async function queryAuditLogs(options: LogsOptions): Promise<void> {
   await withDatabase(
     { config: options.config, verbose: options.verbose, schema: options.schema },
-    async (db, config, schema) => {
+    async (db, _config, schema) => {
       // Use schema-aware db for PostgreSQL
       const schemaDb = schema !== 'public' ? db.withSchema(schema) : db
-      const querySpinner = spinner() as any
+      const querySpinner = spinner()
       querySpinner.start('Querying audit logs...')
 
       // Check if audit_logs table exists
@@ -121,7 +137,7 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
       query = query.limit(limit)
 
       // Execute query
-      const logs = await query.execute()
+      const logs = (await query.execute()) as unknown as AuditLogRow[]
 
       querySpinner.succeed(`Found ${logs.length} audit log${logs.length !== 1 ? 's' : ''}`)
 
@@ -137,44 +153,47 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
         // Detailed view
         for (const log of logs) {
           console.log('')
-          console.log(prism.bold(`Audit Log #${log['id']}`))
+          console.log(prism.bold(`Audit Log #${log.id}`))
           console.log(prism.gray('-'.repeat(50)))
-          console.log(`  Timestamp: ${formatDate(log['created_at'])}`)
-          console.log(`  Table: ${prism.cyan(log['table_name'])}`)
-          console.log(`  Action: ${formatAction(String(log['action']))}`)
-          console.log(`  Entity ID: ${log['entity_id']}`)
-          console.log(`  User: ${log['user_id'] || prism.gray('system')}`)
+          console.log(`  Timestamp: ${formatDate(log.created_at)}`)
+          console.log(`  Table: ${prism.cyan(log.table_name)}`)
+          console.log(`  Action: ${formatAction(log.action)}`)
+          console.log(`  Entity ID: ${log.entity_id}`)
+          console.log(`  User: ${log.user_id ?? prism.gray('system')}`)
 
-          if (log['metadata']) {
-            console.log(`  Metadata: ${prism.gray(JSON.stringify(log['metadata']))}`)
+          if (log.metadata) {
+            console.log(`  Metadata: ${prism.gray(JSON.stringify(log.metadata))}`)
           }
 
-          if (log['old_values'] || log['new_values']) {
+          if (log.old_values || log.new_values) {
             console.log('')
             console.log(prism.cyan('  Changes:'))
 
-            if (log['action'] === 'INSERT') {
+            if (log.action === 'INSERT') {
               console.log(prism.green('    + Created with:'))
-              if (log['new_values']) {
-                const values =
-                  typeof log['new_values'] === 'string'
-                    ? JSON.parse(log['new_values'])
-                    : log['new_values']
+              if (log.new_values) {
+                const values = (
+                  typeof log.new_values === 'string' ? JSON.parse(log.new_values) : log.new_values
+                ) as Record<string, unknown>
                 for (const [key, value] of Object.entries(values)) {
                   console.log(`      ${key}: ${formatValue(value)}`)
                 }
               }
-            } else if (log['action'] === 'UPDATE') {
-              const oldValues = log['old_values']
-                ? typeof log['old_values'] === 'string'
-                  ? JSON.parse(log['old_values'])
-                  : log['old_values']
-                : {}
-              const newValues = log['new_values']
-                ? typeof log['new_values'] === 'string'
-                  ? JSON.parse(log['new_values'])
-                  : log['new_values']
-                : {}
+            } else if (log.action === 'UPDATE') {
+              const oldValues = (
+                log.old_values
+                  ? typeof log.old_values === 'string'
+                    ? JSON.parse(log.old_values)
+                    : log.old_values
+                  : {}
+              ) as Record<string, unknown>
+              const newValues = (
+                log.new_values
+                  ? typeof log.new_values === 'string'
+                    ? JSON.parse(log.new_values)
+                    : log.new_values
+                  : {}
+              ) as Record<string, unknown>
 
               for (const key of new Set([...Object.keys(oldValues), ...Object.keys(newValues)])) {
                 if (oldValues[key] !== newValues[key]) {
@@ -183,13 +202,12 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
                   )
                 }
               }
-            } else if (log['action'] === 'DELETE') {
+            } else if (log.action === 'DELETE') {
               console.log(prism.red('    - Deleted with:'))
-              if (log['old_values']) {
-                const values =
-                  typeof log['old_values'] === 'string'
-                    ? JSON.parse(log['old_values'])
-                    : log['old_values']
+              if (log.old_values) {
+                const values = (
+                  typeof log.old_values === 'string' ? JSON.parse(log.old_values) : log.old_values
+                ) as Record<string, unknown>
                 for (const [key, value] of Object.entries(values)) {
                   console.log(`      ${key}: ${formatValue(value)}`)
                 }
@@ -199,18 +217,18 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
         }
       } else {
         // Table view
-        const tableData = logs.map((log: any) => ({
-          ID: log['id'],
-          Time: formatDate(log['created_at'], true),
-          Table: log['table_name'],
-          Action: formatAction(log['action'], true),
-          Entity: log['entity_id'],
-          User: log['user_id'] || 'system',
-          Changes: log['changes_count'] || '-'
+        const tableData = logs.map(log => ({
+          ID: log.id,
+          Time: formatDate(log.created_at, true),
+          Table: log.table_name,
+          Action: formatAction(log.action, true),
+          Entity: log.entity_id,
+          User: log.user_id ?? 'system',
+          Changes: log.changes_count ?? '-'
         }))
 
         console.log('')
-        console.log(table(tableData as any))
+        table(tableData)
       }
 
       // Show summary
@@ -230,7 +248,7 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
   )
 }
 
-function formatDate(date: any, compact: boolean = false): string {
+function formatDate(date: string | Date, compact = false): string {
   const d = new Date(date)
   if (compact) {
     // Format: 2025-01-01 10:00
@@ -241,42 +259,41 @@ function formatDate(date: any, compact: boolean = false): string {
   }
 }
 
-function formatAction(action: string, compact: boolean = false): string {
-  const colors: Record<string, (text: string) => string> = {
+function formatAction(action: string, compact = false): string {
+  const colors: Record<string, ((text: string) => string) | undefined> = {
     INSERT: prism.green,
     UPDATE: prism.yellow,
     DELETE: prism.red
   }
 
-  const color = colors[action] || prism.white
+  const color = colors[action] ?? prism.white
 
   if (compact) {
     // Use symbols for compact view
-    const symbols: Record<string, string> = {
+    const symbols: Record<string, string | undefined> = {
       INSERT: '+',
       UPDATE: '~',
       DELETE: '-'
     }
-    return color(symbols[action] || action)
+    return color(symbols[action] ?? action)
   }
 
   return color(action)
 }
 
-function formatValue(value: any): string {
-  if (value === null) {
-    return prism.gray('NULL')
-  } else if (value === undefined) {
-    return prism.gray('undefined')
-  } else if (typeof value === 'string') {
-    return `"${value}"`
-  } else if (typeof value === 'boolean') {
-    return value ? prism.green('true') : prism.red('false')
-  } else if (value instanceof Date) {
-    return value.toISOString()
-  } else if (typeof value === 'object') {
-    return prism.gray(JSON.stringify(value))
-  } else {
-    return String(value)
+function formatValue(value: unknown): string {
+  switch (typeof value) {
+    case 'undefined':
+      return prism.gray('undefined')
+    case 'string':
+      return `"${value}"`
+    case 'boolean':
+      return value ? prism.green('true') : prism.red('false')
+    case 'object':
+      if (value === null) return prism.gray('NULL')
+      if (value instanceof Date) return value.toISOString()
+      return prism.gray(JSON.stringify(value))
+    default:
+      return String(value)
   }
 }

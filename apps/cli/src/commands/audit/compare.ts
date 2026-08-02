@@ -11,6 +11,25 @@ export interface CompareOptions {
   config?: string
 }
 
+/** Row shape of the audit_logs table as queried by the audit commands. */
+interface AuditLogRow {
+  id: number
+  table_name: string
+  entity_id: string
+  action: string
+  old_values: unknown
+  new_values: unknown
+  user_id: string | null
+  created_at: string | Date
+  metadata: unknown
+}
+
+interface ObjectDiff {
+  added: string[]
+  removed: string[]
+  changed: { field: string; from: unknown; to: unknown }[]
+}
+
 export function compareCommand(): Command {
   const cmd = new Command('compare')
     .description('Compare two audit log entries')
@@ -40,7 +59,7 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
   // Load configuration
   const config = await loadConfig(options.config)
 
-  if (!config?.database) {
+  if (!config.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
@@ -57,7 +76,7 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
     ])
   }
 
-  const compareSpinner = spinner() as any
+  const compareSpinner = spinner()
   compareSpinner.start('Fetching audit logs...')
 
   try {
@@ -73,10 +92,10 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
     }
 
     // Fetch both audit logs
-    const [log1, log2] = await Promise.all([
+    const [log1, log2] = (await Promise.all([
       db.selectFrom('audit_logs').selectAll().where('id', '=', parsedId1).executeTakeFirst(),
       db.selectFrom('audit_logs').selectAll().where('id', '=', parsedId2).executeTakeFirst()
-    ])
+    ])) as unknown as [AuditLogRow | undefined, AuditLogRow | undefined]
 
     if (!log1) {
       compareSpinner.fail(`Audit log #${id1} not found`)
@@ -91,17 +110,17 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
     compareSpinner.succeed('Audit logs fetched successfully')
 
     // Parse values
-    const oldValues1 = parseJson(log1['old_values'])
-    const newValues1 = parseJson(log1['new_values'])
-    const oldValues2 = parseJson(log2['old_values'])
-    const newValues2 = parseJson(log2['new_values'])
+    const oldValues1 = parseJson(log1.old_values)
+    const newValues1 = parseJson(log1.new_values)
+    const oldValues2 = parseJson(log2.old_values)
+    const newValues2 = parseJson(log2.new_values)
 
     if (options.json) {
       console.log(
         JSON.stringify(
           {
-            log1: { id: id1, ...log1 },
-            log2: { id: id2, ...log2 },
+            log1: { ...log1 },
+            log2: { ...log2 },
             differences: compareObjects(
               { ...oldValues1, ...newValues1 },
               { ...oldValues2, ...newValues2 }
@@ -126,36 +145,36 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
     console.log(`  ${'-'.repeat(15)} | ${'-'.repeat(20)} | ${'-'.repeat(20)}`)
 
     // Table
-    const table1 = log1['table_name'] as string
-    const table2 = log2['table_name'] as string
+    const table1 = log1.table_name
+    const table2 = log2.table_name
     console.log(
       `  ${'Table'.padEnd(15)} | ${table1.padEnd(20)} | ${table2.padEnd(20)} ${table1 !== table2 ? prism.yellow('⚠') : ''}`
     )
 
     // Entity ID
-    const entity1 = log1['entity_id'] as string
-    const entity2 = log2['entity_id'] as string
+    const entity1 = log1.entity_id
+    const entity2 = log2.entity_id
     console.log(
       `  ${'Entity ID'.padEnd(15)} | ${entity1.padEnd(20)} | ${entity2.padEnd(20)} ${entity1 !== entity2 ? prism.yellow('⚠') : ''}`
     )
 
     // Action
-    const action1 = log1['action'] as string
-    const action2 = log2['action'] as string
+    const action1 = log1.action
+    const action2 = log2.action
     console.log(
       `  ${'Action'.padEnd(15)} | ${formatAction(action1).padEnd(20)} | ${formatAction(action2).padEnd(20)} ${action1 !== action2 ? prism.yellow('⚠') : ''}`
     )
 
     // User
-    const user1 = (log1['user_id'] || 'system') as string
-    const user2 = (log2['user_id'] || 'system') as string
+    const user1 = log1.user_id ?? 'system'
+    const user2 = log2.user_id ?? 'system'
     console.log(
       `  ${'User'.padEnd(15)} | ${user1.padEnd(20)} | ${user2.padEnd(20)} ${user1 !== user2 ? prism.yellow('⚠') : ''}`
     )
 
     // Timestamp
-    const time1 = new Date(log1['created_at'] as string)
-    const time2 = new Date(log2['created_at'] as string)
+    const time1 = new Date(log1.created_at)
+    const time2 = new Date(log2.created_at)
     console.log(
       `  ${'Timestamp'.padEnd(15)} | ${time1.toLocaleString().padEnd(20)} | ${time2.toLocaleString().padEnd(20)}`
     )
@@ -187,8 +206,8 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
 
         for (const field of allFields) {
           // Get values for this field
-          let value1: any
-          let value2: any
+          let value1: unknown
+          let value2: unknown
 
           if (action1 === 'DELETE') {
             value1 = oldValues1[field]
@@ -260,19 +279,19 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
   }
 }
 
-function parseJson(value: any): any {
+function parseJson(value: unknown): Record<string, unknown> {
   if (typeof value === 'string') {
     try {
-      return JSON.parse(value)
+      return (JSON.parse(value) ?? {}) as Record<string, unknown>
     } catch {
       return {}
     }
   }
-  return value || {}
+  return (value ?? {}) as Record<string, unknown>
 }
 
-function compareObjects(obj1: any, obj2: any): any {
-  const differences: any = {
+function compareObjects(obj1: Record<string, unknown>, obj2: Record<string, unknown>): ObjectDiff {
+  const differences: ObjectDiff = {
     added: [],
     removed: [],
     changed: []
@@ -307,33 +326,36 @@ function compareObjects(obj1: any, obj2: any): any {
 }
 
 function formatAction(action: string): string {
-  const colors: Record<string, (text: string) => string> = {
+  const colors: Record<string, ((text: string) => string) | undefined> = {
     INSERT: prism.green,
     UPDATE: prism.yellow,
     DELETE: prism.red
   }
 
-  const color = colors[action] || prism.white
+  const color = colors[action] ?? prism.white
   return color(action)
 }
 
-function formatValueCompact(value: any, maxLength: number): string {
+function formatValueCompact(value: unknown, maxLength: number): string {
   let str: string
 
-  if (value === null) {
-    str = 'NULL'
-  } else if (value === undefined) {
-    str = '-'
-  } else if (typeof value === 'string') {
-    str = `"${value}"`
-  } else if (typeof value === 'boolean') {
-    str = value ? 'true' : 'false'
-  } else if (value instanceof Date) {
-    str = value.toISOString()
-  } else if (typeof value === 'object') {
-    str = JSON.stringify(value)
-  } else {
-    str = String(value)
+  switch (typeof value) {
+    case 'undefined':
+      str = '-'
+      break
+    case 'string':
+      str = `"${value}"`
+      break
+    case 'boolean':
+      str = value ? 'true' : 'false'
+      break
+    case 'object':
+      if (value === null) str = 'NULL'
+      else if (value instanceof Date) str = value.toISOString()
+      else str = JSON.stringify(value)
+      break
+    default:
+      str = String(value)
   }
 
   // Truncate if too long

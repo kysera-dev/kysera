@@ -6,12 +6,26 @@ import { withDatabase } from '../../utils/with-database.js'
 import { logger } from '../../utils/logger.js'
 
 export interface HistoryOptions {
-  limit?: string
+  /** Always set: commander applies a '20' default. */
+  limit: string
   showValues?: boolean
   json?: boolean
   reverse?: boolean
   config?: string
   schema?: string
+}
+
+/** Row shape of the audit_logs table as queried by the audit commands. */
+interface AuditLogRow {
+  id: number
+  table_name: string
+  entity_id: string
+  action: string
+  old_values: unknown
+  new_values: unknown
+  user_id: string | null
+  created_at: string | Date
+  metadata: unknown
 }
 
 export function historyCommand(): Command {
@@ -49,10 +63,10 @@ async function showEntityHistory(
 ): Promise<void> {
   await withDatabase(
     { config: options.config, schema: options.schema },
-    async (db, config, schema) => {
+    async (db, _config, schema) => {
       // Use schema-aware db for PostgreSQL
       const schemaDb = schema !== 'public' ? db.withSchema(schema) : db
-      const historySpinner = spinner() as any
+      const historySpinner = spinner()
       historySpinner.start(`Fetching history for ${tableName} #${entityId}...`)
 
       // Check if audit_logs table exists
@@ -76,7 +90,7 @@ async function showEntityHistory(
       if (isNaN(limit) || limit <= 0) {
         throw new CLIError('Invalid limit value - must be a positive number')
       }
-      let query = db
+      const query = db
         .selectFrom('audit_logs')
         .selectAll()
         .where('table_name', '=', tableName)
@@ -84,7 +98,7 @@ async function showEntityHistory(
         .orderBy('created_at', options.reverse ? 'asc' : 'desc')
         .limit(limit)
 
-      const history = await query.execute()
+      const history = (await query.execute()) as unknown as AuditLogRow[]
 
       if (history.length === 0) {
         historySpinner.warn(`No history found for ${tableName} #${entityId}`)
@@ -121,13 +135,13 @@ async function showEntityHistory(
             }
             console.log('')
           }
-        } catch (error) {
+        } catch {
           // Entity might not exist anymore
         }
 
         // Show history timeline
         for (let i = 0; i < history.length; i++) {
-          const log = history[i] as any
+          const log = history[i]
           const isLast = i === history.length - 1
           const connector = isLast ? '+-' : '|-'
           const line = isLast ? '  ' : '| '
@@ -151,7 +165,7 @@ async function showEntityHistory(
 
           // Main timeline entry
           console.log(
-            `${connector} ${prism.gray(timestamp)} | ${actionColor(log.action)} | ${log.user_id || prism.gray('system')}`
+            `${connector} ${prism.gray(timestamp)} | ${actionColor(log.action)} | ${log.user_id ?? prism.gray('system')}`
           )
 
           // Show audit ID if verbose
@@ -171,8 +185,8 @@ async function showEntityHistory(
               }
             } else if (log.action === 'UPDATE') {
               console.log(`${line}   ${prism.yellow('Changed fields:')}`)
-              const oldValues = parseJson(log.old_values) || {}
-              const newValues = parseJson(log.new_values) || {}
+              const oldValues = parseJson(log.old_values)
+              const newValues = parseJson(log.new_values)
 
               for (const key of new Set([...Object.keys(oldValues), ...Object.keys(newValues)])) {
                 if (oldValues[key] !== newValues[key]) {
@@ -194,7 +208,7 @@ async function showEntityHistory(
             // Show metadata if available
             if (log.metadata) {
               const metadata = parseJson(log.metadata)
-              if (metadata && Object.keys(metadata).length > 0) {
+              if (Object.keys(metadata).length > 0) {
                 console.log(`${line}   ${prism.gray('Metadata:')}`)
                 for (const [key, value] of Object.entries(metadata)) {
                   console.log(`${line}     ${key}: ${formatValue(value)}`)
@@ -214,8 +228,8 @@ async function showEntityHistory(
         console.log(prism.gray('-'.repeat(50)))
 
         // Calculate time span
-        const firstEntry = history[history.length - 1] as any
-        const lastEntry = history[0] as any
+        const firstEntry = history[history.length - 1]
+        const lastEntry = history[0]
         const timeSpan =
           new Date(lastEntry.created_at).getTime() - new Date(firstEntry.created_at).getTime()
         const days = Math.floor(timeSpan / (1000 * 60 * 60 * 24))
@@ -228,7 +242,7 @@ async function showEntityHistory(
         // Count by action type
         const actionCounts: Record<string, number> = {}
         for (const log of history) {
-          const action = (log as any).action
+          const action = log.action
           actionCounts[action] = (actionCounts[action] || 0) + 1
         }
         console.log(
@@ -240,7 +254,7 @@ async function showEntityHistory(
         // Count by user
         const userCounts: Record<string, number> = {}
         for (const log of history) {
-          const userId = (log as any).user_id || 'system'
+          const userId = log.user_id ?? 'system'
           userCounts[userId] = (userCounts[userId] || 0) + 1
         }
         const topUsers = Object.entries(userCounts)
@@ -261,39 +275,35 @@ async function showEntityHistory(
   )
 }
 
-function parseJson(value: any): any {
+function parseJson(value: unknown): Record<string, unknown> {
   if (typeof value === 'string') {
     try {
-      return JSON.parse(value)
+      return (JSON.parse(value) ?? {}) as Record<string, unknown>
     } catch (error) {
       logger.debug('Failed to parse JSON value:', error)
-      return value
+      return value as unknown as Record<string, unknown>
     }
   }
-  return value || {}
+  return (value ?? {}) as Record<string, unknown>
 }
 
-function formatValue(value: any): string {
-  if (value === null) {
-    return prism.gray('NULL')
-  } else if (value === undefined) {
-    return prism.gray('undefined')
-  } else if (typeof value === 'string') {
-    // Truncate long strings
-    if (value.length > 50) {
-      return `"${value.substring(0, 47)}..."`
-    }
-    return `"${value}"`
-  } else if (typeof value === 'boolean') {
-    return value ? prism.green('true') : prism.red('false')
-  } else if (
-    value instanceof Date ||
-    (typeof value === 'string' && !isNaN(Date.parse(value)) && value.includes('-'))
-  ) {
-    return new Date(value).toLocaleString()
-  } else if (typeof value === 'object') {
-    return prism.gray(JSON.stringify(value))
-  } else {
-    return String(value)
+function formatValue(value: unknown): string {
+  switch (typeof value) {
+    case 'undefined':
+      return prism.gray('undefined')
+    case 'string':
+      // Truncate long strings
+      if (value.length > 50) {
+        return `"${value.substring(0, 47)}..."`
+      }
+      return `"${value}"`
+    case 'boolean':
+      return value ? prism.green('true') : prism.red('false')
+    case 'object':
+      if (value === null) return prism.gray('NULL')
+      if (value instanceof Date) return new Date(value).toLocaleString()
+      return prism.gray(JSON.stringify(value))
+    default:
+      return String(value)
   }
 }

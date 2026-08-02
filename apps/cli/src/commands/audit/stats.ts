@@ -1,17 +1,38 @@
 import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
+import type { SelectQueryBuilder } from 'kysely'
 import { displayTable } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
 import { CLIError } from '../../utils/errors.js'
-import { getDatabaseConnection } from '../../utils/database.js'
+import { getDatabaseConnection, type Database } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
 
 export interface StatsOptions {
   table?: string
   user?: string
-  period?: string
-  format?: 'table' | 'json' | 'chart'
+  /** Always set: commander applies a '1d' default. */
+  period: string
+  /** Always set: commander applies a 'table' default. */
+  format: 'table' | 'json' | 'chart'
   config?: string
+}
+
+/** Base audit_logs query with period/table/user filters applied. */
+type AuditLogsQuery = SelectQueryBuilder<Database, 'audit_logs', object>
+
+interface ActionCountRow {
+  action: string
+  count: unknown
+}
+
+interface TableCountRow {
+  table_name: string
+  count: unknown
+}
+
+interface UserCountRow {
+  user_id: string | null
+  count: unknown
 }
 
 export function statsCommand(): Command {
@@ -43,7 +64,7 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
   // Load configuration
   const config = await loadConfig(options.config)
 
-  if (!config?.database) {
+  if (!config.database) {
     throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
       'Create a kysera.config.ts file with database configuration',
       'Or specify a config file with --config option'
@@ -60,7 +81,7 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
     ])
   }
 
-  const statsSpinner = spinner() as any
+  const statsSpinner = spinner()
   statsSpinner.start('Calculating audit statistics...')
 
   try {
@@ -97,7 +118,7 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
 
     // Get total count
     const totalResult = await query.select(db.fn.countAll().as('count')).executeTakeFirst()
-    const totalCount = Number(totalResult?.count || 0)
+    const totalCount = Number(totalResult?.count ?? 0)
 
     if (totalCount === 0) {
       statsSpinner.warn('No audit logs found for the specified period')
@@ -105,32 +126,32 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
     }
 
     // Get statistics by action type
-    const actionStats = await query
+    const actionStats = (await query
       .select(['action'])
       .select(db.fn.count('action').as('count'))
       .groupBy('action')
-      .execute()
+      .execute()) as unknown as ActionCountRow[]
 
     // Get statistics by table
-    const tableStats = await query
+    const tableStats = (await query
       .select(['table_name'])
       .select(db.fn.count('table_name').as('count'))
       .groupBy('table_name')
       .orderBy(db.fn.count('table_name'), 'desc')
       .limit(10)
-      .execute()
+      .execute()) as unknown as TableCountRow[]
 
     // Get statistics by user
-    const userStats = await query
+    const userStats = (await query
       .select(['user_id'])
       .select(db.fn.count('user_id').as('count'))
       .groupBy('user_id')
       .orderBy(db.fn.count('user_id'), 'desc')
       .limit(10)
-      .execute()
+      .execute()) as unknown as UserCountRow[]
 
     // Get time-based statistics
-    const timeStats = await getTimeBasedStats(db, query, options.period || '1d')
+    const timeStats = await getTimeBasedStats(query, options.period || '1d')
 
     statsSpinner.succeed('Statistics calculated successfully')
 
@@ -159,49 +180,49 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
 
       // Action chart
       console.log(prism.cyan('Operations by Type:'))
-      const maxActionCount = Math.max(...actionStats.map((s: any) => Number(s.count)))
+      const maxActionCount = Math.max(...actionStats.map(s => Number(s.count)))
       for (const stat of actionStats) {
-        const count = Number((stat as any).count)
+        const count = Number(stat.count)
         const percentage = Math.round((count / totalCount) * 100)
         const barLength = Math.round((count / maxActionCount) * 30)
         const bar = '█'.repeat(barLength) + '░'.repeat(30 - barLength)
-        const actionColor = getActionColor((stat as any).action)
+        const actionColor = getActionColor(stat.action)
         console.log(
-          `  ${actionColor(String((stat as any).action).padEnd(8))}: ${count.toString().padStart(6)} (${percentage.toString().padStart(3)}%) ${prism.gray(bar)}`
+          `  ${actionColor(stat.action.padEnd(8))}: ${count.toString().padStart(6)} (${percentage.toString().padStart(3)}%) ${prism.gray(bar)}`
         )
       }
 
       // Table chart
       console.log('')
       console.log(prism.cyan('Top Modified Tables:'))
-      const maxTableCount = Math.max(...tableStats.map((s: any) => Number(s.count)))
+      const maxTableCount = Math.max(...tableStats.map(s => Number(s.count)))
       for (const stat of tableStats.slice(0, 5)) {
-        const count = Number((stat as any).count)
+        const count = Number(stat.count)
         const barLength = Math.round((count / maxTableCount) * 30)
         const bar = '█'.repeat(barLength) + '░'.repeat(30 - barLength)
         console.log(
-          `  ${String((stat as any).table_name).padEnd(20)}: ${count.toString().padStart(6)} changes ${prism.gray(bar)}`
+          `  ${stat.table_name.padEnd(20)}: ${count.toString().padStart(6)} changes ${prism.gray(bar)}`
         )
       }
 
       // User chart
       console.log('')
       console.log(prism.cyan('Top Users:'))
-      const maxUserCount = Math.max(...userStats.map((s: any) => Number(s.count)))
+      const maxUserCount = Math.max(...userStats.map(s => Number(s.count)))
       for (const stat of userStats.slice(0, 5)) {
-        const count = Number((stat as any).count)
+        const count = Number(stat.count)
         const barLength = Math.round((count / maxUserCount) * 30)
         const bar = '█'.repeat(barLength) + '░'.repeat(30 - barLength)
-        const userId = (stat as any).user_id || 'system'
+        const userId = stat.user_id ?? 'system'
         console.log(
-          `  ${String(userId).padEnd(20)}: ${count.toString().padStart(6)} changes ${prism.gray(bar)}`
+          `  ${userId.padEnd(20)}: ${count.toString().padStart(6)} changes ${prism.gray(bar)}`
         )
       }
 
       // Time chart
       console.log('')
       console.log(prism.cyan('Changes Over Time:'))
-      const maxTimeCount = Math.max(...timeStats.map((s: any) => s.count))
+      const maxTimeCount = Math.max(...timeStats.map(s => s.count))
       for (const stat of timeStats) {
         const barLength = Math.round((stat.count / maxTimeCount) * 30)
         const bar = '█'.repeat(barLength) + '░'.repeat(30 - barLength)
@@ -217,32 +238,32 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
 
       // Operations by type
       console.log(prism.cyan('Operations by Type:'))
-      const actionData = actionStats.map((stat: any) => ({
+      const actionData = actionStats.map(stat => ({
         Action: getActionColor(stat.action)(stat.action),
         Count: Number(stat.count).toLocaleString(),
         Percentage: `${Math.round((Number(stat.count) / totalCount) * 100)}%`
       }))
-      console.log(displayTable(actionData))
+      displayTable(actionData)
 
       // Top modified tables
       console.log('')
       console.log(prism.cyan('Top Modified Tables:'))
-      const tableData = tableStats.map((stat: any) => ({
+      const tableData = tableStats.map(stat => ({
         Table: stat.table_name,
         Changes: Number(stat.count).toLocaleString(),
         Percentage: `${Math.round((Number(stat.count) / totalCount) * 100)}%`
       }))
-      console.log(displayTable(tableData))
+      displayTable(tableData)
 
       // Top users
       console.log('')
       console.log(prism.cyan('Top Users:'))
-      const userData = userStats.map((stat: any) => ({
-        User: stat.user_id || 'system',
+      const userData = userStats.map(stat => ({
+        User: stat.user_id ?? 'system',
         Changes: Number(stat.count).toLocaleString(),
         Percentage: `${Math.round((Number(stat.count) / totalCount) * 100)}%`
       }))
-      console.log(displayTable(userData))
+      displayTable(userData)
 
       // Summary
       console.log('')
@@ -264,21 +285,24 @@ async function showAuditStats(options: StatsOptions): Promise<void> {
   }
 }
 
-async function getTimeBasedStats(db: any, baseQuery: any, period: string): Promise<any[]> {
+async function getTimeBasedStats(
+  baseQuery: AuditLogsQuery,
+  period: string
+): Promise<{ period: string; count: number }[]> {
   const periodMs = parsePeriod(period)
   const intervals = getTimeIntervals(periodMs)
 
   const stats: { period: string; count: number }[] = []
   for (const interval of intervals) {
-    const count = await baseQuery
+    const count = (await baseQuery
       .where('created_at', '>=', interval.start)
       .where('created_at', '<', interval.end)
-      .select(db.fn.countAll().as('count'))
-      .executeTakeFirst()
+      .select(eb => eb.fn.countAll().as('count'))
+      .executeTakeFirst()) as { count: unknown } | undefined
 
     stats.push({
       period: interval.label,
-      count: Number(count?.count || 0)
+      count: Number(count?.count ?? 0)
     })
   }
 
@@ -286,7 +310,7 @@ async function getTimeBasedStats(db: any, baseQuery: any, period: string): Promi
 }
 
 function parsePeriod(period: string): number {
-  const match = period.match(/^(\d+)([hdwm])$/)
+  const match = /^(\d+)([hdwm])$/.exec(period)
   if (!match) {
     throw new CLIError(`Invalid period format: ${period}`, 'INVALID_PERIOD')
   }
@@ -307,7 +331,7 @@ function parsePeriod(period: string): number {
   return value * multipliers[unit]
 }
 
-function getTimeIntervals(periodMs: number): Array<{ start: Date; end: Date; label: string }> {
+function getTimeIntervals(periodMs: number): { start: Date; end: Date; label: string }[] {
   const intervals: { start: Date; end: Date; label: string }[] = []
   const now = new Date()
   const bucketCount = 10
@@ -345,11 +369,11 @@ function getTimeIntervals(periodMs: number): Array<{ start: Date; end: Date; lab
 }
 
 function getActionColor(action: string): (text: string) => string {
-  const colors: Record<string, (text: string) => string> = {
+  const colors: Record<string, ((text: string) => string) | undefined> = {
     INSERT: prism.green,
     UPDATE: prism.yellow,
     DELETE: prism.red
   }
 
-  return colors[action] || prism.white
+  return colors[action] ?? prism.white
 }
