@@ -152,7 +152,8 @@ const VALID_ISOLATION_LEVELS: ReadonlySet<string> = new Set<IsolationLevel>([
  * statements per database (PostgreSQL/MSSQL: inside the transaction; MySQL:
  * before starting it — a raw `SET TRANSACTION` inside an active MySQL
  * transaction would fail with ER_CANT_CHANGE_TX_CHARACTERISTICS).
- * SQLite does not support isolation levels; kysely throws a clear error.
+ * SQLite: kysely's SqliteDriver accepts only 'serializable' natively; other
+ * levels are silently ignored (the driver issues a plain `begin`), no error.
  *
  * Useful for testing behavior under different isolation levels,
  * such as testing for race conditions or phantom reads.
