@@ -33,7 +33,7 @@ Everything else (repository pattern, plugins) is optional and tree-shakeable.
 Core packages have minimal runtime dependencies:
 
 - `@kysera/executor` has zero runtime dependencies (only `kysely` as a peer dependency)
-- `@kysera/core` depends on `@kysera/executor` for plugin base utilities
+- `@kysera/core` lists `@kysera/executor` as a dependency but only imports types from it
 - All other core packages depend only on internal Kysera packages
 
 ```json
@@ -97,89 +97,79 @@ All packages use the strictest TypeScript configuration:
 
 The modern architecture features **@kysera/executor** as the foundation layer:
 
+```mermaid
+flowchart TB
+    app(["User Application"])
+
+    subgraph patterns["Layer 3 · Data access patterns — choose your style"]
+        repo["@kysera/repository<br/>CRUD · validation · plugin extensions"]
+        dal["@kysera/dal<br/>functional queries · type inference"]
+    end
+
+    subgraph plugins["Plugin layer"]
+        direction LR
+        sd["soft-delete"]
+        au["audit"]
+        ts["timestamps"]
+        rlsp["rls"]
+    end
+
+    executor["Layer 2 · Foundation — @kysera/executor<br/>query interception · transaction propagation · plugin validation"]
+
+    subgraph support["Layers 1 and 1.5 · Utility packages"]
+        core["@kysera/core<br/>errors · pagination · types · logger"]
+        infra["@kysera/infra<br/>health · retry"]
+        dbg["@kysera/debug<br/>logging · profiling"]
+        tst["@kysera/testing<br/>factories · isolation"]
+    end
+
+    kysely["Layer 0 · Kysely<br/>type-safe SQL query builder"]
+
+    subgraph drivers["Database drivers"]
+        direction LR
+        pg["PostgreSQL"]
+        my["MySQL"]
+        sq["SQLite"]
+        ms["MSSQL"]
+    end
+
+    app --> patterns
+    patterns --> executor
+    plugins -. "register · intercept every query" .-> executor
+    patterns -. "uses" .-> core
+    executor --> kysely
+    kysely --> drivers
 ```
-┌────────────────────────────────────────────────────────────────┐
-│                        User Application                        │
-└────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────────┐
-│                         Plugins Layer                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐ │
-│  │ soft-delete  │  │    audit     │  │     timestamps       │ │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘ │
-│  ┌──────────────┐                                              │
-│  │     rls      │    Plugin flow: Register → Validate →       │
-│  └──────────────┘    Intercept queries through executor        │
-└────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────────┐
-│       Layer 3: Data Access Patterns (choose your style)        │
-│  ┌─────────────────────────┐  ┌──────────────────────────────┐│
-│  │   @kysera/repository    │  │        @kysera/dal           ││
-│  │  CRUD + Validation +    │  │   Functional Queries +       ││
-│  │  Plugin Extensions      │  │   Type Inference             ││
-│  │  (depends on executor)  │  │   (depends on executor)      ││
-│  └─────────────────────────┘  └──────────────────────────────┘│
-└────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────────┐
-│    Layer 2: FOUNDATION - @kysera/executor (~8KB, 0 deps)      │
-│  ┌──────────────────────────────────────────────────────────┐ │
-│  │  • Query Interception (plugins modify queries)           │ │
-│  │  • Transaction Propagation (plugins work in transactions)│ │
-│  │  • Plugin Validation (conflicts, dependencies, cycles)   │ │
-│  │  • KyseraExecutor type (extends Kysely<DB>)             │ │
-│  └──────────────────────────────────────────────────────────┘ │
-└────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────────┐
-│          Layer 1.5: Infrastructure Layer (opt-in)              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐ │
-│  │ @kysera/infra│  │@kysera/debug │  │   @kysera/testing    │ │
-│  │Health, Retry │  │ Logging, SQL │  │  Factories, Cleanup  │ │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘ │
-└────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────────┐
-│          Layer 1: Core Utilities (@kysera/core ~8KB)           │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐   │
-│  │    Errors    │ │  Pagination  │ │   Types + Logger     │   │
-│  └──────────────┘ └──────────────┘ └──────────────────────┘   │
-└────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────────┐
-│                  Layer 0: Kysely Foundation                    │
-│                Type-safe SQL Query Builder                     │
-└────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────────────────────────┐
-│                              Database Drivers                                   │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
-│  │  PostgreSQL  │  │    MySQL     │  │    SQLite    │  │    MSSQL     │        │
-│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘        │
-└────────────────────────────────────────────────────────────────────────────────┘
-```
+
+The solid path is the query path: your application calls a repository or DAL query, the executor applies registered plugins to the query builder, and the final SQL runs through Kysely against the database. Details the diagram compresses:
+
+- **Plugins** register with the executor once (`createExecutor(db, [...])`) and from then on intercept every query, no matter which data access pattern issued it.
+- **@kysera/executor** is ~8KB with zero runtime dependencies; its `KyseraExecutor` type extends `Kysely<DB>`, so it drops in anywhere a Kysely instance is expected.
+- **Utility packages** sit beside the stack, not inside the query path: `@kysera/core` (~8KB) is a runtime dependency of the pattern and plugin packages, while `@kysera/infra`, `@kysera/debug`, and `@kysera/testing` are opt-in and depended on by nothing else.
 
 ### Dependency Flow
 
+Arrows point from a package to what it depends on:
+
+```mermaid
+flowchart TD
+    repository["@kysera/repository"]
+    dal["@kysera/dal"]
+    plugins["Plugins<br/>soft-delete · audit · rls · timestamps"]
+    core["@kysera/core"]
+    executor["@kysera/executor<br/>0 runtime deps · kysely as peer"]
+
+    repository --> dal
+    repository --> core
+    repository --> executor
+    dal --> core
+    dal --> executor
+    plugins --> core
+    plugins -. "required peer" .-> executor
+    core -. "type-only import" .-> executor
 ```
-@kysera/executor (0 runtime deps, kysely peer)
-    ↓
-@kysera/core (depends on: executor)
-    ↓
-    ├── @kysera/dal (depends on: executor, core)
-    └── @kysera/repository (depends on: executor, dal, core)
-            ↓
-            └── Plugins (soft-delete, audit, rls, timestamps)
-                (depend on: core; executor as required peer)
-```
+
+Two edges deserve a note: `@kysera/core` lists `@kysera/executor` as a dependency but only imports types from it, so no executor code lands in core bundles. And `@kysera/audit`, `@kysera/rls`, and `@kysera/timestamps` additionally declare `@kysera/repository` as a peer dependency for their repository extensions — `@kysera/soft-delete` does not need it.
 
 ## Repository Factory Pattern
 
@@ -219,22 +209,24 @@ Plugins extend functionality through the `@kysera/executor` foundation layer:
 
 ### Plugin Flow Through Executor
 
-```
-User Code
-    ↓
-createExecutor(db, [softDeletePlugin(), rlsPlugin()])
-    ↓
-Plugin Validation (conflicts, dependencies, circular deps)
-    ↓
-KyseraExecutor created
-    ↓
-Query Execution: executor.selectFrom('users').execute()
-    ↓
-Query Interception (plugins modify query)
-    ↓
-Final Query: WHERE deleted_at IS NULL AND tenant_id = ?
-    ↓
-Database
+```mermaid
+flowchart TB
+    subgraph setup["Setup — runs once"]
+        create["createExecutor(db, [softDeletePlugin(), rlsPlugin()])"]
+        validate["Plugin validation<br/>conflicts · dependencies · circular deps"]
+        ready["KyseraExecutor created"]
+        create --> validate --> ready
+    end
+
+    subgraph perquery["Every query"]
+        runq["executor.selectFrom('users').execute()"]
+        intercept["Query interception<br/>plugins modify the builder"]
+        sql["Final query<br/>WHERE deleted_at IS NULL AND tenant_id = ?"]
+        runq --> intercept --> sql
+    end
+
+    ready --> runq
+    sql --> db[(Database)]
 ```
 
 ### 1. Query Interceptors (Work with Both Repository & DAL)

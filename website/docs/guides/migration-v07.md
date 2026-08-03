@@ -28,51 +28,34 @@ If you're using Repository or DAL without plugins, **no code changes are require
 
 The biggest change in v0.7 is the introduction of `@kysera/executor`, a new foundation package that sits between Kysely and your data access layer:
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Before v0.7 (v0.6)                                     │
-│  ┌──────────────┐                                       │
-│  │  Repository  │ ← Plugins only here                   │
-│  └──────┬───────┘                                       │
-│         │                                               │
-│         ▼                                               │
-│     Kysely → Database                                   │
-│                                                         │
-│  ┌──────────────┐                                       │
-│  │     DAL      │ ← No plugin support                   │
-│  └──────┬───────┘                                       │
-│         │                                               │
-│         ▼                                               │
-│     Kysely → Database                                   │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph before["Before v0.7"]
+        direction TB
+        repoB["Repository<br/>plugins only here"]
+        dalB["DAL<br/>no plugin support"]
+        kyselyB["Kysely"]
+        dbB[(Database)]
+        repoB --> kyselyB
+        dalB --> kyselyB
+        kyselyB --> dbB
+    end
 
-┌─────────────────────────────────────────────────────────┐
-│  After v0.7                                             │
-│  ┌──────────────┐                                       │
-│  │  Repository  │ ← Full plugin support                 │
-│  └──────┬───────┘                                       │
-│         │                                               │
-│         ▼                                               │
-│  ┌──────────────┐                                       │
-│  │  Executor    │ ← Plugin interception layer           │
-│  └──────┬───────┘                                       │
-│         │                                               │
-│         ▼                                               │
-│     Kysely → Database                                   │
-│                                                         │
-│  ┌──────────────┐                                       │
-│  │     DAL      │ ← Plugin support via Executor         │
-│  └──────┬───────┘                                       │
-│         │                                               │
-│         ▼                                               │
-│  ┌──────────────┐                                       │
-│  │  Executor    │ ← Same plugin interception            │
-│  └──────┬───────┘                                       │
-│         │                                               │
-│         ▼                                               │
-│     Kysely → Database                                   │
-└─────────────────────────────────────────────────────────┘
+    subgraph after["After v0.7"]
+        direction TB
+        repoA["Repository<br/>full plugin support"]
+        dalA["DAL<br/>plugin support via executor"]
+        execA["Executor<br/>plugin interception layer"]
+        kyselyA["Kysely"]
+        dbA[(Database)]
+        repoA --> execA
+        dalA --> execA
+        execA --> kyselyA
+        kyselyA --> dbA
+    end
 ```
+
+In v0.6 each pattern talked to Kysely directly, so plugin behavior lived (and stopped) inside Repository. In v0.7 both patterns share one executor, which applies the same plugin interception to every query regardless of which pattern issued it.
 
 **Key Benefits:**
 
@@ -930,8 +913,7 @@ After migrating to v0.7:
 If you encounter issues during migration:
 
 - **Documentation:** Check the [API Reference](/docs/api/overview)
-- **GitHub Issues:** [Report a bug](https://github.com/kysera-dev/kysera/issues)
-- **Discussions:** [Ask questions](https://github.com/kysera-dev/kysera/discussions)
+- **GitHub Issues:** [Report a bug or ask a question](https://github.com/kysera-dev/kysera/issues)
 
 ## See Also
 

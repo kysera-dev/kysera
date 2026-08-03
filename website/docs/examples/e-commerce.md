@@ -520,7 +520,7 @@ This example uses the following packages:
 
 ## Repository Structure
 
-```
+```text
 examples/e-commerce/src/
 ├── db/
 │   ├── schema.ts          # TypeScript schema types

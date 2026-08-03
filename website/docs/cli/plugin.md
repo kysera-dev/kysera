@@ -341,7 +341,7 @@ kysera plugin enable @kysera/rls
 
 You can create custom plugins in a `plugins/` directory:
 
-```
+```text
 my-project/
 ├── plugins/
 │   └── my-custom-plugin/

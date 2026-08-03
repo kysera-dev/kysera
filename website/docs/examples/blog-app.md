@@ -435,7 +435,7 @@ The example will:
 
 ## Project Structure
 
-```
+```text
 blog-app/
 ├── src/
 │   ├── db/

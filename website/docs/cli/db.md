@@ -284,7 +284,7 @@ kysera db seed --transaction
 
 ### 2. Order Seed Files
 
-```
+```text
 seeds/
 ├── 01_users.ts
 ├── 02_posts.ts

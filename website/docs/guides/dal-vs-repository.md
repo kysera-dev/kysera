@@ -10,19 +10,25 @@ Kysera offers two approaches to data access: the **Repository pattern** (`@kyser
 
 ## Quick Decision Guide
 
-```
-Do you need repository extension plugins (audit.restore(), timestamps)?
-├── Yes → Use Repository
-└── No
-    └── Do you need query interceptor plugins (soft-delete, RLS)?
-        ├── Yes → Use DAL with KyseraExecutor OR Repository
-        └── No
-            └── Do you prefer OOP patterns with classes and methods?
-                ├── Yes → Use Repository
-                └── No
-                    └── Do you need maximum type inference and tree-shaking?
-                        ├── Yes → Use DAL
-                        └── Either works - choose based on team preference
+```mermaid
+flowchart TD
+    q1{"Need repository extension plugins?<br/>audit restore · timestamps"}
+    q2{"Need query interceptor plugins?<br/>soft-delete · RLS"}
+    q3{"Prefer OOP patterns<br/>with classes and methods?"}
+    q4{"Need maximum type inference<br/>and tree-shaking?"}
+    useRepo["Use Repository"]
+    useEither["Use DAL with KyseraExecutor<br/>or Repository"]
+    useDal["Use DAL"]
+    anyWorks["Either works —<br/>choose by team preference"]
+
+    q1 -- "Yes" --> useRepo
+    q1 -- "No" --> q2
+    q2 -- "Yes" --> useEither
+    q2 -- "No" --> q3
+    q3 -- "Yes" --> useRepo
+    q3 -- "No" --> q4
+    q4 -- "Yes" --> useDal
+    q4 -- "No" --> anyWorks
 ```
 
 ## Architecture Comparison
@@ -145,70 +151,41 @@ Both patterns support **query interceptors** through `@kysera/executor`. Only Re
 
 ### Plugin Interception Model
 
-```
-Repository Pattern (with KyseraExecutor):
-┌─────────────────────────────────────────────────────────┐
-│  Application Code                                       │
-│         │                                               │
-│         ▼                                               │
-│  ┌─────────────────┐                                    │
-│  │  createORM()    │ ← Plugins registered here          │
-│  │       │         │                                    │
-│  │       ▼         │                                    │
-│  │  ┌───────────┐  │                                    │
-│  │  │ Plugins   │  │ interceptQuery() wraps QB          │
-│  │  │ (chain)   │  │ extendRepository() adds methods    │
-│  │  └─────┬─────┘  │                                    │
-│  │        │        │                                    │
-│  │        ▼        │                                    │
-│  │  ┌───────────┐  │                                    │
-│  │  │Repository │  │ ← Central execution point          │
-│  │  └─────┬─────┘  │                                    │
-│  └────────│────────┘                                    │
-│           │                                             │
-│           ▼                                             │
-│    KyseraExecutor → Kysely → Database                   │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph repoflow["Repository — with KyseraExecutor"]
+        direction TB
+        appR["Application code"]
+        ormR["createORM()<br/>plugins registered here"]
+        chainR["Plugin chain<br/>interceptQuery wraps builders<br/>extendRepository adds methods"]
+        repoR["Repository<br/>central execution point"]
+        execR["KyseraExecutor"]
+        kyselyR["Kysely"]
+        dbR[(Database)]
+        appR --> ormR --> chainR --> repoR --> execR --> kyselyR --> dbR
+    end
 
-Functional DAL (with KyseraExecutor):
-┌─────────────────────────────────────────────────────────┐
-│  Application Code                                       │
-│         │                                               │
-│         ▼                                               │
-│  ┌─────────────────┐                                    │
-│  │ createQuery()   │ ← User-defined function            │
-│  │       │         │                                    │
-│  │       ▼         │                                    │
-│  │  ctx.db.xxx()   │ ← KyseraExecutor access            │
-│  └────────│────────┘                                    │
-│           │                                             │
-│           ▼                                             │
-│    KyseraExecutor (Proxy) ← Interception point!         │
-│           │                                             │
-│           ▼                                             │
-│  ┌─────────────────┐                                    │
-│  │ Plugins (chain) │ interceptQuery() wraps QB          │
-│  └────────┬────────┘                                    │
-│           │                                             │
-│           ▼                                             │
-│       Kysely → Database                                 │
-└─────────────────────────────────────────────────────────┘
+    subgraph dalflow["Functional DAL — with KyseraExecutor"]
+        direction TB
+        appD["Application code"]
+        queryD["createQuery()<br/>user-defined function"]
+        ctxD["ctx.db access"]
+        execD["KyseraExecutor Proxy<br/>interception point"]
+        chainD["Plugin chain<br/>interceptQuery wraps builders"]
+        kyselyD["Kysely"]
+        dbD[(Database)]
+        appD --> queryD --> ctxD --> execD --> chainD --> kyselyD --> dbD
+    end
 
-Functional DAL (without KyseraExecutor):
-┌─────────────────────────────────────────────────────────┐
-│  Application Code                                       │
-│         │                                               │
-│         ▼                                               │
-│  ┌─────────────────┐                                    │
-│  │ createQuery()   │ ← User-defined function            │
-│  │       │         │                                    │
-│  │       ▼         │                                    │
-│  │  ctx.db.xxx()   │ ← Direct Kysely access             │
-│  └────────│────────┘   NO interception point!           │
-│           │                                             │
-│           ▼                                             │
-│       Kysely → Database                                 │
-└─────────────────────────────────────────────────────────┘
+    subgraph rawflow["Functional DAL — without KyseraExecutor"]
+        direction TB
+        appN["Application code"]
+        queryN["createQuery()<br/>user-defined function"]
+        ctxN["ctx.db access<br/>direct Kysely — no interception point"]
+        kyselyN["Kysely"]
+        dbN[(Database)]
+        appN --> queryN --> ctxN --> kyselyN --> dbN
+    end
 ```
 
 ### How KyseraExecutor Enables DAL Plugins

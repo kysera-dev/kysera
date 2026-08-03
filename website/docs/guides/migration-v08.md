@@ -786,19 +786,16 @@ chmod +x kysera-v08-migrate.sh
 After successfully migrating to v0.8:
 
 1. **Review the Changelog:** [v0.8.0 Release Notes](https://github.com/kysera-dev/kysera/releases/tag/v0.8.0)
-2. **Check for v1.0 Roadmap:** [Kysera v1.0 Planning](https://github.com/kysera-dev/kysera/discussions)
-3. **Update CI/CD:** Ensure deployment pipelines use v0.8.x
-4. **Monitor for Issues:** Watch for edge cases in production
-5. **Plan the next upgrade:** v0.9 is available — see the [Migration Guide v0.8 → v0.9](/docs/guides/migration-v09)
+2. **Update CI/CD:** Ensure deployment pipelines use v0.8.x
+3. **Monitor for Issues:** Watch for edge cases in production
+4. **Plan the next upgrade:** v0.9 is available — see the [Migration Guide v0.8 → v0.9](/docs/guides/migration-v09)
 
 ## Getting Help
 
 If you encounter issues during migration:
 
 - **Documentation:** Check the [API Reference](/docs/api/overview)
-- **GitHub Issues:** [Report a bug](https://github.com/kysera-dev/kysera/issues)
-- **Discussions:** [Ask questions](https://github.com/kysera-dev/kysera/discussions)
-- **Discord:** Join our [community Discord](https://discord.gg/kysera)
+- **GitHub Issues:** [Report a bug or ask a question](https://github.com/kysera-dev/kysera/issues)
 
 ## See Also
 

@@ -22,30 +22,23 @@ Instead, Kysera provides lightweight patterns (Repository, DAL) and plugins on t
 
 ## Layered Architecture
 
+```mermaid
+flowchart TB
+    L4["Layer 4 · Plugins<br/>@kysera/soft-delete · @kysera/audit · @kysera/timestamps · @kysera/rls"]
+    L3["Layer 3 · Data access patterns — choose your style<br/>@kysera/repository — CRUD + validation · @kysera/dal — functional queries"]
+    L2["Layer 2 · Foundation<br/>@kysera/executor — plugin interception and propagation"]
+    L15["Layer 1.5 · Infrastructure — opt-in<br/>@kysera/infra · @kysera/debug · @kysera/testing"]
+    L1["Layer 1 · Core utilities<br/>@kysera/core — errors, pagination, types, logger"]
+    L0["Layer 0 · Kysely<br/>direct SQL query builder — no wrapper required"]
+
+    L4 --- L3
+    L3 --- L2
+    L2 --- L1
+    L15 -.- L1
+    L1 --- L0
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  Layer 4: Plugins                                               │
-│  (@kysera/soft-delete, @kysera/audit, @kysera/timestamps, etc.) │
-├─────────────────────────────────────────────────────────────────┤
-│  Layer 3: Data Access Patterns (choose your style)              │
-│  @kysera/repository (CRUD + validation + plugin extensions)     │
-│  @kysera/dal (Functional queries + type inference)              │
-├─────────────────────────────────────────────────────────────────┤
-│  Layer 2: Foundation Layer (@kysera/executor ~8KB)              │
-│  Unified Execution Layer - plugin interception & propagation    │
-├─────────────────────────────────────────────────────────────────┤
-│  Layer 1.5: Infrastructure (opt-in)                             │
-│  @kysera/infra (health, retry, circuit breaker)                 │
-│  @kysera/debug (logging, profiling)                             │
-│  @kysera/testing (test utilities)                               │
-├─────────────────────────────────────────────────────────────────┤
-│  Layer 1: Core Utilities (@kysera/core ~8KB)                    │
-│  Errors, error codes, pagination, types, logger                 │
-├─────────────────────────────────────────────────────────────────┤
-│  Layer 0: Kysely Foundation                                     │
-│  Direct SQL query builder - no wrapper required                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+
+Layers are adoption levels, not package dependencies — each one is optional, and the infrastructure packages sit beside the stack rather than inside it (nothing else depends on them). See [Architecture](/docs/core-concepts/architecture) for the real dependency graph.
 
 ### Layer 0: Kysely Foundation
 

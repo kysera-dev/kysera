@@ -28,6 +28,7 @@ const config: Config = {
   onBrokenAnchors: 'throw',
 
   markdown: {
+    mermaid: true,
     hooks: {
       onBrokenMarkdownLinks: 'throw'
     }
@@ -56,6 +57,7 @@ const config: Config = {
   ],
 
   themes: [
+    '@docusaurus/theme-mermaid',
     [
       require.resolve('@easyops-cn/docusaurus-search-local'),
       {
@@ -236,10 +238,6 @@ const config: Config = {
               href: 'https://github.com/kysera-dev/kysera/issues'
             },
             {
-              label: 'Discussions',
-              href: 'https://github.com/kysera-dev/kysera/discussions'
-            },
-            {
               label: 'Kysely',
               href: 'https://kysely.dev'
             },
@@ -251,6 +249,23 @@ const config: Config = {
         }
       ],
       copyright: `Copyright ${new Date().getFullYear()} Kysera`
+    },
+    mermaid: {
+      // Brand-coherent diagrams: neutral base re-hued to the logo's 165°
+      // system (same values as custom.css); dark variant on brand surfaces
+      theme: { light: 'neutral', dark: 'dark' },
+      options: {
+        fontFamily:
+          "'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        themeVariables: {
+          primaryColor: '#e6f6f1',
+          primaryTextColor: '#08654e',
+          primaryBorderColor: '#0d9472',
+          lineColor: '#0d9472',
+          secondaryColor: '#f7fbfa',
+          tertiaryColor: '#f0faf7'
+        }
+      }
     },
     prism: {
       theme: prismThemes.github,

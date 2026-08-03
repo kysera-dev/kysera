@@ -265,7 +265,7 @@ Settings resolve with the precedence **flags > environment > `.env` > config fil
 
 ## Shell Completions
 
-Tab-completion scripts for bash, zsh, and fish are generated from the actual command tree (all 15 top-level commands and 61 subcommands, including per-subcommand options and enum values). They live in the Kysera repository under [`apps/cli/scripts/completions/`](https://github.com/kysera/kysera/tree/main/apps/cli/scripts/completions) — grab the file for your shell:
+Tab-completion scripts for bash, zsh, and fish are generated from the actual command tree (all 15 top-level commands and 61 subcommands, including per-subcommand options and enum values). They live in the Kysera repository under [`apps/cli/scripts/completions/`](https://github.com/kysera-dev/kysera/tree/main/apps/cli/scripts/completions) — grab the file for your shell:
 
 ```bash
 # Bash — add to ~/.bashrc or ~/.bash_profile

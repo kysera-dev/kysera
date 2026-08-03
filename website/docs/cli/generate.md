@@ -304,7 +304,7 @@ kysera generate crud <table>
 
 **Generated Files:**
 
-```
+```text
 src/
 ├── models/user.ts
 ├── schemas/user.schema.ts

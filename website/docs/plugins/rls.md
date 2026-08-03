@@ -646,40 +646,51 @@ interface PolicyEvaluationContext {
 
 At initialization the plugin compiles the schema into a `PolicyRegistry` (also exported for advanced use), which groups each table's policies into allows, denies, filters, and validates. Policies are then evaluated differently depending on operation type:
 
-**For SELECT queries (`interceptQuery`):**
+**For SELECT, UPDATE, and DELETE statements (`interceptQuery`):**
 
-```
-1. Check bypass conditions (excludeTables, isSystem, bypassRoles)
-2. Get filter policies for table → registry.getFilters(table)
-3. For each filter:
-   - Call filter.getConditions(ctx) → { tenant_id: 1, status: 'active' }
-   - Apply as WHERE conditions (AND logic)
-4. Return transformed query
+```mermaid
+flowchart TD
+    Q["Query enters interceptQuery"] --> EX{"Table excluded?"}
+    EX -->|Yes| PASS["Query unchanged"]
+    EX -->|No| CTX{"RLS context present?"}
+    CTX -->|No| MISS["Blocked: RLSContextError or zero-row predicate"]
+    CTX -->|Yes| BYP{"System user or bypass role?"}
+    BYP -->|Yes| PASS
+    BYP -->|No| OP{"Operation"}
+    OP -->|INSERT| INS["Unchanged (value checks run in repository guard)"]
+    OP -->|SELECT / UPDATE / DELETE| ACT["Resolve activation gates"]
+    ACT --> FIL{"Active filter policies?"}
+    FIL -->|None| PASS
+    FIL -->|Some| COND["Evaluate each filter's getConditions"]
+    COND --> WHERE["AND conditions into WHERE clause"]
+    WHERE --> OUT["Transformed query"]
 ```
 
-**For UPDATE/DELETE statements (`interceptQuery`):**
-
-```
-1. Check bypass conditions (excludeTables, isSystem, bypassRoles)
-2. Get filter policies for table → registry.getFilters(table)
-3. Append each filter's conditions to the statement's WHERE clause
-   → the mutation can only touch rows the context is allowed to see
-```
+The query path applies **filter** policies only. Filters come from `registry.getFilters(table)` with activation gates already resolved — a conditional filter that is inactive for the current context is treated as absent. Each active filter's `getConditions(ctx)` result (e.g. `{ tenant_id: 1, status: 'active' }`) is ANDed into the statement's `WHERE` clause: for SELECT this scopes reads, and for UPDATE/DELETE (v0.9+) the same predicates make rows outside the caller's row scope untouchable through any path, including DAL. INSERT has no `WHERE` clause to narrow — its value-level checks run in the repository guard below. On missing context the plugin throws `RLSContextError` (default `requireContext: true`) or, with `requireContext: false` and without `allowUnfilteredQueries`, appends an impossible predicate so the statement matches zero rows. Per-table `skipFor` roles bypass the transformer the same way plugin-level `bypassRoles` do.
 
 **For mutations (create/update/delete via `extendRepository`):**
 
+```mermaid
+flowchart TD
+    M["Repository create / update / delete"] --> CTX{"RLS context present?"}
+    CTX -->|No| DENIED["RLSPolicyViolation"]
+    CTX -->|Yes| BYP{"System user or bypass / skipFor role?"}
+    BYP -->|Yes| OK["Mutation allowed"]
+    BYP -->|No| ACT["Resolve activation gates"]
+    ACT --> DENY{"Any deny policy true?"}
+    DENY -->|Yes| DENIED
+    DENY -->|No| VAL{"All validate policies pass? (create / update)"}
+    VAL -->|No| DENIED
+    VAL -->|Yes| HAS{"Any allow policies active?"}
+    HAS -->|No| DD{"defaultDeny?"}
+    DD -->|Yes| DENIED
+    DD -->|No| OK
+    HAS -->|Yes| ANY{"At least one allow true?"}
+    ANY -->|No| DENIED
+    ANY -->|Yes| OK
 ```
-1. Check bypass conditions (excludeTables, isSystem, bypassRoles)
-2. DENY policies first (highest priority)
-   - If ANY deny evaluates to true → RLSPolicyViolation
-3. VALIDATE policies (create/update only)
-   - ALL validate policies must return true
-   - If ANY returns false → RLSPolicyViolation
-4. ALLOW policies
-   - At least ONE must return true
-   - If defaultDeny=true and no allows → RLSPolicyViolation
-   - If no allows match → RLSPolicyViolation
-```
+
+Deny policies are evaluated first and override everything else — a single `true` throws `RLSPolicyViolation`. Validate policies (create and update only) must all pass. Allow policies then need at least one match, and `defaultDeny: true` rejects every mutation on a table with no active allow policy at all. Activation gates resolve once per check, and an inactive allow policy counts as absent — which under `defaultDeny` still denies.
 
 ### Policy Type Summary
 

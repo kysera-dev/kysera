@@ -38,7 +38,7 @@ kysera init [project-name]
 
 Minimal setup with core packages:
 
-```
+```text
 my-app/
 ├── src/
 │   ├── index.ts
@@ -59,7 +59,7 @@ my-app/
 
 Express.js REST API setup:
 
-```
+```text
 my-app/
 ├── src/
 │   ├── index.ts
@@ -74,7 +74,7 @@ my-app/
 
 Apollo GraphQL server:
 
-```
+```text
 my-app/
 ├── src/
 │   ├── index.ts
@@ -88,7 +88,7 @@ my-app/
 
 Monorepo directory structure:
 
-```
+```text
 my-app/
 ├── apps/
 │   ├── api/

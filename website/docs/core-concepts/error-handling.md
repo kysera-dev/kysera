@@ -11,21 +11,23 @@ Kysera provides a comprehensive error handling system with typed errors for diff
 
 ## Error Hierarchy
 
-```
-DatabaseError (base)
-├── UniqueConstraintError
-├── ForeignKeyError
-├── NotFoundError
-├── BadRequestError
-├── NotNullError
-├── CheckConstraintError
-├── SoftDeleteError
-│   └── RecordNotDeletedError
-├── AuditError
-│   ├── AuditRestoreError
-│   └── AuditMissingValuesError
-└── TimestampsError
-    └── TimestampColumnMissingError
+```mermaid
+flowchart LR
+    DatabaseError["DatabaseError — base class"]
+
+    DatabaseError --> UniqueConstraintError
+    DatabaseError --> ForeignKeyError
+    DatabaseError --> NotFoundError
+    DatabaseError --> BadRequestError
+    DatabaseError --> NotNullError
+    DatabaseError --> CheckConstraintError
+    DatabaseError --> SoftDeleteError
+    SoftDeleteError --> RecordNotDeletedError
+    DatabaseError --> AuditError
+    AuditError --> AuditRestoreError
+    AuditError --> AuditMissingValuesError
+    DatabaseError --> TimestampsError
+    TimestampsError --> TimestampColumnMissingError
 ```
 
 ## Error Classes

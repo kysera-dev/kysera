@@ -20,20 +20,16 @@ Kysera now features a **Unified Execution Layer** powered by `@kysera/executor`.
 
 Kysera follows a layered architecture with `@kysera/executor` as the foundation:
 
-```
-┌─────────────────────────────────────────────────────┐
-│  Application Layer (Repository / DAL Patterns)      │
-│  - @kysera/repository: Repository with validation   │
-│  - @kysera/dal: Functional query composition        │
-├─────────────────────────────────────────────────────┤
-│  Plugin Layer (Query Interceptors & Extensions)     │
-│  - @kysera/soft-delete, @kysera/rls, etc.          │
-├─────────────────────────────────────────────────────┤
-│  Unified Execution Layer                            │
-│  - @kysera/executor: Plugin-aware Kysely wrapper    │
-├─────────────────────────────────────────────────────┤
-│  Kysely Query Builder (peer dependency)             │
-└─────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    app["Application layer<br/>@kysera/repository — validation · @kysera/dal — composition"]
+    plugins["Plugin layer<br/>@kysera/soft-delete · @kysera/rls · @kysera/audit · @kysera/timestamps"]
+    executor["Unified execution layer<br/>@kysera/executor — plugin-aware Kysely wrapper"]
+    kysely["Kysely query builder — peer dependency"]
+
+    app --> executor
+    plugins -. "intercept queries · extend repositories" .-> executor
+    executor --> kysely
 ```
 
 **Key Concepts:**
@@ -89,56 +85,48 @@ import { parseDatabaseError, paginate, consoleLogger } from '@kysera/core'
 
 ## Package Dependencies
 
-Understanding the dependency hierarchy helps you choose the right packages:
+Understanding the dependency hierarchy helps you choose the right packages. Solid arrows are runtime dependencies; dashed arrows are peer dependencies or type-only imports:
 
+```mermaid
+flowchart TD
+    subgraph access["Layer 2 · Data access patterns"]
+        repository["@kysera/repository<br/>repository pattern · validation · CRUD"]
+        dal["@kysera/dal<br/>functional queries · composition"]
+    end
+
+    subgraph plugs["Layer 3 · Plugins"]
+        softdelete["@kysera/soft-delete<br/>interceptQuery + extendRepository"]
+        rls["@kysera/rls<br/>interceptQuery + extendRepository"]
+        timestamps["@kysera/timestamps<br/>extendRepository only"]
+        audit["@kysera/audit<br/>extendRepository only"]
+    end
+
+    subgraph infrastructure["Layer 4 · Infrastructure"]
+        infra["@kysera/infra<br/>health · retry · circuit breaker"]
+        debug["@kysera/debug<br/>query logging · profiling"]
+        testing["@kysera/testing<br/>transaction isolation · factories"]
+        migrations["@kysera/migrations<br/>migration runner · versioning"]
+    end
+
+    subgraph foundation["Layer 1 · Foundation"]
+        core["@kysera/core<br/>errors · pagination · logging · types"]
+        dialects["@kysera/dialects<br/>dialect adapters · introspection"]
+        executor["@kysera/executor<br/>plugin-aware wrapper · 0 deps"]
+    end
+
+    repository --> dal
+    repository --> core
+    repository --> executor
+    dal --> core
+    dal --> executor
+    dialects --> core
+    core -. "type-only" .-> executor
+    plugs --> core
+    plugs -. "peer" .-> executor
+    infrastructure --> core
 ```
-Layer 1: Foundation
-┌─────────────────────────────────────────────────────────────┐
-│ @kysera/core (deps: @kysera/executor, type-only import)     │
-│   └──> Errors, pagination, logging, types                  │
-│                                                              │
-│ @kysera/dialects (depends: @kysera/core)                    │
-│   └──> Dialect adapters, introspection, error detection    │
-│                                                              │
-│ @kysera/executor (0 deps - peer: kysely)                    │
-│   └──> Plugin-aware Kysely wrapper, query interception     │
-└─────────────────────────────────────────────────────────────┘
 
-Layer 2: Data Access Patterns
-┌─────────────────────────────────────────────────────────────┐
-│ @kysera/dal (depends: @kysera/core, @kysera/executor)       │
-│   └──> Functional queries, context passing, composition    │
-│                                                              │
-│ @kysera/repository (depends: core, dal, executor)           │
-│   └──> Repository pattern, validation, CRUD operations     │
-└─────────────────────────────────────────────────────────────┘
-
-Layer 3: Plugins (depend on executor for Plugin interface)
-┌─────────────────────────────────────────────────────────────┐
-│ Query Interceptor Plugins (work with Repository + DAL)     │
-│   ├──> @kysera/soft-delete (interceptQuery + extendRepo)   │
-│   └──> @kysera/rls (interceptQuery + extendRepo)           │
-│                                                              │
-│ Repository Extension Plugins (Repository only)              │
-│   ├──> @kysera/timestamps (extendRepository only)          │
-│   └──> @kysera/audit (extendRepository only)               │
-└─────────────────────────────────────────────────────────────┘
-
-Layer 4: Infrastructure (standalone or depend on core)
-┌─────────────────────────────────────────────────────────────┐
-│ @kysera/infra (depends: @kysera/core)                       │
-│   └──> Health checks, retry, circuit breaker, shutdown     │
-│                                                              │
-│ @kysera/debug (depends: @kysera/core)                       │
-│   └──> Query logging, profiling, SQL formatting            │
-│                                                              │
-│ @kysera/testing (minimal deps)                              │
-│   └──> Testing utilities, transaction isolation, factories │
-│                                                              │
-│ @kysera/migrations (depends: @kysera/core)                  │
-│   └──> Migration runner, schema versioning                 │
-└─────────────────────────────────────────────────────────────┘
-```
+All four plugin packages depend on `@kysera/core` at runtime and declare `@kysera/executor` as a required peer for the `Plugin` interface; `@kysera/audit`, `@kysera/rls`, and `@kysera/timestamps` also declare `@kysera/repository` as a peer for their repository extensions. In the infrastructure layer, every package depends on `@kysera/core`, and `@kysera/testing` additionally declares `@kysera/executor` and `better-sqlite3` as peers.
 
 :::note
 `@kysera/core` lists `@kysera/executor` in its npm `dependencies`, but only imports types from it — no executor runtime code is pulled into core bundles.
