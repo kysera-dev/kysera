@@ -47,7 +47,7 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.1.2",
     "@vitest/coverage-v8": "^4.1.10",
-    "better-sqlite3": "^13.0.2",
+    "better-sqlite3": "^13.0.3",
     "kysely": "^0.29.4",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
