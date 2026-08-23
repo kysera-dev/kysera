@@ -34,15 +34,15 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
-    "@types/node": "^26.1.2",
-    "@types/pg": "^8.20.3",
-    "@vitest/coverage-v8": "^4.1.10",
-    "better-sqlite3": "^13.0.2",
-    "kysely": "^0.29.4",
-    "pg": "^8.22.0",
+    "@types/node": "^26.2.0",
+    "@types/pg": "^8.23.1",
+    "@vitest/coverage-v8": "^4.1.11",
+    "better-sqlite3": "^13.0.3",
+    "kysely": "^0.29.5",
+    "pg": "^8.23.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "keywords": [
     "kysely",

@@ -16,15 +16,15 @@
     "@kysera/infra": "workspace:*",
     "@kysera/repository": "workspace:*",
     "@kysera/soft-delete": "workspace:*",
-    "kysely": "^0.29.4",
-    "pg": "^8.22.0",
+    "kysely": "^0.29.5",
+    "pg": "^8.23.0",
     "zod": "^4.4.3",
     "dotenv": "^17.4.2"
   },
   "devDependencies": {
-    "@types/node": "^26.1.2",
-    "@types/pg": "^8.20.3",
-    "tsx": "^4.23.1",
+    "@types/node": "^26.2.0",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.12",
     "typescript": "^6.0.3"
   }
 }
