@@ -43,7 +43,7 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.1.2",
     "@types/pg": "^8.20.3",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^5.0.0",
     "better-sqlite3": "^13.0.2",
     "kysely": "^0.29.4",
     "mysql2": "^3.23.2",
