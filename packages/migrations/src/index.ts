@@ -363,7 +363,7 @@ export class MigrationRunner<DB = unknown> {
   protected readonly history: MigrationHistory
   private readonly options: MigrationRunnerOptions
   private active = false
-  private afterCommit: Array<() => Promise<void>> | null = null
+  private afterCommit: (() => Promise<void>)[] | null = null
 
   constructor(db: Kysely<DB>, migrations: Migration<DB>[], options: MigrationRunnerOptions = {}) {
     // Validate and apply defaults using Zod schema
@@ -423,7 +423,8 @@ export class MigrationRunner<DB = unknown> {
     this.active = true
     try {
       return await this.acquireRunLock(async db => {
-        if (this.options.transactionMode !== 'batch' || this.runnerOptions.dryRun) return fn(db)
+        if (this.options.transactionMode !== 'batch' || this.runnerOptions.dryRun)
+          return await fn(db)
         this.afterCommit = []
         try {
           const result = await db.transaction().execute(fn)
@@ -442,10 +443,10 @@ export class MigrationRunner<DB = unknown> {
   }
 
   private async acquireRunLock<T>(fn: (db: Kysely<DB>) => Promise<T>): Promise<T> {
-    if (this.runnerOptions.dryRun) return fn(this.db)
+    if (this.runnerOptions.dryRun) return await fn(this.db)
     if (this.options.lockProvider) {
       const provider = this.options.lockProvider
-      return this.withConnectionLock(
+      return await this.withConnectionLock(
         fn,
         async conn => {
           if (!(await provider.acquire(conn)))
@@ -454,7 +455,7 @@ export class MigrationRunner<DB = unknown> {
         conn => provider.release(conn)
       )
     }
-    if (!this.runnerOptions.advisoryLock) return fn(this.db)
+    if (!this.runnerOptions.advisoryLock) return await fn(this.db)
     const dialect = detectDialect(this.db)
 
     if (dialect === 'postgres') {
@@ -560,31 +561,30 @@ export class MigrationRunner<DB = unknown> {
   ): Promise<T> {
     return await this.db.connection().execute(async conn => {
       await acquire(conn)
-      let failure: unknown
-      let failed = false
+      const outcome = await Promise.resolve()
+        .then(() => fn(conn))
+        .then(
+          value => ({ ok: true as const, value }),
+          (error: unknown) => ({ ok: false as const, error })
+        )
       try {
-        return await fn(conn)
+        await release(conn)
       } catch (error) {
-        failed = true
-        failure = error
-        throw error
-      } finally {
-        try {
-          await release(conn)
-        } catch (error) {
-          this.logger.error(`Failed to release migration advisory lock: ${formatError(error)}`)
-          const releaseError = new Error(
-            'Migration lock release failed; changes may already be committed. Inspect status before retrying.',
+        this.logger.error(`Failed to release migration advisory lock: ${formatError(error)}`)
+        const releaseError = new Error(
+          'Migration lock release failed; changes may already be committed. Inspect status before retrying.',
+          { cause: error }
+        )
+        if (!outcome.ok)
+          throw new AggregateError(
+            [outcome.error, releaseError],
+            'Migration failed and its lock could not be released',
             { cause: error }
           )
-          if (failed)
-            throw new AggregateError(
-              [failure, releaseError],
-              'Migration failed and its lock could not be released'
-            )
-          throw releaseError
-        }
+        throw releaseError
       }
+      if (!outcome.ok) throw outcome.error
+      return outcome.value
     })
   }
 
@@ -671,9 +671,9 @@ export class MigrationRunner<DB = unknown> {
   async adoptChecksums(): Promise<string[]> {
     if (this.runnerOptions.dryRun)
       throw new BadRequestError('Checksum adoption cannot run in dry-run mode')
-    return this.withAdvisoryLock(async db => {
+    return await this.withAdvisoryLock(async db => {
       await this.ensureSetup(db)
-      return this.adoptMissingChecksums(db)
+      return await this.adoptMissingChecksums(db)
     })
   }
 
@@ -683,7 +683,7 @@ export class MigrationRunner<DB = unknown> {
         throw new NotFoundError('Migration', { name })
     }
     if (this.runnerOptions.dryRun) throw new BadRequestError('Baseline cannot run in dry-run mode')
-    return this.withAdvisoryLock(async db => {
+    return await this.withAdvisoryLock(async db => {
       await this.ensureSetup(db)
       const apply = async (tx: Kysely<DB>): Promise<{ marked: string[]; skipped: string[] }> => {
         const executed = new Set(await this.getExecutedMigrations(tx))
@@ -698,7 +698,7 @@ export class MigrationRunner<DB = unknown> {
         }
         return result
       }
-      return db.isTransaction ? apply(db) : db.transaction().execute(apply)
+      return db.isTransaction ? await apply(db) : await db.transaction().execute(apply)
     })
   }
 
@@ -1036,10 +1036,10 @@ export class MigrationRunner<DB = unknown> {
    * In dry run mode, shows what would be rolled back
    */
   async reset(): Promise<MigrationResult> {
-    return this.withAdvisoryLock(async db => {
+    return await this.withAdvisoryLock(async db => {
       const executed = await this.getExecutedMigrations(db)
       if (executed.length === 0) this.logger.warn('No migrations to reset')
-      return this.runDown(executed.length, undefined, db)
+      return await this.runDown(executed.length, undefined, db)
     })
   }
 
@@ -1368,7 +1368,7 @@ export class MigrationRunnerWithPlugins<DB = unknown> extends MigrationRunner<DB
     _hooks?: Parameters<MigrationRunner<DB>['runUp']>[1],
     db: Kysely<DB> = this.db
   ): Promise<MigrationResult> {
-    return super.runUp(
+    return await super.runUp(
       migrations,
       {
         before: migration => this.runBeforeHooks(migration, 'up'),
@@ -1384,7 +1384,7 @@ export class MigrationRunnerWithPlugins<DB = unknown> extends MigrationRunner<DB
     _hooks?: Parameters<MigrationRunner<DB>['runDown']>[1],
     db: Kysely<DB> = this.db
   ): Promise<MigrationResult> {
-    return super.runDown(
+    return await super.runDown(
       steps,
       {
         before: migration => this.runBeforeHooks(migration, 'down'),

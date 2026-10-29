@@ -37,7 +37,7 @@ export const MigrationRunnerOptionsSchema = z.object({
   advisoryLock: z.boolean().default(true),
   /** Max time to wait for the advisory lock before failing */
   lockTimeoutMs: z.number().int().positive().default(60000),
-  advisoryLockKey: z.union([z.number().int().safe(), z.bigint(), z.string().min(1)]).optional(),
+  advisoryLockKey: z.union([z.number().int(), z.bigint(), z.string().min(1)]).optional(),
   enforceChecksums: z.boolean().optional(),
   backfillMissingChecksums: z.boolean().optional(),
   rollbackChecksumPolicy: z.enum(['error', 'warn']).optional(),

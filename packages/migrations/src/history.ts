@@ -40,8 +40,22 @@ export interface MigrationHistoryOptions {
 
 type HistoryDB = Record<string, Record<string, unknown>>
 
-/** Configurable SQL history shared by the library, CLI and framework adapters. */
-export function createMigrationHistory(options: MigrationHistoryOptions = {}): MigrationHistory {
+/** SQL helpers share the same validated journal identity. */
+interface HistoryAccess {
+  table: string
+  key: string
+  time: string | null
+  order: string | undefined
+  checksum: string | undefined
+  sidecar: string | undefined
+  view: <DB>(db: Kysely<DB>) => Kysely<HistoryDB>
+  encode: (name: string) => string | number
+  columns: <DB>(db: Kysely<DB>, name?: string) => Promise<Set<string> | null>
+  qualified: (name: string) => string
+  createTable: <DB>(db: Kysely<DB>, name: string, checksumOnly?: boolean) => Promise<void>
+}
+
+function historyAccess(options: MigrationHistoryOptions): HistoryAccess {
   const table = options.tableName ?? 'migrations'
   const key = options.keyColumn ?? 'name'
   const time = options.executedAtColumn === undefined ? 'executed_at' : options.executedAtColumn
@@ -116,16 +130,15 @@ export function createMigrationHistory(options: MigrationHistoryOptions = {}): M
         !checksumOnly && options.keyType === 'integer' ? 'integer' : 'varchar(255)',
         c => c.primaryKey()
       )
-    if (checksumOnly || time) {
-      builder = builder.addColumn(
-        checksumOnly ? 'recorded_at' : time!,
-        mssql ? 'datetime2' : 'timestamp',
-        c => c.notNull().defaultTo(sql`CURRENT_TIMESTAMP`)
+    const timestampColumn = checksumOnly ? 'recorded_at' : time
+    if (timestampColumn) {
+      builder = builder.addColumn(timestampColumn, mssql ? 'datetime2' : 'timestamp', c =>
+        c.notNull().defaultTo(sql`CURRENT_TIMESTAMP`)
       )
     }
     if (!checksumOnly && order) builder = builder.addColumn(order, 'bigint')
-    if (checksumOnly || checksum)
-      builder = builder.addColumn(checksumOnly ? 'checksum' : checksum!, 'varchar(64)')
+    const checksumColumn = checksumOnly ? 'checksum' : checksum
+    if (checksumColumn) builder = builder.addColumn(checksumColumn, 'varchar(64)')
     if (mssql) {
       // SQL Server has no CREATE TABLE IF NOT EXISTS. Identifiers come from
       // Kysely's compiler; the existence guard remains a bound value.
@@ -133,6 +146,36 @@ export function createMigrationHistory(options: MigrationHistoryOptions = {}): M
       await sql`if object_id(${qualified(name)}, N'U') is null ${sql.raw(compiled.sql)}`.execute(db)
     } else await builder.ifNotExists().execute()
   }
+  return {
+    table,
+    key,
+    time,
+    order,
+    checksum,
+    sidecar,
+    view,
+    encode,
+    columns,
+    qualified,
+    createTable
+  }
+}
+
+/** Configurable SQL history shared by the library, CLI and framework adapters. */
+export function createMigrationHistory(options: MigrationHistoryOptions = {}): MigrationHistory {
+  const {
+    table,
+    key,
+    time,
+    order,
+    checksum,
+    sidecar,
+    view,
+    encode,
+    columns,
+    qualified,
+    createTable
+  } = historyAccess(options)
   return {
     async setup(db) {
       if (options.schema && detectDialect(db) === 'postgres') {
@@ -191,12 +234,10 @@ export function createMigrationHistory(options: MigrationHistoryOptions = {}): M
         name: String(row[key]),
         checksum:
           checksum && typeof row[checksum] === 'string'
-            ? (row[checksum] as string)
+            ? row[checksum]
             : (checksums.get(String(row[key])) ?? null),
         executedAt:
-          time && (row[time] instanceof Date || typeof row[time] === 'string')
-            ? (row[time] as Date | string)
-            : null
+          time && (row[time] instanceof Date || typeof row[time] === 'string') ? row[time] : null
       }))
     },
     async insert(db, record) {

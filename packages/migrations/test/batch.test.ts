@@ -77,7 +77,7 @@ describe('atomic migration batches', () => {
     })
     const runner = await createMigrationRunnerWithPlugins(db, [first, second], {
       ...options,
-      plugins: [{ name: 'observer', afterMigration: after }]
+      plugins: [{ name: 'observer', version: '1.0.0', afterMigration: after }]
     })
     await expect(runner.up()).rejects.toMatchObject({ name: 'MigrationHookError', applied: true })
     expect((await runner.inspect()).executed).toHaveLength(2)
@@ -97,7 +97,7 @@ describe('atomic migration batches', () => {
           }
         }
       ],
-      { ...options, plugins: [{ name: 'observer', afterMigration: after }] }
+      { ...options, plugins: [{ name: 'observer', version: '1.0.0', afterMigration: after }] }
     )
     await expect(runner.up()).rejects.toThrow('stop')
     expect(after).not.toHaveBeenCalled()

@@ -194,18 +194,21 @@ async function loadMigrationModule(file: MigrationFile): Promise<{
  * re-imported.
  */
 function toLibraryMigrations(files: MigrationFile[]): Migration<Database>[] {
-  return files.map(file => ({
-    name: file.name,
-    ...(checksumFile(file.path) ? { checksum: checksumFile(file.path)! } : {}),
-    up: async (db: Kysely<Database>) => {
-      const mod = await loadMigrationModule(file)
-      await mod.up(db)
-    },
-    down: async (db: Kysely<Database>) => {
-      const mod = await loadMigrationModule(file)
-      await mod.down(db)
+  return files.map(file => {
+    const checksum = checksumFile(file.path)
+    return {
+      name: file.name,
+      ...(checksum ? { checksum } : {}),
+      up: async (db: Kysely<Database>) => {
+        const mod = await loadMigrationModule(file)
+        await mod.up(db)
+      },
+      down: async (db: Kysely<Database>) => {
+        const mod = await loadMigrationModule(file)
+        await mod.down(db)
+      }
     }
-  }))
+  })
 }
 
 /** Library progress lines are diagnostics: verbose-only, never on stdout. */
@@ -254,7 +257,7 @@ export class MigrationRunner extends LibraryMigrationRunner<Database> {
         const values: Record<string, unknown> = {}
         if (columns.has('timestamp'))
           values.timestamp =
-            files.find(f => f.name === record.name)?.timestamp || record.name.slice(0, 14)
+            files.find(f => f.name === record.name)?.timestamp ?? record.name.slice(0, 14)
         if (columns.has('batch')) {
           const meta = connection as unknown as Kysely<Database>
           if (batchState.value === null) {
@@ -382,7 +385,7 @@ export class MigrationRunner extends LibraryMigrationRunner<Database> {
           applied
         )
       }
-    }).catch(error => this.rethrowRunError(error, 'up', [], []))
+    }).catch((error: unknown) => this.rethrowRunError(error, 'up', [], []))
   }
 
   override async down(optionsOrSteps: DownOptions | number = {}): Promise<MigrationResult> {
@@ -417,7 +420,7 @@ export class MigrationRunner extends LibraryMigrationRunner<Database> {
           applied
         )
       }
-    }).catch(error => this.rethrowRunError(error, 'down', [], []))
+    }).catch((error: unknown) => this.rethrowRunError(error, 'down', [], []))
   }
 
   /** Per-migration progress lines on stderr; collects completed names. */

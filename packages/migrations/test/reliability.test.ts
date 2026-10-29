@@ -194,6 +194,7 @@ describe('migration reliability contract', () => {
       plugins: [
         {
           name: 'recorder',
+          version: '1.0.0',
           afterMigration: (m, op) => {
             events.push(`${op}:${m.name}`)
           }
@@ -208,6 +209,7 @@ describe('migration reliability contract', () => {
       plugins: [
         {
           name: 'broken-observer',
+          version: '1.0.0',
           afterMigration: () => {
             throw new Error('observer unavailable')
           }

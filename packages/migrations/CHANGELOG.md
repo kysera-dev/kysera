@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Shared configurable migration history for applications, framework adapters and CLI tools, including legacy journal formats and checksum sidecars.
+- Atomic batch transactions with observers invoked only after commit; PostgreSQL history follows the active search path.
+- Read-only integrity inspection, explicit checksum adoption, and scoped advisory locking.
+
+### Fixed
+
+- Preserve the original migration failure alongside a lock-release failure, with a structured error cause and no exception thrown from a `finally` block.
+- Validate plugin fixtures against the public versioned plugin contract and calculate each CLI file checksum once.
+
 ## [0.5.1] - 2025-12-07
 
 ### Changed

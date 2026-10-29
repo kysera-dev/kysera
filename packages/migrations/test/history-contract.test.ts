@@ -186,6 +186,7 @@ describe('history adoption and failure contracts', () => {
         plugins: [
           {
             name: 'broken-reporter',
+            version: '1.0.0',
             onMigrationError: () => {
               throw new Error('observer failure')
             }
