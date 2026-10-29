@@ -73,6 +73,18 @@ export function createMigrationHistory(options: MigrationHistoryOptions = {}): M
     return number
   }
   async function columns<DB>(db: Kysely<DB>, name = table): Promise<Set<string> | null> {
+    if (detectDialect(db) === 'postgres') {
+      // Resolve exactly the relation an unqualified query would use, including
+      // search_path and quoted identifiers. Introspecting only public could
+      // reapply tenant migrations or read a different journal from the writer.
+      const relation = options.schema ? `"${options.schema}"."${name}"` : `"${name}"`
+      const result = await sql<{ name: string }>`
+        select a.attname as name from pg_catalog.pg_attribute a
+        where a.attrelid = pg_catalog.to_regclass(${relation})
+          and a.attnum > 0 and not a.attisdropped
+      `.execute(db)
+      return result.rows.length ? new Set(result.rows.map(column => column.name)) : null
+    }
     const tables = await db.introspection.getTables({ withInternalKyselyTables: true })
     const schema = options.schema
     const matches = tables.filter(

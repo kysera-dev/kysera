@@ -96,6 +96,39 @@ describe.skipIf(!POSTGRES)(
       expect(connectionErrors).toEqual([])
     })
 
+    it('resolves a history table through search_path, including fallback to public', async () => {
+      await sql`create schema migration_history_search_path`.execute(dbA)
+      try {
+        await sql`create table public.migrations (name text primary key, executed_at timestamp not null default now())`.execute(
+          dbA
+        )
+        await sql`insert into public.migrations (name) values ('public_marker')`.execute(dbA)
+        await sql`create table migration_history_search_path.migrations (like public.migrations including all)`.execute(
+          dbA
+        )
+        await sql`insert into migration_history_search_path.migrations (name) values ('tenant_marker')`.execute(
+          dbA
+        )
+        await sql`set search_path to migration_history_search_path, public`.execute(dbA)
+        const runner = createMigrationRunner(dbA, [
+          {
+            name: 'tenant_marker',
+            up: async () => {
+              throw new Error('tenant migration must not execute twice')
+            }
+          }
+        ])
+        expect((await runner.status()).executed).toEqual(['tenant_marker'])
+        expect((await runner.up()).executed).toEqual([])
+        await sql`drop table migration_history_search_path.migrations`.execute(dbA)
+        // A table further down search_path must also match normal SQL resolution.
+        expect((await runner.status()).executed).toEqual(['public_marker'])
+      } finally {
+        await sql`reset search_path`.execute(dbA)
+        await sql`drop schema migration_history_search_path cascade`.execute(dbA)
+      }
+    })
+
     it('two concurrent runners execute each migration exactly once', async () => {
       const runnerA = createMigrationRunner(dbA, migrations())
       const runnerB = createMigrationRunner(dbB, migrations())

@@ -534,3 +534,10 @@ Batch mode refuses MySQL (implicit DDL commits) and a caller-owned transaction;
 it requires a root Kysely handle and `stopOnError: true`. Dry runs remain read-only.
 Long batches hold locks longer, so choose this mode only when whole-batch
 atomicity is part of the application's deployment contract.
+
+### PostgreSQL schema resolution
+
+The history adapter resolves unqualified journal names through the connection's
+`search_path`, including fallback to later schemas. Set `schema` explicitly when
+the journal must live in a fixed schema. Inspection and writes resolve the same
+relation, so a tenant journal is not confused with a public journal.
