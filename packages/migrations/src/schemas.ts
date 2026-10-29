@@ -35,7 +35,23 @@ export const MigrationRunnerOptionsSchema = z.object({
   /** Serialize concurrent runners via a database advisory lock (postgres/mysql) */
   advisoryLock: z.boolean().default(true),
   /** Max time to wait for the advisory lock before failing */
-  lockTimeoutMs: z.number().int().positive().default(60000)
+  lockTimeoutMs: z.number().int().positive().default(60000),
+  advisoryLockKey: z.union([z.number().int().safe(), z.bigint(), z.string().min(1)]).optional(),
+  enforceChecksums: z.boolean().optional(),
+  backfillMissingChecksums: z.boolean().optional(),
+  rollbackChecksumPolicy: z.enum(['error', 'warn']).optional(),
+  missingMigrationPolicy: z.enum(['error', 'warn']).optional(),
+  strictRollback: z.boolean().optional(),
+  history: z
+    .object({
+      setup: z.function(),
+      read: z.function(),
+      insert: z.function(),
+      remove: z.function(),
+      setChecksum: z.function()
+    })
+    .optional(),
+  lockProvider: z.object({ acquire: z.function(), release: z.function() }).optional()
 })
 
 // ============================================================================

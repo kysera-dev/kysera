@@ -28,6 +28,16 @@ from the package root together with their Input/Output types and the
 schemas are also available via the `@kysera/migrations/schemas` subpath export
 for tooling that validates migration configuration.
 
+## History and integrity
+
+`createMigrationHistory(options)` configures the SQL journal. `MigrationHistory`,
+`MigrationHistoryOptions`, `MigrationRecord` and `MigrationInspection` describe
+the adapter and read-only integrity report. The runner exposes `inspect()`,
+`baseline(names)` and `adoptChecksums()` in addition to execution and status.
+`MigrationChecksumError` identifies changed applied content; `MigrationHookError`
+identifies a failed callback after commit. See the [execution and recovery contract](../guides/migrations.md#execution-and-recovery-contract)
+for transaction guarantees, legacy journals and safe recovery.
+
 ## Creating Migrations
 
 ### createMigration

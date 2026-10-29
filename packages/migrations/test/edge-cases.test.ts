@@ -56,7 +56,7 @@ describe('MigrationRunner edge cases', () => {
       expect(result.executed).toEqual(['001_a', '002_b'])
       expect(result.failed).toEqual([])
       // Nothing actually created (only the runner's own bookkeeping table)
-      expect(await tableNames()).toEqual(['migrations'])
+      expect(await tableNames()).toEqual([])
     })
   })
 

@@ -159,14 +159,14 @@ describe('MSSQL advisory lock protocol (compiled SQL)', () => {
     expect(log[0]?.sql).toContain('sp_getapplock')
     expect(log[log.length - 1]?.sql).toContain('sp_releaseapplock')
 
-    // session locks live on ONE pinned connection; bookkeeping runs elsewhere
+    // session locks live on ONE pinned connection; all work runs on that same connection
     expect(release?.connectionId).toBe(acquire?.connectionId)
     const others = log.filter(
       q => !q.sql.includes('sp_getapplock') && !q.sql.includes('sp_releaseapplock')
     )
     expect(others.length).toBeGreaterThan(0)
     for (const query of others) {
-      expect(query.connectionId).not.toBe(acquire?.connectionId)
+      expect(query.connectionId).toBe(acquire?.connectionId)
     }
   })
 

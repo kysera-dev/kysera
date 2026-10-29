@@ -8,6 +8,90 @@ description: Database migration strategies
 
 Best practices for database migrations with Kysera.
 
+## Execution and recovery contract
+
+The library and CLI share one execution engine. With `useTransactions: true`,
+the migration body, history row and checksum are committed in the same transaction.
+PostgreSQL advisory locking and the migration itself use the **same connection**,
+including with a pool of one. Lock acquisition precedes setup and pending-plan reads.
+Calls that overlap on the same runner instance are rejected; separate runners
+coordinate through the database lock.
+
+Enable transactions explicitly when using the library (the compatibility default
+is `false`). PostgreSQL and SQLite support transactional schema changes. MySQL
+DDL can implicitly commit: a transaction option cannot make those statements
+rollback-safe. Use an expand/contract rollout and a tested recovery procedure.
+See the [PostgreSQL advisory-lock contract](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS)
+and [MySQL implicit commits](https://dev.mysql.com/doc/refman/8.4/en/implicit-commit.html).
+SQLite has no cross-process advisory lock; concurrent writers can fail with a busy
+error. Neither the runner nor its framework adapters blindly retry failed migration
+bodies. External side effects, including sending mail, do not roll back with SQL.
+
+```ts
+import { createMigrationRunner, createMigrationHistory } from '@kysera/migrations'
+
+const runner = createMigrationRunner(db, migrations, {
+  useTransactions: true,
+  history: createMigrationHistory({
+    checksumColumn: 'checksum',
+    orderColumn: 'execution_order', // explicit opt-in for a new journal
+  }),
+  strictRollback: true,
+  missingMigrationPolicy: 'error',
+})
+
+const report = await runner.inspect() // read-only; also works before setup
+// report: executed, pending, drift, missingFiles, unknownChecksums
+await runner.up()
+```
+
+`status()`, `inspect()` and dry runs do not create tables or adopt checksums.
+`down(0)` reverts nothing; negative, fractional and non-finite counts are rejected.
+`strictRollback` checks the entire rollback plan before running any `down` function.
+`upTo` and `reset` use the same plugin lifecycle as `up` and `down`.
+
+Supply a stable `checksum` on each migration to verify its content. The CLI hashes
+migration files. The library deliberately does not hash `Function.toString()`:
+closures can change without changing that string, and build tools can change the
+string without changing behavior. `inspect().unknownChecksums` means integrity
+could not be established, **not** that the source was verified. `adoptChecksums()`
+is an explicit trust decision; it fills missing checksums and never replaces a
+recorded value. `baseline(names)` records a reviewed existing schema without
+running DDL. Both operations take the migration lock and update history atomically.
+
+Existing history can be reused instead of copied to a second ledger:
+
+```ts
+const history = createMigrationHistory({
+  tableName: 'schema_migrations',
+  keyColumn: 'version',
+  keyType: 'integer',
+  executedAtColumn: 'applied_at', // null for version-only journals
+})
+// Migration names are canonical integer strings: '1', '2', ...
+```
+
+`checksumColumn` stores digests inline; `checksumTable` supports a legacy
+`name/checksum/recorded_at` sidecar. Use one of them. A configured inline checksum
+column is added during write setup if absent. `orderColumn` is stricter: an existing
+journal must already contain it; the runner never silently adds an ordering column.
+Without it, timestamp ties fall back to the migration key. Integer journals can
+use their numeric version order. Preserve your deployed lock identity with
+`advisoryLockKey`; PostgreSQL text identities use `hashtext`, allowing compatibility
+with existing application locks.
+
+A `MigrationChecksumError` stops a changed migration from running in either
+direction. A `MigrationHookError` with `applied: true` means SQL committed and an
+after hook failed. An unlock failure is an error, not a successful run. For a lost
+connection or uncertain commit acknowledgement, reconnect and inspect history
+before taking recovery action. Keep the original database cause in operational
+logs; do not automatically reapply based solely on a network error.
+
+The owner of a PostgreSQL pool must also observe asynchronous pool/client `error`
+events. Query rejection handling alone does not cover all connection failures.
+Keep diagnostic delivery separate from migration success: a notification failure
+cannot turn a committed schema change into an unapplied migration.
+
 ## Creating Migrations
 
 ### Using CLI

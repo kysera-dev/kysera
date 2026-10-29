@@ -79,7 +79,7 @@ describe('PostgreSQL advisory lock (unit)', () => {
     await expect(runner.up()).rejects.toThrow(MigrationLockError)
   })
 
-  it('warns but does not fail the run when releasing the lock fails', async () => {
+  it('fails explicitly when lock release cannot be confirmed', async () => {
     const logs: { level: string; message: string }[] = []
     const { db } = createFakeDb('postgres', query => {
       if (query.sql.includes('pg_try_advisory_lock')) return [{ locked: true }]
@@ -88,12 +88,10 @@ describe('PostgreSQL advisory lock (unit)', () => {
     })
 
     const runner = new MigrationRunner(db, [noopMigration], { logger: capturingLogger(logs) })
-    const result = await runner.up()
-
-    expect(result.executed).toEqual(['001_noop'])
+    await expect(runner.up()).rejects.toThrow('changes may already be committed')
     expect(
       logs.some(
-        l => l.level === 'warn' && l.message.includes('Failed to release migration advisory lock')
+        l => l.level === 'error' && l.message.includes('Failed to release migration advisory lock')
       )
     ).toBe(true)
   })
