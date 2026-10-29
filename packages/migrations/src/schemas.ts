@@ -28,6 +28,7 @@ export const MigrationRunnerOptionsSchema = z.object({
   logger: LoggerSchema.optional(),
   /** Wrap each migration in a transaction */
   useTransactions: z.boolean().default(false),
+  transactionMode: z.enum(['migration', 'batch']).optional(),
   /** Stop on first error */
   stopOnError: z.boolean().default(true),
   /** Show detailed metadata in logs */

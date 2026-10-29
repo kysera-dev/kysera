@@ -519,3 +519,18 @@ kysera migrate down --dry-run
 kysera db dump -o backup-before-migration.sql
 kysera migrate up
 ```
+
+### Atomic migration batches
+
+Use `useTransactions: true, transactionMode: 'batch', stopOnError: true` to commit
+an entire `up`, `upTo`, `down` or `reset` operation together. The runner takes the
+advisory lock, starts one transaction on that same connection, and commits all
+schema and history changes before releasing the lock. A failed migration rolls
+back the whole batch; after-migration plugin hooks run only after commit. An
+after-hook failure still reports `MigrationHookError` with `applied: true`.
+
+The default `transactionMode: 'migration'` commits each migration separately.
+Batch mode refuses MySQL (implicit DDL commits) and a caller-owned transaction;
+it requires a root Kysely handle and `stopOnError: true`. Dry runs remain read-only.
+Long batches hold locks longer, so choose this mode only when whole-batch
+atomicity is part of the application's deployment contract.

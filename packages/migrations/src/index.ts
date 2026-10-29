@@ -112,6 +112,8 @@ export interface MigrationRunnerOptions {
   logger?: KyseraLogger
   /** Wrap each migration in a transaction (default: false) */
   useTransactions?: boolean
+  /** Atomic whole operation on transactional-DDL dialects. Requires useTransactions and stopOnError. */
+  transactionMode?: 'migration' | 'batch'
   /** Stop on first error (default: true) */
   stopOnError?: boolean
   /** Show detailed metadata in logs (default: true) */
@@ -361,6 +363,7 @@ export class MigrationRunner<DB = unknown> {
   protected readonly history: MigrationHistory
   private readonly options: MigrationRunnerOptions
   private active = false
+  private afterCommit: Array<() => Promise<void>> | null = null
 
   constructor(db: Kysely<DB>, migrations: Migration<DB>[], options: MigrationRunnerOptions = {}) {
     // Validate and apply defaults using Zod schema
@@ -369,6 +372,20 @@ export class MigrationRunner<DB = unknown> {
       throw new BadRequestError(`Invalid migration runner options: ${parsed.error.message}`)
     }
 
+    if (options.transactionMode === 'batch') {
+      if (!parsed.data.useTransactions || !parsed.data.stopOnError)
+        throw new BadRequestError(
+          'Batch transactions require useTransactions: true and stopOnError: true'
+        )
+      if (db.isTransaction)
+        throw new BadRequestError(
+          'Batch migrations must own their transaction; pass the root database'
+        )
+      if (detectDialect(db) === 'mysql')
+        throw new BadRequestError(
+          'Batch migrations are unavailable on MySQL because DDL can implicitly commit'
+        )
+    }
     this.db = db
     this.options = { ...options }
     this.history = options.history ?? createMigrationHistory()
@@ -405,7 +422,20 @@ export class MigrationRunner<DB = unknown> {
       throw new BadRequestError('This migration runner already has an active operation')
     this.active = true
     try {
-      return await this.acquireRunLock(fn)
+      return await this.acquireRunLock(async db => {
+        if (this.options.transactionMode !== 'batch' || this.runnerOptions.dryRun) return fn(db)
+        this.afterCommit = []
+        try {
+          const result = await db.transaction().execute(fn)
+          // Completion observers run only after the entire batch committed.
+          const callbacks = this.afterCommit
+          this.afterCommit = null
+          for (const callback of callbacks) await callback()
+          return result
+        } finally {
+          this.afterCommit = null
+        }
+      })
     } finally {
       this.active = false
     }
@@ -531,9 +561,11 @@ export class MigrationRunner<DB = unknown> {
     return await this.db.connection().execute(async conn => {
       await acquire(conn)
       let failure: unknown
+      let failed = false
       try {
         return await fn(conn)
       } catch (error) {
+        failed = true
         failure = error
         throw error
       } finally {
@@ -545,7 +577,7 @@ export class MigrationRunner<DB = unknown> {
             'Migration lock release failed; changes may already be committed. Inspect status before retrying.',
             { cause: error }
           )
-          if (failure !== undefined)
+          if (failed)
             throw new AggregateError(
               [failure, releaseError],
               'Migration failed and its lock could not be released'
@@ -828,11 +860,15 @@ export class MigrationRunner<DB = unknown> {
       this.recordMigrationFailure(migration, operation, error, result)
       return
     }
-    try {
-      await hooks?.after?.(migration, Date.now() - migrationStart)
-    } catch (error) {
-      throw new MigrationHookError(migration.name, operation, error)
+    const after = async (): Promise<void> => {
+      try {
+        await hooks?.after?.(migration, Date.now() - migrationStart)
+      } catch (error) {
+        throw new MigrationHookError(migration.name, operation, error)
+      }
     }
+    if (this.afterCommit) this.afterCommit.push(after)
+    else await after()
   }
 
   /**
