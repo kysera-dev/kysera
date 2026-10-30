@@ -26,7 +26,8 @@
     "docs:check-snippets": "tsx scripts/check-doc-snippets.ts",
     "release": "tsx scripts/release.ts",
     "release:dry": "tsx scripts/release.ts --dry-run",
-    "release:ci": "tsx scripts/release.ts --skip-tests --force",
+    "test:release": "node --import tsx --test scripts/release.test.ts",
+    "release:ci": "tsx scripts/release.ts --skip-tests --yes --github-release",
     "postinstall": "pnpm rebuild better-sqlite3 2>/dev/null || true"
   },
   "devDependencies": {

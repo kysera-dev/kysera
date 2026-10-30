@@ -239,3 +239,8 @@ examples in `examples/*`, documentation in `website/`.
 ## License
 
 [MIT](LICENSE) © LuxQuant
+
+## Maintainer releases
+
+See the [release and recovery guide](website/docs/guides/releasing.md) for npm publication,
+GitHub Release completion and regression checks.

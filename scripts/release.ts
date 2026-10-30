@@ -22,10 +22,12 @@
  * --skip-build             Skip building packages
  * --skip-publish           Skip publishing to npm
  * --dry-run                Simulate release without modifying anything
- * --force                  Force release even with uncommitted changes
+ * --force                  Allow a non-primary branch or older version; tree must stay clean
+ * --yes                    Accept release/push prompts (requires --version)
+ * --github-release         Create the GitHub Release after a successful push
+ * --github-only            Finish GitHub for an existing remote tag; never publish npm
  * --provenance             Publish with npm provenance attestation. Also
- *                          auto-enabled when the CI env var is set (GitHub
- *                          Actions OIDC); local publishes stay unchanged.
+ *                          auto-enabled only when GitHub Actions OIDC is available.
  */
 
 import { execSync } from 'node:child_process'
@@ -35,6 +37,16 @@ import { fileURLToPath } from 'node:url'
 import { glob } from 'glob'
 import { prism, select, text, confirm } from '@xec-sh/kit'
 import semver from 'semver'
+import {
+  command,
+  releaseTag,
+  assertReleaseHead,
+  verifyRemoteTag,
+  pushReleaseRefs,
+  registryHasVersion,
+  createGithubRelease,
+  localReleaseCommit
+} from './release-safety.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = path.resolve(__dirname, '..')
@@ -65,6 +77,9 @@ interface ReleaseOptions {
   force?: boolean
   listPackages?: boolean
   provenance?: boolean
+  yes?: boolean
+  githubRelease?: boolean
+  githubOnly?: boolean
 }
 
 /**
@@ -144,8 +159,8 @@ async function getAllPackages(): Promise<Package[]> {
         path: packageDir,
         private: pkg.private ?? false
       })
-    } catch {
-      // Skip invalid package.json files
+    } catch (error) {
+      throw new Error(`Cannot read workspace manifest ${pkgPath}`, { cause: error })
     }
   }
 
@@ -205,12 +220,12 @@ async function updatePackageVersion(packagePath: string, version: string): Promi
   pkg.version = version
 
   // Update workspace dependencies to use the new version
-  const depFields = ['dependencies', 'devDependencies', 'peerDependencies']
+  const depFields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
   for (const field of depFields) {
     const deps = pkg[field] as Record<string, string> | undefined
     if (deps) {
       for (const [depName, depVersion] of Object.entries(deps)) {
-        if (depName.startsWith('@kysera/') && depVersion === 'workspace:*') {
+        if (depName.startsWith('@kysera/') && depVersion.startsWith('workspace:')) {
           // Keep workspace protocol (pnpm rewrites it at pack time)
           continue
         } else if (depName.startsWith('@kysera/')) {
@@ -230,7 +245,7 @@ async function updatePackageVersion(packagePath: string, version: string): Promi
 function checkGitStatus(options: ReleaseOptions): void {
   const status = exec('git status --porcelain', { silent: true })
 
-  if (status && !options.force) {
+  if (status && !options.dryRun) {
     console.error(prism.red('❌ Working directory is not clean:'))
     console.error(status)
     throw new Error('Please commit or stash your changes')
@@ -297,7 +312,7 @@ const COMMIT_SECTIONS: readonly { types: readonly string[]; title: string }[] = 
 function findBaseTag(newVersion: string): string | null {
   let tagOutput = ''
   try {
-    tagOutput = exec(`git tag --list 'v*'`, { silent: true })
+    tagOutput = exec(`git tag --merged HEAD --list 'v*'`, { silent: true })
   } catch {
     return null
   }
@@ -307,6 +322,7 @@ function findBaseTag(newVersion: string): string | null {
     .split('\n')
     .map(tag => ({ tag: tag.trim(), version: semver.clean(tag.trim()) }))
     .filter((entry): entry is { tag: string; version: string } => entry.version !== null)
+    .filter(entry => semver.lt(entry.version, newVersion))
     .filter(entry => !releasingStable || semver.prerelease(entry.version) === null)
     .sort((a, b) => semver.rcompare(a.version, b.version))
 
@@ -570,14 +586,6 @@ function runTests(): void {
  * Check whether a version is already on the registry (makes re-runs after a
  * partial publish idempotent)
  */
-function isAlreadyPublished(name: string, version: string): boolean {
-  try {
-    const result = exec(`npm view ${name}@${version} version`, { silent: true })
-    return result === version
-  } catch {
-    return false
-  }
-}
 
 /**
  * Order packages so dependencies publish before dependents — a mid-run
@@ -585,7 +593,7 @@ function isAlreadyPublished(name: string, version: string): boolean {
  * (glob() directory order is not guaranteed; a live run once tried
  * @kysera/cli first.)
  */
-async function sortByDependencyOrder(packages: Package[]): Promise<Package[]> {
+export async function sortByDependencyOrder(packages: Package[]): Promise<Package[]> {
   const names = new Set(packages.map(pkg => pkg.name))
   const depsByName = new Map<string, Set<string>>()
 
@@ -613,8 +621,11 @@ async function sortByDependencyOrder(packages: Package[]): Promise<Package[]> {
     const readyIndex = remaining.findIndex(pkg =>
       [...(depsByName.get(pkg.name) ?? [])].every(dep => placed.has(dep))
     )
-    // readyIndex === -1 would mean a dependency cycle — emit head to make progress
-    const [next] = remaining.splice(readyIndex === -1 ? 0 : readyIndex, 1)
+    if (readyIndex < 0)
+      throw new Error(
+        `Cannot release a dependency cycle: ${remaining.map(pkg => pkg.name).join(', ')}`
+      )
+    const [next] = remaining.splice(readyIndex, 1)
     if (next) {
       ordered.push(next)
       placed.add(next.name)
@@ -636,7 +647,11 @@ async function publishPackages(
   // Never let a prerelease hijack the `latest` dist-tag
   const distTagArg = semver.prerelease(version) ? ' --tag next' : ''
   // Provenance attestation: opt-in locally (--provenance), automatic in CI
-  const provenanceArg = options.provenance || process.env['CI'] ? ' --provenance' : ''
+  const oidc =
+    process.env['GITHUB_ACTIONS'] === 'true' &&
+    process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] &&
+    process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']
+  const provenanceArg = options.provenance || oidc ? ' --provenance' : ''
 
   console.log(prism.cyan(`\n📦 Publishing ${publishable.length} packages...`))
 
@@ -646,7 +661,7 @@ async function publishPackages(
       continue
     }
 
-    if (isAlreadyPublished(pkg.name, version)) {
+    if (registryHasVersion(pkg.path, pkg.name, version)) {
       console.log(prism.gray(`  ⏭  ${pkg.name}@${version} already on npm — skipping`))
       continue
     }
@@ -671,7 +686,7 @@ async function publishPackages(
  * The tag must land on the release commit — v0.8.8's tag ended up on the
  * wrong commit precisely because tagging wasn't tied to a verified commit.
  */
-function commitAndTag(version: string, options: ReleaseOptions): void {
+function commitAndTag(version: string, options: ReleaseOptions, releaseFiles: string[]): void {
   if (options.dryRun) {
     console.log(prism.yellow(`\n[DRY RUN] Would commit and tag v${version}`))
     return
@@ -679,7 +694,16 @@ function commitAndTag(version: string, options: ReleaseOptions): void {
 
   console.log(prism.cyan(`\n🏷️  Committing and tagging v${version}...`))
 
-  exec('git add -A')
+  assertReleaseHead(ROOT_DIR, version)
+  const changed = command(ROOT_DIR, 'git', ['diff', '--name-only']).split('\n').filter(Boolean)
+  const unexpected = changed.filter(file => !releaseFiles.includes(file))
+  if (unexpected.length)
+    throw new Error(`Release changed unexpected files: ${unexpected.join(', ')}`)
+  if (localReleaseCommit(ROOT_DIR, version) && changed.length)
+    throw new Error(
+      'A tagged release changed during preparation; refusing to publish a different tree under the same version'
+    )
+  command(ROOT_DIR, 'git', ['add', '--', ...releaseFiles])
   const staged = exec('git status --porcelain', { silent: true })
   if (staged) {
     exec(`git commit -m "chore(release): v${version}"`)
@@ -697,7 +721,8 @@ function commitAndTag(version: string, options: ReleaseOptions): void {
   })()
 
   if (tagExists) {
-    console.log(prism.gray(`  Tag v${version} already exists — skipping`))
+    assertReleaseHead(ROOT_DIR, version)
+    console.log(prism.gray(`  Tag v${version} already exists at HEAD — verified`))
   } else {
     exec(`git tag -a v${version} -m "Release v${version}"`)
   }
@@ -708,28 +733,58 @@ function commitAndTag(version: string, options: ReleaseOptions): void {
 /**
  * Push commits and tags to the remote
  */
-async function pushRelease(options: ReleaseOptions): Promise<void> {
+async function pushRelease(version: string, options: ReleaseOptions): Promise<boolean> {
   if (options.dryRun) {
-    console.log(prism.yellow('[DRY RUN] Would push to remote'))
-    return
+    console.log(
+      prism.yellow(`[DRY RUN] Would atomically push the current branch and v${version} only`)
+    )
+    return false
   }
 
-  const shouldPush = await confirm({
-    message: 'Push to remote?',
-    initialValue: true
-  })
+  const shouldPush =
+    options.yes === true
+      ? true
+      : await confirm({
+          message: `Push the current branch and v${version} to origin?`,
+          initialValue: true
+        })
 
-  if (shouldPush) {
-    exec('git push')
-    exec('git push --tags')
-    console.log(prism.green('✅ Pushed to remote'))
-  }
+  if (shouldPush !== true) return false
+  pushReleaseRefs(ROOT_DIR, version)
+  console.log(prism.green('✅ Pushed release branch and current tag'))
+  return true
 }
 
 /**
  * Parse CLI arguments
  */
-function parseArgs(args: string[]): ReleaseOptions {
+export function parseArgs(args: string[]): ReleaseOptions {
+  const flags = new Set([
+    '--skip-tests',
+    '--skip-build',
+    '--skip-publish',
+    '--dry-run',
+    '--force',
+    '--list-packages',
+    '--list',
+    '--provenance',
+    '--yes',
+    '--github-release',
+    '--github-only'
+  ])
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]
+    if (!arg) throw new Error('Empty release argument')
+    if (arg === '--version') {
+      const value = args[++index]
+      if (!value || value.startsWith('--')) throw new Error('--version requires a value')
+      continue
+    }
+    if (!flags.has(arg) && !arg.startsWith('--version='))
+      throw new Error(`Unknown release option: ${arg}`)
+  }
+  if (args.filter(arg => arg === '--version' || arg.startsWith('--version=')).length > 1)
+    throw new Error('Specify --version once')
   const options: ReleaseOptions = {
     skipTests: args.includes('--skip-tests'),
     skipBuild: args.includes('--skip-build'),
@@ -737,7 +792,10 @@ function parseArgs(args: string[]): ReleaseOptions {
     dryRun: args.includes('--dry-run'),
     force: args.includes('--force'),
     listPackages: args.includes('--list-packages') || args.includes('--list'),
-    provenance: args.includes('--provenance')
+    provenance: args.includes('--provenance'),
+    yes: args.includes('--yes'),
+    githubRelease: args.includes('--github-release'),
+    githubOnly: args.includes('--github-only')
   }
 
   const versionFlagIndex = args.indexOf('--version')
@@ -745,10 +803,14 @@ function parseArgs(args: string[]): ReleaseOptions {
   if (flagValue) {
     options.version = flagValue
   }
-  const eqValue = args.find(arg => arg.startsWith('--version='))?.split('=')[1]
+  const eqValue = args.find(arg => arg.startsWith('--version='))?.slice('--version='.length)
   if (eqValue) {
     options.version = eqValue
   }
+  if (args.some(arg => arg === '--version=')) throw new Error('--version requires a value')
+  if ((options.yes || options.githubOnly) && !options.version)
+    throw new Error('--yes and --github-only require --version')
+  if (options.version) releaseTag(options.version)
 
   return options
 }
@@ -761,6 +823,29 @@ async function main(): Promise<void> {
 
   const options = parseArgs(process.argv.slice(2))
 
+  if (options.githubOnly) {
+    const version = options.version
+    if (!version) throw new Error('--github-only requires --version')
+    if (!localReleaseCommit(ROOT_DIR, version))
+      throw new Error('The selected release tag is missing locally')
+    if (options.dryRun) {
+      console.log(
+        `[DRY RUN] Would verify remote v${version} and create its missing GitHub Release; npm and working files remain untouched`
+      )
+      return
+    }
+    if (
+      !options.yes &&
+      (await confirm({
+        message: `Finish GitHub Release v${version} without publishing npm?`,
+        initialValue: true
+      })) !== true
+    )
+      return
+    console.log(await createGithubRelease(ROOT_DIR, version, 'kysera-dev/kysera'))
+    return
+  }
+
   // Handle --list-packages flag
   if (options.listPackages) {
     await listPackages()
@@ -771,7 +856,11 @@ async function main(): Promise<void> {
     // 1. Check git status
     console.log(prism.cyan('📋 Checking environment...'))
     checkGitStatus(options)
-    console.log(prism.green('✅ Git status clean'))
+    console.log(
+      prism.green(
+        options.dryRun ? '✅ Git state inspected (read-only plan)' : '✅ Git status clean'
+      )
+    )
 
     // 2. Get current version and packages
     const currentVersion = await getCurrentVersion()
@@ -783,9 +872,10 @@ async function main(): Promise<void> {
     // 3. Resolve new version (flag or prompt)
     const newVersion = options.version ?? (await promptVersion(currentVersion))
 
-    if (!semver.valid(newVersion)) {
-      throw new Error(`Invalid version: ${newVersion}`)
-    }
+    releaseTag(newVersion)
+    assertReleaseHead(ROOT_DIR, newVersion)
+    await sortByDependencyOrder(packages.filter(pkg => !pkg.private))
+    if (!options.dryRun) verifyRemoteTag(ROOT_DIR, newVersion)
     if (semver.eq(newVersion, currentVersion)) {
       // Resume mode: versions were already bumped by a previous run that
       // failed mid-publish. Everything downstream is idempotent (published
@@ -817,7 +907,7 @@ async function main(): Promise<void> {
         message: `Release v${newVersion} with the changelog above?`,
         initialValue: true
       })
-      if (!proceed) {
+      if (proceed !== true) {
         console.log(prism.yellow('Release cancelled'))
         return
       }
@@ -843,33 +933,58 @@ async function main(): Promise<void> {
     }
 
     // 6. Build packages
-    if (!options.skipBuild) {
+    if (!options.skipBuild && !options.dryRun) {
       buildPackages()
     }
 
     // 7. Run tests
-    if (!options.skipTests) {
+    if (!options.skipTests && !options.dryRun) {
       runTests()
     }
 
     // 8. Commit + tag first — npm must never be ahead of git
-    commitAndTag(newVersion, options)
+    if (!options.dryRun) exec('pnpm install --lockfile-only --ignore-scripts')
+    commitAndTag(newVersion, options, [
+      'package.json',
+      'CHANGELOG.md',
+      'pnpm-lock.yaml',
+      ...packages.map(pkg => path.relative(ROOT_DIR, path.join(pkg.path, 'package.json')))
+    ])
 
-    // 9. Publish to npm
+    // Publish immutable Git refs before npm; a rejected push cannot leave npm ahead.
+    const pushed = await pushRelease(newVersion, options)
     if (!options.skipPublish) {
+      if (!pushed && !options.dryRun)
+        throw new Error(
+          'Release is prepared locally. Push its branch and tag before publishing npm; resume with the same --version'
+        )
       await publishPackages(packages, newVersion, options)
     }
-
-    // 10. Push commits and tags
-    await pushRelease(options)
+    if (options.githubRelease && pushed)
+      console.log(await createGithubRelease(ROOT_DIR, newVersion, 'kysera-dev/kysera'))
 
     // 11. Success!
-    console.log(prism.bold(prism.green('\n✨ Release completed successfully!\n')))
-    console.log(prism.cyan('Next steps:'))
-    console.log(`  1. Create GitHub release: ${REPO_URL}/releases/new`)
-    console.log(`  2. Use tag: v${newVersion}`)
-    console.log('  3. Copy changelog entry for release notes')
-    console.log('  4. Announce in Discord/Twitter')
+    console.log(
+      prism.bold(
+        prism.green(
+          options.dryRun
+            ? '\nDry run completed; no release actions executed.\n'
+            : pushed
+              ? '\nRelease packages and Git refs completed.\n'
+              : '\nLocal release prepared; remote Git push remains pending.\n'
+        )
+      )
+    )
+    if (!options.dryRun) {
+      console.log(
+        `npm: ${options.skipPublish ? 'skipped by request' : 'published or already present'}`
+      )
+      console.log(`Git refs: ${pushed ? 'pushed' : 'pending'}`)
+      if (!options.githubRelease || !pushed)
+        console.log(
+          `Finish GitHub only: bun run ./scripts/release.ts --version ${newVersion} --github-only`
+        )
+    }
   } catch (error) {
     console.error(prism.red('\n❌ Release failed:'))
     console.error(errorMessage(error))
@@ -877,8 +992,9 @@ async function main(): Promise<void> {
   }
 }
 
-// Run the script
-main().catch((error: unknown) => {
-  console.error(prism.red('Fatal error:'), errorMessage(error))
-  process.exit(1)
-})
+// Importing planning helpers for tests must never start a release.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+  main().catch((error: unknown) => {
+    console.error(prism.red('Fatal error:'), errorMessage(error))
+    process.exit(1)
+  })

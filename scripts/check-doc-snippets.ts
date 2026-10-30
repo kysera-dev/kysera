@@ -899,9 +899,8 @@ function classifyFragment(code: string): string | null {
       }
     }
     if (
-      (ts.isFunctionDeclaration(stmt) || ts.isClassDeclaration(stmt)) &&
-      stmt.name &&
-      stmt.body !== undefined
+      ((ts.isFunctionDeclaration(stmt) && stmt.body !== undefined) || ts.isClassDeclaration(stmt)) &&
+      stmt.name
     ) {
       declareTop(stmt.name.text)
     }

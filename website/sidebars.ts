@@ -54,6 +54,7 @@ const sidebars: SidebarsConfig = {
         'guides/dal-vs-repository',
         'guides/runtimes',
         'guides/troubleshooting',
+        'guides/releasing',
         {
           type: 'category',
           label: 'Migration Guides',
