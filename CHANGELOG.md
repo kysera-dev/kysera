@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-10-30
+
+_Packages: audit, cli, executor, infra, migrations, repository · [v0.10.0...v0.10.1](https://github.com/kysera-dev/kysera/compare/v0.10.0...v0.10.1)_
+
+### ✨ Features
+
+- **migrations:** support atomic batches with post-commit observers (9e5ab10)
+- **website:** mermaid diagrams replace hand-drawn ASCII art; dead links purged (e8a31bf)
+
+### 🐛 Bug Fixes
+
+- **ci:** type-aware lint depends on dependency builds (5503bd3)
+- **cli:** drop phantom fs-extra import — CI typecheck restored (0fd6953)
+- **migrations:** preserve cleanup failures and satisfy strict quality checks (4d1ae4c)
+- **migrations:** resolve history through the active PostgreSQL search path (b13ee57)
+- **migrations:** unify atomic execution and recoverable history (489179f)
+- **website:** landing fact-check — stale version, sizes, and two inherited claim errors (148633a)
+
+### 📚 Documentation
+
+- **readme:** fact-check pass — corrections, current numbers, a third shorter (70c0a3b)
+
+### 🧪 Tests
+
+- **infra:** half-open race test waits on the breaker's own clock (62face9)
+- wall-clock assertions become catastrophic-only bounds — flaky gate class retired (6b92dbd)
+
+### 🔧 Maintenance
+
+- **ci:** apply the actions-group bumps with SHA pins everywhere — supersedes dependabot PR #3 (9295263)
+
 ## [0.10.0] - 2026-08-02
 
 _Packages: audit, cli, core, dal, dialects, executor, infra, migrations, repository, rls, soft-delete, testing · [v0.9.0...v0.10.0](https://github.com/kysera-dev/kysera/compare/v0.9.0...v0.10.0)_
