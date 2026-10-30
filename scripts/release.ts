@@ -43,10 +43,10 @@ import {
   assertReleaseHead,
   verifyRemoteTag,
   pushReleaseRefs,
-  registryHasVersion,
   createGithubRelease,
   localReleaseCommit
 } from './release-safety.js'
+import { stageReleaseArtifact, registryArtifactMatches, verifyArtifact, acquireReleaseLock, type ReleaseArtifact } from './release-artifacts.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = path.resolve(__dirname, '..')
@@ -309,13 +309,8 @@ const COMMIT_SECTIONS: readonly { types: readonly string[]; title: string }[] = 
  * When releasing a stable version, prerelease tags are ignored so the
  * final notes cover the whole rc/beta period.
  */
-function findBaseTag(newVersion: string): string | null {
-  let tagOutput = ''
-  try {
-    tagOutput = exec(`git tag --merged HEAD --list 'v*'`, { silent: true })
-  } catch {
-    return null
-  }
+export function findBaseTag(newVersion: string, root = ROOT_DIR): string | null {
+  const tagOutput = command(root, 'git', ['tag', '--merged', 'HEAD', '--list', 'v*'])
 
   const releasingStable = semver.prerelease(newVersion) === null
   const candidates = tagOutput
@@ -333,16 +328,9 @@ function findBaseTag(newVersion: string): string | null {
  * Read and parse all commits in `baseTag..HEAD` (full history when null).
  * Merge commits and `chore(release)` commits are excluded.
  */
-function readCommitsSince(baseTag: string | null): ParsedCommit[] {
+export function readCommitsSince(baseTag: string | null, root = ROOT_DIR): ParsedCommit[] {
   const range = baseTag ? `${baseTag}..HEAD` : 'HEAD'
-  let raw = ''
-  try {
-    // \x1f (unit sep) between fields, \x1e (record sep) between commits —
-    // bodies are multi-line, so --oneline parsing would drop them
-    raw = exec(`git log ${range} --format="%H%x1f%s%x1f%b%x1e"`, { silent: true })
-  } catch {
-    return []
-  }
+  const raw = command(root, 'git', ['log', range, '--format=%H%x1f%s%x1f%b%x1e'])
 
   const commits: ParsedCommit[] = []
 
@@ -391,21 +379,15 @@ function readCommitsSince(baseTag: string | null): ParsedCommit[] {
 /**
  * Publishable packages that changed since the base tag
  */
-function collectAffectedPackages(baseTag: string | null, packages: Package[]): string[] {
-  if (!baseTag) return []
-
-  let changed = ''
-  try {
-    changed = exec(`git diff --name-only ${baseTag}..HEAD`, { silent: true })
-  } catch {
-    return []
-  }
+export function collectAffectedPackages(baseTag: string | null, packages: Package[], root = ROOT_DIR): string[] {
+  if (!baseTag) return packages.filter(pkg => !pkg.private).map(pkg => pkg.name.replace('@kysera/', '')).sort()
+  const changed = command(root, 'git', ['diff', '--name-only', `${baseTag}..HEAD`])
 
   const files = changed.split('\n').filter(Boolean)
   const affected = new Set<string>()
   for (const pkg of packages) {
     if (pkg.private) continue
-    const rel = path.relative(ROOT_DIR, pkg.path) + '/'
+    const rel = path.relative(root, pkg.path) + '/'
     if (files.some(file => file.startsWith(rel))) {
       affected.add(pkg.name.replace('@kysera/', ''))
     }
@@ -429,17 +411,18 @@ function sortByScope(commits: ParsedCommit[]): ParsedCommit[] {
   })
 }
 
-async function readExistingChangelog(): Promise<string> {
+export async function readExistingChangelog(file = CHANGELOG_PATH): Promise<string> {
   try {
-    return await fs.readFile(CHANGELOG_PATH, 'utf-8')
-  } catch {
-    return ''
+    return await fs.readFile(file, 'utf-8')
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return ''
+    throw error
   }
 }
 
 /**
  * Generate the changelog entry for a release: every commit since the last
- * release tag, deduplicated against subjects already present in
+ * release tag, deduplicated against commit hashes already present in
  * CHANGELOG.md (protects against misplaced historical tags re-surfacing
  * already-released commits).
  */
@@ -448,7 +431,7 @@ async function generateChangelog(version: string, packages: Package[]): Promise<
   const baseTag = findBaseTag(version)
   const existing = await readExistingChangelog()
 
-  const commits = readCommitsSince(baseTag).filter(commit => !existing.includes(commit.rawSubject))
+  const commits = readCommitsSince(baseTag).filter(commit => !existing.includes(`(${commit.hash.slice(0, 7)})`))
 
   let changelog = `## [${version}] - ${date}\n\n`
 
@@ -638,44 +621,36 @@ export async function sortByDependencyOrder(packages: Package[]): Promise<Packag
 /**
  * Publish packages to npm
  */
-async function publishPackages(
-  packages: Package[],
-  version: string,
-  options: ReleaseOptions
-): Promise<void> {
-  const publishable = await sortByDependencyOrder(packages.filter(pkg => !pkg.private))
-  // Never let a prerelease hijack the `latest` dist-tag
-  const distTagArg = semver.prerelease(version) ? ' --tag next' : ''
-  // Provenance attestation: opt-in locally (--provenance), automatic in CI
-  const oidc =
-    process.env['GITHUB_ACTIONS'] === 'true' &&
-    process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] &&
-    process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']
-  const provenanceArg = options.provenance || oidc ? ' --provenance' : ''
+async function prepareArtifacts(packages: Package[], version: string): Promise<ReleaseArtifact[]> {
+  const artifacts: ReleaseArtifact[] = []
+  for (const pkg of await sortByDependencyOrder(packages.filter(pkg => !pkg.private)))
+    artifacts.push(await stageReleaseArtifact(ROOT_DIR, pkg, version))
+  // A conflict in the last package must fail before publishing the first one.
+  for (const artifact of artifacts) registryArtifactMatches(ROOT_DIR, artifact)
+  if (command(ROOT_DIR, 'git', ['status', '--porcelain']))
+    throw new Error('Packing changed the release tree; publication was not attempted')
+  return artifacts
+}
 
-  console.log(prism.cyan(`\n📦 Publishing ${publishable.length} packages...`))
-
-  for (const pkg of publishable) {
-    if (options.dryRun) {
-      console.log(prism.yellow(`  [DRY RUN] Would publish ${pkg.name}@${version}`))
+async function publishPackages(artifacts: ReleaseArtifact[], version: string, options: ReleaseOptions): Promise<void> {
+  const oidc = process.env['GITHUB_ACTIONS'] === 'true' && process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] && process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']
+  for (const artifact of artifacts) {
+    await verifyArtifact(artifact)
+    if (registryArtifactMatches(ROOT_DIR, artifact)) {
+      console.log(prism.gray(`  ${artifact.name}@${version}: npm archive verified, skipping`))
       continue
     }
-
-    if (registryHasVersion(pkg.path, pkg.name, version)) {
-      console.log(prism.gray(`  ⏭  ${pkg.name}@${version} already on npm — skipping`))
-      continue
+    // Publish the archive that was checked; lifecycle scripts cannot rebuild or repack it.
+    command(ROOT_DIR, 'npm', ['publish', artifact.file, '--access', 'public', '--ignore-scripts',
+      '--tag', semver.prerelease(version) ? 'next' : 'latest',
+      ...(options.provenance || oidc ? ['--provenance'] : [])])
+    let verified = false
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (registryArtifactMatches(ROOT_DIR, artifact)) { verified = true; break }
+      await new Promise(resolve => setTimeout(resolve, 1500))
     }
-
-    console.log(prism.gray(`  Publishing ${pkg.name}@${version}...`))
-    try {
-      exec(`pnpm publish --access public --no-git-checks${distTagArg}${provenanceArg}`, {
-        cwd: pkg.path
-      })
-      console.log(prism.green(`  ✅ ${pkg.name}@${version} published`))
-    } catch (error) {
-      console.error(prism.red(`  ❌ Failed to publish ${pkg.name}: ${errorMessage(error)}`))
-      throw error
-    }
+    if (!verified) throw new Error(`Published ${artifact.name}, but npm visibility is unconfirmed; resume this same version`)
+    console.log(prism.green(`  ${artifact.name}@${version}: published and verified`))
   }
 }
 
@@ -852,6 +827,7 @@ async function main(): Promise<void> {
     return
   }
 
+  const unlock = options.dryRun ? null : await acquireReleaseLock(ROOT_DIR)
   try {
     // 1. Check git status
     console.log(prism.cyan('📋 Checking environment...'))
@@ -951,6 +927,9 @@ async function main(): Promise<void> {
       ...packages.map(pkg => path.relative(ROOT_DIR, path.join(pkg.path, 'package.json')))
     ])
 
+    const artifacts = !options.dryRun && !options.skipPublish
+      ? await prepareArtifacts(packages, newVersion) : []
+
     // Publish immutable Git refs before npm; a rejected push cannot leave npm ahead.
     const pushed = await pushRelease(newVersion, options)
     if (!options.skipPublish) {
@@ -958,7 +937,8 @@ async function main(): Promise<void> {
         throw new Error(
           'Release is prepared locally. Push its branch and tag before publishing npm; resume with the same --version'
         )
-      await publishPackages(packages, newVersion, options)
+      if (options.dryRun) console.log('[DRY RUN] Would pack, verify npm archives and publish missing packages')
+      else await publishPackages(artifacts, newVersion, options)
     }
     if (options.githubRelease && pushed)
       console.log(await createGithubRelease(ROOT_DIR, newVersion, 'kysera-dev/kysera'))
@@ -988,8 +968,8 @@ async function main(): Promise<void> {
   } catch (error) {
     console.error(prism.red('\n❌ Release failed:'))
     console.error(errorMessage(error))
-    process.exit(1)
-  }
+    process.exitCode = 1
+  } finally { await unlock?.() }
 }
 
 // Importing planning helpers for tests must never start a release.

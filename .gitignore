@@ -43,3 +43,5 @@ yarn-error.log*
 
 experiments/
 .kysera-usage-stats.json
+# Exact immutable archives retained for interrupted release recovery
+.release-artifacts/

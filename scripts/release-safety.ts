@@ -121,22 +121,6 @@ export function isRegistryNotFound(error: unknown): boolean {
   }
 }
 
-export function registryHasVersion(root: string, name: string, version: string): boolean {
-  releaseTag(version)
-  try {
-    const result: unknown = JSON.parse(
-      command(root, 'npm', ['view', `${name}@${version}`, 'version', '--json'])
-    )
-    if (result !== version) throw new Error(`Unexpected registry response for ${name}@${version}`)
-    return true
-  } catch (error) {
-    if (isRegistryNotFound(error)) return false
-    throw new Error(`Cannot verify ${name}@${version}; publication was not attempted`, {
-      cause: error
-    })
-  }
-}
-
 /** Finish GitHub from the immutable tag, without rebuilding or touching npm. */
 export async function createGithubRelease(
   root: string,

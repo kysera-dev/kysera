@@ -11,7 +11,7 @@ import {
   releaseTag,
   isRegistryNotFound
 } from './release-safety.js'
-import { parseArgs, sortByDependencyOrder } from './release.js'
+import { parseArgs, sortByDependencyOrder, findBaseTag, readCommitsSince, readExistingChangelog } from './release.js'
 
 async function fixture(): Promise<{ root: string; remote: string; close: () => Promise<void> }> {
   const directory = await mkdtemp(join(tmpdir(), 'kysera-release-test-'))
@@ -182,7 +182,7 @@ test('real dry-run entry point leaves files, tags and remote refs unchanged', as
   const f = await fixture()
   try {
     await mkdir(join(f.root, 'scripts'))
-    for (const file of ['release.ts', 'release-safety.ts']) {
+    for (const file of ['release.ts', 'release-safety.ts', 'release-artifacts.ts']) {
       await writeFile(join(f.root, 'scripts', file), await readFile(new URL(file, import.meta.url)))
     }
     await symlink(
@@ -215,4 +215,19 @@ test('real dry-run entry point leaves files, tags and remote refs unchanged', as
   } finally {
     await f.close()
   }
+})
+
+
+test('changelog errors are failures, not empty release notes', async () => {
+  const f = await fixture()
+  try {
+    assert.throws(() => findBaseTag('0.11.0', tmpdir()), /Command failed/)
+    assert.throws(() => readCommitsSince('v-does-not-exist', f.root), /Command failed/)
+    await assert.rejects(readExistingChangelog(f.root), /EISDIR/)
+    assert.equal(await readExistingChangelog(join(f.root, 'missing-changelog')), '')
+    command(f.root, 'git', ['tag', 'v0.10.0'])
+    command(f.root, 'git', ['commit', '--allow-empty', '-m', 'fix(core): readable error'])
+    assert.equal(findBaseTag('0.11.0', f.root), 'v0.10.0')
+    assert.equal(readCommitsSince('v0.10.0', f.root)[0]?.subject, 'readable error')
+  } finally { await f.close() }
 })
