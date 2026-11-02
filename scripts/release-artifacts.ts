@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, readdir, writeFile, rename, rm, chmod } from 'node:fs/promises'
 import path from 'node:path'
-import { command, releaseTag, isRegistryNotFound } from './release-safety.js'
+import { tmpdir } from 'node:os'
+import semver from 'semver'
+import { command, releaseTag, isRegistryNotFound, registryErrorCode } from './release-safety.js'
 
 type Run = typeof command
 export interface ReleaseArtifact {
@@ -17,18 +19,21 @@ export const archiveIntegrity = (bytes: Buffer): string =>
 const missing = (error: unknown): boolean =>
   error instanceof Error && 'code' in error && error.code === 'ENOENT'
 
-/** An npm version is reusable only if its complete immutable archive matches. */
+const npmRegistry = 'https://registry.npmjs.org/'
+const registryArgs = ['--registry', npmRegistry, '--@kysera:registry=' + npmRegistry]
+
+/** Validate the immutable version metadata before considering an upload. */
 export function registryArtifactMatches(
   root: string, artifact: ReleaseArtifact, run: Run = command
 ): boolean {
   let data: unknown
   try {
-    data = JSON.parse(run(root, 'npm', ['view', `${artifact.name}@${artifact.version}`, '--json']))
+    data = JSON.parse(run(root, 'npm', ['view', `${artifact.name}@${artifact.version}`, '--json', '--prefer-online', ...registryArgs]))
   } catch (error) {
     if (isRegistryNotFound(error)) return false
     throw new Error(`Cannot verify ${artifact.name}@${artifact.version}; publication was not attempted`, { cause: error })
   }
-  if (!data || typeof data !== 'object' || !('version' in data) || data.version !== artifact.version ||
+  if (!data || typeof data !== 'object' || !('name' in data) || data.name !== artifact.name || !('version' in data) || data.version !== artifact.version ||
       !('dist' in data) || !data.dist || typeof data.dist !== 'object' || !('integrity' in data.dist) ||
       typeof data.dist.integrity !== 'string' || !data.dist.integrity.split(/\s+/).includes(artifact.integrity)) {
     throw new Error(`Registry artifact differs from ${artifact.name}@${artifact.version}. Refusing to skip or replace an immutable release; recover the original archive or use a new version.`)
@@ -39,6 +44,109 @@ export function registryArtifactMatches(
 export async function verifyArtifact(artifact: ReleaseArtifact): Promise<void> {
   if (archiveIntegrity(await readFile(artifact.file)) !== artifact.integrity)
     throw new Error(`Release archive was modified: ${artifact.file}`)
+}
+
+interface PublicationOptions {
+  run?: Run
+  provenance?: boolean
+  otp?: () => Promise<string>
+  progress?: (message: string) => void
+  confirmationTimeoutMs?: number
+  confirmationIntervalMs?: number
+}
+
+function channelVersion(root: string, name: string, tag: string, run: Run): string | undefined {
+  try {
+    const tags: unknown = JSON.parse(run(root, 'npm', ['view', `${name}@${tag}`, 'dist-tags', '--json', '--prefer-online', ...registryArgs]))
+    if (!tags || typeof tags !== 'object' || Array.isArray(tags)) throw new Error(`Invalid channel response for ${name}`)
+    const current = (tags as Record<string, unknown>)[tag]
+    if (current === undefined) return undefined
+    if (typeof current === 'string' && semver.valid(current) === current) return current
+    throw new Error(`Invalid npm ${tag} channel for ${name}`)
+  } catch (error) {
+    if (isRegistryNotFound(error)) return undefined
+    throw error
+  }
+}
+
+async function downloadable(root: string, artifact: ReleaseArtifact, run: Run): Promise<boolean> {
+  const directory = await mkdtemp(path.join(tmpdir(), 'kysera-registry-check-'))
+  try {
+    const packed: unknown = JSON.parse(run(root, 'npm', ['pack', `${artifact.name}@${artifact.version}`, '--ignore-scripts',
+      '--json', '--prefer-online', '--pack-destination', directory, '--cache', path.join(directory, 'cache'), ...registryArgs]))
+    const entry: unknown = Array.isArray(packed) ? packed[0] : undefined
+    const filename = entry && typeof entry === 'object' && 'filename' in entry ? entry.filename : undefined
+    if (typeof filename !== 'string' || path.basename(filename) !== filename || !filename.endsWith('.tgz') ||
+        archiveIntegrity(await readFile(path.join(directory, filename))) !== artifact.integrity)
+      throw new Error(`Downloaded npm archive differs from the prepared ${artifact.name}@${artifact.version}`)
+    return true
+  } catch (error) {
+    if (isRegistryNotFound(error)) return false
+    throw error
+  } finally { await rm(directory, { recursive: true, force: true }) }
+}
+
+/** A registry reservation can precede public metadata and the downloadable tarball by minutes. */
+export async function publishReleaseArtifact(root: string, artifact: ReleaseArtifact, options: PublicationOptions = {}): Promise<void> {
+  const run = options.run ?? command
+  const timeout = options.confirmationTimeoutMs ?? 30 * 60_000
+  const interval = options.confirmationIntervalMs ?? 15_000
+  if (!Number.isSafeInteger(timeout) || timeout < 0 || !Number.isSafeInteger(interval) || interval < 1)
+    throw new Error('Invalid publication confirmation interval')
+  const { name, version, integrity, commit } = artifact
+  const tag = semver.prerelease(version) ? 'next' : 'latest'
+  await verifyArtifact(artifact)
+  const marker = artifact.file + '.publication.json'
+  let pending = false
+  try {
+    const saved = JSON.parse(await readFile(marker, 'utf8')) as Record<string, unknown> | null
+    if (saved?.['registry'] !== npmRegistry || saved['name'] !== name || saved['version'] !== version || saved['commit'] !== commit || saved['integrity'] !== integrity)
+      throw new Error(`Invalid saved publication receipt for ${name}`)
+    pending = true
+  } catch (error) { if (!missing(error)) throw error }
+  if (!pending && !registryArtifactMatches(root, artifact, run)) {
+    const current = channelVersion(root, name, tag, run)
+    if (current && semver.gt(current, version)) throw new Error(`Publishing ${name}@${version} would move ${tag} backwards from ${current}`)
+    let otp: string | undefined
+    for (let attempt = 1; ; attempt++) {
+      options.progress?.(`Publishing ${name}@${version} (${tag}, attempt ${attempt})`)
+      try {
+        run(root, 'npm', ['publish', artifact.file, '--json', '--access', 'public', '--ignore-scripts', '--tag', tag,
+          ...(options.provenance ? ['--provenance'] : []), ...registryArgs], otp ? { ...process.env, npm_config_otp: otp } : undefined)
+      } catch (error) {
+        const code = registryErrorCode(error)
+        if (code === 'EOTP' && options.otp && attempt < 3) {
+          otp = await options.otp()
+          if (!/^\d{6,8}$/.test(otp)) throw new Error('Invalid one-time password', { cause: error })
+          continue
+        }
+        if (code !== 'E409' && code !== 'EPUBLISHCONFLICT' && !registryArtifactMatches(root, artifact, run)) throw error
+      }
+      await writeFile(marker + '.next', JSON.stringify({ registry: npmRegistry, name, version, commit, integrity }), { mode: 0o600, flush: true })
+      await rename(marker + '.next', marker)
+      break
+    }
+  }
+  const deadline = Date.now() + timeout
+  let downloaded = false, nextNotice = 0, waitingFor = 'version metadata'
+  for (;;) {
+    if (!downloaded && registryArtifactMatches(root, artifact, run)) {
+      waitingFor = 'downloadable tarball'
+      downloaded = await downloadable(root, artifact, run)
+    }
+    if (downloaded) {
+      const current = channelVersion(root, name, tag, run)
+      if (current && semver.gte(current, version)) return
+      waitingFor = `${tag} channel (currently ${current ?? 'unset'})`
+    }
+    const now = Date.now(), remaining = deadline - now
+    if (remaining <= 0) throw new Error(`Registry confirmation pending for ${name}@${version} (${waitingFor}). Resume the same version to continue checking.`)
+    if (now >= nextNotice) {
+      options.progress?.(`Waiting for ${name}@${version}: ${waitingFor} (${Math.ceil(remaining / 60_000)} min remaining)`)
+      nextNotice = now + 60_000
+    }
+    await new Promise(resolve => setTimeout(resolve, Math.min(interval, remaining)))
+  }
 }
 
 /** Pack once after tagging; resumes use these same bytes, even if a rebuild is nondeterministic. */

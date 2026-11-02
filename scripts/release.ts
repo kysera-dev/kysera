@@ -35,7 +35,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { glob } from 'glob'
-import { prism, select, text, confirm } from '@xec-sh/kit'
+import { prism, select, text, confirm, password } from '@xec-sh/kit'
 import semver from 'semver'
 import {
   command,
@@ -46,7 +46,7 @@ import {
   createGithubRelease,
   localReleaseCommit
 } from './release-safety.js'
-import { stageReleaseArtifact, registryArtifactMatches, verifyArtifact, acquireReleaseLock, type ReleaseArtifact } from './release-artifacts.js'
+import { stageReleaseArtifact, registryArtifactMatches, publishReleaseArtifact, acquireReleaseLock, type ReleaseArtifact } from './release-artifacts.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = path.resolve(__dirname, '..')
@@ -635,21 +635,16 @@ async function prepareArtifacts(packages: Package[], version: string): Promise<R
 async function publishPackages(artifacts: ReleaseArtifact[], version: string, options: ReleaseOptions): Promise<void> {
   const oidc = process.env['GITHUB_ACTIONS'] === 'true' && process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] && process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']
   for (const artifact of artifacts) {
-    await verifyArtifact(artifact)
-    if (registryArtifactMatches(ROOT_DIR, artifact)) {
-      console.log(prism.gray(`  ${artifact.name}@${version}: npm archive verified, skipping`))
-      continue
-    }
-    // Publish the archive that was checked; lifecycle scripts cannot rebuild or repack it.
-    command(ROOT_DIR, 'npm', ['publish', artifact.file, '--access', 'public', '--ignore-scripts',
-      '--tag', semver.prerelease(version) ? 'next' : 'latest',
-      ...(options.provenance || oidc ? ['--provenance'] : [])])
-    let verified = false
-    for (let attempt = 0; attempt < 4; attempt++) {
-      if (registryArtifactMatches(ROOT_DIR, artifact)) { verified = true; break }
-      await new Promise(resolve => setTimeout(resolve, 1500))
-    }
-    if (!verified) throw new Error(`Published ${artifact.name}, but npm visibility is unconfirmed; resume this same version`)
+    await publishReleaseArtifact(ROOT_DIR, artifact, {
+      provenance: options.provenance === true || Boolean(oidc),
+      progress: console.log,
+      otp: async () => {
+        if (!process.stdin.isTTY) throw new Error('npm requires a one-time password. Resume from an interactive terminal.')
+        const value = await password({ message: 'npm one-time password' })
+        if (typeof value !== 'string') throw new Error('Publication cancelled. Resume the same version.')
+        return value
+      }
+    })
     console.log(prism.green(`  ${artifact.name}@${version}: published and verified`))
   }
 }
@@ -901,6 +896,7 @@ async function main(): Promise<void> {
         console.log(prism.gray(`  Updated ${pkg.name} to ${newVersion}`))
       }
       console.log(prism.green('✅ Versions updated'))
+      exec('pnpm install --no-frozen-lockfile --ignore-scripts')
 
       if (changelogEntry) {
         await updateChangelog(changelogEntry)
@@ -920,7 +916,6 @@ async function main(): Promise<void> {
 
     // 8. Commit + tag first — npm must never be ahead of git
     if (!options.dryRun) {
-      exec('pnpm install --lockfile-only --ignore-scripts')
       if (!options.skipPublish) exec('pnpm run audit:deps')
     }
     commitAndTag(newVersion, options, [

@@ -5,9 +5,10 @@ import { join } from 'node:path'
 import semver from 'semver'
 
 /** Operational arguments never pass through a shell. Network calls are bounded. */
-export function command(root: string, executable: string, args: string[]): string {
+export function command(root: string, executable: string, args: string[], env?: NodeJS.ProcessEnv): string {
   return execFileSync(executable, args, {
     cwd: root,
+    env,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 120_000
@@ -107,18 +108,19 @@ export function releaseNotes(changelog: string, version: string): string {
   )
 }
 
-export function isRegistryNotFound(error: unknown): boolean {
-  if (!(error instanceof Error) || !('stdout' in error)) return false
+export function registryErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof Error) || !('stdout' in error)) return
   try {
     const output: unknown = JSON.parse(String(error.stdout))
-    if (!output || typeof output !== 'object' || !('error' in output)) return false
+    if (!output || typeof output !== 'object' || !('error' in output)) return
     const detail = output.error
-    return Boolean(
-      detail && typeof detail === 'object' && 'code' in detail && detail.code === 'E404'
-    )
-  } catch {
-    return false
-  }
+    if (detail && typeof detail === 'object' && 'code' in detail && typeof detail.code === 'string') return detail.code
+    return undefined
+  } catch { return undefined }
+}
+
+export function isRegistryNotFound(error: unknown): boolean {
+  return registryErrorCode(error) === 'E404'
 }
 
 /** Finish GitHub from the immutable tag, without rebuilding or touching npm. */

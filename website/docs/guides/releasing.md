@@ -28,7 +28,7 @@ it skips tests only because the CI job is expected to have passed them already.
    it never permits unrelated uncommitted changes.
 2. Update versions and release notes; preserve all `workspace:` dependency forms,
    including optional dependencies. Build and test unless explicitly skipped.
-   Refresh the lockfile without running install scripts.
+   Synchronize the lockfile and installed workspace immediately after the version bump.
 3. Commit only the release manifests, lockfile and changelog. An existing tag must
    point at the exact current commit; a resume must not publish changed source
    under an old version.
@@ -41,7 +41,9 @@ it skips tests only because the CI job is expected to have passed them already.
    A failed push stops before npm publication. Declining the push leaves a local
    prepared release; it does not publish packages.
 6. Publish the saved archives in dependency order and verify their npm integrity
-   afterwards. An existing version is skipped only when its archive matches. Only a registry `E404` means absent; authentication, network and
+   afterwards. A confirmed package has matching exact-version metadata and a fresh
+   tarball download with the sealed SHA-512. Its distribution tag can also point
+   to a newer release. Only a registry `E404` means absent; authentication, network and
    server failures abort rather than being treated as permission to publish.
    Prereleases use npm's `next` tag. Provenance is explicit (`--provenance`) or
    automatic when GitHub Actions OIDC credentials are available.
@@ -72,6 +74,17 @@ commit** on its original branch and rerun the same `--version`. If the branch ha
 advanced, use an isolated checkout at that commit; do not reset a shared working
 branch. A failed push must be reconciled before the remaining npm packages can
 be published. Never move or force-push an already published tag.
+
+A successful upload or an HTTP 409 for a reserved version can precede public
+availability. The release saves a receipt next to its archive and checks the
+registry every 15 seconds for up to 30 minutes per package. Progress identifies
+what is missing: the version metadata, the public tarball or its distribution
+tag. Rerun the same command after a timeout. A matching receipt resumes the
+checks without submitting the archive again. npm prompts for two-factor
+authentication in the terminal when required. With npm 11.15 or later, use
+`npm stage list @kysera/<package> --json` to inspect any manual approval that
+your npm account can see.
+[Publish-time scanning](https://github.blog/changelog/2026-07-28-npm-publish-time-malware-scanning-and-dual-use-metadata/)
 
 If npm and the tag already succeeded and only the GitHub page is missing:
 
