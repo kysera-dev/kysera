@@ -41,6 +41,7 @@ import {
   command,
   releaseTag,
   assertReleaseHead,
+  runReleaseTests,
   verifyRemoteTag,
   pushReleaseRefs,
   createGithubRelease,
@@ -557,20 +558,6 @@ function buildPackages(): void {
 }
 
 /**
- * Run tests
- */
-function runTests(): void {
-  console.log(prism.cyan('🧪 Running tests...'))
-  exec('pnpm test')
-  console.log(prism.green('✅ Tests passed'))
-}
-
-/**
- * Check whether a version is already on the registry (makes re-runs after a
- * partial publish idempotent)
- */
-
-/**
  * Order packages so dependencies publish before dependents — a mid-run
  * failure then never leaves a package on npm whose @kysera deps are absent.
  * (glob() directory order is not guaranteed; a live run once tried
@@ -649,55 +636,30 @@ async function publishPackages(artifacts: ReleaseArtifact[], version: string, op
   }
 }
 
-/**
- * Commit release changes and create the tag.
- *
- * Runs BEFORE publish: if this step fails, nothing has reached npm yet.
- * The tag must land on the release commit — v0.8.8's tag ended up on the
- * wrong commit precisely because tagging wasn't tied to a verified commit.
- */
-function commitAndTag(version: string, options: ReleaseOptions, releaseFiles: string[]): void {
-  if (options.dryRun) {
-    console.log(prism.yellow(`\n[DRY RUN] Would commit and tag v${version}`))
-    return
-  }
-
-  console.log(prism.cyan(`\n🏷️  Committing and tagging v${version}...`))
-
+/** Checkpoint the proposed manifests so a failed validation resumes from a clean commit. */
+function checkpointCandidate(version: string, releaseFiles: string[]): string {
   assertReleaseHead(ROOT_DIR, version)
-  const changed = command(ROOT_DIR, 'git', ['diff', '--name-only']).split('\n').filter(Boolean)
-  const unexpected = changed.filter(file => !releaseFiles.includes(file))
-  if (unexpected.length)
-    throw new Error(`Release changed unexpected files: ${unexpected.join(', ')}`)
-  if (localReleaseCommit(ROOT_DIR, version) && changed.length)
-    throw new Error(
-      'A tagged release changed during preparation; refusing to publish a different tree under the same version'
-    )
-  command(ROOT_DIR, 'git', ['add', '--', ...releaseFiles])
-  const staged = exec('git status --porcelain', { silent: true })
-  if (staged) {
-    exec(`git commit -m "chore(release): v${version}"`)
-  } else {
-    console.log(prism.gray('  Nothing to commit (release changes already committed)'))
+  const changed = [
+    ...command(ROOT_DIR, 'git', ['diff', '--name-only', '-z']).split('\0'),
+    ...command(ROOT_DIR, 'git', ['ls-files', '--others', '--exclude-standard', '-z']).split('\0')
+  ].filter(Boolean)
+  if (changed.some(file => !releaseFiles.includes(file)) || command(ROOT_DIR, 'git', ['diff', '--cached', '--name-only']))
+    throw new Error('Unexpected working tree changes while preparing the release')
+  if (changed.length) {
+    if (localReleaseCommit(ROOT_DIR, version)) throw new Error('A tagged release changed during preparation')
+    command(ROOT_DIR, 'git', ['add', '--', ...changed])
+    command(ROOT_DIR, 'git', ['commit', '-m', `chore(release): v${version}`, '--', ...changed])
   }
+  return command(ROOT_DIR, 'git', ['rev-parse', 'HEAD'])
+}
 
-  const tagExists = (() => {
-    try {
-      exec(`git rev-parse -q --verify refs/tags/v${version}`, { silent: true })
-      return true
-    } catch {
-      return false
-    }
-  })()
-
-  if (tagExists) {
-    assertReleaseHead(ROOT_DIR, version)
-    console.log(prism.gray(`  Tag v${version} already exists at HEAD — verified`))
-  } else {
-    exec(`git tag -a v${version} -m "Release v${version}"`)
-  }
-
-  console.log(prism.green(`✅ Tagged v${version}`))
+function tagValidatedCandidate(version: string, commit: string): void {
+  if (command(ROOT_DIR, 'git', ['rev-parse', 'HEAD']) !== commit || command(ROOT_DIR, 'git', ['status', '--porcelain']))
+    throw new Error('Release source changed during validation. Rerun on the clean candidate commit.')
+  assertReleaseHead(ROOT_DIR, version)
+  if (!localReleaseCommit(ROOT_DIR, version))
+    command(ROOT_DIR, 'git', ['tag', '-a', releaseTag(version), '-m', `Release v${version}`, commit])
+  console.log(prism.green(`✅ Verified tag v${version} at ${commit}`))
 }
 
 /**
@@ -896,7 +858,9 @@ async function main(): Promise<void> {
         console.log(prism.gray(`  Updated ${pkg.name} to ${newVersion}`))
       }
       console.log(prism.green('✅ Versions updated'))
-      exec('pnpm install --no-frozen-lockfile --ignore-scripts')
+      exec(semver.eq(newVersion, currentVersion)
+        ? 'pnpm install --frozen-lockfile --ignore-scripts'
+        : 'pnpm install --no-frozen-lockfile --ignore-scripts')
 
       if (changelogEntry) {
         await updateChangelog(changelogEntry)
@@ -904,26 +868,18 @@ async function main(): Promise<void> {
       }
     }
 
-    // 6. Build packages
-    if (!options.skipBuild && !options.dryRun) {
-      buildPackages()
-    }
-
-    // 7. Run tests
-    if (!options.skipTests && !options.dryRun) {
-      runTests()
-    }
-
-    // 8. Commit + tag first — npm must never be ahead of git
-    if (!options.dryRun) {
+    if (options.dryRun) {
+      console.log(prism.yellow(`[DRY RUN] Would commit the candidate, validate it and tag v${newVersion}`))
+    } else {
+      const candidate = checkpointCandidate(newVersion, [
+        'package.json', 'CHANGELOG.md', 'pnpm-lock.yaml',
+        ...packages.map(pkg => path.relative(ROOT_DIR, path.join(pkg.path, 'package.json')))
+      ])
+      if (!options.skipBuild) buildPackages()
+      if (!options.skipTests) await runReleaseTests(ROOT_DIR, newVersion)
       if (!options.skipPublish) exec('pnpm run audit:deps')
+      tagValidatedCandidate(newVersion, candidate)
     }
-    commitAndTag(newVersion, options, [
-      'package.json',
-      'CHANGELOG.md',
-      'pnpm-lock.yaml',
-      ...packages.map(pkg => path.relative(ROOT_DIR, path.join(pkg.path, 'package.json')))
-    ])
 
     const artifacts = !options.dryRun && !options.skipPublish
       ? await prepareArtifacts(packages, newVersion) : []

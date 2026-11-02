@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile, readFile, symlink, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile, readdir, symlink, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import {
   command,
   pushReleaseRefs,
@@ -178,24 +178,28 @@ test('resumes after the remote release branch advances without rewinding it', as
   }
 })
 
+async function installReleaseFixture(root: string): Promise<void> {
+  await mkdir(join(root, 'scripts'))
+  for (const file of ['release.ts', 'release-safety.ts', 'release-artifacts.ts']) {
+    await writeFile(join(root, 'scripts', file), await readFile(new URL(file, import.meta.url)))
+  }
+  await symlink(
+    new URL('../node_modules', import.meta.url).pathname,
+    join(root, 'node_modules')
+  )
+  await writeFile(join(root, '.gitignore'), 'node_modules\n.release-artifacts/\n')
+  await writeFile(
+    join(root, 'package.json'),
+    JSON.stringify({ name: 'release-fixture', version: '0.10.1', private: true, type: 'module' })
+  )
+  command(root, 'git', ['add', '.'])
+  command(root, 'git', ['commit', '-m', 'release fixture'])
+}
+
 test('real dry-run entry point leaves files, tags and remote refs unchanged', async () => {
   const f = await fixture()
   try {
-    await mkdir(join(f.root, 'scripts'))
-    for (const file of ['release.ts', 'release-safety.ts', 'release-artifacts.ts']) {
-      await writeFile(join(f.root, 'scripts', file), await readFile(new URL(file, import.meta.url)))
-    }
-    await symlink(
-      new URL('../node_modules', import.meta.url).pathname,
-      join(f.root, 'node_modules')
-    )
-    await writeFile(join(f.root, '.gitignore'), 'node_modules\n')
-    await writeFile(
-      join(f.root, 'package.json'),
-      JSON.stringify({ name: 'release-fixture', version: '0.10.1', private: true, type: 'module' })
-    )
-    command(f.root, 'git', ['add', '.'])
-    command(f.root, 'git', ['commit', '-m', 'release fixture'])
+    await installReleaseFixture(f.root)
     const before = command(f.root, 'git', ['rev-parse', 'HEAD'])
     const remote = command(f.remote, 'git', ['rev-parse', 'refs/heads/main'])
     const output = command(f.root, process.execPath, [
@@ -229,5 +233,36 @@ test('changelog errors are failures, not empty release notes', async () => {
     command(f.root, 'git', ['commit', '--allow-empty', '-m', 'fix(core): readable error'])
     assert.equal(findBaseTag('0.11.0', f.root), 'v0.10.0')
     assert.equal(readCommitsSince('v0.10.0', f.root)[0]?.subject, 'readable error')
+  } finally { await f.close() }
+})
+
+test('keeps the untagged candidate after a failed gate and releases that exact commit on retry', async () => {
+  const f = await fixture()
+  try {
+    await installReleaseFixture(f.root)
+    const bin = join(f.root, '.git', 'test-bin')
+    await mkdir(bin)
+    await writeFile(join(bin, 'pnpm'), `#!/usr/bin/env node
+const args = process.argv.slice(2)
+if (args[0] === 'run' && args[1] === 'test') {
+  if (!args.includes('--concurrency=2') || process.env.VITEST_MAX_WORKERS !== '2') process.exit(93)
+  if (process.env.FIXTURE_FAIL === 'yes') { console.error('original executor assertion'); process.exit(1) }
+} else if (!['build', 'install'].includes(args[0])) process.exit(94)
+`, { mode: 0o755 })
+    const env = { ...process.env, PATH: bin + delimiter + (process.env['PATH'] ?? '') }
+    const args = ['--import', 'tsx', 'scripts/release.ts', '--version', '0.10.2', '--yes', '--skip-publish']
+    const remoteBefore = command(f.remote, 'git', ['rev-parse', 'refs/heads/main'])
+    assert.throws(() => command(f.root, process.execPath, args, { ...env, FIXTURE_FAIL: 'yes' }), /Full test output/)
+    assert.equal(command(f.root, 'git', ['status', '--porcelain']), '')
+    assert.equal(command(f.root, 'git', ['tag', '--list', 'v0.10.2']), '')
+    assert.equal(command(f.remote, 'git', ['rev-parse', 'refs/heads/main']), remoteBefore)
+    const directory = join(f.root, '.release-artifacts', '0.10.2', 'validation')
+    const logs = await readdir(directory)
+    assert.equal(logs.length, 1)
+    assert.match(await readFile(join(directory, logs[0]!), 'utf8'), /original executor assertion/)
+    const candidate = command(f.root, 'git', ['rev-parse', 'HEAD'])
+    command(f.root, process.execPath, args, env)
+    assert.equal(command(f.root, 'git', ['rev-parse', 'HEAD']), candidate)
+    assert.equal(command(f.remote, 'git', ['rev-parse', 'refs/tags/v0.10.2^{commit}']), candidate)
   } finally { await f.close() }
 })

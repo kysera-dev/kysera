@@ -27,9 +27,17 @@ it skips tests only because the CI job is expected to have passed them already.
    run before publication. `--force` permits a non-primary branch or older version;
    it never permits unrelated uncommitted changes.
 2. Update versions and release notes; preserve all `workspace:` dependency forms,
-   including optional dependencies. Build and test unless explicitly skipped.
+   including optional dependencies.
    Synchronize the lockfile and installed workspace immediately after the version bump.
-3. Commit only the release manifests, lockfile and changelog. An existing tag must
+3. Commit only the release manifests, lockfile and changelog locally. Build,
+   test and audit the clean candidate before tagging it. A failing test leaves
+   the candidate ready to retry with the same command. Look for the first failed
+   assertion in `.release-artifacts/<version>/validation/tests-*.log`. All test
+   packages with successful prerequisites run, with at most two packages and
+   two Vitest workers per package. Executor tests check builder identity, cached
+   methods and the exact number of interceptor calls. To measure throughput, run
+   `pnpm bench` on an idle host. It reports warmed samples and latency percentiles
+   for marker-only plugins, interceptor stacks, construction and SQL operations. An existing tag must
    point at the exact current commit; a resume must not publish changed source
    under an old version.
 4. Pack exact archives into `.release-artifacts/<version>/<commit>/`, without

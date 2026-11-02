@@ -1,5 +1,9 @@
-import { execFileSync } from 'node:child_process'
-import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { execFileSync, spawn } from 'node:child_process'
+import { once } from 'node:events'
+import { createWriteStream } from 'node:fs'
+import { PassThrough } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import semver from 'semver'
@@ -13,6 +17,32 @@ export function command(root: string, executable: string, args: string[], env?: 
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 120_000
   }).trim()
+}
+
+/** Keep the first failing assertion even when other packages are still running. */
+export async function runReleaseTests(root: string, version: string): Promise<void> {
+  const directory = join(root, '.release-artifacts', releaseTag(version).slice(1), 'validation')
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  const file = join(directory, `tests-${Date.now()}-${process.pid}.log`)
+  console.log(`Running the full test suite. Transcript: ${file}`)
+  const child = spawn('pnpm', ['run', 'test', '--concurrency=2', '--continue=dependencies-successful', '--log-order=grouped'], {
+    cwd: root, stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32',
+    env: { ...process.env, VITEST_MAX_WORKERS: '2' }
+  })
+  const merged = new PassThrough()
+  child.stdout.pipe(process.stdout, { end: false })
+  child.stderr.pipe(process.stderr, { end: false })
+  child.stdout.pipe(merged, { end: false })
+  child.stderr.pipe(merged, { end: false })
+  const output = pipeline(merged, createWriteStream(file, { flags: 'wx', mode: 0o600 }))
+  const closed = (once(child, 'close') as Promise<[number | null, string | null]>).finally(() => merged.end())
+  try {
+    const [[code, signal]] = await Promise.all([closed, output])
+    if (code !== 0) throw new Error(`Kysera tests failed (${signal ?? code}). Full test output: ${file}`)
+  } catch (error) {
+    if (child.exitCode === null && child.signalCode === null) child.kill()
+    throw error
+  }
 }
 
 export function releaseTag(version: string): string {
