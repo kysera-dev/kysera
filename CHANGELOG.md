@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2026-11-02
+
+_Packages: audit, cli, core, dal, debug, dialects, executor, infra, migrations, repository, rls, soft-delete, testing, timestamps · [v0.10.1...v0.10.2](https://github.com/kysera-dev/kysera/compare/v0.10.1...v0.10.2)_
+
+### 🐛 Bug Fixes
+
+- **deps:** eliminate workspace advisories and verify isolated database and CLI builds (9dfb3ac)
+- **executor:** verify dispatch directly and measure throughput on the benchmark runner (685706c)
+- **release:** checkpoint candidates and preserve full validation failures (f904d5f)
+- **release:** wait for public archive and channel after npm accepts a version (67935e4)
+- **release:** publish verified immutable archives and preserve retries (a177525)
+- **release:** isolate release refs and make publication resumable (6618760)
+
 ## [0.10.1] - 2026-10-30
 
 _Packages: audit, cli, executor, infra, migrations, repository · [v0.10.0...v0.10.1](https://github.com/kysera-dev/kysera/compare/v0.10.0...v0.10.1)_
