@@ -1,9 +1,9 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/api.ts'],
   format: ['esm'], // ESM only as per spec
-  dts: false, // Temporarily disabled due to tsup issue
+  dts: { entry: ['src/api.ts'], compilerOptions: { composite: false } },
   // Code splitting keeps startup fast: dynamic imports inside action
   // handlers (drivers, faker, generators) become separate chunks that
   // only load when the command actually runs.

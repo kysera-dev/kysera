@@ -223,23 +223,15 @@ export default defineConfig({
 
   migrations: {
     directory: './migrations',
-    tableName: 'kysera_migrations',
-    timezone: 'UTC'
-  },
-
-  generation: {
-    outputDir: './src/generated',
-    typescript: true,
-    validation: 'zod'
-  },
-
-  plugins: {
-    '@kysera/soft-delete': { enabled: true },
-    '@kysera/timestamps': { enabled: true },
-    '@kysera/audit': { enabled: true }
+    tableName: 'kysera_migrations'
   }
 })
 ```
+
+The package root exports `defineConfig` and the `KyseraConfigInput` and
+`SeedContext` types. Importing it preserves the current process and returns
+the configuration object unchanged. The `kysera` executable starts the command
+parser and applies schema defaults when loading your configuration.
 
 ### JSON Configuration
 

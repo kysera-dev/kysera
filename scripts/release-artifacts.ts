@@ -149,7 +149,7 @@ export async function publishReleaseArtifact(root: string, artifact: ReleaseArti
   }
 }
 
-/** Pack once after tagging; resumes use these same bytes, even if a rebuild is nondeterministic. */
+/** Pack once from the candidate commit before tagging; resumes use these same bytes, even if a rebuild is nondeterministic. */
 export async function stageReleaseArtifact(
   root: string,
   pkg: { name: string; path: string },

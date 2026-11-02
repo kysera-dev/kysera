@@ -612,8 +612,8 @@ async function prepareArtifacts(packages: Package[], version: string): Promise<R
   const artifacts: ReleaseArtifact[] = []
   for (const pkg of await sortByDependencyOrder(packages.filter(pkg => !pkg.private)))
     artifacts.push(await stageReleaseArtifact(ROOT_DIR, pkg, version))
-  // A conflict in the last package must fail before publishing the first one.
-  for (const artifact of artifacts) registryArtifactMatches(ROOT_DIR, artifact)
+  const cli = artifacts.find(artifact => artifact.name === '@kysera/cli')
+  if (cli) console.log(command(ROOT_DIR, 'node', ['--import', 'tsx', path.join(ROOT_DIR, 'scripts/check-cli-archive.ts'), cli.file, version]))
   if (command(ROOT_DIR, 'git', ['status', '--porcelain']))
     throw new Error('Packing changed the release tree; publication was not attempted')
   return artifacts
@@ -868,8 +868,9 @@ async function main(): Promise<void> {
       }
     }
 
+    let artifacts: ReleaseArtifact[] = []
     if (options.dryRun) {
-      console.log(prism.yellow(`[DRY RUN] Would commit the candidate, validate it and tag v${newVersion}`))
+      console.log(prism.yellow(`[DRY RUN] Would commit the candidate, validate all archives and tag v${newVersion}`))
     } else {
       const candidate = checkpointCandidate(newVersion, [
         'package.json', 'CHANGELOG.md', 'pnpm-lock.yaml',
@@ -878,11 +879,11 @@ async function main(): Promise<void> {
       if (!options.skipBuild) buildPackages()
       if (!options.skipTests) await runReleaseTests(ROOT_DIR, newVersion)
       if (!options.skipPublish) exec('pnpm run audit:deps')
+      artifacts = await prepareArtifacts(packages, newVersion)
+      // Detect conflicts throughout the batch before tagging or pushing any refs.
+      if (!options.skipPublish) for (const artifact of artifacts) registryArtifactMatches(ROOT_DIR, artifact)
       tagValidatedCandidate(newVersion, candidate)
     }
-
-    const artifacts = !options.dryRun && !options.skipPublish
-      ? await prepareArtifacts(packages, newVersion) : []
 
     // Publish immutable Git refs before npm; a rejected push cannot leave npm ahead.
     const pushed = await pushRelease(newVersion, options)

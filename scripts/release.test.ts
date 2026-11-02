@@ -266,3 +266,35 @@ if (args[0] === 'run' && args[1] === 'test') {
     assert.equal(command(f.remote, 'git', ['rev-parse', 'refs/tags/v0.10.2^{commit}']), candidate)
   } finally { await f.close() }
 })
+
+test('refuses to tag or push an unpackable candidate even when npm publishing is disabled', async () => {
+  const f = await fixture()
+  try {
+    await installReleaseFixture(f.root)
+    const pkg = join(f.root, 'packages', 'broken')
+    await mkdir(pkg, { recursive: true })
+    await writeFile(join(pkg, 'package.json'), JSON.stringify({ name: '@kysera/broken', version: '0.10.1', main: './missing.js' }))
+    command(f.root, 'git', ['add', 'packages'])
+    command(f.root, 'git', ['commit', '-m', 'fixture with an invalid public export'])
+    const bin = join(f.root, '.git', 'test-bin')
+    await mkdir(bin)
+    await writeFile(join(bin, 'pnpm'), `#!/usr/bin/env node
+import fs from 'node:fs'
+import path from 'node:path'
+import cp from 'node:child_process'
+const args=process.argv.slice(2)
+if (args.includes('pack')) {
+  const dest=args[args.indexOf('--pack-destination')+1]
+  fs.mkdirSync(path.join(dest,'package'))
+  fs.copyFileSync('package.json',path.join(dest,'package/package.json'))
+  cp.execFileSync('tar',['-czf',path.join(dest,'broken.tgz'),'-C',dest,'package'])
+} else if (args[0]!=='install') process.exit(95)
+`, { mode: 0o755 })
+    const remote = command(f.remote, 'git', ['rev-parse', 'refs/heads/main'])
+    const args = ['--import', 'tsx', 'scripts/release.ts', '--version', '0.10.2', '--skip-tests', '--skip-build', '--skip-publish', '--yes']
+    assert.throws(() => command(f.root, process.execPath, args, { ...process.env, PATH: bin + delimiter + (process.env['PATH'] ?? '') }), /missing exported entry/)
+    assert.equal(command(f.root, 'git', ['status', '--porcelain']), '')
+    assert.equal(command(f.root, 'git', ['tag', '--list', 'v0.10.2']), '')
+    assert.equal(command(f.remote, 'git', ['rev-parse', 'refs/heads/main']), remote)
+  } finally { await f.close() }
+})

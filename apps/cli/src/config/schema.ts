@@ -254,6 +254,7 @@ export {
 
 // Types
 export type KyseraConfig = z.infer<typeof KyseraConfigSchema>
+export type KyseraConfigInput = z.input<typeof KyseraConfigSchema>
 export type DatabaseConfig = z.infer<typeof DatabaseConfigSchema>
 export type MigrationConfig = z.infer<typeof MigrationConfigSchema>
 export type PluginsConfig = z.infer<typeof PluginsConfigSchema>

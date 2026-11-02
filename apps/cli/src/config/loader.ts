@@ -180,12 +180,7 @@ async function loadConfigFile(filePath: string): Promise<Partial<KyseraConfig>> 
   }
 }
 
-/**
- * Define configuration helper for TypeScript configs
- */
-export function defineConfig(config: KyseraConfig): KyseraConfig {
-  return config
-}
+export { defineConfig } from '../api.js'
 
 /**
  * Validate configuration without loading

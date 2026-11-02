@@ -30,7 +30,7 @@ it skips tests only because the CI job is expected to have passed them already.
    including optional dependencies.
    Synchronize the lockfile and installed workspace immediately after the version bump.
 3. Commit only the release manifests, lockfile and changelog locally. Build,
-   test and audit the clean candidate before tagging it. A failing test leaves
+   test and audit the clean candidate. A failing test leaves
    the candidate ready to retry with the same command. Look for the first failed
    assertion in `.release-artifacts/<version>/validation/tests-*.log`. All test
    packages with successful prerequisites run, with at most two packages and
@@ -40,11 +40,15 @@ it skips tests only because the CI job is expected to have passed them already.
    for marker-only plugins, interceptor stacks, construction and SQL operations. An existing tag must
    point at the exact current commit; a resume must not publish changed source
    under an old version.
-4. Pack exact archives into `.release-artifacts/<version>/<commit>/`, without
+4. Before creating the tag, pack every public package, including runs with
+   `--skip-publish`. Save exact archives into `.release-artifacts/<version>/<commit>/`, without
    rerunning lifecycle scripts after validation. Validate exported entry points
-   and reject remaining local dependency references. Verify all existing npm
+   and reject remaining local dependency references. An isolated consumer loads
+   the packed CLI, checks its executable version and type-checks a config and
+   a seed against its exported declarations. The check resolves third-party
+   dependencies from the frozen workspace install. Verify all existing npm
    archives by SHA-512 before publishing any package.
-5. Atomically push the current branch and **that one release tag**. Historical
+5. Tag the validated commit, then atomically push its branch and **that one release tag**. Historical
    tags and other branches are excluded, including when `push.followTags` is set.
    A failed push stops before npm publication. Declining the push leaves a local
    prepared release; it does not publish packages.

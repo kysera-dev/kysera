@@ -11,6 +11,8 @@ _Packages: audit, cli, core, dal, debug, dialects, executor, infra, migrations, 
 
 ### 🐛 Bug Fixes
 
+- **cli:** export typed configuration and seed helpers independently of CLI startup.
+- **release:** validate every packed package before creating the release tag.
 - **deps:** eliminate workspace advisories and verify isolated database and CLI builds (9dfb3ac)
 - **executor:** verify dispatch directly and measure throughput on the benchmark runner (685706c)
 - **release:** checkpoint candidates and preserve full validation failures (f904d5f)
