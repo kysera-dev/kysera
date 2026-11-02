@@ -46,6 +46,9 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
 
+      - name: Audit locked dependencies
+        run: pnpm run audit:deps
+
       - name: Run tests
         run: |
           cd apps/cli

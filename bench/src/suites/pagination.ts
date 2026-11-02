@@ -44,6 +44,13 @@ export async function runPaginationSuite(): Promise<SuiteTable> {
     await paginateCursor(baseQuery(), { orderBy, limit: PAGE_SIZE })
   })
 
+  bench.add('paginateCursor composite order (name, id)', async () => {
+    await paginateCursor(baseQuery(), {
+      orderBy: [{ column: 'name', direction: 'asc' }, { column: 'id', direction: 'asc' }],
+      limit: PAGE_SIZE
+    })
+  })
+
   bench.add('paginateCursor mid-table (limit 50, from row 5 000)', async () => {
     await paginateCursor(baseQuery(), { orderBy, cursor: midCursor, limit: PAGE_SIZE })
   })

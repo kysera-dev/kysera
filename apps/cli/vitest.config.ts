@@ -33,22 +33,17 @@ export default defineConfig({
     hookTimeout: 30000,
     teardownTimeout: 10000,
     isolate: true,
-    threads: true,
     mockReset: true,
     restoreMocks: true,
     clearMocks: true,
     // Disable threads for e2e tests that spawn child processes
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true
-      }
-    }
+    fileParallelism: false
   },
   resolve: {
     alias: {
-      '@': resolve(__dirname, './src'),
-      '@tests': resolve(__dirname, './tests')
+      '@': resolve(import.meta.dirname, './src'),
+      '@tests': resolve(import.meta.dirname, './tests')
     }
   }
 })

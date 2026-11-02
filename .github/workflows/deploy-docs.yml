@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - 'website/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 

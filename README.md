@@ -244,3 +244,9 @@ examples in `examples/*`, documentation in `website/`.
 
 See the [release and recovery guide](website/docs/guides/releasing.md) for npm publication,
 GitHub Release completion and regression checks.
+
+Build the CLI image from the repository root with
+`docker build -f apps/cli/Dockerfile -t kysera-cli .`. The builder uses the
+repository's pinned pnpm and lockfile; its final stage contains the isolated CLI
+deployment and the database clients. An approved, digest-pinned Node base may be
+selected with `--build-arg NODE_IMAGE=...`.

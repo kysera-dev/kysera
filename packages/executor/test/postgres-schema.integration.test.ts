@@ -7,6 +7,7 @@
  * Run with: pnpm test:docker or docker-compose -f docker-compose.test.yml up -d
  */
 
+import { resolveTestDatabases } from '../../testing/src/detection.js'
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import { Kysely, PostgresDialect, sql } from 'kysely'
 import type { Generated } from 'kysely'
@@ -22,7 +23,7 @@ import {
 const { Pool } = pg
 
 // Skip tests if PostgreSQL is not available
-const POSTGRES_AVAILABLE = process.env['CI'] || process.env['POSTGRES_HOST']
+const POSTGRES_AVAILABLE = (await resolveTestDatabases()).postgres.available
 
 interface TestDB {
   users: {

@@ -68,7 +68,13 @@ async function startServer(behavior: 'silent' | 'greet' | 'reset' = 'silent'): P
     if (behavior === 'greet') socket.write('hello')
     if (behavior === 'reset') socket.destroy()
   })
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      server.off('error', reject)
+      resolve()
+    })
+  })
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('no server address')
   return {

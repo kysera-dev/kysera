@@ -2,14 +2,23 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| >= 0.9  | :white_check_mark: |
-| < 0.9   | :x:                |
+Security fixes land on the current stable release line. Upgrade to the latest
+stable release when checking whether an issue still reproduces.
 
-Only the latest 0.9.x release line receives security fixes. Older releases
-are not patched — upgrade to the current release before reporting an issue
-you cannot reproduce there.
+## Checking dependencies
+
+Run `pnpm install --frozen-lockfile` followed by `pnpm run audit:deps` at the
+workspace root. This checks the locked library, CLI, example, build and
+documentation dependencies. Use `pnpm audit --prod` separately to investigate
+exposure in production; a finding in the documentation toolchain does not by
+itself mean the package shipped to an application is affected.
+
+CI and normal releases fail on any reported advisory, including low severity.
+Resolve it by removing the dependency or upgrading and testing its consumers.
+Scoped overrides and patches live in `pnpm-workspace.yaml`; revisit them when
+upstream updates. A clean audit only covers advisories known to the registry.
+pnpm 12 enforces its minimum age for newly published releases, including transitive dependencies.
+The build uses the TypeScript 6 compiler API for TypeDoc, tsup and typed linting.
 
 ## Reporting a Vulnerability
 

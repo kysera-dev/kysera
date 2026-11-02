@@ -198,7 +198,7 @@ export class DatabaseIntrospector {
     private readonly dialect: IntrospectorDialect,
     private readonly schema = 'public'
   ) {
-    this.idb = db as unknown as Kysely<IntrospectionDatabase>
+    this.idb = db
   }
 
   /**

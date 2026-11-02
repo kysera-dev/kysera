@@ -12,6 +12,7 @@
  * - POSTGRES_DATABASE: PostgreSQL database (default: kysera_test)
  */
 
+import { resolveTestDatabases } from '../../testing/src/detection.js'
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import { Kysely, PostgresDialect, sql, type Generated } from 'kysely'
 import pg from 'pg'
@@ -24,7 +25,7 @@ import {
 const { Pool } = pg
 
 // Skip tests if PostgreSQL is not available
-const POSTGRES_AVAILABLE = process.env['CI'] || process.env['POSTGRES_HOST']
+const POSTGRES_AVAILABLE = (await resolveTestDatabases()).postgres.available
 
 interface TestDB {
   users: {

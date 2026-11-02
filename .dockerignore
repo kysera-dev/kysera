@@ -1,0 +1,11 @@
+.git
+**/node_modules
+**/dist
+**/build
+**/.turbo
+**/.docusaurus
+**/coverage
+**/*.tsbuildinfo
+**/.env
+**/.env.*
+.npmrc

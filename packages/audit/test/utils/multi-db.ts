@@ -1,3 +1,4 @@
+import { testDatabaseEndpoint } from '../../../testing/src/detection.js'
 import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, sql, type Generated } from 'kysely'
 import type { Dialect } from '@kysera/core'
 import { Pool } from 'pg'
@@ -61,18 +62,16 @@ export interface MultiDbTestDatabase {
  */
 export const DB_CONFIGS = {
   postgres: {
-    host: 'localhost',
-    port: 5432,
-    database: 'kysera_test',
-    user: 'test',
-    password: 'test'
+    ...testDatabaseEndpoint('postgres'),
+    database: process.env['POSTGRES_DATABASE'] ?? process.env['POSTGRES_DB'] ?? 'kysera_test',
+    user: process.env['POSTGRES_USER'] ?? 'test',
+    password: process.env['POSTGRES_PASSWORD'] ?? 'test'
   },
   mysql: {
-    host: 'localhost',
-    port: 3306,
-    database: 'kysera_test',
-    user: 'test',
-    password: 'test'
+    ...testDatabaseEndpoint('mysql'),
+    database: process.env['MYSQL_DATABASE'] ?? process.env['MYSQL_DB'] ?? 'kysera_test',
+    user: process.env['MYSQL_USER'] ?? 'test',
+    password: process.env['MYSQL_PASSWORD'] ?? 'test'
   },
   sqlite: {
     filename: ':memory:'

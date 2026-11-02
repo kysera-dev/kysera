@@ -1,12 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
+    "rootDir": "../..",
     "outDir": "./dist",
     "composite": true,
     "types": ["vitest/globals", "node"],
     "skipLibCheck": true
   },
-  "include": ["src/**/*", "test/**/*", "*.config.ts"],
+  "include": ["src/**/*", "test/**/*", "*.config.ts", "../testing/src/detection.ts"],
   "exclude": ["node_modules", "dist"]
 }

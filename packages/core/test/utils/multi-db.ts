@@ -1,3 +1,4 @@
+import { testDatabaseEndpoint } from '../../../testing/src/detection.js'
 import {
   Kysely,
   PostgresDialect,
@@ -69,28 +70,26 @@ export interface MultiDbTestDatabase {
  */
 export const DB_CONFIGS = {
   postgres: {
-    host: 'localhost',
-    port: parseInt(process.env['DB_PORT'] || '5432'),
-    database: 'kysera_test',
-    user: 'test',
-    password: 'test'
+    ...testDatabaseEndpoint('postgres'),
+    database: process.env['POSTGRES_DATABASE'] ?? process.env['POSTGRES_DB'] ?? 'kysera_test',
+    user: process.env['POSTGRES_USER'] ?? 'test',
+    password: process.env['POSTGRES_PASSWORD'] ?? 'test'
   },
   mysql: {
-    host: 'localhost',
-    port: 3306,
-    database: 'kysera_test',
-    user: 'test',
-    password: 'test'
+    ...testDatabaseEndpoint('mysql'),
+    database: process.env['MYSQL_DATABASE'] ?? process.env['MYSQL_DB'] ?? 'kysera_test',
+    user: process.env['MYSQL_USER'] ?? 'test',
+    password: process.env['MYSQL_PASSWORD'] ?? 'test'
   },
   sqlite: {
     filename: ':memory:'
   },
   mssql: {
-    server: 'localhost',
-    port: 1433,
+    server: testDatabaseEndpoint('mssql').host,
+    port: testDatabaseEndpoint('mssql').port,
     database: 'kysera_test',
-    user: 'sa',
-    password: 'Test@12345'
+    user: process.env['MSSQL_USER'] ?? 'sa',
+    password: process.env['MSSQL_PASSWORD'] ?? 'Test@12345'
   }
 }
 
@@ -143,7 +142,7 @@ async function ensureMssqlDatabase(): Promise<void> {
 
     if (!result.rows || result.rows.length === 0) {
       // Create database using raw SQL (Kysely doesn't support CREATE DATABASE)
-      await sql.raw(`CREATE DATABASE [${DB_CONFIGS.mssql.database}]`).execute(masterDb)
+      await sql`CREATE DATABASE ${sql.id(DB_CONFIGS.mssql.database)}`.execute(masterDb)
       // Wait for database to be ready
       await new Promise(resolve => setTimeout(resolve, 1000))
     }

@@ -1,6 +1,9 @@
 import { themes as prismThemes } from 'prism-react-renderer'
 import type { Config } from '@docusaurus/types'
-import type * as Preset from '@docusaurus/preset-classic'
+import type { Options as DocsOptions } from '@docusaurus/plugin-content-docs'
+import type { UserThemeConfig } from '@docusaurus/theme-common'
+import type { UserThemeConfig as MermaidConfig } from '@docusaurus/theme-mermaid'
+import type {} from '@docusaurus/theme-classic'
 // Single source of truth for the version shown on the landing page
 import rootPackage from '../package.json'
 
@@ -39,24 +42,19 @@ const config: Config = {
     locales: ['en']
   },
 
-  presets: [
-    [
-      'classic',
-      {
-        docs: {
-          sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/kysera-dev/kysera/tree/main/website/',
-          showLastUpdateTime: true
-        },
-        blog: false,
-        theme: {
-          customCss: './src/css/custom.css'
-        }
-      } satisfies Preset.Options
-    ]
+  plugins: [
+    '@docusaurus/plugin-css-cascade-layers',
+    ['@docusaurus/plugin-content-docs', {
+      sidebarPath: './sidebars.ts',
+      editUrl: 'https://github.com/kysera-dev/kysera/tree/main/website/',
+      showLastUpdateTime: true
+    } satisfies DocsOptions],
+    '@docusaurus/plugin-content-pages',
+    process.env['NODE_ENV'] === 'production' ? '@docusaurus/plugin-sitemap' : '@docusaurus/plugin-debug'
   ],
 
   themes: [
+    ['@docusaurus/theme-classic', { customCss: './src/css/custom.css' }],
     '@docusaurus/theme-mermaid',
     [
       require.resolve('@easyops-cn/docusaurus-search-local'),
@@ -274,7 +272,7 @@ const config: Config = {
       darkTheme: prismThemes.oceanicNext,
       additionalLanguages: ['bash', 'typescript', 'json', 'sql']
     }
-  } satisfies Preset.ThemeConfig
+  } satisfies UserThemeConfig & MermaidConfig
 }
 
 export default config

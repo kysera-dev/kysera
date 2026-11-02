@@ -28,9 +28,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(import.meta.dirname, './src'),
       // Cross-package test utilities
-      '../core/test': path.resolve(__dirname, '../core/test')
+      '../core/test': path.resolve(import.meta.dirname, '../core/test')
     }
   }
 })

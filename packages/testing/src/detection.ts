@@ -180,6 +180,21 @@ export async function probeTcp(host: string, port: number, timeoutMs = 300): Pro
   })
 }
 
+/** Use the same endpoint for the availability probe and the actual test driver. */
+export function testDatabaseEndpoint(
+  dialect: TestDatabaseDialect,
+  options: Pick<DetectOptions, 'host' | 'port'> = {}
+): { host: string; port: number } {
+  const env = DIALECT_ENV[dialect]
+  const host = envValue(env.hostVar) ?? options.host ?? 'localhost'
+  const port =
+    envPort(env.portVar) ??
+    (env.legacyPortVar === undefined ? undefined : envPort(env.legacyPortVar)) ??
+    options.port ??
+    env.defaultPort
+  return { host, port }
+}
+
 /** Cache of in-flight/completed detections, keyed by dialect + endpoint. */
 const detectionCache = new Map<string, Promise<TestDbAvailability>>()
 
@@ -197,13 +212,7 @@ export async function detectTestDatabase(
   dialect: TestDatabaseDialect,
   options: DetectOptions = {}
 ): Promise<TestDbAvailability> {
-  const env = DIALECT_ENV[dialect]
-  const host = envValue(env.hostVar) ?? options.host ?? 'localhost'
-  const port =
-    envPort(env.portVar) ??
-    (env.legacyPortVar === undefined ? undefined : envPort(env.legacyPortVar)) ??
-    options.port ??
-    env.defaultPort
+  const { host, port } = testDatabaseEndpoint(dialect, options)
 
   const key = `${dialect}@${host}:${String(port)}`
   const cached = detectionCache.get(key)

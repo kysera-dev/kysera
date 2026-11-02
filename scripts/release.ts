@@ -919,7 +919,10 @@ async function main(): Promise<void> {
     }
 
     // 8. Commit + tag first — npm must never be ahead of git
-    if (!options.dryRun) exec('pnpm install --lockfile-only --ignore-scripts')
+    if (!options.dryRun) {
+      exec('pnpm install --lockfile-only --ignore-scripts')
+      if (!options.skipPublish) exec('pnpm run audit:deps')
+    }
     commitAndTag(newVersion, options, [
       'package.json',
       'CHANGELOG.md',

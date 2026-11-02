@@ -10,7 +10,7 @@
   "include": [
     "src/**/*", "test/**/*", "*.config.ts",
     "../executor/src/**/*", "../repository/src/**/*", "../timestamps/src/**/*",
-    "../core/src/**/*", "../dal/src/**/*"
+    "../core/src/**/*", "../dal/src/**/*", "../testing/src/detection.ts"
   ],
   "exclude": ["node_modules", "dist", "test/multi-db.test.ts"]
 }

@@ -1,0 +1,12 @@
+diff --git a/src/index.js b/src/index.js
+--- a/src/index.js
++++ b/src/index.js
+@@ -7,7 +7,7 @@
+ // Packages
+ const url = require('url');
+ const slasher = require('./glob-slash');
+-const minimatch = require('minimatch');
++const { minimatch } = require('minimatch');
+ const pathToRegExp = require('path-to-regexp');
+ const mime = require('mime-types');
+ const bytes = require('bytes');
