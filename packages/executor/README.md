@@ -724,26 +724,15 @@ export function softDeletePlugin(): Plugin {
 
 ## Performance
 
-The executor is designed for production workloads with minimal overhead.
+With no query interceptors, the executor reuses bound Kysely methods and
+returns the original query builders. When interceptors are present, it caches
+the dispatch method and calls each registered interceptor once per operation.
 
-### Benchmark Results
-
-Based on benchmark tests with SQLite (in-memory):
-
-| Configuration          | Queries/sec | Overhead vs Pure Kysely  |
-| ---------------------- | ----------- | ------------------------ |
-| Pure Kysely (baseline) | ~100,000    | 0%                       |
-| Executor (no plugins)  | ~95,000     | <5% (zero overhead path) |
-| Executor (1 plugin)    | ~90,000     | <15%                     |
-| Executor (3 plugins)   | ~80,000     | <25%                     |
-| Executor (5 plugins)   | ~70,000     | <35%                     |
-
-### Optimization Strategies
-
-1. **Zero Overhead Path**: When no plugins have `interceptQuery`, the executor takes a fast path with zero overhead
-2. **Method Caching**: Intercepted methods are cached to avoid repeated creation
-3. **Set-based Lookups**: O(1) lookups instead of array iterations
-4. **Lazy Proxy Creation**: Proxies are only created when needed
+Run `pnpm bench` from the repository root to measure warmed throughput,
+median latency and p99 on your target host. The report compares raw Kysely,
+marker-only plugins, no-op interceptors and real plugin stacks over in-memory
+SQLite. It also measures executor construction and SQL statement throughput.
+[Benchmark methodology and results](https://github.com/kysera-dev/kysera/tree/main/bench)
 
 ### Performance Tips
 

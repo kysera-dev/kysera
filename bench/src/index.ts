@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { renderEnvironmentHeader, renderQueryCountSection, renderSuiteTable } from './report.js'
 import type { SuiteTable } from './runner.js'
 import { runBuilderChainSuite } from './suites/builder-chain.js'
+import { runExecutorOperationsSuite } from './suites/executor-operations.js'
 import { runDalOverheadSuite } from './suites/dal-overhead.js'
 import { runPaginationSuite } from './suites/pagination.js'
 import { runQueryCountSuite } from './suites/query-count.js'
@@ -28,6 +29,9 @@ async function main(): Promise<void> {
 
   console.error('[bench] builder-chain overhead …')
   pushSuites(await runBuilderChainSuite())
+
+  console.error('[bench] executor construction and statements …')
+  pushSuites(await runExecutorOperationsSuite())
 
   console.error('[bench] repository hot path …')
   pushSuites(await runRepositoryHotPathSuite())

@@ -16,14 +16,14 @@
 
 | Environment | |
 | --- | --- |
-| Date | 2026-08-02T12:29:09.380Z |
+| Date | 2026-11-02T09:42:43.007Z |
 | Node.js | v24.13.0 (V8 13.6.233.17-node.37) |
 | OS / arch | darwin 25.4.0 / arm64 |
 | CPU | Apple M3 Max |
-| kysely | 0.29.4 |
-| better-sqlite3 | 13.0.2 |
-| tinybench | 6.1.2 |
-| @kysera/* | 0.9.0 |
+| kysely | 0.29.8 |
+| better-sqlite3 | 13.0.3 |
+| tinybench | 6.2.2 |
+| @kysera/* | 0.10.1 |
 
 ## 1. Builder-chain overhead — compile only
 
@@ -31,12 +31,16 @@ Cost of building **and compiling** `selectFrom('users').select(['id','name']).wh
 
 | Variant | ops/sec (median-derived) | median | p99 | relative ops/sec |
 | --- | ---: | ---: | ---: | ---: |
-| raw kysely | 452,899 | 2.21 µs | 5.42 µs | 100 % (baseline) |
-| executor, 0 plugins | 444,444 | 2.25 µs | 4.17 µs | 98.1 % |
-| executor + soft-delete | 296,296 | 3.38 µs | 7.71 µs | 65.4 % |
-| executor + soft-delete + timestamps + rls | 279,096 | 3.58 µs | 17.13 µs | 61.6 % |
+| raw kysely | 461,467 | 2.17 µs | 2.71 µs | 100 % (baseline) |
+| executor, 0 plugins | 461,467 | 2.17 µs | 4.00 µs | 100.0 % |
+| executor, 3 marker-only plugins | 461,467 | 2.17 µs | 4.04 µs | 100.0 % |
+| executor, 1 no-op interceptor(s) | 470,588 | 2.13 µs | 2.92 µs | 102.0 % |
+| executor, 3 no-op interceptor(s) | 470,588 | 2.13 µs | 2.75 µs | 102.0 % |
+| executor, 5 no-op interceptor(s) | 470,588 | 2.13 µs | 2.75 µs | 102.0 % |
+| executor + soft-delete | 320,000 | 3.13 µs | 3.92 µs | 69.3 % |
+| executor + soft-delete + timestamps + rls | 324,254 | 3.08 µs | 4.08 µs | 70.3 % |
 
-A marker-only executor (0 plugins) compiles at 98.1 % (within the ±5 % noise floor) of raw Kysely throughput, soft-delete brings it to 65.4 % (part of that is compiling the extra `deleted_at is null` predicate the plugin exists to add), and the 3-plugin stack lands at 61.6 %. Compile-only is the worst case for relative overhead because there is no I/O to amortize against; it is µs-scale work either way.
+A marker-only executor (0 plugins) compiles at 100.0 % (within the ±5 % noise floor) of raw Kysely throughput, soft-delete brings it to 69.3 % (part of that is compiling the extra `deleted_at is null` predicate the plugin exists to add), and the 3-plugin stack lands at 70.3 %. Compile-only is the worst case for relative overhead because there is no I/O to amortize against; it is µs-scale work either way.
 
 ## 2. Builder-chain overhead — execute
 
@@ -44,50 +48,75 @@ Same query, executed against in-memory SQLite (1 000 seeded rows). This is the f
 
 | Variant | ops/sec (median-derived) | median | p99 | relative ops/sec |
 | --- | ---: | ---: | ---: | ---: |
-| raw kysely | 70,587 | 14.17 µs | 84.83 µs | 100 % (baseline) |
-| executor, 0 plugins | 61,538 | 16.25 µs | 251.06 µs | 87.2 % |
-| executor + soft-delete | 57,830 | 17.29 µs | 294.95 µs | 81.9 % |
-| executor + soft-delete + timestamps + rls | 57,009 | 17.54 µs | 170.73 µs | 80.8 % |
+| raw kysely | 86,333 | 11.58 µs | 20.50 µs | 100 % (baseline) |
+| executor, 0 plugins | 85,106 | 11.75 µs | 28.13 µs | 98.6 % |
+| executor, 3 marker-only plugins | 87,596 | 11.42 µs | 21.13 µs | 101.5 % |
+| executor, 1 no-op interceptor(s) | 86,022 | 11.63 µs | 20.29 µs | 99.6 % |
+| executor, 3 no-op interceptor(s) | 84,803 | 11.79 µs | 28.54 µs | 98.2 % |
+| executor, 5 no-op interceptor(s) | 84,803 | 11.79 µs | 22.67 µs | 98.2 % |
+| executor + soft-delete | 72,506 | 13.79 µs | 23.08 µs | 84.0 % |
+| executor + soft-delete + timestamps + rls | 72,950 | 13.71 µs | 26.34 µs | 84.5 % |
 
-Once the query actually runs, relative throughput is 87.2 % (0 plugins), 81.9 % (soft-delete) and 80.8 % (full stack) of raw Kysely. In-memory SQLite is a synchronous, zero-latency backend — the most hostile setting for measuring wrapper overhead. Any network round-trip (~100 µs LAN, ~1 ms cloud) shrinks these percentages toward 100 %.
+Once the query actually runs, relative throughput is 98.6 % (within the ±5 % noise floor) (0 plugins), 84.0 % (soft-delete) and 84.5 % (full stack) of raw Kysely. In-memory SQLite is a synchronous, zero-latency backend — the most hostile setting for measuring wrapper overhead. Any network round-trip (~100 µs LAN, ~1 ms cloud) shrinks these percentages toward 100 %.
 
-## 3. Repository hot path — findById
+## 3. Synchronous executor construction
+
+Creation over an existing Kysely connection.
+
+| Variant | ops/sec (median-derived) | median | p99 | relative ops/sec |
+| --- | ---: | ---: | ---: | ---: |
+| 0 plugins | 12,048,193 | 0.08 µs | 0.17 µs | 100 % (baseline) |
+| marker only | 2,398,082 | 0.42 µs | 1.04 µs | 19.9 % |
+| 1 interceptor | 2,183,406 | 0.46 µs | 1.04 µs | 18.1 % |
+
+## 4. Executor statement throughput
+
+One pass-through interceptor over in-memory SQLite. Each insert uses a new key.
+
+| Variant | ops/sec (median-derived) | median | p99 | relative ops/sec |
+| --- | ---: | ---: | ---: | ---: |
+| select one | 81,633 | 12.25 µs | 33.92 µs | 100 % (baseline) |
+| insert one | 62,992 | 15.88 µs | 32.17 µs | 77.2 % |
+| update one | 100,000 | 10.00 µs | 19.29 µs | 122.5 % |
+| delete miss | 128,337 | 7.79 µs | 15.25 µs | 157.2 % |
+
+## 5. Repository hot path — findById
 
 `repo.findById(id)` over 1 000 seeded rows, ids cycling 1..1000. Identical Zod schemas everywhere; the ORM variants add plugin interception (soft-delete WHERE) and, for the full stack, RLS dispatch under a system context.
 
 | Variant | ops/sec (median-derived) | median | p99 | relative ops/sec |
 | --- | ---: | ---: | ---: | ---: |
-| plain repository (no ORM) | 56,076 | 17.83 µs | 127.51 µs | 100 % (baseline) |
-| ORM + soft-delete | 48,583 | 20.58 µs | 222.95 µs | 86.6 % |
-| ORM + soft-delete + timestamps + rls | 49,689 | 20.13 µs | 167.43 µs | 88.6 % |
+| plain repository (no ORM) | 73,844 | 13.54 µs | 28.77 µs | 100 % (baseline) |
+| ORM + soft-delete | 63,323 | 15.79 µs | 25.54 µs | 85.8 % |
+| ORM + soft-delete + timestamps + rls | 64,172 | 15.58 µs | 29.63 µs | 86.9 % |
 
-Reads through the plugin ORM run at 86.6 % (soft-delete) and 88.6 % (full stack) of the plain repository.
+Reads through the plugin ORM run at 85.8 % (soft-delete) and 86.9 % (full stack) of the plain repository.
 
-## 4. Repository hot path — create
+## 6. Repository hot path — create
 
 `repo.create(data)` with Zod validation. The full stack adds timestamp injection into the INSERT and RLS create-policy dispatch (bypassed via system context).
 
 | Variant | ops/sec (median-derived) | median | p99 | relative ops/sec |
 | --- | ---: | ---: | ---: | ---: |
-| plain repository (no ORM) | 34,433 | 29.04 µs | 299.34 µs | 100 % (baseline) |
-| ORM + soft-delete | 35,088 | 28.50 µs | 309.22 µs | 101.9 % |
-| ORM + soft-delete + timestamps + rls | 31,915 | 31.33 µs | 208.17 µs | 92.7 % |
+| plain repository (no ORM) | 39,801 | 25.13 µs | 69.88 µs | 100 % (baseline) |
+| ORM + soft-delete | 38,709 | 25.83 µs | 74.55 µs | 97.3 % |
+| ORM + soft-delete + timestamps + rls | 37,383 | 26.75 µs | 63.26 µs | 93.9 % |
 
-Creates run at 101.9 % (within the ±5 % noise floor) (soft-delete) and 92.7 % (full stack) of the plain repository.
+Creates run at 97.3 % (within the ±5 % noise floor) (soft-delete) and 93.9 % (full stack) of the plain repository.
 
-## 5. Repository hot path — update
+## 7. Repository hot path — update
 
 `repo.update(id, { name })` with Zod validation, ids cycling 1..1000. The full stack injects `updated_at` and dispatches RLS update guards (bypassed via system context).
 
 | Variant | ops/sec (median-derived) | median | p99 | relative ops/sec |
 | --- | ---: | ---: | ---: | ---: |
-| plain repository (no ORM) | 36,364 | 27.50 µs | 204.34 µs | 100 % (baseline) |
-| ORM + soft-delete | 33,945 | 29.46 µs | 250.71 µs | 93.4 % |
-| ORM + soft-delete + timestamps + rls | 31,008 | 32.25 µs | 646.60 µs | 85.3 % |
+| plain repository (no ORM) | 49,080 | 20.38 µs | 45.63 µs | 100 % (baseline) |
+| ORM + soft-delete | 45,198 | 22.13 µs | 50.21 µs | 92.1 % |
+| ORM + soft-delete + timestamps + rls | 42,403 | 23.58 µs | 55.08 µs | 86.4 % |
 
-Updates run at 93.4 % (soft-delete) and 85.3 % (full stack) of the plain repository. For non-system callers RLS adds a guard row-fetch per mutation — that cost is quantified in the query-count suite below, not here.
+Updates run at 92.1 % (soft-delete) and 86.4 % (full stack) of the plain repository. For non-system callers RLS adds a guard row-fetch per mutation — that cost is quantified in the query-count suite below, not here.
 
-## 6. Mutation round-trip query count (RLS + audit + soft-delete)
+## 8. Mutation round-trip query count (RLS + audit + soft-delete)
 
 Statements that actually reached SQLite for **one** repository call, recorded by a
 counting driver (transaction control included). Stack: `rlsPlugin` (tenant user
@@ -98,7 +127,7 @@ context, non-system) + `auditPlugin` (captureOldValues) + `softDeletePlugin`.
 | `update(id, { name })` | 5 | 1× begin, 1× select, 1× update, 1× insert, 1× commit |
 | `create(data)` | 4 | 1× begin, 2× insert, 1× commit |
 | `findById(id)` | 1 | 1× select |
-| `softDelete(id)` | 6 | 1× begin, 2× select, 1× update, 1× insert, 1× commit |
+| `softDelete(id)` | 5 | 1× begin, 1× select, 1× update, 1× insert, 1× commit |
 
 Statement-by-statement trace of the single `update(id, data)` call:
 
@@ -112,31 +141,32 @@ Statement-by-statement trace of the single `update(id, data)` call:
 
 **Finding:** one `repo.update()` under the stacked mutation plugins currently costs **5 statements**, including **1 SELECT of the target row** before the UPDATE. Only one pre-UPDATE row fetch was recorded — the shared row-fetch optimization (P0.3) appears to have landed; this table now documents the post-fix behavior. BEGIN/COMMIT pairs come from the audit plugin, which wraps the mutation and its audit entry in a transaction so they commit or roll back together — that is deliberate correctness work, not waste. Counts are structural (per call), so they are machine-independent; on a networked database each extra statement is a full round-trip.
 
-## 7. DAL query-function call overhead
+## 9. DAL query-function call overhead
 
 The same single-row select called directly on Kysely vs through a `createQuery` function (which normalizes its first argument into a `DbContext` per call), vs the DAL function over KyseraExecutor.
 
 | Variant | ops/sec (median-derived) | median | p99 | relative ops/sec |
 | --- | ---: | ---: | ---: | ---: |
-| direct kysely call | 68,766 | 14.54 µs | 94.71 µs | 100 % (baseline) |
-| DAL query fn (raw db) | 68,573 | 14.58 µs | 152.46 µs | 99.7 % |
-| DAL query fn (executor, 0 plugins) | 62,992 | 15.88 µs | 150.31 µs | 91.6 % |
-| DAL query fn (executor + soft-delete) | 53,453 | 18.71 µs | 214.14 µs | 77.7 % |
+| direct kysely call | 92,661 | 10.79 µs | 17.58 µs | 100 % (baseline) |
+| DAL query fn (raw db) | 90,228 | 11.08 µs | 18.46 µs | 97.4 % |
+| DAL query fn (executor, 0 plugins) | 86,022 | 11.63 µs | 19.83 µs | 92.8 % |
+| DAL query fn (executor + soft-delete) | 71,860 | 13.92 µs | 26.04 µs | 77.6 % |
 
-Wrapping the call in a DAL query function keeps 99.7 % (within the ±5 % noise floor) of direct-call throughput — the wrapper is one function call plus one small context object per invocation. Feeding the same query function an executor yields 91.6 % (no plugins) and 77.7 % (soft-delete filter applied).
+Wrapping the call in a DAL query function keeps 97.4 % (within the ±5 % noise floor) of direct-call throughput — the wrapper is one function call plus one small context object per invocation. Feeding the same query function an executor yields 92.8 % (no plugins) and 77.6 % (soft-delete filter applied).
 
-## 8. paginate() vs paginateCursor() — 10 000 rows
+## 10. paginate() vs paginateCursor() — 10 000 rows
 
 Offset pagination (`paginate`) runs 2 statements per call (COUNT(*) + LIMIT/OFFSET data query). Cursor pagination (`paginateCursor`) runs 1 statement (indexed WHERE + LIMIT n+1) and encodes/decodes cursors in JS.
 
 | Variant | ops/sec (median-derived) | median | p99 | relative ops/sec |
 | --- | ---: | ---: | ---: | ---: |
-| paginate page 1 (limit 50) | 20,313 | 49.23 µs | 538.39 µs | 100 % (baseline) |
-| paginate page 100 (limit 50, offset 4 950) | 11,911 | 83.96 µs | 5.05 ms | 58.6 % |
-| paginate page 190 (limit 50, offset 9 450) | 9,105 | 109.83 µs | 3.84 ms | 44.8 % |
-| paginateCursor first page (limit 50) | 28,403 | 35.21 µs | 166.38 µs | 139.8 % |
-| paginateCursor mid-table (limit 50, from row 5 000) | 17,582 | 56.88 µs | 2.03 ms | 86.6 % |
+| paginate page 1 (limit 50) | 24,012 | 41.65 µs | 74.40 µs | 100 % (baseline) |
+| paginate page 100 (limit 50, offset 4 950) | 15,640 | 63.94 µs | 130.82 µs | 65.1 % |
+| paginate page 190 (limit 50, offset 9 450) | 11,420 | 87.56 µs | 152.63 µs | 47.6 % |
+| paginateCursor first page (limit 50) | 34,783 | 28.75 µs | 35.30 µs | 144.9 % |
+| paginateCursor composite order (name, id) | 2,113 | 473.17 µs | 598.95 µs | 8.8 % |
+| paginateCursor mid-table (limit 50, from row 5 000) | 27,119 | 36.88 µs | 74.18 µs | 112.9 % |
 
-Cursor pagination is 1.4× the throughput of offset pagination on the first page, mostly because it skips the per-call COUNT(*) over all 10 000 rows. Depth is the structural argument: going from page 1 to page 190 divides offset-pagination throughput by 2.23 (OFFSET scans and discards 9 450 rows), so at depth the cursor variant delivers 1.9× the throughput. The gap between the two cursor tasks themselves (median 35 µs first page vs 57 µs mid-table) is constant per-call bookkeeping — decoding the incoming cursor and encoding an extra prevCursor — and does not grow with depth. If totals are not needed, cursor pagination is strictly cheaper; `paginate` remains the right call when the UI requires a total page count.
+Cursor pagination is 1.4× the throughput of offset pagination on the first page, mostly because it skips the per-call COUNT(*) over all 10 000 rows. Depth is the structural argument: going from page 1 to page 190 divides offset-pagination throughput by 2.10 (OFFSET scans and discards 9 450 rows), so at depth the cursor variant delivers 2.4× the throughput. The gap between the two cursor tasks themselves (median 29 µs first page vs 37 µs mid-table) is constant per-call bookkeeping — decoding the incoming cursor and encoding an extra prevCursor — and does not grow with depth. If totals are not needed, cursor pagination is strictly cheaper; `paginate` remains the right call when the UI requires a total page count.
 
-_Total benchmark wall time: 16.9 s._
+_Total benchmark wall time: 7.9 s._

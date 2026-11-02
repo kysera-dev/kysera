@@ -18,7 +18,8 @@ stdout. Wall time is roughly 15–30 s depending on the machine.
 
 | Suite | Question it answers |
 | --- | --- |
-| Builder-chain (compile / execute) | What does the executor proxy + plugin interception cost on a single `selectFrom().select().where()` — with 0, 1 and 3 plugins? |
+| Builder-chain (compile / execute) | What does the executor proxy + plugin interception cost on a single `selectFrom().select().where()` — with marker-only plugins, no-op interceptors and production plugins? |
+| Executor construction and SQL | How much does synchronous construction cost with metadata-only plugins or an interceptor? How many single-row SQL operations complete per second? |
 | Repository hot path | What do `create` / `findById` / `update` cost through `createRepositoryFactory` on plain Kysely vs the plugin ORM? |
 | Mutation round-trip query count | How many statements does **one** `update` actually send under `rls + audit + soft-delete` (non-system context)? Documents the P0.3 shared-row-fetch baseline. |
 | DAL overhead | What does a `createQuery` wrapper cost vs calling Kysely directly? |

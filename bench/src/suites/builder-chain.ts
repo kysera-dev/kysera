@@ -11,7 +11,7 @@
  * a `deleted_at is null` predicate, so the variant does strictly more work by
  * design — that extra WHERE *is* the feature.
  */
-import { createExecutor } from '@kysera/executor'
+import { createExecutor, type Plugin } from '@kysera/executor'
 import { rlsContext, rlsPlugin } from '@kysera/rls'
 import { softDeletePlugin } from '@kysera/soft-delete'
 import { timestampsPlugin } from '@kysera/timestamps'
@@ -32,6 +32,15 @@ export async function runBuilderChainSuite(): Promise<SuiteTable[]> {
   await seedUsers(db, SEED_COUNT)
 
   const executorNoPlugins = await createExecutor(db, [])
+  const markers = Array.from({ length: 3 }, (_, i) => ({ name: `marker-${i}`, version: '1.0.0' }))
+  const markerOnly = await createExecutor(db, markers)
+  const observers: [string, Kysely<BenchDb>][] = []
+  for (const count of [1, 3, 5]) {
+    const plugins: Plugin[] = Array.from({ length: count }, (_, i) => ({
+      name: `observer-${i}`, version: '1.0.0', interceptQuery: builder => builder
+    }))
+    observers.push([`executor, ${count} no-op interceptor(s)`, await createExecutor(db, plugins)])
+  }
   const executorSoftDelete = await createExecutor(db, [softDeletePlugin({ tables: ['users'] })])
   const executorFullStack = await createExecutor(db, [
     softDeletePlugin({ tables: ['users'] }),
@@ -42,6 +51,8 @@ export async function runBuilderChainSuite(): Promise<SuiteTable[]> {
   const variants: [string, Kysely<BenchDb>][] = [
     ['raw kysely', db],
     ['executor, 0 plugins', executorNoPlugins],
+    ['executor, 3 marker-only plugins', markerOnly],
+    ...observers,
     ['executor + soft-delete', executorSoftDelete],
     ['executor + soft-delete + timestamps + rls', executorFullStack]
   ]

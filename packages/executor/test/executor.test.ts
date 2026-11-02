@@ -80,6 +80,46 @@ describe('@kysera/executor', () => {
       expect(users).toHaveLength(3)
     })
 
+    it('keeps marker-only plugins off the query path and preserves native query builders', async () => {
+      let interceptorLookups = 0
+      const plugins = [1, 2, 3].map(id => new Proxy<Plugin>({ name: `marker-${id}`, version: '1.0.0' }, {
+        get(target, property, receiver) {
+          if (property === 'interceptQuery') interceptorLookups++
+          return Reflect.get(target, property, receiver) as unknown
+        }
+      }))
+      const select = vi.spyOn(db, 'selectFrom')
+      const executor = await createExecutor(db, plugins)
+      const lookupsAfterSetup = interceptorLookups
+      const method = executor.selectFrom
+      for (let query = 0; query < 3; query++) {
+        expect(executor.selectFrom).toBe(method)
+        const builder = executor.selectFrom('users')
+        expect(builder).toBe(select.mock.results[query]?.value)
+        expect(await builder.select('id').where('id', '=', 1).execute()).toEqual([{ id: 1 }])
+      }
+      expect(select).toHaveBeenCalledTimes(3)
+      expect(interceptorLookups).toBe(lookupsAfterSetup)
+    })
+
+    it.each([1, 3, 5])('dispatches each of %i interceptors exactly once per query', async count => {
+      const calls: string[] = []
+      const plugins: Plugin[] = Array.from({ length: count }, (_, index) => ({
+        name: `observer-${index}`, version: '1.0.0',
+        interceptQuery<QB>(builder: QB, context: QueryBuilderContext) {
+          calls.push(`${context.operation}/${index}`)
+          return builder
+        }
+      }))
+      const executor = createExecutorSync(db, plugins)
+      await executor.insertInto('users').values({ id: 42, name: 'test', tenant_id: 1, deleted_at: null }).execute()
+      await executor.updateTable('users').set({ name: 'updated' }).where('id', '=', 42).execute()
+      expect(await executor.selectFrom('users').select('name').where('id', '=', 42).execute()).toEqual([{ name: 'updated' }])
+      await executor.deleteFrom('users').where('id', '=', 42).execute()
+      expect(calls).toEqual(['insert', 'update', 'select', 'delete'].flatMap(operation =>
+        plugins.map((_, index) => `${operation}/${index}`)))
+    })
+
     it('does not mutate original db instance', async () => {
       const executor = await createExecutor(db, [])
 
