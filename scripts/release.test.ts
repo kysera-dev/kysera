@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, writeFile, readFile, readdir, symlink, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
+import { archiveIntegrity } from './release-artifacts.js'
 import {
   command,
   pushReleaseRefs,
@@ -122,6 +123,10 @@ test('rejects ambiguous arguments and noncanonical versions', () => {
     ['--version='],
     ['--yes'],
     ['--github-only'],
+    ['--resume-from', '.'],
+    ['--version=1.0.0', '--resume-from'],
+    ['--version=1.0.0', '--resume-from', '.', '--force'],
+    ['--version=1.0.0', '--resume-from', '.', '--resume-from', '.'],
     ['--typo'],
     ['--version=1.0.0=oops'],
     ['--version=1.0.0', '--version=2.0.0']
@@ -219,6 +224,60 @@ test('real dry-run entry point leaves files, tags and remote refs unchanged', as
   } finally {
     await f.close()
   }
+})
+
+test('a separate publisher requires the entire sealed batch and resumes the exact pushed tag', async () => {
+  const f = await fixture()
+  try {
+    const version = '1.0.0', tag = 'v' + version
+    const names = ['one', 'two']
+    await writeFile(join(f.root, '.gitignore'), '.release-artifacts/\n')
+    for (const name of names) {
+      const pkg = join(f.root, 'packages', name)
+      await mkdir(pkg, { recursive: true })
+      await writeFile(join(pkg, 'package.json'), JSON.stringify({ name: '@kysera/' + name, version }))
+    }
+    command(f.root, 'git', ['add', '.'])
+    command(f.root, 'git', ['commit', '-m', 'sealed release'])
+    command(f.root, 'git', ['tag', '-a', tag, '-m', tag])
+    pushReleaseRefs(f.root, version)
+    const commit = command(f.root, 'git', ['rev-parse', 'HEAD'])
+    const tagObject = command(f.remote, 'git', ['rev-parse', tag])
+    const dir = join(f.root, '.release-artifacts', version, commit)
+    await mkdir(dir, { recursive: true })
+    const bin = join(f.root, '.git', 'bin')
+    await mkdir(bin)
+    await writeFile(join(bin, 'npm'), `#!/usr/bin/env node
+const fs = require('node:fs'), path = require('node:path');
+const [action, spec, ...args] = process.argv.slice(2);
+const name = spec.split('/')[1].split('@')[0];
+const dir = process.env.FIXTURE_ARTIFACTS;
+const record = JSON.parse(fs.readFileSync(path.join(dir, name + '.json')));
+if (action === 'view') {
+  console.log(JSON.stringify(args.includes('dist-tags') ? { latest: record.version } :
+    { name: record.name, version: record.version, dist: { integrity: record.integrity } }));
+} else if (action === 'pack') {
+  fs.copyFileSync(path.join(dir, record.file), path.join(args[args.indexOf('--pack-destination')+1], record.file));
+  console.log(JSON.stringify([{ filename: record.file }]));
+} else { process.exit(95); }
+`, { mode: 0o755 })
+    const args = ['--import', 'tsx', 'scripts/release.ts', '--resume-from', f.root, '--version', version, '--yes']
+    const env = { ...process.env, PATH: bin + delimiter + (process.env['PATH'] ?? ''), FIXTURE_ARTIFACTS: dir }
+    for (const name of names) {
+      assert.throws(() => command(process.cwd(), process.execPath, args, env), /Missing sealed release record/)
+      const file = name + '.tgz', bytes = Buffer.from(name)
+      await writeFile(join(dir, file), bytes)
+      await writeFile(join(dir, name + '.json'), JSON.stringify({ schema: 1, name: '@kysera/' + name,
+        version, commit, file, integrity: archiveIntegrity(bytes) }))
+    }
+    assert.match(command(process.cwd(), process.execPath, [...args, '--dry-run'], env), /Verified 2 sealed archives/)
+    assert.match(command(process.cwd(), process.execPath, args, env), /@kysera\/two@1.0.0: published and verified/)
+    assert.equal(command(f.root, 'git', ['status', '--porcelain']), '')
+    assert.equal(command(f.root, 'git', ['rev-parse', 'HEAD']), commit)
+    assert.equal(command(f.remote, 'git', ['rev-parse', tag]), tagObject)
+    await writeFile(join(dir, 'two.tgz'), 'changed')
+    assert.throws(() => command(process.cwd(), process.execPath, args, env), /Release archive was modified/)
+  } finally { await f.close() }
 })
 
 

@@ -45,6 +45,10 @@ test('stages exact publishable archives, reuses them on resume and rejects later
     assert.throws(() => registryArtifactMatches(root, first, () => JSON.stringify({ name: first.name, version: '1.0.0', dist: { integrity: archiveIntegrity(Buffer.from('different package')) } })), /differs/)
     const missing = () => { throw Object.assign(new Error('not found'), { stdout: JSON.stringify({ error: { code: 'E404' } }) }) }
     assert.equal(registryArtifactMatches(root, first, missing), false)
+    const unindexed = () => { throw Object.assign(new Error('not indexed'), { stdout: '{"error":{"code":"ETARGET"}}' }) }
+    assert.throws(() => registryArtifactMatches(root, first, unindexed), /Cannot verify/)
+    await assert.rejects(stageReleaseArtifact(root, pkg, '1.1.0', run, true), /Missing sealed release record/)
+    assert.equal(packs, 1)
     const unavailable = () => { throw new Error('network unavailable') }
     assert.throws(() => registryArtifactMatches(root, first, unavailable), /Cannot verify/)
     await chmod(first.file, 0o600); await writeFile(first.file, 'modified')
@@ -89,7 +93,8 @@ for (const outcome of ['accepted', 'reserved', 'otp']) {
       await writeFile(file, bytes)
       const artifact = { schema: 1 as const, commit: 'a'.repeat(40), name: '@kysera/fixture', version: '1.0.0', file, integrity: archiveIntegrity(bytes) }
       const observed = { writes: 0, downloads: 0 }
-      let metadata = false, tarball = false, channel = '0.9.0'
+      let metadata = false, tarball = false, indexed = false, channel = '0.9.0'
+      let downloadError: string | undefined
       const npmError = (code: string) => Object.assign(new Error(code), { stdout: JSON.stringify({ error: { code } }) })
       const run: typeof command = (_cwd, bin, args, env) => {
         assert.equal(bin, 'npm')
@@ -102,6 +107,8 @@ for (const outcome of ['accepted', 'reserved', 'otp']) {
         }
         if (args.includes('dist-tags')) return JSON.stringify({ latest: channel })
         if (args[0] === 'pack') {
+          if (downloadError) throw npmError(downloadError)
+          if (!indexed) throw npmError('ETARGET')
           if (!tarball) throw npmError('E404')
           const directory = args[args.indexOf('--pack-destination') + 1]!
           assert.equal(args[args.indexOf('--cache') + 1], join(directory, 'cache'))
@@ -118,6 +125,12 @@ for (const outcome of ['accepted', 'reserved', 'otp']) {
       assert.equal(attempts, outcome === 'otp' ? 2 : 1)
       await assert.rejects(publishReleaseArtifact(root, artifact, options), /version metadata/)
       metadata = true
+      await assert.rejects(publishReleaseArtifact(root, artifact, options), /npm version index/)
+      assert.equal(observed.writes, attempts)
+      downloadError = 'E403'
+      await assert.rejects(publishReleaseArtifact(root, artifact, options), /E403/)
+      downloadError = undefined
+      indexed = true
       await assert.rejects(publishReleaseArtifact(root, artifact, options), /downloadable tarball/)
       tarball = true
       await assert.rejects(publishReleaseArtifact(root, artifact, options), /latest channel/)

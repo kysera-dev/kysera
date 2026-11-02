@@ -26,6 +26,7 @@
  * --yes                    Accept release/push prompts (requires --version)
  * --github-release         Create the GitHub Release after a successful push
  * --github-only            Finish GitHub for an existing remote tag; never publish npm
+ * --resume-from <checkout> Resume a pushed tag using its complete set of sealed archives
  * --provenance             Publish with npm provenance attestation. Also
  *                          auto-enabled only when GitHub Actions OIDC is available.
  */
@@ -47,7 +48,7 @@ import {
   createGithubRelease,
   localReleaseCommit
 } from './release-safety.js'
-import { stageReleaseArtifact, registryArtifactMatches, publishReleaseArtifact, acquireReleaseLock, type ReleaseArtifact } from './release-artifacts.js'
+import { stageReleaseArtifact, registryArtifactMatches, publishReleaseArtifact, hasPublicationReceipt, acquireReleaseLock, type ReleaseArtifact } from './release-artifacts.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = path.resolve(__dirname, '..')
@@ -71,6 +72,7 @@ interface Package {
 
 interface ReleaseOptions {
   version?: string
+  resumeFrom?: string
   skipTests?: boolean
   skipBuild?: boolean
   skipPublish?: boolean
@@ -117,18 +119,18 @@ function exec(cmd: string, options: { cwd?: string; silent?: boolean } = {}): st
 /**
  * Get all packages in the monorepo
  */
-async function getAllPackages(): Promise<Package[]> {
+async function getAllPackages(root = ROOT_DIR): Promise<Package[]> {
   const packages: Package[] = []
 
   // Get package.json files only from workspace directories
   // Use explicit patterns to avoid finding packages outside workspace
   const packagePaths = await glob('{packages,apps,examples}/*/package.json', {
-    cwd: ROOT_DIR,
+    cwd: root,
     ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.test-*/**', '**/test-*/**']
   })
 
   for (const pkgPath of packagePaths) {
-    const fullPath = path.join(ROOT_DIR, pkgPath)
+    const fullPath = path.join(root, pkgPath)
     const packageDir = path.dirname(fullPath)
 
     try {
@@ -145,7 +147,7 @@ async function getAllPackages(): Promise<Package[]> {
       }
 
       // Skip root package.json
-      if (packageDir === ROOT_DIR) {
+      if (packageDir === root) {
         continue
       }
 
@@ -619,10 +621,10 @@ async function prepareArtifacts(packages: Package[], version: string): Promise<R
   return artifacts
 }
 
-async function publishPackages(artifacts: ReleaseArtifact[], version: string, options: ReleaseOptions): Promise<void> {
+async function publishPackages(artifacts: ReleaseArtifact[], version: string, options: ReleaseOptions, root = ROOT_DIR): Promise<void> {
   const oidc = process.env['GITHUB_ACTIONS'] === 'true' && process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] && process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']
   for (const artifact of artifacts) {
-    await publishReleaseArtifact(ROOT_DIR, artifact, {
+    await publishReleaseArtifact(root, artifact, {
       provenance: options.provenance === true || Boolean(oidc),
       progress: console.log,
       otp: async () => {
@@ -634,6 +636,36 @@ async function publishPackages(artifacts: ReleaseArtifact[], version: string, op
     })
     console.log(prism.green(`  ${artifact.name}@${version}: published and verified`))
   }
+}
+
+/** Use the publisher in this checkout with the sealed bytes from an already pushed release. */
+async function resumePublication(checkout: string, version: string, options: ReleaseOptions): Promise<void> {
+  const root = await fs.realpath(checkout)
+  if (await fs.realpath(command(root, 'git', ['rev-parse', '--show-toplevel'])) !== root)
+    throw new Error('--resume-from requires the root of the release checkout')
+  const unlock = options.dryRun ? undefined : await acquireReleaseLock(root)
+  try {
+    if (command(root, 'git', ['status', '--porcelain'])) throw new Error('The release checkout must be clean')
+    assertReleaseHead(root, version)
+    verifyRemoteTag(root, version, true)
+    const packages = (await getAllPackages(root)).filter(pkg => !pkg.private)
+    if (packages.length === 0 || packages.some(pkg => pkg.version !== version))
+      throw new Error(`Expected public packages at version ${version} in the tagged checkout`)
+    const artifacts: ReleaseArtifact[] = []
+    for (const pkg of await sortByDependencyOrder(packages))
+      artifacts.push(await stageReleaseArtifact(root, pkg, version, command, true))
+    for (const artifact of artifacts) {
+      const pending = await hasPublicationReceipt(artifact)
+      const visible = registryArtifactMatches(root, artifact)
+      const state = visible ? 'matching npm metadata' : pending ? 'upload recorded, awaiting npm' : 'ready to publish'
+      console.log(`${artifact.name}@${version}: ${state}`)
+    }
+    console.log(`Verified ${artifacts.length} sealed archives for v${version} at ${command(root, 'git', ['rev-parse', 'HEAD'])}`)
+    if (options.dryRun) return
+    if (!options.yes && await confirm({ message: `Resume publication of v${version} using these archives?` }) !== true) return
+    await publishPackages(artifacts, version, options, root)
+    if (options.githubRelease) console.log(await createGithubRelease(root, version, 'kysera-dev/kysera'))
+  } finally { await unlock?.() }
 }
 
 /** Checkpoint the proposed manifests so a failed validation resumes from a clean commit. */
@@ -707,9 +739,9 @@ export function parseArgs(args: string[]): ReleaseOptions {
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]
     if (!arg) throw new Error('Empty release argument')
-    if (arg === '--version') {
+    if (arg === '--version' || arg === '--resume-from') {
       const value = args[++index]
-      if (!value || value.startsWith('--')) throw new Error('--version requires a value')
+      if (!value || value.startsWith('--')) throw new Error(`${arg} requires a value`)
       continue
     }
     if (!flags.has(arg) && !arg.startsWith('--version='))
@@ -743,6 +775,15 @@ export function parseArgs(args: string[]): ReleaseOptions {
   if ((options.yes || options.githubOnly) && !options.version)
     throw new Error('--yes and --github-only require --version')
   if (options.version) releaseTag(options.version)
+  const resumeIndex = args.indexOf('--resume-from')
+  if (resumeIndex !== -1) {
+    const checkout = args[resumeIndex + 1]
+    if (!checkout || resumeIndex !== args.lastIndexOf('--resume-from') || !options.version)
+      throw new Error('Specify --resume-from once with an explicit --version')
+    if (options.force || options.skipBuild || options.skipTests || options.skipPublish || options.githubOnly || options.listPackages)
+      throw new Error('--resume-from accepts only --version, --dry-run, --yes, --provenance and --github-release')
+    options.resumeFrom = checkout
+  }
 
   return options
 }
@@ -754,6 +795,11 @@ async function main(): Promise<void> {
   console.log(prism.bold(prism.cyan('\n🚀 Kysera Monorepo Release\n')))
 
   const options = parseArgs(process.argv.slice(2))
+
+  if (options.resumeFrom && options.version) {
+    await resumePublication(options.resumeFrom, options.version, options)
+    return
+  }
 
   if (options.githubOnly) {
     const version = options.version

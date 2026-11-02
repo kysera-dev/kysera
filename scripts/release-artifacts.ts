@@ -46,6 +46,17 @@ export async function verifyArtifact(artifact: ReleaseArtifact): Promise<void> {
     throw new Error(`Release archive was modified: ${artifact.file}`)
 }
 
+export async function hasPublicationReceipt(artifact: ReleaseArtifact): Promise<boolean> {
+  let contents: string
+  try { contents = await readFile(artifact.file + '.publication.json', 'utf8') }
+  catch (error) { if (missing(error)) return false; throw error }
+  const saved = JSON.parse(contents) as Record<string, unknown> | null
+  if (saved?.['registry'] !== npmRegistry || saved['name'] !== artifact.name || saved['version'] !== artifact.version ||
+      saved['commit'] !== artifact.commit || saved['integrity'] !== artifact.integrity)
+    throw new Error(`Invalid saved publication receipt for ${artifact.name}`)
+  return true
+}
+
 interface PublicationOptions {
   run?: Run
   provenance?: boolean
@@ -69,7 +80,8 @@ function channelVersion(root: string, name: string, tag: string, run: Run): stri
   }
 }
 
-async function downloadable(root: string, artifact: ReleaseArtifact, run: Run): Promise<boolean> {
+/** Resolve the exact version as an npm consumer, even when the manifest is already visible. */
+async function checkDownload(root: string, artifact: ReleaseArtifact, run: Run): Promise<'verified' | 'npm version index' | 'downloadable tarball'> {
   const directory = await mkdtemp(path.join(tmpdir(), 'kysera-registry-check-'))
   try {
     const packed: unknown = JSON.parse(run(root, 'npm', ['pack', `${artifact.name}@${artifact.version}`, '--ignore-scripts',
@@ -79,9 +91,11 @@ async function downloadable(root: string, artifact: ReleaseArtifact, run: Run): 
     if (typeof filename !== 'string' || path.basename(filename) !== filename || !filename.endsWith('.tgz') ||
         archiveIntegrity(await readFile(path.join(directory, filename))) !== artifact.integrity)
       throw new Error(`Downloaded npm archive differs from the prepared ${artifact.name}@${artifact.version}`)
-    return true
+    return 'verified'
   } catch (error) {
-    if (isRegistryNotFound(error)) return false
+    const code = registryErrorCode(error)
+    if (code === 'ETARGET') return 'npm version index'
+    if (code === 'E404') return 'downloadable tarball'
     throw error
   } finally { await rm(directory, { recursive: true, force: true }) }
 }
@@ -97,13 +111,7 @@ export async function publishReleaseArtifact(root: string, artifact: ReleaseArti
   const tag = semver.prerelease(version) ? 'next' : 'latest'
   await verifyArtifact(artifact)
   const marker = artifact.file + '.publication.json'
-  let pending = false
-  try {
-    const saved = JSON.parse(await readFile(marker, 'utf8')) as Record<string, unknown> | null
-    if (saved?.['registry'] !== npmRegistry || saved['name'] !== name || saved['version'] !== version || saved['commit'] !== commit || saved['integrity'] !== integrity)
-      throw new Error(`Invalid saved publication receipt for ${name}`)
-    pending = true
-  } catch (error) { if (!missing(error)) throw error }
+  const pending = await hasPublicationReceipt(artifact)
   if (!pending && !registryArtifactMatches(root, artifact, run)) {
     const current = channelVersion(root, name, tag, run)
     if (current && semver.gt(current, version)) throw new Error(`Publishing ${name}@${version} would move ${tag} backwards from ${current}`)
@@ -130,9 +138,9 @@ export async function publishReleaseArtifact(root: string, artifact: ReleaseArti
   const deadline = Date.now() + timeout
   let downloaded = false, nextNotice = 0, waitingFor = 'version metadata'
   for (;;) {
-    if (!downloaded && registryArtifactMatches(root, artifact, run)) {
-      waitingFor = 'downloadable tarball'
-      downloaded = await downloadable(root, artifact, run)
+    if (!downloaded) {
+      waitingFor = registryArtifactMatches(root, artifact, run) ? await checkDownload(root, artifact, run) : 'version metadata'
+      downloaded = waitingFor === 'verified'
     }
     if (downloaded) {
       const current = channelVersion(root, name, tag, run)
@@ -154,14 +162,14 @@ export async function stageReleaseArtifact(
   root: string,
   pkg: { name: string; path: string },
   version: string,
-  run: Run = command
+  run: Run = command,
+  existingOnly = false
 ): Promise<ReleaseArtifact> {
   releaseTag(version)
   if (!/^@kysera\/[a-z0-9-]+$/.test(pkg.name)) throw new Error(`Unexpected release package: ${pkg.name}`)
   const commit = run(root, 'git', ['rev-parse', 'HEAD'])
   if (!/^[a-f0-9]{40,64}$/.test(commit)) throw new Error('Invalid release commit')
   const directory = path.join(root, '.release-artifacts', version, commit)
-  await mkdir(directory, { recursive: true, mode: 0o700 })
   const base = pkg.name.slice('@kysera/'.length)
   const file = path.join(directory, base + '.tgz')
   const record = path.join(directory, base + '.json')
@@ -177,6 +185,8 @@ export async function stageReleaseArtifact(
     return verified
   }
 
+  if (existingOnly) throw new Error(`Missing sealed release record: ${record}. Restore the original archives to resume.`)
+  await mkdir(directory, { recursive: true, mode: 0o700 })
   const temporary = await mkdtemp(path.join(directory, '.pack-'))
   try {
     run(pkg.path, 'pnpm', ['--config.ignore-scripts=true', 'pack', '--pack-destination', temporary])

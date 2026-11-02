@@ -81,17 +81,29 @@ overwriting npm: recover the original archive or release a new version. Even a
 change to JSON key order changes the archive checksum; the script does not infer
 that different archives are equivalent.
 
-For an interrupted npm publication, use a clean checkout of the **release
-commit** on its original branch and rerun the same `--version`. If the branch has
-advanced, use an isolated checkout at that commit; do not reset a shared working
-branch. A failed push must be reconciled before the remaining npm packages can
-be published. Never move or force-push an already published tag.
+Once the release tag is on the remote, point the publisher at a clean checkout
+of that exact commit. The publisher may run from a newer checkout. The release
+checkout supplies its manifests, saved archives and upload receipts. Preview the
+whole batch first, then confirm publication in the terminal.
+
+```bash
+bun run ./scripts/release.ts --version 0.10.2 --resume-from /path/to/tagged-checkout --dry-run
+bun run ./scripts/release.ts --version 0.10.2 --resume-from /path/to/tagged-checkout --github-release
+```
+
+Use `--resume-from .` when the current checkout contains both the publisher
+and the tagged release. Recovery checks the remote tag object, every package
+version, each sealed archive and its SHA-512 before the first upload. Restore
+any missing release records from the original backup. A missing remote tag
+requires completing the original Git push first.
 
 A successful upload or an HTTP 409 for a reserved version can precede public
 availability. The release saves a receipt next to its archive and checks the
 registry every 15 seconds for up to 30 minutes per package. Progress identifies
-what is missing: the version metadata, the public tarball or its distribution
-tag. Rerun the same command after a timeout. A matching receipt resumes the
+the outstanding check. Version metadata may be visible before npm can resolve
+the exact version for installation. An `ETARGET` from this download waits for
+the npm version index. The publisher then compares the downloaded bytes and
+checks the distribution tag. Rerun the recovery command after a timeout. A matching receipt resumes the
 checks without submitting the archive again. npm prompts for two-factor
 authentication in the terminal when required. With npm 11.15 or later, use
 `npm stage list @kysera/<package> --json` to inspect any manual approval that
