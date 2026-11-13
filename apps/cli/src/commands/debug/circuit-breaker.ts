@@ -1,4 +1,5 @@
 import { Command } from 'commander'
+import { setTimeout as delay } from 'node:timers/promises'
 import { prism, select, isCancel } from '@xec-sh/kit'
 import { displayTable as table } from '../../utils/table-helper.js'
 import { guardDestructive, requireInteractive } from '../../utils/guard.js'
@@ -14,8 +15,6 @@ import type { KyseraConfigWithDatabase } from '../../utils/with-database.js'
 export interface CircuitBreakerOptions {
   action?: 'status' | 'reset' | 'open' | 'close'
   service?: string
-  threshold?: string
-  timeout?: string
   watch?: boolean
   force?: boolean
   json?: boolean
@@ -40,8 +39,6 @@ export function circuitBreakerCommand(): Command {
     .description('Circuit breaker monitoring and management')
     .option('-a, --action <type>', 'Action to perform (status/reset/open/close)', 'status')
     .option('-s, --service <name>', 'Service name (database/cache/api)')
-    .option('-t, --threshold <n>', 'Error threshold for opening circuit', '5')
-    .option('--timeout <ms>', 'Reset timeout in milliseconds', '30000')
     .option('-w, --watch', 'Watch mode - monitor in real-time')
     .option('--json', 'Output as JSON')
     .option('--force', 'Confirm reset without prompting')
@@ -64,6 +61,15 @@ export function circuitBreakerCommand(): Command {
 }
 
 async function manageCircuitBreaker(options: CircuitBreakerOptions): Promise<void> {
+  if (options.watch) {
+    if (options.json || options.action !== 'status') {
+      throw new CLIError(
+        '--watch supports interactive status only; use --json without --watch for a snapshot',
+        'INVALID_OPTIONS'
+      )
+    }
+    requireInteractive('Watch mode requires a terminal; use --json for a snapshot', options)
+  }
   // Load configuration
   // Widened: mocked loaders may resolve null even though the declared return
   // type is non-nullable; the runtime guard below must stay meaningful.
@@ -76,11 +82,11 @@ async function manageCircuitBreaker(options: CircuitBreakerOptions): Promise<voi
     ])
   }
 
-  // Get circuit breaker instance from config or create one
+  // Observe stored state from the explicitly selected database.
   const circuitBreakers = await getCircuitBreakers(config as KyseraConfigWithDatabase)
 
   if (options.action === 'status') {
-    await showCircuitBreakerStatus(circuitBreakers, options)
+    await showCircuitBreakerStatus(circuitBreakers, options, config as KyseraConfigWithDatabase)
   } else if (options.action === 'reset') {
     await resetCircuitBreaker(circuitBreakers, options, config as KyseraConfigWithDatabase)
   } else if (options.action === 'open') {
@@ -127,8 +133,37 @@ async function getCircuitBreakers(
 
 async function showCircuitBreakerStatus(
   breakers: Map<string, CircuitBreakerStatus>,
-  options: CircuitBreakerOptions
+  options: CircuitBreakerOptions,
+  config: KyseraConfigWithDatabase
 ): Promise<void> {
+  if (options.watch) {
+    const controller = new AbortController()
+    const stop = (): void => {
+      controller.abort()
+    }
+    process.once('SIGINT', stop)
+    process.once('SIGTERM', stop)
+    try {
+      let observed = breakers
+      for (;;) {
+        controller.signal.throwIfAborted()
+        console.clear()
+        console.log(prism.gray('Press Ctrl+C to exit'))
+        await showCircuitBreakerStatus(observed, { ...options, watch: false }, config)
+        await delay(1000, undefined, { signal: controller.signal })
+        controller.signal.throwIfAborted()
+        observed = await getCircuitBreakers(config)
+      }
+    } catch (error) {
+      if (!(controller.signal.aborted && error instanceof Error && error.name === 'AbortError')) {
+        throw error
+      }
+    } finally {
+      process.removeListener('SIGINT', stop)
+      process.removeListener('SIGTERM', stop)
+    }
+    return
+  }
   if (options.service) {
     const breaker = breakers.get(options.service)
     if (!breaker) {
@@ -144,33 +179,7 @@ async function showCircuitBreakerStatus(
     return
   }
 
-  if (options.watch) {
-    // Watch mode - monitor in real-time
-    console.log(prism.cyan('⚡ Circuit Breaker Monitor'))
-    console.log(prism.gray('Press Ctrl+C to exit'))
-    console.log('')
-
-    const interval = setInterval(() => {
-      // Clear console and redraw
-      console.clear()
-      console.log(prism.cyan('⚡ Circuit Breaker Monitor'))
-      console.log(prism.gray('Press Ctrl+C to exit'))
-      console.log('')
-      displayCircuitBreakerStatus(breakers)
-    }, 1000)
-
-    // Keep the process running
-    await new Promise(resolve => {
-      process.on('SIGINT', () => {
-        clearInterval(interval)
-        console.log('')
-        console.log(prism.gray('Monitoring stopped'))
-        resolve(undefined)
-      })
-    })
-  } else {
-    displayCircuitBreakerStatus(breakers)
-  }
+  displayCircuitBreakerStatus(breakers)
 }
 
 function displayCircuitBreakerStatus(breakers: Map<string, CircuitBreakerStatus>): void {

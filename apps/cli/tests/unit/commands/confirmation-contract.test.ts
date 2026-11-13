@@ -26,7 +26,16 @@ const adapter = vi.hoisted(() => ({
 }))
 vi.mock('@xec-sh/kit', async importOriginal => {
   const actual = await importOriginal<typeof import('@xec-sh/kit')>()
-  return { ...actual, confirm: vi.fn(), select: vi.fn(), text: vi.fn(), group: vi.fn() }
+  return {
+    ...actual,
+    // Prompts and terminal rendering are controlled here; the native PTY test
+    // exercises the real Kit renderer with actual tty.ReadStream methods.
+    spinner: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), message: vi.fn(), isCancelled: false })),
+    confirm: vi.fn(),
+    select: vi.fn(),
+    text: vi.fn(),
+    group: vi.fn()
+  }
 })
 vi.mock('@/config/loader.js', () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }))
 vi.mock('@/utils/database.js', () => ({ getDatabaseConnection: vi.fn() }))

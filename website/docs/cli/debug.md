@@ -202,8 +202,6 @@ kysera debug circuit-breaker [options]
 | ---------------------- | ---------------------------------------------------- |
 | `-a, --action <type>`  | Action: status, reset, open, close (default: status) |
 | `-s, --service <name>` | Service name: database, cache, api                   |
-| `-t, --threshold <n>`  | Error threshold for opening circuit (default: 5)     |
-| `--timeout <ms>`       | Reset timeout in milliseconds (default: 30000)       |
 | `-w, --watch`          | Watch mode - monitor in real-time                    |
 | `--force`              | Confirm reset without prompting                      |
 | `--json`               | Output as JSON                                       |
@@ -247,6 +245,14 @@ writes use the same `--config` database; only selected services are changed.
 Success is reported after persistence completes. Missing state is reported as
 an empty observation, and connection or write errors fail the command rather
 than manufacturing healthy defaults.
+
+`--watch` is an interactive status view. It re-reads the selected database one
+second after each completed refresh, so queries never overlap and a slow or
+failed read cannot be displayed as a fresh healthy snapshot. Ctrl+C or SIGTERM
+stops the view after any in-flight read is cleaned up. JSON automation uses
+individual `--json` snapshots; combining JSON or a mutation with `--watch` is
+rejected before connecting. Error thresholds and retry intervals are observed
+from the persisted runtime state; this command does not configure them.
 
 ## analyzer
 
