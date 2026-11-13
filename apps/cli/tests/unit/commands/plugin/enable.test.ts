@@ -54,6 +54,7 @@ vi.mock('@xec-sh/kit', () => ({
     blue: (s: string) => s
   },
   confirm: vi.fn().mockResolvedValue(true),
+  isCancel: (value: unknown) => typeof value === 'symbol',
   select: vi.fn().mockResolvedValue('@kysera/soft-delete'),
   spinner: vi.fn(() => ({
     start: vi.fn(),
@@ -83,10 +84,14 @@ import { CLIError } from '../../../../src/utils/errors.js'
 import { confirm, select } from '@xec-sh/kit'
 
 describe('plugin enable command', () => {
+  const originalTTY = [process.stdin.isTTY, process.stdout.isTTY]
+
   let command: Command
   let consoleSpy: { log: Mock }
 
   beforeEach(() => {
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true })
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
     vi.clearAllMocks()
 
     process.env['NODE_ENV'] = 'test'
@@ -131,6 +136,8 @@ describe('plugin enable command', () => {
   })
 
   afterEach(() => {
+    Object.defineProperty(process.stdin, 'isTTY', { value: originalTTY[0], configurable: true })
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalTTY[1], configurable: true })
     vi.restoreAllMocks()
   })
 
@@ -281,7 +288,7 @@ describe('plugin enable command', () => {
       })
 
       await command.parseAsync(['node', 'test', '--all'])
-      // In test environment, confirmation is skipped
+      expect(confirm).toHaveBeenCalledOnce()
     })
   })
 
@@ -294,10 +301,12 @@ describe('plugin enable command', () => {
     })
 
     it('should handle no installed plugins', async () => {
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
       ;(readdir as Mock).mockRejectedValue(new Error('ENOENT'))
 
       await command.parseAsync(['node', 'test'])
-      expect(consoleSpy.log).toHaveBeenCalled()
+      expect(stderr).toHaveBeenCalledWith(expect.stringContaining('No installed plugins found'))
+      expect(saveConfig).not.toHaveBeenCalled()
     })
   })
 

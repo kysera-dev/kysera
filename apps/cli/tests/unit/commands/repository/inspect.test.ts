@@ -38,6 +38,7 @@ vi.mock('@xec-sh/kit', () => ({
     blue: (s: string) => s
   },
   table: vi.fn(() => ''),
+  isCancel: (value: unknown) => typeof value === 'symbol',
   select: vi.fn().mockResolvedValue('src/UserRepository.ts'),
   spinner: vi.fn(() => ({
     start: vi.fn(),
@@ -68,11 +69,15 @@ import { CLIError } from '../../../../src/utils/errors.js'
 import { select } from '@xec-sh/kit'
 
 describe('repository inspect command', () => {
+  const originalTTY = [process.stdin.isTTY, process.stdout.isTTY]
+
   let command: Command
   let mockDb: any
   let consoleSpy: { log: Mock }
 
   beforeEach(() => {
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true })
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
     vi.clearAllMocks()
 
     process.env['NODE_ENV'] = 'test'
@@ -102,6 +107,8 @@ describe('repository inspect command', () => {
   })
 
   afterEach(() => {
+    Object.defineProperty(process.stdin, 'isTTY', { value: originalTTY[0], configurable: true })
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalTTY[1], configurable: true })
     vi.restoreAllMocks()
   })
 

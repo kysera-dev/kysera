@@ -8,6 +8,7 @@ import { diag, output } from '../../utils/output.js'
 import { loadRLSSchemaModule, requirePostgresDialect } from './schema-loader.js'
 
 export interface RlsMigrationOptions {
+  dryRun?: boolean
   dir?: string
   name?: string
   schema?: string
@@ -38,6 +39,7 @@ policies; down() drops them again. See 'kysera rls generate --help' for
 the expected schema module shape.
 `
     )
+    .option('--dry-run', 'Preview changes without writing')
     .action(async (schemaModule: string, options: RlsMigrationOptions) => {
       try {
         await generateRlsMigration(schemaModule, options)
@@ -82,7 +84,7 @@ export async function generateRlsMigration(
     throw new CLIError(`Migration file already exists: ${filepath}`, 'FILE_EXISTS')
   }
 
-  if (isDryRun()) {
+  if (options.dryRun === true || isDryRun()) {
     diag(`DRY RUN: not writing ${filepath}`)
     output({ file: filepath, dryRun: true }, { text: `DRY RUN: would create ${filename}` })
     return

@@ -115,16 +115,16 @@ The repository is selected with `-f/--file` or `-c/--className` — there is no 
 
 ### Options
 
-| Option                  | Description                |
-| ----------------------- | -------------------------- |
-| `-f, --file <path>`     | Repository file to inspect |
-| `-c, --className <name>`| Repository class name      |
-| `--show-ast`            | Show abstract syntax tree  |
-| `--show-dependencies`   | Show dependencies graph    |
-| `--show-complexity`     | Show complexity metrics    |
-| `--show-database`       | Show database table info   |
-| `--json`                | Output as JSON             |
-| `--config <path>`       | Path to configuration file |
+| Option                   | Description                |
+| ------------------------ | -------------------------- |
+| `-f, --file <path>`      | Repository file to inspect |
+| `-c, --className <name>` | Repository class name      |
+| `--show-ast`             | Show abstract syntax tree  |
+| `--show-dependencies`    | Show dependencies graph    |
+| `--show-complexity`      | Show complexity metrics    |
+| `--show-database`        | Show database table info   |
+| `--json`                 | Output as JSON             |
+| `--config <path>`        | Path to configuration file |
 
 ### Examples
 
@@ -164,15 +164,16 @@ kysera repository validate [options]
 
 ### Options
 
-| Option                   | Description                                  |
-| ------------------------ | -------------------------------------------- |
-| `-d, --directory <path>` | Directory to scan (default: src)             |
+| Option                   | Description                                         |
+| ------------------------ | --------------------------------------------------- |
+| `-d, --directory <path>` | Directory to scan (default: src)                    |
 | `-p, --pattern <glob>`   | File pattern to match (default: \**/*Repository.ts) |
-| `--fix`                  | Attempt to fix issues                        |
-| `--strict`               | Strict validation (fail on warnings)         |
-| `--show-details`         | Show detailed validation results             |
-| `--json`                 | Output as JSON                               |
-| `--config <path>`        | Path to configuration file                   |
+| `--fix`                  | Attempt to fix issues                               |
+| `--force`                | Confirm automatic fixes without prompting           |
+| `--strict`               | Strict validation (fail on warnings)                |
+| `--show-details`         | Show detailed validation results                    |
+| `--json`                 | Output as JSON                                      |
+| `--config <path>`        | Path to configuration file                          |
 
 ### Examples
 
@@ -234,18 +235,18 @@ kysera repository methods [options]
 
 ### Options
 
-| Option                  | Description                                              |
-| ----------------------- | -------------------------------------------------------- |
-| `-r, --repository <name>` | Repository class name                                  |
-| `-f, --file <path>`     | Repository file path                                     |
-| `-g, --group-by <type>` | Group by: visibility, type, category (default: visibility) |
-| `--filter <pattern>`    | Filter methods by name pattern                           |
-| `--show-signatures`     | Show full method signatures                              |
-| `--show-examples`       | Show usage examples                                      |
-| `--show-complexity`     | Show complexity metrics                                  |
-| `--markdown`            | Output as markdown documentation                         |
-| `--json`                | Output as JSON                                           |
-| `--config <path>`       | Path to configuration file                               |
+| Option                    | Description                                                |
+| ------------------------- | ---------------------------------------------------------- |
+| `-r, --repository <name>` | Repository class name                                      |
+| `-f, --file <path>`       | Repository file path                                       |
+| `-g, --group-by <type>`   | Group by: visibility, type, category (default: visibility) |
+| `--filter <pattern>`      | Filter methods by name pattern                             |
+| `--show-signatures`       | Show full method signatures                                |
+| `--show-examples`         | Show usage examples                                        |
+| `--show-complexity`       | Show complexity metrics                                    |
+| `--markdown`              | Output as markdown documentation                           |
+| `--json`                  | Output as JSON                                             |
+| `--config <path>`         | Path to configuration file                                 |
 
 ### Examples
 
@@ -327,7 +328,7 @@ kysera repository validate --fix
 
 ```bash
 # Generate method inventory
-kysera repository methods --json > repository-methods.json
+kysera repository methods --file src/repositories/UserRepository.ts --json > repository-methods.json
 
 # Export repository details
 kysera repository list --json --show-methods > repositories.json

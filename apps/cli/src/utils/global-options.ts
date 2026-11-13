@@ -1,5 +1,6 @@
 import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
+import { CLIError } from './errors.js'
 import { logger } from './logger.js'
 import { configureOutput, diag, diagVerbose, isVerboseMode, isQuietMode } from './output.js'
 
@@ -68,6 +69,17 @@ export function applyGlobalOptions(rootCommand: Command, actionCommand: Command)
     logger.setColors(false)
   }
 
+  if (
+    dryRunEnabled &&
+    actionCommand !== rootCommand &&
+    !actionCommand.options.some(option => option.long === '--dry-run')
+  ) {
+    throw new CLIError(
+      `Command '${actionCommand.name()}' does not support --dry-run`,
+      'DRY_RUN_UNSUPPORTED'
+    )
+  }
+
   if (dryRunEnabled && !json) {
     diag(prism.yellow('DRY RUN MODE - No changes will be made'))
   }
@@ -77,18 +89,20 @@ export function applyGlobalOptions(rootCommand: Command, actionCommand: Command)
  * Add the global options to the root command.
  */
 export function addGlobalOptions(command: Command): Command {
-  return command
-    .option('--verbose', 'Enable verbose output')
-    // Long form only: a root -q short would swallow subcommand -q flags
-    // (e.g. `kysera query analyze -q "SELECT 1"`).
-    .option('--quiet', 'Suppress non-essential output')
-    .option('--dry-run', 'Preview changes without executing')
-    .option('--config <path>', 'Path to configuration file')
-    .option('--no-color', 'Disable colored output')
-    .option('--json', 'Output results as JSON')
-    .hook('preAction', (thisCommand, actionCommand) => {
-      applyGlobalOptions(thisCommand, actionCommand)
-    })
+  return (
+    command
+      .option('--verbose', 'Enable verbose output')
+      // Long form only: a root -q short would swallow subcommand -q flags
+      // (e.g. `kysera query analyze -q "SELECT 1"`).
+      .option('--quiet', 'Suppress non-essential output')
+      .option('--dry-run', 'Preview changes without executing')
+      .option('--config <path>', 'Path to configuration file')
+      .option('--no-color', 'Disable colored output')
+      .option('--json', 'Output results as JSON')
+      .hook('preAction', (thisCommand, actionCommand) => {
+        applyGlobalOptions(thisCommand, actionCommand)
+      })
+  )
 }
 
 /**

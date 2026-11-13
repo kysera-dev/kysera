@@ -1,7 +1,9 @@
 import { Command } from 'commander'
-import { prism, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { formatTimestampForDb } from '@kysera/core'
 import { spinner } from '../../utils/spinner.js'
+import { diag } from '../../utils/output.js'
+import { guardDestructive } from '../../utils/guard.js'
 import { CLIError, ValidationError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
@@ -80,9 +82,9 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
 
     if (!(await auditTableExists(db, auditTable))) {
       restoreSpinner.fail('Audit table not found')
-      console.log('')
+      diag('')
       for (const line of auditTableMissingHint(auditTable)) {
-        console.log(prism.yellow(line))
+        diag(prism.yellow(line))
       }
       return
     }
@@ -126,29 +128,29 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     }
 
     // Show restore preview
-    console.log('')
-    console.log(prism.bold('📝 Audit Log Details:'))
-    console.log(prism.gray('─'.repeat(50)))
-    console.log(`  ID: ${auditLogId}`)
-    console.log(`  Table: ${tableName}`)
-    console.log(`  Entity ID: ${entityId}`)
-    console.log(`  Operation: ${formatAction(action)}`)
-    console.log(`  Timestamp: ${createdAt.toLocaleString()}`)
-    console.log(`  User: ${auditLog.changed_by ?? 'system'}`)
+    diag('')
+    diag(prism.bold('📝 Audit Log Details:'))
+    diag(prism.gray('─'.repeat(50)))
+    diag(`  ID: ${auditLogId}`)
+    diag(`  Table: ${tableName}`)
+    diag(`  Entity ID: ${entityId}`)
+    diag(`  Operation: ${formatAction(action)}`)
+    diag(`  Timestamp: ${createdAt.toLocaleString()}`)
+    diag(`  User: ${auditLog.changed_by ?? 'system'}`)
 
-    console.log('')
-    console.log(prism.bold('🔄 Restore Plan:'))
-    console.log(prism.gray('─'.repeat(50)))
+    diag('')
+    diag(prism.bold('🔄 Restore Plan:'))
+    diag(prism.gray('─'.repeat(50)))
 
     if (restoreAction === 'INSERT') {
-      console.log(prism.green('  ✨ Will recreate deleted entity:'))
+      diag(prism.green('  ✨ Will recreate deleted entity:'))
       if (restoreData) {
         for (const [key, value] of Object.entries(restoreData)) {
-          console.log(`    ${key}: ${formatValue(value)}`)
+          diag(`    ${key}: ${formatValue(value)}`)
         }
       }
     } else if (restoreAction === 'UPDATE') {
-      console.log(prism.yellow('  ✏️  Will restore entity to previous state:'))
+      diag(prism.yellow('  ✏️  Will restore entity to previous state:'))
 
       // Check current state
       const currentEntity = await db
@@ -158,8 +160,8 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
         .executeTakeFirst()
 
       if (!currentEntity) {
-        console.log(prism.red('  ⚠️  Entity no longer exists in database'))
-        console.log(prism.gray('  Consider using a DELETE audit log to restore it'))
+        diag(prism.red('  ⚠️  Entity no longer exists in database'))
+        diag(prism.gray('  Consider using a DELETE audit log to restore it'))
         return
       }
 
@@ -167,18 +169,18 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
       for (const [key, value] of Object.entries(restoreData ?? {})) {
         const currentValue = currentEntity[key]
         if (currentValue !== value) {
-          console.log(`    ${key}: ${formatValue(currentValue)} → ${formatValue(value)}`)
+          diag(`    ${key}: ${formatValue(currentValue)} → ${formatValue(value)}`)
         }
       }
     } else if (restoreAction === 'DELETE') {
-      console.log(prism.red('  🗑️  Will delete the inserted entity'))
-      console.log(`    Entity ID: ${entityId}`)
+      diag(prism.red('  🗑️  Will delete the inserted entity'))
+      diag(`    Entity ID: ${entityId}`)
     }
 
     // Dry run mode
     if (options.dryRun) {
-      console.log('')
-      console.log(prism.yellow('Dry run mode - no changes were made'))
+      diag('')
+      diag(prism.yellow('Dry run mode - no changes were made'))
 
       if (options.json) {
         console.log(
@@ -197,18 +199,8 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
       return
     }
 
-    // Confirm restore
-    if (!options.force) {
-      console.log('')
-      const confirmed = await confirm({
-        message: 'Are you sure you want to restore from this audit log?',
-        initialValue: false
-      })
-
-      if (!confirmed) {
-        console.log(prism.gray('Restore cancelled'))
-        return
-      }
+    if (!(await guardDestructive('Restore from this audit log?', options))) {
+      return
     }
 
     // Execute restore
@@ -307,10 +299,10 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
     })
 
     // Show success message
-    console.log('')
-    console.log(prism.green('✅ Restore completed successfully'))
-    console.log(prism.gray(`Restored from audit log #${auditLogId}`))
-    console.log(prism.gray(`Table: ${tableName}, Entity: ${entityId}`))
+    diag('')
+    diag(prism.green('✅ Restore completed successfully'))
+    diag(prism.gray(`Restored from audit log #${auditLogId}`))
+    diag(prism.gray(`Table: ${tableName}, Entity: ${entityId}`))
 
     if (options.json) {
       console.log(
@@ -330,9 +322,9 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
   } catch (error) {
     if (error instanceof Error && error.message.includes(auditTable)) {
       restoreSpinner.fail('Audit table not found')
-      console.log('')
+      diag('')
       for (const line of auditTableMissingHint(auditTable)) {
-        console.log(prism.yellow(line))
+        diag(prism.yellow(line))
       }
       return
     }

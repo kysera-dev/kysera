@@ -53,7 +53,7 @@ kysera health check
 --version              Show CLI version
 --verbose              Detailed output
 --quiet                Minimal output
---dry-run              Preview without executing
+--dry-run              Preview when the selected command supports it
 --config <path>        Custom configuration file
 --json                 Output as JSON
 --no-color             Disable colors
@@ -70,9 +70,10 @@ The root command deliberately registers `--version` and `--quiet` as long-only f
 These hold across every command — build scripts against them with confidence:
 
 - **stdout is data, stderr is diagnostics.** Results (JSON, tables, generated SQL) go to stdout; progress notes, warnings, and errors go to stderr. `kysera migrate list --json > list.json` never captures spinner noise.
-- **`--json` everywhere.** Every command emits machine-readable output with `--json`; errors in JSON mode are emitted as a JSON document (`{ "error": { name, message, code, suggestions } }`) on stderr.
+- **JSON is an output format, not consent.** Commands with JSON results emit them on stdout; errors use a JSON document (`{ "error": { name, message, code, suggestions } }`) on stderr. Interactive editing cannot run in JSON mode; `init --json` fails before writing because project scaffolding has no JSON result contract.
 - **Exit codes.** `0` on success, `1` on any failure. `--help` and `--version` exit `0`. `kysera doctor` exits `0` when no check fails (warnings allowed).
-- **Destructive operations never auto-proceed.** Commands that drop or delete (e.g. `migrate fresh`, `db reset`, `schema drop`) prompt on an interactive terminal and **fail** with `CONFIRMATION_REQUIRED` when headless (CI, pipes, JSON mode) unless `--force` is passed.
+- **Confirmation is explicit.** Guarded schema creation/cloning, purges, audit restoration, bulk plugin changes, configuration resets and automatic fixes require a positive confirmation. Without both TTY streams, or in JSON mode, they fail with `CONFIRMATION_REQUIRED` unless `--force` is passed. Decline and prompt cancellation never become consent.
+- **Dry-run support is declared.** The selected command must list `--dry-run` in its help; otherwise `DRY_RUN_UNSUPPORTED` stops execution before its action. Migrations and the audit/RLS generators implement previews without writes.
 - **Fast startup.** The command tree is registered eagerly but heavy dependencies load lazily, so `kysera --help` responds in well under a second (typically 100–200 ms).
 - **Version from the package.** `kysera --version` reports the `@kysera/cli` package version.
 

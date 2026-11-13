@@ -1,7 +1,9 @@
 import { Command } from 'commander'
-import { prism, confirm, select } from '@xec-sh/kit'
+import { prism, select, isCancel } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
+import { guardDestructive, requireInteractive } from '../../utils/guard.js'
+import { diag } from '../../utils/output.js'
 import { CLIError } from '../../utils/errors.js'
 import { loadConfig, saveConfig } from '../../config/loader.js'
 import * as fs from 'node:fs/promises'
@@ -103,27 +105,19 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
 
       if (installedPlugins.length === 0) {
         enableSpinner.stop()
-        console.log(prism.yellow('No installed plugins found'))
+        diag(prism.yellow('No installed plugins found'))
         return
       }
 
       enableSpinner.stop()
-      console.log(
+      diag(
         prism.green(
           `✓ Found ${installedPlugins.length} installed plugin${installedPlugins.length !== 1 ? 's' : ''}`
         )
       )
 
-      // Confirm action
-      if (!options.force && !options.json) {
-        const shouldEnable = await confirm({
-          message: `Enable ${installedPlugins.length} plugin${installedPlugins.length !== 1 ? 's' : ''}?`
-        })
-
-        if (!shouldEnable) {
-          console.log(prism.gray('Operation cancelled'))
-          return
-        }
+      if (!(await guardDestructive(`Enable ${installedPlugins.length} plugins?`, options))) {
+        return
       }
 
       // Enable each plugin
@@ -140,13 +134,13 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
 
       if (result.status === 'enabled') {
         enableSpinner.stop()
-        console.log(prism.green(`✓ Plugin enabled: ${name}`))
+        diag(prism.green(`✓ Plugin enabled: ${name}`))
       } else if (result.status === 'already_enabled') {
         enableSpinner.stop()
-        console.log(prism.yellow(`Plugin already enabled: ${name}`))
+        diag(prism.yellow(`Plugin already enabled: ${name}`))
       } else {
         enableSpinner.stop()
-        console.log(prism.red(`Failed to enable plugin: ${name}`))
+        diag(prism.red(`Failed to enable plugin: ${name}`))
       }
     } else {
       // Interactive selection
@@ -155,8 +149,8 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
       enableSpinner.stop()
 
       if (installedPlugins.length === 0) {
-        console.log(prism.yellow('No installed plugins found'))
-        console.log(prism.gray('Install plugins with: kysera plugin install <name>'))
+        diag(prism.yellow('No installed plugins found'))
+        diag(prism.gray('Install plugins with: kysera plugin install <name>'))
         return
       }
 
@@ -164,10 +158,11 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
       const disabledPlugins = installedPlugins.filter(p => pluginsRecord[p]?.enabled !== true)
 
       if (disabledPlugins.length === 0) {
-        console.log(prism.yellow('All installed plugins are already enabled'))
+        diag(prism.yellow('All installed plugins are already enabled'))
         return
       }
 
+      requireInteractive('Specify a plugin name or use --all', options)
       const selected = await select({
         message: 'Select plugin to enable:',
         options: disabledPlugins.map(p => ({
@@ -177,16 +172,17 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
         }))
       })
 
-      enableSpinner.start(`Enabling plugin: ${selected as string}...`)
-      const result = await enableSinglePlugin(selected as string, pluginsRecord, options)
+      if (isCancel(selected)) return
+      enableSpinner.start(`Enabling plugin: ${selected}...`)
+      const result = await enableSinglePlugin(selected, pluginsRecord, options)
       results.push(result)
 
       if (result.status === 'enabled') {
         enableSpinner.stop()
-        console.log(prism.green(`✓ Plugin enabled: ${selected as string}`))
+        diag(prism.green(`✓ Plugin enabled: ${selected}`))
       } else {
         enableSpinner.stop()
-        console.log(prism.red(`Failed to enable plugin: ${selected as string}`))
+        diag(prism.red(`Failed to enable plugin: ${selected}`))
       }
     }
 
@@ -204,8 +200,8 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
 
     // Configure plugins if requested
     if (options.configure && results.some(r => r.status === 'enabled')) {
-      console.log('')
-      console.log(prism.cyan('Configuring enabled plugins...'))
+      diag('')
+      diag(prism.cyan('Configuring enabled plugins...'))
 
       for (const result of results.filter(r => r.status === 'enabled')) {
         configurePlugin(result.plugin, pluginsRecord)
@@ -216,13 +212,12 @@ async function enablePlugin(name: string | undefined, options: EnablePluginOptio
 
     // Restart if requested
     if (options.restart && results.some(r => r.status === 'enabled')) {
-      console.log('')
-      console.log(prism.yellow('⚠️  Application restart required'))
-      console.log('Please restart your application for changes to take effect')
+      diag('')
+      diag(prism.yellow('⚠️  Application restart required'))
+      diag('Please restart your application for changes to take effect')
     }
   } catch (error) {
     enableSpinner.stop()
-    logger.error('Failed to enable plugin')
     throw error
   }
 }
@@ -358,7 +353,9 @@ async function validatePlugin(pluginName: string, force: boolean): Promise<Plugi
           pluginName,
           'package.json'
         )
-        packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8')) as PluginPackageJson | null
+        packageJson = JSON.parse(
+          await fs.readFile(packageJsonPath, 'utf-8')
+        ) as PluginPackageJson | null
       } catch {
         result.error = `Plugin not installed: ${pluginName}`
         return result
@@ -369,7 +366,9 @@ async function validatePlugin(pluginName: string, force: boolean): Promise<Plugi
 
       try {
         const packageJsonPath = path.join(pluginDir, 'package.json')
-        packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8')) as PluginPackageJson | null
+        packageJson = JSON.parse(
+          await fs.readFile(packageJsonPath, 'utf-8')
+        ) as PluginPackageJson | null
       } catch {
         // Plugin without package.json
         result.valid = true

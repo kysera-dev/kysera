@@ -1,10 +1,12 @@
 import { Command } from 'commander'
-import { prism, confirm, select } from '@xec-sh/kit'
+import { prism, select, isCancel } from '@xec-sh/kit'
 import { displayTable as table } from '../../utils/table-helper.js'
-import { logger } from '../../utils/logger.js'
+import { guardDestructive, requireInteractive } from '../../utils/guard.js'
+import { output } from '../../utils/output.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
+import { formatTimestampForDb } from '@kysera/core'
 import type { CircuitState } from '@kysera/infra'
 import type { KyseraConfig } from '../../config/schema.js'
 import type { KyseraConfigWithDatabase } from '../../utils/with-database.js'
@@ -15,6 +17,7 @@ export interface CircuitBreakerOptions {
   threshold?: string
   timeout?: string
   watch?: boolean
+  force?: boolean
   json?: boolean
   config?: string
 }
@@ -41,6 +44,7 @@ export function circuitBreakerCommand(): Command {
     .option('--timeout <ms>', 'Reset timeout in milliseconds', '30000')
     .option('-w, --watch', 'Watch mode - monitor in real-time')
     .option('--json', 'Output as JSON')
+    .option('--force', 'Confirm reset without prompting')
     .option('-c, --config <path>', 'Path to configuration file')
     .action(async (options: CircuitBreakerOptions) => {
       try {
@@ -78,11 +82,11 @@ async function manageCircuitBreaker(options: CircuitBreakerOptions): Promise<voi
   if (options.action === 'status') {
     await showCircuitBreakerStatus(circuitBreakers, options)
   } else if (options.action === 'reset') {
-    await resetCircuitBreaker(circuitBreakers, options)
+    await resetCircuitBreaker(circuitBreakers, options, config as KyseraConfigWithDatabase)
   } else if (options.action === 'open') {
-    await openCircuitBreaker(circuitBreakers, options)
+    await openCircuitBreaker(circuitBreakers, options, config as KyseraConfigWithDatabase)
   } else if (options.action === 'close') {
-    await closeCircuitBreaker(circuitBreakers, options)
+    await closeCircuitBreaker(circuitBreakers, options, config as KyseraConfigWithDatabase)
   } else {
     throw new CLIError(`Invalid action: ${options.action}`, 'INVALID_ACTION', undefined, [
       'Valid actions are: status, reset, open, close'
@@ -95,89 +99,30 @@ async function getCircuitBreakers(
 ): Promise<Map<string, CircuitBreakerStatus>> {
   const breakers = new Map<string, CircuitBreakerStatus>()
 
-  // Check for circuit breaker state in a dedicated table or Redis
   const db = await getDatabaseConnection(config.database)
-
-  if (!db) {
-    return breakers
-  }
-
+  if (!db) throw new CLIError('Failed to connect to database', 'DATABASE_ERROR')
   try {
-    // Check if circuit_breaker_state table exists
-    const tables = await db
-      .selectFrom('information_schema.tables')
-      .select('table_name')
-      .where('table_name', '=', 'circuit_breaker_state')
-      .execute()
-
-    if (tables.length > 0) {
-      // Load circuit breaker states from database
-      const states = await db.selectFrom('circuit_breaker_state').selectAll().execute()
-
-      for (const state of states) {
-        breakers.set(state.service as string, {
-          service: state.service as string,
-          state: state.state as CircuitState,
-          failureCount: Number(state.failure_count),
-          successCount: Number(state.success_count),
-          lastFailure: state.last_failure ? new Date(state.last_failure as string) : undefined,
-          lastSuccess: state.last_success ? new Date(state.last_success as string) : undefined,
-          nextRetry: state.next_retry ? new Date(state.next_retry as string) : undefined,
-          errorThreshold: Number(state.error_threshold),
-          resetTimeout: Number(state.reset_timeout),
-          halfOpenRequests: Number(state.half_open_requests ?? 0)
-        })
-      }
-    } else {
-      // Create default circuit breaker states
-      breakers.set('database', {
-        service: 'database',
-        state: 'closed',
-        failureCount: 0,
-        successCount: 0,
-        errorThreshold: 5,
-        resetTimeout: 30000,
-        halfOpenRequests: 0
-      })
-
-      breakers.set('cache', {
-        service: 'cache',
-        state: 'closed',
-        failureCount: 0,
-        successCount: 0,
-        errorThreshold: 3,
-        resetTimeout: 10000,
-        halfOpenRequests: 0
-      })
-
-      breakers.set('api', {
-        service: 'api',
-        state: 'closed',
-        failureCount: 0,
-        successCount: 0,
-        errorThreshold: 10,
-        resetTimeout: 60000,
-        halfOpenRequests: 0
+    const tables = await db.introspection.getTables()
+    if (!tables.some(table => table.name === 'circuit_breaker_state')) return breakers
+    const states = await db.selectFrom('circuit_breaker_state').selectAll().execute()
+    for (const state of states) {
+      breakers.set(state.service as string, {
+        service: state.service as string,
+        state: state.state as CircuitState,
+        failureCount: Number(state.failure_count),
+        successCount: Number(state.success_count),
+        lastFailure: state.last_failure ? new Date(state.last_failure as string) : undefined,
+        lastSuccess: state.last_success ? new Date(state.last_success as string) : undefined,
+        nextRetry: state.next_retry ? new Date(state.next_retry as string) : undefined,
+        errorThreshold: Number(state.error_threshold),
+        resetTimeout: Number(state.reset_timeout),
+        halfOpenRequests: Number(state.half_open_requests ?? 0)
       })
     }
-
+    return breakers
+  } finally {
     await db.destroy()
-  } catch (error) {
-    logger.debug(`Failed to load circuit breaker states: ${String(error)}`)
-
-    // Return default states
-    breakers.set('database', {
-      service: 'database',
-      state: 'closed',
-      failureCount: 0,
-      successCount: 0,
-      errorThreshold: 5,
-      resetTimeout: 30000,
-      halfOpenRequests: 0
-    })
   }
-
-  return breakers
 }
 
 async function showCircuitBreakerStatus(
@@ -343,7 +288,8 @@ function displayCircuitBreakerStatus(breakers: Map<string, CircuitBreakerStatus>
 
 async function resetCircuitBreaker(
   breakers: Map<string, CircuitBreakerStatus>,
-  options: CircuitBreakerOptions
+  options: CircuitBreakerOptions,
+  config: KyseraConfigWithDatabase
 ): Promise<void> {
   let servicesToReset: string[]
 
@@ -354,6 +300,7 @@ async function resetCircuitBreaker(
     servicesToReset = [options.service]
   } else {
     // Ask which service to reset
+    requireInteractive('Specify a service using --service', options)
     const service = await select({
       message: 'Which circuit breaker to reset?',
       options: [
@@ -362,17 +309,19 @@ async function resetCircuitBreaker(
       ]
     })
 
-    servicesToReset = service === 'all' ? Array.from(breakers.keys()) : [service as string]
+    if (isCancel(service)) return
+    servicesToReset = service === 'all' ? Array.from(breakers.keys()) : [service]
   }
 
-  // Confirm reset
-  const confirmed = await confirm({
-    message: `Reset circuit breaker(s) for: ${servicesToReset.join(', ')}?`,
-    initialValue: false
-  })
+  if (servicesToReset.length === 0)
+    throw new CLIError('No circuit breaker states found', 'SERVICE_NOT_FOUND')
 
-  if (!confirmed) {
-    console.log(prism.gray('Reset cancelled'))
+  if (
+    !(await guardDestructive(
+      `Reset circuit breaker(s) for: ${servicesToReset.join(', ')}?`,
+      options
+    ))
+  ) {
     return
   }
 
@@ -389,15 +338,25 @@ async function resetCircuitBreaker(
     breaker.halfOpenRequests = 0
   }
 
-  console.log(prism.green(`✅ Reset circuit breaker(s) for: ${servicesToReset.join(', ')}`))
-
-  // Persist state if using database
-  await persistCircuitBreakerState(breakers)
+  const selected = servicesToReset.map(service => {
+    const breaker = breakers.get(service)
+    if (!breaker) throw new CLIError(`Circuit breaker disappeared: ${service}`, 'STATE_CHANGED')
+    return breaker
+  })
+  await persistCircuitBreakerState(selected, config)
+  output(
+    { action: 'reset', services: servicesToReset },
+    {
+      format: options.json ? 'json' : 'text',
+      text: `Reset circuit breaker(s) for: ${servicesToReset.join(', ')}`
+    }
+  )
 }
 
 async function openCircuitBreaker(
   breakers: Map<string, CircuitBreakerStatus>,
-  options: CircuitBreakerOptions
+  options: CircuitBreakerOptions,
+  config: KyseraConfigWithDatabase
 ): Promise<void> {
   if (!options.service) {
     throw new CLIError('Service name required', 'MISSING_SERVICE', undefined, [
@@ -411,7 +370,13 @@ async function openCircuitBreaker(
   }
 
   if (breaker.state === 'open') {
-    console.log(prism.yellow(`Circuit breaker for ${options.service} is already open`))
+    output(
+      { action: 'open', service: options.service, state: breaker.state, changed: false },
+      {
+        format: options.json ? 'json' : 'text',
+        text: `Circuit breaker for ${options.service} is already open`
+      }
+    )
     return
   }
 
@@ -420,16 +385,20 @@ async function openCircuitBreaker(
   breaker.lastFailure = new Date()
   breaker.nextRetry = new Date(Date.now() + breaker.resetTimeout)
 
-  console.log(prism.red(`🚫 Opened circuit breaker for: ${options.service}`))
-  console.log(prism.gray(`Will retry in ${breaker.resetTimeout / 1000} seconds`))
-
-  // Persist state
-  await persistCircuitBreakerState(breakers)
+  await persistCircuitBreakerState([breaker], config)
+  output(
+    { action: 'open', service: options.service, state: breaker.state },
+    {
+      format: options.json ? 'json' : 'text',
+      text: `Opened circuit breaker for: ${options.service}`
+    }
+  )
 }
 
 async function closeCircuitBreaker(
   breakers: Map<string, CircuitBreakerStatus>,
-  options: CircuitBreakerOptions
+  options: CircuitBreakerOptions,
+  config: KyseraConfigWithDatabase
 ): Promise<void> {
   if (!options.service) {
     throw new CLIError('Service name required', 'MISSING_SERVICE', undefined, [
@@ -443,7 +412,13 @@ async function closeCircuitBreaker(
   }
 
   if (breaker.state === 'closed') {
-    console.log(prism.yellow(`Circuit breaker for ${options.service} is already closed`))
+    output(
+      { action: 'close', service: options.service, state: breaker.state, changed: false },
+      {
+        format: options.json ? 'json' : 'text',
+        text: `Circuit breaker for ${options.service} is already closed`
+      }
+    )
     return
   }
 
@@ -454,63 +429,54 @@ async function closeCircuitBreaker(
   breaker.nextRetry = undefined
   breaker.halfOpenRequests = 0
 
-  console.log(prism.green(`✅ Closed circuit breaker for: ${options.service}`))
-
-  // Persist state
-  await persistCircuitBreakerState(breakers)
+  await persistCircuitBreakerState([breaker], config)
+  output(
+    { action: 'close', service: options.service, state: breaker.state },
+    {
+      format: options.json ? 'json' : 'text',
+      text: `Closed circuit breaker for: ${options.service}`
+    }
+  )
 }
 
 async function persistCircuitBreakerState(
-  breakers: Map<string, CircuitBreakerStatus>
+  breakers: readonly CircuitBreakerStatus[],
+  config: KyseraConfigWithDatabase
 ): Promise<void> {
-  // This would typically persist to database or Redis
-  // For now, just log the action
-  logger.debug('Circuit breaker state updated')
-
-  // If you have a circuit_breaker_state table, update it here
+  const db = await getDatabaseConnection(config.database)
+  if (!db) throw new CLIError('Failed to connect to database', 'DATABASE_ERROR')
   try {
-    const config = (await loadConfig()) as KyseraConfig | null
-    if (config?.database) {
-      const db = await getDatabaseConnection(config.database)
-
-      if (!db) {
-        return
-      }
-
-      for (const breaker of breakers.values()) {
-        await db
-          .insertInto('circuit_breaker_state')
-          .values({
-            service: breaker.service,
+    await db.transaction().execute(async trx => {
+      for (const breaker of breakers) {
+        const updated = await trx
+          .updateTable('circuit_breaker_state')
+          .set({
             state: breaker.state,
             failure_count: breaker.failureCount,
             success_count: breaker.successCount,
-            last_failure: breaker.lastFailure,
-            last_success: breaker.lastSuccess,
-            next_retry: breaker.nextRetry,
-            error_threshold: breaker.errorThreshold,
-            reset_timeout: breaker.resetTimeout,
+            last_failure: breaker.lastFailure
+              ? formatTimestampForDb(breaker.lastFailure, config.database.dialect)
+              : null,
+            last_success: breaker.lastSuccess
+              ? formatTimestampForDb(breaker.lastSuccess, config.database.dialect)
+              : null,
+            next_retry: breaker.nextRetry
+              ? formatTimestampForDb(breaker.nextRetry, config.database.dialect)
+              : null,
             half_open_requests: breaker.halfOpenRequests,
-            updated_at: new Date()
+            updated_at: formatTimestampForDb(new Date(), config.database.dialect)
           })
-          .onConflict(oc =>
-            oc.column('service').doUpdateSet({
-              state: breaker.state,
-              failure_count: breaker.failureCount,
-              success_count: breaker.successCount,
-              last_failure: breaker.lastFailure,
-              last_success: breaker.lastSuccess,
-              next_retry: breaker.nextRetry,
-              half_open_requests: breaker.halfOpenRequests,
-              updated_at: new Date()
-            })
+          .where('service', '=', breaker.service)
+          .executeTakeFirstOrThrow()
+        if (updated.numUpdatedRows !== 1n) {
+          throw new CLIError(
+            `Circuit breaker changed before it could be saved: ${breaker.service}`,
+            'STATE_CHANGED'
           )
-          .execute()
+        }
       }
-
-      await db.destroy()
-    }
-  } catch (error) {
-    logger.debug(`Failed to persist circuit breaker state: ${String(error)}`)
+    })
+  } finally {
+    await db.destroy()
   }
 }

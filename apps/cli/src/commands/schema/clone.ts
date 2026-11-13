@@ -1,6 +1,8 @@
 import { Command } from 'commander'
-import { prism, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
+import { output } from '../../utils/output.js'
+import { guardDestructive } from '../../utils/guard.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 
@@ -9,6 +11,7 @@ export interface CloneOptions {
   exclude?: string[]
   tenant?: string
   force?: boolean
+  json?: boolean
   verbose?: boolean
   config?: string
 }
@@ -22,6 +25,7 @@ export function cloneCommand(): Command {
     .option('--exclude <tables...>', 'Tables to exclude from cloning')
     .option('--tenant <id>', 'Create target as tenant schema with specified ID')
     .option('--force', 'Skip confirmation prompt')
+    .option('--json', 'Output result as JSON')
     .option('-v, --verbose', 'Show detailed output')
     .option('-c, --config <path>', 'Path to configuration file')
     .action(async (source: string, target: string, options: CloneOptions) => {
@@ -65,44 +69,21 @@ async function cloneSchema(source: string, target: string, options: CloneOptions
     // Check if target schema already exists
     const targetExists = await adapter.schemaExists(db, targetSchema)
     if (targetExists) {
-      throw new CLIError(`Target schema '${targetSchema}' already exists`, 'TARGET_EXISTS', undefined, [
-        'Use a different target name or drop the existing schema first'
-      ])
+      throw new CLIError(
+        `Target schema '${targetSchema}' already exists`,
+        'TARGET_EXISTS',
+        undefined,
+        ['Use a different target name or drop the existing schema first']
+      )
     }
 
-    // Get source schema info
-    const sourceInfo = await adapter.getSchemaInfo(db, source)
-
-    // Confirm clone
-    if (!options.force) {
-      if (process.env.NODE_ENV === 'test' || !process.stdin.isTTY) {
-        // Skip confirmation in non-interactive mode
-      } else {
-        console.log('')
-        console.log(prism.bold('Clone Schema'))
-        console.log(prism.gray('-'.repeat(50)))
-        console.log(`  Source: ${prism.cyan(source)}`)
-        console.log(`  Target: ${prism.cyan(targetSchema)}`)
-        console.log(`  Tables: ${sourceInfo.tableCount}`)
-        console.log(`  Size: ${formatBytes(sourceInfo.sizeBytes)}`)
-        console.log(
-          `  Include Data: ${options.includeData ? prism.green('Yes') : prism.gray('No')}`
-        )
-        if (options.exclude && options.exclude.length > 0) {
-          console.log(`  Exclude: ${options.exclude.join(', ')}`)
-        }
-        console.log('')
-
-        const confirmed = await confirm({
-          message: `Clone schema '${source}' to '${targetSchema}'?`,
-          initialValue: true
-        })
-
-        if (!confirmed) {
-          console.log(prism.gray('Schema clone cancelled'))
-          return
-        }
-      }
+    if (
+      !(await guardDestructive(
+        `Clone schema '${source}' to '${targetSchema}'${options.includeData ? ' including data' : ''}${options.exclude?.length ? ` (excluding ${options.exclude.join(', ')})` : ''}?`,
+        options
+      ))
+    ) {
+      return
     }
 
     const cloneSpinner = spinner()
@@ -119,6 +100,19 @@ async function cloneSchema(source: string, target: string, options: CloneOptions
 
     // Get target schema info
     const targetInfo = await adapter.getSchemaInfo(db, targetSchema)
+    if (options.json) {
+      output(
+        {
+          source,
+          target: targetSchema,
+          includeData: options.includeData === true,
+          tableCount: targetInfo.tableCount,
+          sizeBytes: targetInfo.sizeBytes
+        },
+        { format: 'json' }
+      )
+      return
+    }
 
     console.log('')
     console.log(prism.cyan('Clone Summary:'))

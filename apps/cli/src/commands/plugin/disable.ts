@@ -1,7 +1,9 @@
 import { Command } from 'commander'
-import { prism, confirm, select } from '@xec-sh/kit'
+import { prism, select, isCancel } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
+import { guardDestructive, requireInteractive } from '../../utils/guard.js'
+import { diag } from '../../utils/output.js'
 import { CLIError } from '../../utils/errors.js'
 import { loadConfig, saveConfig } from '../../config/loader.js'
 
@@ -63,7 +65,7 @@ async function disablePlugin(
     const config = await loadConfig(options.config)
 
     if (!config.plugins) {
-      console.log(prism.yellow('No plugins configured'))
+      diag(prism.yellow('No plugins configured'))
       return
     }
 
@@ -80,33 +82,19 @@ async function disablePlugin(
 
       if (enabledPlugins.length === 0) {
         disableSpinner.stop()
-        console.log(prism.yellow('No enabled plugins found'))
+        diag(prism.yellow('No enabled plugins found'))
         return
       }
 
       disableSpinner.stop()
-      console.log(
+      diag(
         prism.green(
           `✓ Found ${enabledPlugins.length} enabled plugin${enabledPlugins.length !== 1 ? 's' : ''}`
         )
       )
 
-      // Confirm action
-      if (!options.force && !options.json) {
-        console.log('')
-        console.log(prism.yellow('⚠️  This will disable the following plugins:'))
-        for (const plugin of enabledPlugins) {
-          console.log(`  • ${plugin}`)
-        }
-
-        const shouldDisable = await confirm({
-          message: `Disable ${enabledPlugins.length} plugin${enabledPlugins.length !== 1 ? 's' : ''}?`
-        })
-
-        if (!shouldDisable) {
-          console.log(prism.gray('Operation cancelled'))
-          return
-        }
+      if (!(await guardDestructive(`Disable ${enabledPlugins.length} plugins?`, options))) {
+        return
       }
 
       // Disable each plugin
@@ -123,13 +111,13 @@ async function disablePlugin(
 
       if (result.status === 'disabled') {
         disableSpinner.stop()
-        console.log(prism.green(`✓ Plugin disabled: ${name}`))
+        diag(prism.green(`✓ Plugin disabled: ${name}`))
       } else if (result.status === 'not_enabled') {
         disableSpinner.stop()
-        console.log(prism.yellow(`Plugin not enabled: ${name}`))
+        diag(prism.yellow(`Plugin not enabled: ${name}`))
       } else {
         disableSpinner.stop()
-        console.log(prism.red(`Failed to disable plugin: ${name}`))
+        diag(prism.red(`Failed to disable plugin: ${name}`))
       }
     } else {
       // Interactive selection
@@ -142,10 +130,11 @@ async function disablePlugin(
       disableSpinner.stop()
 
       if (enabledPlugins.length === 0) {
-        console.log(prism.yellow('No enabled plugins found'))
+        diag(prism.yellow('No enabled plugins found'))
         return
       }
 
+      requireInteractive('Specify a plugin name or use --all', options)
       const selected = await select({
         message: 'Select plugin to disable:',
         options: enabledPlugins.map(p => ({
@@ -155,16 +144,17 @@ async function disablePlugin(
         }))
       })
 
-      disableSpinner.start(`Disabling plugin: ${selected as string}...`)
-      const result = await disableSinglePlugin(selected as string, plugins, options)
+      if (isCancel(selected)) return
+      disableSpinner.start(`Disabling plugin: ${selected}...`)
+      const result = await disableSinglePlugin(selected, plugins, options)
       results.push(result)
 
       if (result.status === 'disabled') {
         disableSpinner.stop()
-        console.log(prism.green(`✓ Plugin disabled: ${selected as string}`))
+        diag(prism.green(`✓ Plugin disabled: ${selected}`))
       } else {
         disableSpinner.stop()
-        console.log(prism.red(`Failed to disable plugin: ${selected as string}`))
+        diag(prism.red(`Failed to disable plugin: ${selected}`))
       }
     }
 
@@ -182,13 +172,12 @@ async function disablePlugin(
 
     // Restart if requested
     if (options.restart && results.some(r => r.status === 'disabled')) {
-      console.log('')
-      console.log(prism.yellow('⚠️  Application restart required'))
-      console.log('Please restart your application for changes to take effect')
+      diag('')
+      diag(prism.yellow('⚠️  Application restart required'))
+      diag('Please restart your application for changes to take effect')
     }
   } catch (error) {
     disableSpinner.stop()
-    logger.error('Failed to disable plugin')
     throw error
   }
 }
@@ -237,7 +226,7 @@ async function disableSinglePlugin(
             console.log(`  • ${dep}`)
           }
 
-          const shouldContinue = await confirm({ message: 'Disable anyway?' })
+          const shouldContinue = await guardDestructive('Disable anyway?', options)
           if (!shouldContinue) {
             return result
           }
@@ -275,6 +264,7 @@ async function disableSinglePlugin(
     // Log hooks and providers that will be removed
     logRemovedFeatures(pluginName)
   } catch (error) {
+    if (error instanceof CLIError) throw error
     result.message = error instanceof Error ? error.message : String(error)
   }
 
@@ -317,27 +307,27 @@ function logRemovedFeatures(pluginName: string): void {
     string,
     { hooks?: string[]; providers?: string[]; commands?: string[] } | undefined
   > = {
-      '@kysera/soft-delete': {
-        hooks: ['beforeDelete', 'afterRestore'],
-        providers: ['SoftDeletePlugin']
-      },
-      '@kysera/timestamps': {
-        hooks: ['beforeInsert', 'beforeUpdate'],
-        providers: ['TimestampsPlugin']
-      },
-      '@kysera/audit': {
-        hooks: ['afterInsert', 'afterUpdate', 'afterDelete'],
-        providers: ['AuditPlugin']
-      },
-      '@kysera/cache': {
-        hooks: ['beforeQuery', 'afterQuery'],
-        providers: ['CachePlugin']
-      },
-      '@kysera/validation': {
-        hooks: ['beforeInsert', 'beforeUpdate'],
-        providers: ['ValidationPlugin']
-      }
+    '@kysera/soft-delete': {
+      hooks: ['beforeDelete', 'afterRestore'],
+      providers: ['SoftDeletePlugin']
+    },
+    '@kysera/timestamps': {
+      hooks: ['beforeInsert', 'beforeUpdate'],
+      providers: ['TimestampsPlugin']
+    },
+    '@kysera/audit': {
+      hooks: ['afterInsert', 'afterUpdate', 'afterDelete'],
+      providers: ['AuditPlugin']
+    },
+    '@kysera/cache': {
+      hooks: ['beforeQuery', 'afterQuery'],
+      providers: ['CachePlugin']
+    },
+    '@kysera/validation': {
+      hooks: ['beforeInsert', 'beforeUpdate'],
+      providers: ['ValidationPlugin']
     }
+  }
 
   const pluginFeatures = features[pluginName]
 

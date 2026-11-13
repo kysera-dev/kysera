@@ -1,7 +1,9 @@
 import { Command } from 'commander'
-import { prism, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
+import { diag } from '../../utils/output.js'
+import { guardDestructive } from '../../utils/guard.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
@@ -14,6 +16,7 @@ export interface ValidateRepositoryOptions {
   directory?: string
   pattern?: string
   fix?: boolean
+  force?: boolean
   strict?: boolean
   showDetails?: boolean
   json?: boolean
@@ -87,6 +90,7 @@ export function validateRepositoryCommand(): Command {
     .option('-d, --directory <path>', 'Directory to scan', 'src')
     .option('-p, --pattern <glob>', 'File pattern to match', '**/*Repository.ts')
     .option('--fix', 'Attempt to fix issues', false)
+    .option('--force', 'Confirm automatic fixes without prompting', false)
     .option('--strict', 'Enable strict validation', false)
     .option('--show-details', 'Show detailed validation results', false)
     .option('--json', 'Output as JSON', false)
@@ -123,6 +127,7 @@ async function validateRepositories(options: ValidateRepositoryOptions): Promise
   const validateSpinner = spinner()
   validateSpinner.start('Scanning for repository files...')
 
+  let db: ValidateDatabase | undefined
   try {
     // Get database connection
     const connection = await getDatabaseConnection(config.database)
@@ -134,7 +139,7 @@ async function validateRepositories(options: ValidateRepositoryOptions): Promise
       ])
     }
 
-    const db = connection as unknown as ValidateDatabase
+    db = connection as unknown as ValidateDatabase
 
     // Find repository files
     const projectRoot = process.cwd()
@@ -144,7 +149,6 @@ async function validateRepositories(options: ValidateRepositoryOptions): Promise
 
     if (repositoryFiles.length === 0) {
       validateSpinner.warn('No repository files found')
-      await db.destroy()
       return
     }
 
@@ -176,28 +180,25 @@ async function validateRepositories(options: ValidateRepositoryOptions): Promise
       }
     }
 
+    // Fix issues if requested
+    if (options.fix && validationResults.some(r => r.issues.some(i => i.fixable))) {
+      const shouldFix = await guardDestructive('Attempt automatic fixes?', options)
+
+      if (shouldFix) {
+        await attemptFixes(validationResults, db)
+      }
+    }
     // Display results
     if (options.json) {
       console.log(JSON.stringify(validationResults, null, 2))
     } else {
       displayValidationResults(validationResults, options)
     }
-
-    // Fix issues if requested
-    if (options.fix && validationResults.some(r => r.issues.some(i => i.fixable))) {
-      console.log('')
-      const shouldFix = await confirm({ message: 'Do you want to attempt automatic fixes?' })
-
-      if (shouldFix) {
-        await attemptFixes(validationResults, db)
-      }
-    }
-
-    // Close database connection
-    await db.destroy()
   } catch (error) {
-    validateSpinner.fail('Validation failed')
+    validateSpinner.stop()
     throw error
+  } finally {
+    await db?.destroy()
   }
 }
 
@@ -670,17 +671,18 @@ async function attemptFixes(results: ValidationResult[], db: ValidateDatabase): 
           fixSpinner.warn(`Could not fix issues in ${result.repository}`)
         }
       } catch (error) {
-        fixSpinner.fail(`Failed to fix ${result.repository}: ${String(error)}`)
+        fixSpinner.stop()
+        throw error
       }
     }
   }
 
   if (fixedCount > 0) {
-    console.log('')
-    console.log(prism.green(`✅ Fixed ${fixedCount} issue${fixedCount !== 1 ? 's' : ''}`))
+    diag('')
+    diag(prism.green(`✅ Fixed ${fixedCount} issue${fixedCount !== 1 ? 's' : ''}`))
   } else {
-    console.log('')
-    console.log(prism.yellow('No issues could be automatically fixed'))
+    diag('')
+    diag(prism.yellow('No issues could be automatically fixed'))
   }
 }
 

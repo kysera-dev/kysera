@@ -161,16 +161,16 @@ kysera debug errors [options]
 
 ### Options
 
-| Option                 | Description                                                    |
-| ---------------------- | -------------------------------------------------------------- |
-| `-s, --since <datetime>` | Show errors since datetime (ISO 8601)                        |
-| `--until <datetime>`   | Show errors until datetime (ISO 8601)                          |
-| `-l, --limit <n>`      | Limit number of results (default: 100)                         |
-| `-p, --pattern <regex>`| Filter errors by pattern                                       |
-| `-g, --group-by <field>` | Group by: error, table, operation, user (default: error)     |
-| `--show-queries`       | Show failing queries                                           |
-| `--json`               | Output as JSON                                                 |
-| `-c, --config <path>`  | Path to configuration file                                     |
+| Option                   | Description                                              |
+| ------------------------ | -------------------------------------------------------- |
+| `-s, --since <datetime>` | Show errors since datetime (ISO 8601)                    |
+| `--until <datetime>`     | Show errors until datetime (ISO 8601)                    |
+| `-l, --limit <n>`        | Limit number of results (default: 100)                   |
+| `-p, --pattern <regex>`  | Filter errors by pattern                                 |
+| `-g, --group-by <field>` | Group by: error, table, operation, user (default: error) |
+| `--show-queries`         | Show failing queries                                     |
+| `--json`                 | Output as JSON                                           |
+| `-c, --config <path>`    | Path to configuration file                               |
 
 ### Examples
 
@@ -205,6 +205,7 @@ kysera debug circuit-breaker [options]
 | `-t, --threshold <n>`  | Error threshold for opening circuit (default: 5)     |
 | `--timeout <ms>`       | Reset timeout in milliseconds (default: 30000)       |
 | `-w, --watch`          | Watch mode - monitor in real-time                    |
+| `--force`              | Confirm reset without prompting                      |
 | `--json`               | Output as JSON                                       |
 | `-c, --config <path>`  | Path to configuration file                           |
 
@@ -224,7 +225,7 @@ kysera debug circuit-breaker --action reset
 kysera debug circuit-breaker --action open --service database
 
 # Close circuit breaker
-kysera debug circuit-breaker --action close
+kysera debug circuit-breaker --action close --service database
 
 # Watch mode - real-time monitoring
 kysera debug circuit-breaker --watch
@@ -240,6 +241,12 @@ kysera debug circuit-breaker --threshold 10 --timeout 60000
 | `CLOSED`    | Normal operation, requests pass through |
 | `OPEN`      | Circuit is open, requests fail fast     |
 | `HALF_OPEN` | Testing if service recovered            |
+
+Reset requires explicit `--force` in non-interactive or JSON mode. Reads and
+writes use the same `--config` database; only selected services are changed.
+Success is reported after persistence completes. Missing state is reported as
+an empty observation, and connection or write errors fail the command rather
+than manufacturing healthy defaults.
 
 ## analyzer
 
@@ -349,13 +356,13 @@ For automatic query logging, wrap your database with `withDebug` from `@kysera/d
 import { withDebug } from '@kysera/debug'
 
 const db = withDebug(baseDb, {
-  logQuery: true,             // Log every query (default: true)
-  logParams: false,           // Include bound parameters
-  slowQueryThreshold: 1000,   // ms; slower queries are flagged
+  logQuery: true, // Log every query (default: true)
+  logParams: false, // Include bound parameters
+  slowQueryThreshold: 1000, // ms; slower queries are flagged
   onSlowQuery: (sql, duration) => {
     console.warn(`Slow query (${duration}ms): ${sql}`)
   },
-  maxMetrics: 1000            // Metrics buffer size
+  maxMetrics: 1000 // Metrics buffer size
 })
 ```
 

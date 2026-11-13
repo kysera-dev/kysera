@@ -2,6 +2,8 @@ import { Command } from 'commander'
 import { prism } from '@xec-sh/kit'
 import { displayTable } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
+import { guardDestructive } from '../../utils/guard.js'
+import { output } from '../../utils/output.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 
@@ -94,27 +96,21 @@ async function querySoftDeleted(options: SoftDeletedOptions): Promise<void> {
           return
         }
 
-        if (!options.force) {
-          const { confirm } = await import('@xec-sh/kit')
-          const confirmed = await confirm({
-            message: `Permanently delete ${count} records from ${tableName}?`,
-            initialValue: false
-          })
-
-          if (!confirmed) {
-            console.log(prism.gray('Purge cancelled'))
-            return
-          }
+        if (
+          !(await guardDestructive(
+            `Permanently delete ${count} records from ${tableName}?`,
+            options
+          ))
+        ) {
+          return
         }
 
         querySpinner.start('Purging soft-deleted records...')
 
-        await schemaDb
-          .deleteFrom(tableName)
-          .where(column, 'is not', null)
-          .execute()
+        await schemaDb.deleteFrom(tableName).where(column, 'is not', null).execute()
 
         querySpinner.succeed(`Purged ${count} records from ${tableName}`)
+        if (options.json) output({ table: tableName, purged: count }, { format: 'json' })
         return
       }
 

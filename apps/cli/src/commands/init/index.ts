@@ -4,6 +4,8 @@ import { spinner, type ExtendedSpinnerResult } from '../../utils/spinner.js'
 import { join, resolve, dirname } from 'node:path'
 import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { logger } from '../../utils/logger.js'
+import { isJsonMode } from '../../utils/output.js'
+import { requireInteractive } from '../../utils/guard.js'
 import { CLIError } from '../../utils/errors.js'
 import { writeFileSync } from 'node:fs'
 
@@ -157,86 +159,86 @@ export function initCommand(): Command {
 }
 
 async function initProject(projectName: string | undefined, options: InitOptions): Promise<void> {
-  // Check if we're in a non-interactive environment
-  const isNonInteractive =
-    process.env.NODE_ENV === 'test' || !process.stdin.isTTY || process.env.CI
-
-  // Interactive mode if no project name provided (and we're in an interactive environment)
+  if (isJsonMode()) {
+    throw new CLIError('Project initialization does not support --json', 'JSON_OUTPUT_UNSUPPORTED')
+  }
+  const isNonInteractive = !process.stdin.isTTY || !process.stdout.isTTY
   if (!projectName) {
-    if (isNonInteractive) {
-      throw new CLIError(
-        'Project name is required in non-interactive mode',
-        'PROJECT_NAME_REQUIRED',
-        ['Provide project name as argument: kysera init <project-name>']
-      )
-    }
+    requireInteractive('Project name is required in non-interactive mode')
 
-    const answers = await group({
-      projectName: () =>
-        text({
-          message: 'Project name',
-          placeholder: 'my-kysera-app',
-          validate: value => {
-            if (!value || value.trim() === '') {
-              return 'Project name is required'
+    const answers = await group(
+      {
+        projectName: () =>
+          text({
+            message: 'Project name',
+            placeholder: 'my-kysera-app',
+            validate: value => {
+              if (!value || value.trim() === '') {
+                return 'Project name is required'
+              }
+              if (!/^[a-z0-9-_.]+$/i.test(value)) {
+                return 'Project name can only contain letters, numbers, hyphens, underscores, and dots'
+              }
+              return undefined
             }
-            if (!/^[a-z0-9-_.]+$/i.test(value)) {
-              return 'Project name can only contain letters, numbers, hyphens, underscores, and dots'
-            }
-            return undefined
-          }
-        }),
-      template: () =>
-        select({
-          message: 'Select template',
-          options: Object.entries(TEMPLATES).map(([key, template]) => ({
-            label: `${template.name} - ${template.description}`,
-            value: key
-          }))
-        }),
-      database: () =>
-        select({
-          message: 'Select database',
-          options: Object.entries(DATABASES).map(([key, db]) => ({
-            label: db.name,
-            value: key
-          }))
-        }),
-      plugins: () =>
-        multiselect({
-          message: 'Enable plugins',
-          options: Object.entries(PLUGINS).map(([key, plugin]) => ({
-            label: plugin.name,
-            value: key,
-            hint: plugin.description
-          })),
-          initialValues: ['timestamps', 'soft-delete']
-        }),
-      packageManager: () =>
-        select({
-          message: 'Package manager',
-          options: [
-            { label: 'pnpm', value: 'pnpm' },
-            { label: 'npm', value: 'npm' },
-            { label: 'yarn', value: 'yarn' },
-            { label: 'bun', value: 'bun' }
-          ],
-          initialValue: detectPackageManager()
-        }),
-      git: () =>
-        confirm({
-          message: 'Initialize git repository?',
-          initialValue: true
-        }),
-      install: () =>
-        confirm({
-          message: 'Install dependencies?',
-          initialValue: true
-        })
-    })
+          }),
+        template: () =>
+          select({
+            message: 'Select template',
+            options: Object.entries(TEMPLATES).map(([key, template]) => ({
+              label: `${template.name} - ${template.description}`,
+              value: key
+            }))
+          }),
+        database: () =>
+          select({
+            message: 'Select database',
+            options: Object.entries(DATABASES).map(([key, db]) => ({
+              label: db.name,
+              value: key
+            }))
+          }),
+        plugins: () =>
+          multiselect({
+            message: 'Enable plugins',
+            options: Object.entries(PLUGINS).map(([key, plugin]) => ({
+              label: plugin.name,
+              value: key,
+              hint: plugin.description
+            })),
+            initialValues: ['timestamps', 'soft-delete']
+          }),
+        packageManager: () =>
+          select({
+            message: 'Package manager',
+            options: [
+              { label: 'pnpm', value: 'pnpm' },
+              { label: 'npm', value: 'npm' },
+              { label: 'yarn', value: 'yarn' },
+              { label: 'bun', value: 'bun' }
+            ],
+            initialValue: detectPackageManager()
+          }),
+        git: () =>
+          confirm({
+            message: 'Initialize git repository?',
+            initialValue: true
+          }),
+        install: () =>
+          confirm({
+            message: 'Install dependencies?',
+            initialValue: true
+          })
+      },
+      {
+        onCancel: () => {
+          throw new CLIError('Project initialization cancelled', 'CANCELLED')
+        }
+      }
+    )
 
     // Check if user cancelled
-    if (isCancel(answers.projectName)) {
+    if (isCancel(answers) || Object.values(answers).some(isCancel)) {
       throw new CLIError('Project initialization cancelled', 'CANCELLED')
     }
 

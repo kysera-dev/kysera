@@ -1,8 +1,9 @@
 import { Command } from 'commander'
-import { prism, select } from '@xec-sh/kit'
+import { prism, select, isCancel } from '@xec-sh/kit'
 import { displayTable as table } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
 import { logger } from '../../utils/logger.js'
+import { requireInteractive } from '../../utils/guard.js'
 import { CLIError } from '../../utils/errors.js'
 import { getDatabaseConnection } from '../../utils/database.js'
 import { loadConfig } from '../../config/loader.js'
@@ -186,6 +187,7 @@ async function inspectRepository(options: InspectRepositoryOptions): Promise<voi
         return
       }
 
+      requireInteractive('Specify a repository using --file or its name', options)
       const selected = await select({
         message: 'Select a repository to inspect:',
         options: files.map(f => ({
@@ -195,7 +197,8 @@ async function inspectRepository(options: InspectRepositoryOptions): Promise<voi
         }))
       })
 
-      filePath = selected as string
+      if (isCancel(selected)) return
+      filePath = selected
       inspectSpinner.start(`Inspecting ${path.basename(filePath)}...`)
     }
 

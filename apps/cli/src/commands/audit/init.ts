@@ -7,6 +7,7 @@ import { isDryRun } from '../../utils/global-options.js'
 import { diag, output } from '../../utils/output.js'
 
 export interface AuditInitOptions {
+  dryRun?: boolean
   table?: string
   dialectDdl?: boolean
   dir?: string
@@ -39,6 +40,7 @@ timestamps are coerced by the database), but the migration is then tied
 to that dialect. On SQLite only the indexes are added.
 `
     )
+    .option('--dry-run', 'Preview changes without writing')
     .action(async (options: AuditInitOptions) => {
       try {
         await runAuditInit(options)
@@ -95,7 +97,7 @@ export async function runAuditInit(options: AuditInitOptions): Promise<void> {
 
   const mode = ddlDialect ? 'dialect' : 'portable'
 
-  if (isDryRun()) {
+  if (options.dryRun === true || isDryRun()) {
     diag(`DRY RUN: not writing ${filepath}`)
     output(
       { file: filepath, table, mode, dialect: dialect ?? null, dryRun: true },

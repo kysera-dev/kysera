@@ -143,8 +143,8 @@ kysera plugin enable [name] [options]
 
 ### Arguments
 
-| Argument | Description                                  |
-| -------- | -------------------------------------------- |
+| Argument | Description                                              |
+| -------- | -------------------------------------------------------- |
 | `name`   | Plugin name (e.g., @kysera/audit); optional with `--all` |
 
 ### Options
@@ -189,8 +189,8 @@ kysera plugin disable [name] [options]
 
 ### Arguments
 
-| Argument | Description                                  |
-| -------- | -------------------------------------------- |
+| Argument | Description                                              |
+| -------- | -------------------------------------------------------- |
 | `name`   | Plugin name (e.g., @kysera/audit); optional with `--all` |
 
 ### Options
@@ -241,19 +241,20 @@ kysera plugin config [name] [options]
 
 ### Options
 
-| Option              | Description                        |
-| ------------------- | ---------------------------------- |
-| `-g, --get <key>`   | Get a configuration value          |
-| `-s, --set <key>`   | Set a configuration key            |
-| `--value <value>`   | Value for the key given via `--set`|
-| `--reset`           | Reset to default configuration     |
-| `--show`            | Show current configuration         |
-| `--edit`            | Edit configuration interactively   |
-| `--validate`        | Validate configuration             |
-| `--export <file>`   | Export configuration to file       |
-| `--import <file>`   | Import configuration from file     |
-| `--json`            | Output as JSON                     |
-| `--config <path>`   | Path to configuration file         |
+| Option            | Description                         |
+| ----------------- | ----------------------------------- |
+| `-g, --get <key>` | Get a configuration value           |
+| `-s, --set <key>` | Set a configuration key             |
+| `--value <value>` | Value for the key given via `--set` |
+| `--reset`         | Reset to default configuration      |
+| `--force`         | Confirm reset without prompting     |
+| `--show`          | Show current configuration          |
+| `--edit`          | Edit configuration interactively    |
+| `--validate`      | Validate configuration              |
+| `--export <file>` | Export configuration to file        |
+| `--import <file>` | Import configuration from file      |
+| `--json`          | Output as JSON                      |
+| `--config <path>` | Path to configuration file          |
 
 Setting a value uses the `--set <key> --value <value>` pair — one key per invocation; run the command again for each additional key.
 
@@ -359,3 +360,17 @@ Custom plugins are automatically discovered by `kysera plugin list`.
 - [@kysera/audit](/docs/plugins/audit) - Audit plugin
 - [@kysera/timestamps](/docs/plugins/timestamps) - Timestamps plugin
 - [Authoring Plugins](/docs/plugins/authoring-guide) - Create custom plugins
+
+## Non-interactive use and cancellation
+
+`plugin enable --all`, `plugin disable --all`, and `plugin config --reset`
+require a positive confirmation. In CI, pipes, or `--json` mode add `--force`
+explicitly. For enable/disable, `--force` also bypasses the documented plugin
+checks; it is not merely a display option. Choosing a plugin and editing its
+fields require an interactive terminal. Use an explicit name and `--set --value`
+in automation. Cancelling any selection or edited field stops without saving
+partial configuration.
+
+```bash
+kysera plugin config @kysera/soft-delete --reset --force --json
+```

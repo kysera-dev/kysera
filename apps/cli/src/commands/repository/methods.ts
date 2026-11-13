@@ -1,7 +1,8 @@
 import { Command } from 'commander'
-import { prism, select } from '@xec-sh/kit'
+import { prism, select, isCancel } from '@xec-sh/kit'
 import { displayTable as table } from '../../utils/table-helper.js'
 import { spinner } from '../../utils/spinner.js'
+import { requireInteractive } from '../../utils/guard.js'
 import { CLIError } from '../../utils/errors.js'
 import { loadConfig } from '../../config/loader.js'
 import * as fs from 'node:fs/promises'
@@ -122,6 +123,7 @@ async function showMethods(options: ShowMethodsOptions): Promise<void> {
         return
       }
 
+      requireInteractive('Specify a repository using --file or its name', options)
       const selected = await select({
         message: 'Select a repository to analyze:',
         options: files.map(f => ({
@@ -131,7 +133,8 @@ async function showMethods(options: ShowMethodsOptions): Promise<void> {
         }))
       })
 
-      filePath = selected as string
+      if (isCancel(selected)) return
+      filePath = selected
       methodsSpinner.start(`Analyzing ${path.basename(filePath)}...`)
     }
 

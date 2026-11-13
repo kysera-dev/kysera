@@ -1,7 +1,8 @@
 import { Command } from 'commander'
-import { prism, select, text, confirm } from '@xec-sh/kit'
+import { prism, select, text, confirm, isCancel } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
-import { logger } from '../../utils/logger.js'
+import { guardDestructive, requireInteractive } from '../../utils/guard.js'
+import { output } from '../../utils/output.js'
 import { CLIError } from '../../utils/errors.js'
 import { loadConfig, saveConfig } from '../../config/loader.js'
 import type { KyseraConfig } from '../../config/schema.js'
@@ -14,6 +15,7 @@ export interface ConfigPluginOptions {
   set?: string
   value?: string
   reset?: boolean
+  force?: boolean
   show?: boolean
   edit?: boolean
   validate?: boolean
@@ -54,6 +56,7 @@ export function configPluginCommand(): Command {
     .option('-s, --set <key>', 'Set configuration key')
     .option('--value <value>', 'Configuration value to set')
     .option('--reset', 'Reset to default configuration', false)
+    .option('--force', 'Confirm resetting configuration without prompting', false)
     .option('--show', 'Show current configuration', false)
     .option('--edit', 'Edit configuration interactively', false)
     .option('--validate', 'Validate configuration', false)
@@ -95,7 +98,10 @@ async function configurePlugin(
     if (options.import) {
       await importPluginConfig(options.import, config)
       await saveConfig(config, options.config)
-      console.log(prism.green('✅ Configuration imported successfully'))
+      output(
+        { imported: options.import },
+        { format: options.json ? 'json' : 'text', text: 'Configuration imported successfully' }
+      )
       return
     }
 
@@ -109,14 +115,17 @@ async function configurePlugin(
         return
       }
 
-      name = (await select({
+      requireInteractive('Specify a plugin name', options)
+      const selected = await select({
         message: 'Select plugin to configure:',
         options: plugins.map(p => ({
           label: p,
           value: p,
           hint: pluginsRecord[p]?.enabled ? 'Enabled' : 'Disabled'
         }))
-      })) as string
+      })
+      if (isCancel(selected)) return
+      name = selected
     }
 
     // Initialize plugin config if not exists
@@ -129,7 +138,13 @@ async function configurePlugin(
     // Handle export
     if (options.export) {
       await exportPluginConfig(name, pluginConfig, options.export)
-      console.log(prism.green(`✅ Configuration exported to ${options.export}`))
+      output(
+        { plugin: name, file: options.export },
+        {
+          format: options.json ? 'json' : 'text',
+          text: `Configuration exported to ${options.export}`
+        }
+      )
       return
     }
 
@@ -162,7 +177,13 @@ async function configurePlugin(
       setConfigValue(pluginConfig, options.set, parsedValue)
 
       await saveConfig(config, options.config)
-      console.log(prism.green(`✅ Set ${options.set} = ${formatValue(parsedValue)}`))
+      output(
+        { plugin: name, key: options.set, value: parsedValue },
+        {
+          format: options.json ? 'json' : 'text',
+          text: `Set ${options.set} = ${formatValue(parsedValue)}`
+        }
+      )
       return
     }
 
@@ -170,9 +191,7 @@ async function configurePlugin(
     if (options.reset) {
       const defaultConfig = getDefaultConfig(name)
 
-      const shouldReset =
-        (options.json ?? false) ||
-        (await confirm({ message: `Reset ${name} to default configuration?` }))
+      const shouldReset = await guardDestructive(`Reset ${name} to default configuration?`, options)
 
       if (shouldReset) {
         pluginsRecord[name] = {
@@ -181,7 +200,13 @@ async function configurePlugin(
         }
 
         await saveConfig(config, options.config)
-        console.log(prism.green('✅ Configuration reset to defaults'))
+        output(
+          { plugin: name, reset: true, config: pluginsRecord[name] },
+          {
+            format: options.json ? 'json' : 'text',
+            text: 'Configuration reset to defaults'
+          }
+        )
       }
       return
     }
@@ -191,7 +216,9 @@ async function configurePlugin(
       const schema = getConfigSchema(name)
       const errors = validateConfig(pluginConfig, schema)
 
-      if (errors.length === 0) {
+      if (options.json) {
+        output({ plugin: name, valid: errors.length === 0, errors }, { format: 'json' })
+      } else if (errors.length === 0) {
         console.log(prism.green('✅ Configuration is valid'))
       } else {
         console.log(prism.red('❌ Configuration errors found:'))
@@ -212,7 +239,6 @@ async function configurePlugin(
     displayPluginConfig(name, pluginConfig, options.json ?? false)
   } catch (error) {
     configSpinner.stop()
-    logger.error('Configuration failed')
     throw error
   }
 }
@@ -505,6 +531,7 @@ async function editConfigInteractive(
   fullConfig: KyseraConfig,
   options: ConfigPluginOptions
 ): Promise<void> {
+  requireInteractive('Interactive editing is unavailable; use --set and --value', options)
   const schema = getConfigSchema(pluginName)
 
   console.log('')
@@ -529,6 +556,7 @@ async function editConfigInteractive(
         message: `${key} (current: ${String(currentValue)}):`,
         initialValue: currentValue as boolean | undefined
       })
+      if (isCancel(newValue)) return
       updatedConfig[key] = newValue
     } else if (spec.enum) {
       const newValue = await select({
@@ -539,6 +567,7 @@ async function editConfigInteractive(
           hint: v === currentValue ? '(current)' : undefined
         }))
       })
+      if (isCancel(newValue)) return
       updatedConfig[key] = newValue
     } else if (spec.type === 'number') {
       const prompt =
@@ -551,7 +580,8 @@ async function editConfigInteractive(
               : `${key}:`
 
       const newValue = await text({ message: prompt, defaultValue: String(currentValue) })
-      const parsed = parseFloat(newValue as string)
+      if (isCancel(newValue)) return
+      const parsed = parseFloat(newValue)
 
       if (!isNaN(parsed)) {
         updatedConfig[key] = parsed
@@ -564,7 +594,8 @@ async function editConfigInteractive(
         defaultValue: currentStr
       })
 
-      updatedConfig[key] = (newValue as string)
+      if (isCancel(newValue)) return
+      updatedConfig[key] = newValue
         .split(',')
         .map(v => v.trim())
         .filter(Boolean)
@@ -573,6 +604,7 @@ async function editConfigInteractive(
         message: `${key}:`,
         defaultValue: typeof currentValue === 'string' ? currentValue : ''
       })
+      if (isCancel(newValue)) return
       updatedConfig[key] = newValue
     }
   }
@@ -587,7 +619,7 @@ async function editConfigInteractive(
       console.log(`  • ${error}`)
     }
 
-    const shouldSave = await confirm({ message: 'Save anyway?' })
+    const shouldSave = await guardDestructive('Save invalid configuration anyway?', options)
     if (!shouldSave) {
       console.log(prism.gray('Configuration not saved'))
       return

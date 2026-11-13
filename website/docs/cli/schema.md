@@ -14,14 +14,14 @@ Schema management commands are only available for PostgreSQL databases. SQLite h
 
 ## Commands
 
-| Command   | Description                                      |
-| --------- | ------------------------------------------------ |
-| `list`    | List all database schemas                        |
-| `create`  | Create a new database schema                     |
-| `drop`    | Drop a database schema                           |
-| `info`    | Show detailed information about a schema         |
-| `clone`   | Clone a schema structure to a new schema         |
-| `compare` | Compare two schemas and show differences         |
+| Command   | Description                              |
+| --------- | ---------------------------------------- |
+| `list`    | List all database schemas                |
+| `create`  | Create a new database schema             |
+| `drop`    | Drop a database schema                   |
+| `info`    | Show detailed information about a schema |
+| `clone`   | Clone a schema structure to a new schema |
+| `compare` | Compare two schemas and show differences |
 
 ---
 
@@ -173,6 +173,7 @@ kysera schema drop <name>
 **Protected Schemas:**
 
 The following schemas cannot be dropped:
+
 - `public`
 - `pg_catalog`
 - `information_schema`
@@ -357,15 +358,7 @@ kysera schema clone template new_tenant --force
 **Confirmation Output:**
 
 ```
-Clone Schema
-──────────────────────────────────────────────────
-  Source: template
-  Target: tenant_acme
-  Tables: 15
-  Size: 1.24 MB
-  Include Data: No
-
-? Clone schema 'template' to 'tenant_acme'? (Y/n)
+? Clone schema 'template' to 'tenant_acme'? (y/N)
 ```
 
 **Success Output:**
@@ -567,7 +560,7 @@ export default {
   database: {
     dialect: 'postgres',
     connection: '${DATABASE_URL}',
-    schema: 'public'  // Default schema
+    schema: 'public' // Default schema
   }
 }
 ```
@@ -591,3 +584,9 @@ export default {
 - [Multi-Tenant SaaS Example](/docs/examples/multi-tenant-saas) - Full example application
 - [Migration Commands](/docs/cli/migrate) - Running migrations with `--schema`
 - [Database Commands](/docs/cli/db) - Database utilities with schema support
+
+Schema creation and cloning require `--force` in CI, pipes, or JSON mode. The
+clone confirmation includes whether data is copied and which tables are excluded.
+Use `--force --json` for a machine-readable result; cancellation never creates the
+schema. `--dry-run` is not implemented by these commands and is rejected before
+connecting to the database.

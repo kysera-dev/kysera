@@ -1,6 +1,8 @@
 import { Command } from 'commander'
-import { prism, confirm } from '@xec-sh/kit'
+import { prism } from '@xec-sh/kit'
 import { spinner } from '../../utils/spinner.js'
+import { output } from '../../utils/output.js'
+import { guardDestructive } from '../../utils/guard.js'
 import { CLIError } from '../../utils/errors.js'
 import { withDatabase } from '../../utils/with-database.js'
 
@@ -8,6 +10,7 @@ export interface CreateOptions {
   tenant?: string
   ifNotExists?: boolean
   force?: boolean
+  json?: boolean
   verbose?: boolean
   config?: string
 }
@@ -19,6 +22,7 @@ export function createCommand(): Command {
     .option('--tenant <id>', 'Create as tenant schema with specified ID')
     .option('--if-not-exists', 'Do not error if schema already exists')
     .option('--force', 'Skip confirmation prompt')
+    .option('--json', 'Output result as JSON')
     .option('-v, --verbose', 'Show detailed output')
     .option('-c, --config <path>', 'Path to configuration file')
     .action(async (name: string, options: CreateOptions) => {
@@ -57,27 +61,17 @@ async function createSchema(name: string, options: CreateOptions): Promise<void>
     const exists = await adapter.schemaExists(db, schemaName)
     if (exists) {
       if (options.ifNotExists) {
-        console.log(prism.yellow(`Schema '${schemaName}' already exists`))
+        output(
+          { schema: schemaName, created: false },
+          { format: options.json ? 'json' : 'text', text: `Schema '${schemaName}' already exists` }
+        )
         return
       }
       throw new CLIError(`Schema '${schemaName}' already exists`, 'SCHEMA_EXISTS')
     }
 
-    // Confirm creation
-    if (!options.force) {
-      if (process.env.NODE_ENV === 'test' || !process.stdin.isTTY) {
-        // Skip confirmation in non-interactive mode
-      } else {
-        const confirmed = await confirm({
-          message: `Create schema '${schemaName}'?`,
-          initialValue: true
-        })
-
-        if (!confirmed) {
-          console.log(prism.gray('Schema creation cancelled'))
-          return
-        }
-      }
+    if (!(await guardDestructive(`Create schema '${schemaName}'?`, options))) {
+      return
     }
 
     const createSpinner = spinner()
@@ -86,6 +80,12 @@ async function createSchema(name: string, options: CreateOptions): Promise<void>
     const created = await adapter.createSchema(db, schemaName, {
       ifNotExists: options.ifNotExists
     })
+
+    if (options.json) {
+      createSpinner.stop()
+      output({ schema: schemaName, created, tenant: options.tenant ?? null }, { format: 'json' })
+      return
+    }
 
     if (created) {
       createSpinner.succeed(`Schema '${schemaName}' created successfully`)

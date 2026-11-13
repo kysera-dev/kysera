@@ -253,18 +253,25 @@ For simpler projects, you can use `kysera.config.json`:
 
 ## 🎯 Global Options
 
-All commands support these global options:
+The root command accepts these options. `--dry-run` requires explicit support from the selected command:
 
 | Option                | Description                                         | Default       |
 | --------------------- | --------------------------------------------------- | ------------- |
 | `--verbose`           | Enable detailed output with debug information       | `false`       |
-| `-q, --quiet`         | Suppress non-essential output                       | `false`       |
+| `--quiet`             | Suppress non-essential output                       | `false`       |
 | `--dry-run`           | Preview changes without executing                   | `false`       |
 | `--config <path>`     | Path to custom configuration file                   | Auto-detect   |
 | `--json`              | Output results as JSON                              | `false`       |
 | `--no-color`          | Disable colored output                              | `false`       |
 | `--env <environment>` | Set environment (development/production/test)       | `development` |
 | `--stats`             | Show performance statistics after command execution | `false`       |
+
+`--dry-run` fails with `DRY_RUN_UNSUPPORTED` before a command runs if its help
+has no `--dry-run` option. It never turns an unsupported write into a preview.
+Interactive confirmation requires both input and output terminals. In CI, pipes,
+or JSON mode, pass `--force` explicitly for a confirmed operation; `--json`
+is an output format, not permission. Cancelling any setup or selection prompt
+stops before the corresponding write.
 
 ### Examples
 
@@ -276,7 +283,7 @@ kysera migrate up --verbose
 kysera generate model User --quiet
 
 # Preview changes without executing
-kysera db reset --dry-run
+kysera migrate up --dry-run
 
 # Use custom config file
 kysera migrate up --config ./config/db.ts

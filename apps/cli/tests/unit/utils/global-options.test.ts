@@ -134,7 +134,7 @@ describe('global options', () => {
 
   describe('dry-run mode', () => {
     it('tracks dry-run state for the invocation', async () => {
-      const { program } = buildProgram()
+      const { program } = buildProgram([['--dry-run', 'Preview only']])
       expect(isDryRun()).toBe(false)
       await program.parseAsync(['node', 'test', '--dry-run', 'sub'])
       expect(isDryRun()).toBe(true)

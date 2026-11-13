@@ -8,6 +8,7 @@ import { diag, isJsonMode, output } from '../../utils/output.js'
 import { loadRLSSchemaModule, requirePostgresDialect } from './schema-loader.js'
 
 export interface RlsGenerateOptions {
+  dryRun?: boolean
   output?: string
   drop?: boolean
   functions?: boolean
@@ -60,6 +61,7 @@ Compiled .js/.mjs modules always load; .ts requires a runtime that can
 import TypeScript (Node >= 22.18 or Bun).
 `
     )
+    .option('--dry-run', 'Preview changes without writing')
     .action(async (schemaModule: string, options: RlsGenerateOptions) => {
       try {
         await generateRlsSql(schemaModule, options)
@@ -125,7 +127,7 @@ export async function generateRlsSql(
   if (options.output) {
     const outPath = resolve(process.cwd(), options.output)
     const shownPath = relative(process.cwd(), outPath) || outPath
-    if (isDryRun()) {
+    if (options.dryRun === true || isDryRun()) {
       diag(`DRY RUN: not writing ${outPath}`)
       output(
         { file: outPath, statements: sections, dryRun: true },
